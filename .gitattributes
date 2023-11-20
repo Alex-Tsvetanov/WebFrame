@@ -1,0 +1,6 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+reports/** linguist-documentation
+reports/** linguist-generated
+reports/** linguist-vendored

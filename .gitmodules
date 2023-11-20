@@ -1,0 +1,4 @@
+[submodule "lib/inja"]
+	path = lib/inja
+	url = https://github.com/pantor/inja.git
+	branch = v3.3.0

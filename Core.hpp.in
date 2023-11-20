@@ -1,0 +1,3 @@
+// the configured options and settings for WebFrame
+#define Core_VERSION_MAJOR @Core_VERSION_MAJOR@
+#define Core_VERSION_MINOR @Core_VERSION_MINOR@
