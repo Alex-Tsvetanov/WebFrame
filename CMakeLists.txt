@@ -41,6 +41,7 @@ if(USE_INJA)
     list(APPEND EXTRA_LIBS single_inja)
 endif()
 
+add_subdirectory("lib/url-matcher")
 add_library(Core STATIC "lib/core/core.cpp")
 target_link_libraries(Core PUBLIC ${EXTRA_LIBS})
 target_include_directories(Core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/lib")
