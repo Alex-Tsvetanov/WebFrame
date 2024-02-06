@@ -52,8 +52,9 @@ target_include_directories(Core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set_target_properties(Core PROPERTIES LINKER_LANGUAGE CXX)
 install(TARGETS Core DESTINATION ${PROJECT_BINARY_DIR})
 
-if(RUN_TESTS)
-    message("Core-Tests build:")
+if(RUN_TESTS)    
+    include(CTest)
+    enable_testing()
     add_subdirectory("tests/")
 endif()
 
@@ -82,4 +83,4 @@ target_include_directories(ProjectExample PUBLIC
                           "${PROJECT_BINARY_DIR}"
                           )
 
-#include(CPack)
+include(CPack)
