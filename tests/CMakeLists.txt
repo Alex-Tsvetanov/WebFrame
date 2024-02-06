@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
 
-include(CTest)
-enable_testing()
-
 add_subdirectory(Catch2-3.1.1)
 
 add_executable(Core-Tests main.cpp)
