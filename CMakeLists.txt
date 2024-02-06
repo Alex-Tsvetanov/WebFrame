@@ -4,7 +4,11 @@ cmake_minimum_required (VERSION 3.14)
 project ("Core" VERSION 3.0)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-stdlib=libc++)
+endif()
 
 if(OPTIMIZATION)
     add_compile_options(${OPTIMIZATION})

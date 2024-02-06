@@ -145,7 +145,7 @@ namespace webframe::core
 				if (str[i] == '{')
 				{
 					std::string var_type;
-					for (i++; i < str.size() and str[i] != '}'; i++)
+					for (i++; i < str.size() && str[i] != '}'; i++)
 					{
 						if (str[i] == ':')
 							break;
@@ -161,15 +161,15 @@ namespace webframe::core
 					v.push_back(var_type);
 					format += "(";
 					std::string curr_val_regex;
-					for (i++; i < str.size() and str[i] != '}'; i++)
+					for (i++; i < str.size() && str[i] != '}'; i++)
 					{
 						if (str[i] == ':')
 							break;
 						curr_val_regex += str[i];
 					}
-					if (curr_val_regex == "string" or curr_val_regex == "text")
+					if (curr_val_regex == "string" || curr_val_regex == "text")
 						curr_val_regex = "[" + regexAnyChar + "]+";
-					if (curr_val_regex == "char" or curr_val_regex == "symbol")
+					if (curr_val_regex == "char" || curr_val_regex == "symbol")
 						curr_val_regex = "[" + regexAnyChar + "]";
 					if (curr_val_regex == "digit")
 						curr_val_regex = "[0-9]";
@@ -320,7 +320,7 @@ namespace webframe::core
 			std::string ext = std::filesystem::path(path).extension().string();
 			const std::string mime = mime_types::get_mime_type(ext.c_str()).data();
 			std::ifstream ifs(path, std::ios::in | std::ios::binary);
-			if (not ifs.is_open())
+			if (!ifs.is_open())
 			{
 				path_vars p;
 				p += path_vars::var(path, "string");

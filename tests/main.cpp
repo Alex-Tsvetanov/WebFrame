@@ -104,7 +104,7 @@ SCENARIO("Application responds correct") {
 
 		const std::string numbers[] = { "0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31" };
 		std::vector<response_of> benchmarking;
-		for (int i = 0; i < sizeof(numbers) / sizeof(numbers[0]); i++) {
+		for (size_t i = 0; i < sizeof(numbers) / sizeof(numbers[0]); i++) {
 			benchmarking.push_back(response_of("http://localhost:8890/" + numbers[i], numbers[i]));
 		}
 
@@ -155,7 +155,7 @@ int main (int argc, char** argv)
 		.run("8891", 1)
 		.wait_start("8891");
 
-	int result = Catch::Session().run(argc, argv);
+	[[maybe_unused]] int result = Catch::Session().run(argc, argv);
 
 	return 0;
 }

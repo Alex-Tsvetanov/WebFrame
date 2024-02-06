@@ -5,4 +5,4 @@
 [submodule "lib/url-matcher"]
 	path = lib/url-matcher
 	url = https://github.com/cpp-for-everything/RegexMatcher.git
-	branch = 1.0.0.0
+	branch = main

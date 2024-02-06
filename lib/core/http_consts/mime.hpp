@@ -648,7 +648,7 @@ namespace mime_types
         {".zip", "application/zip"},
     };
 
-    constexpr const std::string_view& get_mime_type_sv(const std::string_view& ext) {
+    constexpr std::string_view get_mime_type_sv(const std::string_view& ext) {
         for (size_t index = 0; index < sizeof(mime_types) / sizeof(mime_types[0]); index++)
         {
             if (mime_types[index][0] == std::string_view(ext)) {
@@ -656,10 +656,10 @@ namespace mime_types
             }
         }
 
-        throw std::invalid_argument("Extention is not in the list of MIME types.");
+        static_assert(true, "Extention is not in the list of MIME types.");
     }
 
-    constexpr const std::string_view& get_mime_type(const char* ext)
+    constexpr std::string_view get_mime_type(const char* ext)
     {
         return get_mime_type_sv(std::string_view(ext));
     }
