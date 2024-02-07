@@ -40,6 +40,7 @@ endif()
 
 # Include sub-projects.
 if(USE_INJA)
+    SET(BUILD_TESTING OFF)
     add_subdirectory("lib/inja")
     add_definitions(-DUSE_INJA)
     list(APPEND EXTRA_LIBS single_inja)
