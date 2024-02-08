@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['vprintf_455',['VPRINTF',['../df/ded/host_8h.html#a94e90c730d9ee7ea56e27166616bd1bb',1,'host.h']]]
+  ['true_491',['TRUE',['../df/ded/host_8h.html#aa8cecfc5c5c054d2875c03e77b7be15d',1,'host.h']]]
 ];
