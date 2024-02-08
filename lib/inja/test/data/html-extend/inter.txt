@@ -1,3 +1,0 @@
-{% extends "base.txt" %}
-{% block title %}Inter {{ author }}{% endblock %}
-{% block body %}<main>Intermediate Content</main>{% endblock %}

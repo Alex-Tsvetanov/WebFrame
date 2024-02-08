@@ -1,7 +1,7 @@
 [submodule "lib/inja"]
 	path = lib/inja
 	url = https://github.com/pantor/inja.git
-	branch = v3.3.0
+	branch = v3.4.0
 [submodule "lib/url-matcher"]
 	path = lib/url-matcher
 	url = https://github.com/cpp-for-everything/RegexMatcher.git

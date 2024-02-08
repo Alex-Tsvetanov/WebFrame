@@ -1,6 +1,0 @@
-
-{% for x ins xarray %}{% for y in yarray %}
-{{x}}-{{y}}
-{% endfor %}{% endfor %}
-
-Hello {{ unknown }}.
