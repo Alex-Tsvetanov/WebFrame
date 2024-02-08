@@ -15,12 +15,14 @@ if(OPTIMIZATION)
 endif()
 
 if (MSVC)
-    # warning level 4
-    add_compile_options(/W4)
+    list(APPEND PROJECT_WARNING_LEVEL "/W4")
+    list(APPEND DEPENDANCES_WARNING_LEVEL "/W0")
 else()
     # lots of warnings
-    add_compile_options(-Wall -Wextra -pedantic)
+    list(APPEND PROJECT_WARNING_LEVEL "-Wall" "-Wextra" "-pedantic")
+    list(APPEND DEPENDANCES_WARNING_LEVEL "-w")
 endif()
+add_compile_options(${PROJECT_WARNING_LEVEL})
 
 option(USE_INJA "Use Inja" ON)
 option(RUN_TESTS "Run unit & integration tests" ON)
@@ -40,13 +42,19 @@ endif()
 
 # Include sub-projects.
 if(USE_INJA)
+    set(INJA_BUILD_TESTS OFF CACHE INTERNAL "disables the inja tests" FORCE)
     add_subdirectory("lib/inja")
     set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib/inja" APPEND PROPERTY VARIABLE BUILD_TESTING OFF)
+    set_target_properties(inja PROPERTIES COMPILE_FLAGS ${DEPENDANCES_WARNING_LEVEL})
     add_definitions(-DUSE_INJA)
-    list(APPEND EXTRA_LIBS single_inja)
+    list(APPEND EXTRA_LIBS pantor::inja)
 endif()
 
 add_subdirectory("lib/url-matcher")
+set_target_properties(regexmatcher_core PROPERTIES COMPILE_FLAGS ${DEPENDANCES_WARNING_LEVEL})
+
+list(APPEND EXTRA_LIBS RegexMatcher::core)
+
 add_library(Core STATIC "lib/core/core.cpp")
 target_link_libraries(Core PUBLIC ${EXTRA_LIBS})
 target_include_directories(Core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/lib")
@@ -54,7 +62,6 @@ set_target_properties(Core PROPERTIES LINKER_LANGUAGE CXX)
 install(TARGETS Core DESTINATION ${PROJECT_BINARY_DIR})
 
 if(RUN_TESTS)
-    set(INJA_BUILD_TESTS OFF)
     include(CTest)
     enable_testing()
     add_subdirectory("tests/")

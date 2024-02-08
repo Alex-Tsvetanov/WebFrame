@@ -6,3 +6,11 @@
 	path = lib/url-matcher
 	url = https://github.com/cpp-for-everything/RegexMatcher.git
 	branch = main
+[submodule "tests/Catch2"]
+	path = tests/Catch2
+	url = https://github.com/catchorg/Catch2
+	branch = v3.5.2
+[submodule "Catch2/"]
+	branch = v3.5.2
+[submodule "tests/Catch2/"]
+	branch = v3.5.2

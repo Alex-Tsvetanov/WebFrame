@@ -112,7 +112,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00062">62</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00059">59</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="aaadff1dc4002a54df4cacc357a58d8cb"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aaadff1dc4002a54df4cacc357a58d8cb">&#9670;&nbsp;</a></span>ErrorSynchronizedFile() <span class="overload">[1/2]</span></h2>
@@ -138,10 +138,9 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00064">64</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00064"></a><span class="lineno">   64</span>&#160;                                                                 : <a class="code" href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile</a>(path) {</div>
-<div class="line"><a name="l00065"></a><span class="lineno">   65</span>&#160;    }</div>
-<div class="ttc" id="aclass_synchronized_file_html_af2ff3452b1668d626f1def36a524025d"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile::SynchronizedFile</a></div><div class="ttdeci">SynchronizedFile()</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00025">init.hpp:25</a></div></div>
+<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00061">61</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00062"></a><span class="lineno">   62</span>&#160;      : <a class="code" href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile</a>(path) {}</div>
+<div class="ttc" id="aclass_synchronized_file_html_af2ff3452b1668d626f1def36a524025d"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile::SynchronizedFile</a></div><div class="ttdeci">SynchronizedFile()</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00024">init.hpp:24</a></div></div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -168,9 +167,8 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00067">67</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00067"></a><span class="lineno">   67</span>&#160;                            : <a class="code" href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile</a>() {</div>
-<div class="line"><a name="l00068"></a><span class="lineno">   68</span>&#160;    }</div>
+<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00064">64</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00064"></a><span class="lineno">   64</span>&#160;: <a class="code" href="../../de/d22/class_synchronized_file.html#af2ff3452b1668d626f1def36a524025d">SynchronizedFile</a>() {}</div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -211,17 +209,17 @@ template&lt;typename T &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00105">105</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00105"></a><span class="lineno">  105</span>&#160;                                                                        {</div>
-<div class="line"><a name="l00106"></a><span class="lineno">  106</span>&#160;    <span class="keyword">const</span> std::lock_guard&lt;std::shared_mutex&gt; locker(file.<a class="code" href="../../de/d22/class_synchronized_file.html#a25159c05d559c3fbf66e61e00358b8d0">_writerMutex</a>);</div>
-<div class="line"><a name="l00107"></a><span class="lineno">  107</span>&#160; </div>
-<div class="line"><a name="l00108"></a><span class="lineno">  108</span>&#160;    (*file.<a class="code" href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">_path</a>) &lt;&lt; val;</div>
-<div class="line"><a name="l00109"></a><span class="lineno">  109</span>&#160;    (*file.<a class="code" href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">_path</a>).flush();</div>
-<div class="line"><a name="l00110"></a><span class="lineno">  110</span>&#160; </div>
-<div class="line"><a name="l00111"></a><span class="lineno">  111</span>&#160;    <span class="keywordflow">return</span> file;</div>
-<div class="line"><a name="l00112"></a><span class="lineno">  112</span>&#160;}</div>
-<div class="ttc" id="aclass_synchronized_file_html_a25159c05d559c3fbf66e61e00358b8d0"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#a25159c05d559c3fbf66e61e00358b8d0">SynchronizedFile::_writerMutex</a></div><div class="ttdeci">std::shared_mutex _writerMutex</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00037">init.hpp:37</a></div></div>
-<div class="ttc" id="aclass_synchronized_file_html_a6672879ac9239605621f1705fc37a18c"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">SynchronizedFile::_path</a></div><div class="ttdeci">std::ostream * _path</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00036">init.hpp:36</a></div></div>
+<p class="definition">Definition at line <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00101">101</a> of file <a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">init.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00101"></a><span class="lineno">  101</span>&#160;                                                                      {</div>
+<div class="line"><a name="l00102"></a><span class="lineno">  102</span>&#160;  <span class="keyword">const</span> std::lock_guard&lt;std::shared_mutex&gt; locker(file.<a class="code" href="../../de/d22/class_synchronized_file.html#a25159c05d559c3fbf66e61e00358b8d0">_writerMutex</a>);</div>
+<div class="line"><a name="l00103"></a><span class="lineno">  103</span>&#160; </div>
+<div class="line"><a name="l00104"></a><span class="lineno">  104</span>&#160;  (*file.<a class="code" href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">_path</a>) &lt;&lt; val;</div>
+<div class="line"><a name="l00105"></a><span class="lineno">  105</span>&#160;  (*file.<a class="code" href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">_path</a>).flush();</div>
+<div class="line"><a name="l00106"></a><span class="lineno">  106</span>&#160; </div>
+<div class="line"><a name="l00107"></a><span class="lineno">  107</span>&#160;  <span class="keywordflow">return</span> file;</div>
+<div class="line"><a name="l00108"></a><span class="lineno">  108</span>&#160;}</div>
+<div class="ttc" id="aclass_synchronized_file_html_a25159c05d559c3fbf66e61e00358b8d0"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#a25159c05d559c3fbf66e61e00358b8d0">SynchronizedFile::_writerMutex</a></div><div class="ttdeci">std::shared_mutex _writerMutex</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00036">init.hpp:36</a></div></div>
+<div class="ttc" id="aclass_synchronized_file_html_a6672879ac9239605621f1705fc37a18c"><div class="ttname"><a href="../../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c">SynchronizedFile::_path</a></div><div class="ttdeci">std::ostream * _path</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/da0/_sync_output_2init_8hpp_source.html#l00035">init.hpp:35</a></div></div>
 </div><!-- fragment -->
 </div>
 </div>

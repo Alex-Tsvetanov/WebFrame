@@ -1,16 +1,20 @@
 name: auto-clang-format
-on: [pull_request]
+on: 
+  workflow_call:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+        ref: ${{ github.head_ref }}
     - uses: DoozyX/clang-format-lint-action@v0.13
       with:
         source: '.'
-        exclude: './third_party ./external'
+        exclude: './lib/inja ./lib/url-matcher ./tests/Catch2'
         extensions: 'h,cpp,hpp'
         clangFormatVersion: 12
         inplace: True
@@ -19,5 +23,6 @@ jobs:
         author_name: Clang Robot
         author_email: robot@clang
         message: ':art: Committing clang-format changes'
+        ref: ${{ github.head_ref }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

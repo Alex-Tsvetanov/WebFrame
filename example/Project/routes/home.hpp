@@ -3,9 +3,6 @@
 
 #include <core/core.hpp>
 
-init_routes(home)
-    .route("/home", []() {
-        return "This is my home page";
-    });
+init_routes(home).route("/home", []() { return "This is my home page"; });
 
 #endif

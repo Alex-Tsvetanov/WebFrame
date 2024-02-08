@@ -133,10 +133,7 @@ jobs:
           vcpkg: false
           ccache: true
           clangtidy: ${{ env.CLANG_TIDY_VERSION }}
-
-
           cppcheck: true
-
           gcovr: true
           opencppcoverage: true
 
@@ -191,3 +188,12 @@ jobs:
           flags: ${{ runner.os }}
           name: ${{ runner.os }}-coverage
           files: ./build/coverage.xml
+  benchmark:
+    needs: [Test]
+    uses: ./.github/workflows/benchmark-and-deploy.yaml
+  clag-format:
+    permissions:
+      contents: read
+      pull-requests: write
+    needs: [benchmark]
+    uses: ./.github/workflows/auto-clang-format.yml
