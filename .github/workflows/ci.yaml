@@ -201,6 +201,7 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
-      pull-requests: write
+      pages: write
+      id-token: write
     needs: [clang-format]
     uses: ./.github/workflows/gh-pages.yaml
