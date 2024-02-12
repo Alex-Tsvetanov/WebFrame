@@ -203,4 +203,4 @@ jobs:
       contents: read
       pull-requests: write
     needs: [clang-format]
-    uses: ./.github/workflows/gh-pages.yml
+    uses: ./.github/workflows/gh-pages.yaml
