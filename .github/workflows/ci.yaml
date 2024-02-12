@@ -188,12 +188,19 @@ jobs:
           flags: ${{ runner.os }}
           name: ${{ runner.os }}-coverage
           files: ./build/coverage.xml
-  benchmark:
+  Benchmark:
     needs: [Test]
     uses: ./.github/workflows/benchmark-and-deploy.yaml
-  clag-format:
+  clang-format:
     permissions:
       contents: read
       pull-requests: write
     needs: [benchmark]
     uses: ./.github/workflows/auto-clang-format.yml
+  gh-pages:
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    needs: [clang-format]
+    uses: ./.github/workflows/gh-pages.yml
