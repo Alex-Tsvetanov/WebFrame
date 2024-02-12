@@ -104,7 +104,6 @@ jobs:
         # Prefix the list here with "+" to use these queries and those in the config file.
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
 
-
     - name: Build
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: |

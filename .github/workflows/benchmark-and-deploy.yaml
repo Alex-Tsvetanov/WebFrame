@@ -162,15 +162,12 @@ jobs:
           mv -f ./cppcheck/* reports/codeql_report/
           mv -f ./doxygen/* reports/docs/
           mv -f ./benchmark_report/* ./reports/benchmark/
-      - name: Commit the reports
-        shell: bash
-        run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add reports/
-          git commit -m "Pipeline reports"
-      - name: Push pipeline reports
-        uses: ad-m/github-push-action@master
+      - uses: EndBug/add-and-commit@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.head_ref }}
+          author_name: Static analysis reports
+          author_email: static@analysis.reports
+          message: ':art: Committing static analysis reports'
+          add: "./reports"
+          ref: ${{ github.head_ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
