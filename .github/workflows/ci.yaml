@@ -195,7 +195,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    needs: [benchmark]
+    needs: [Benchmark]
     uses: ./.github/workflows/auto-clang-format.yml
   gh-pages:
     if: ${{ always() && github.ref == 'refs/heads/main' }}
