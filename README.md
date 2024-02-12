@@ -1,4 +1,4 @@
-# <span style="font-size: 2.25em;"> WebFrame++ ![C++](https://img.shields.io/badge/c++-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![Mocha](https://img.shields.io/badge/-mocha-%238D6748?logo=mocha&logoColor=white)<br>[![Compile & Build](https://github.com/WebFrame/Core/actions/workflows/compilation.yaml/badge.svg)](https://github.com/WebFrame/Core/actions/workflows/compilation.yaml) [![Benchmark & Deploy](https://github.com/WebFrame/Core/actions/workflows/benchmark-and-deploy.yaml/badge.svg)](https://github.com/WebFrame/Core/actions/workflows/benchmark-and-deploy.yaml) [![Code Quality](https://github.com/WebFrame/Core/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/WebFrame/Core/actions/workflows/codeql-analysis.yml)<br>[![Issues](https://img.shields.io/github/issues/WebFrame/Core?)](https://github.com/WebFrame/Core) [![Forks](https://img.shields.io/github/forks/WebFrame/Core?)](https://github.com/WebFrame/Core) [![Stars](https://img.shields.io/github/stars/WebFrame/Core?)](https://github.com/WebFrame/Core) [![License](https://img.shields.io/github/license/WebFrame/Core?)](https://github.com/WebFrame/Core)</span>
+# <span style="font-size: 2.25em;"> WebFrame++ ![C++](https://img.shields.io/badge/c++-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![Mocha](https://img.shields.io/badge/-mocha-%238D6748?logo=mocha&logoColor=white)<br>[![Compile & Build](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yaml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/compilation.yaml) [![Benchmark & Deploy](https://github.com/cpp-for-everything/WebFrame/actions/workflows/benchmark-and-deploy.yaml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/benchmark-and-deploy.yaml) [![Code Quality](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql-analysis.yml)<br>[![Issues](https://img.shields.io/github/issues/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![Forks](https://img.shields.io/github/forks/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![Stars](https://img.shields.io/github/stars/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![License](https://img.shields.io/github/license/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame)</span>
 ### Make your web application faster now!
 <hr>
 
@@ -8,11 +8,11 @@
 | GCC, Clang, MSVC  | -std=c++2a _or_ -std=c++20    |
 # Testing
 ## Cppcheck - static code analysis
-Check the static code analysis of the project [here](https://webframe.github.io/Core/main/reports/codeql_report/).
+Check the static code analysis of the project [here](https://cpp-for-everything.github.io/WebFrame/main/reports/codeql_report/).
 ## Performance
-Check the performance check of the project [here](webframe.github.io/Core/main/reports/benchmark).
+Check the performance check of the project [here](cpp-for-everything.github.io/WebFrame/main/reports/benchmark).
 ## Code documentation
-Check the Doxygen documentation of the library [here](https://webframe.github.io/Core/main/reports/docs/).
+Check the Doxygen documentation of the library [here](https://cpp-for-everything.github.io/WebFrame/main/reports/docs/).
 # How to use
 
 1. Make sure to include the library
@@ -217,7 +217,7 @@ Check the Doxygen documentation of the library [here](https://webframe.github.io
         app.extend_with(home, "/prefix");
         ```
 
-Check [example/](https://github.com/WebFrame/Core/blob/master/example) for more information.
+Check [example/](https://github.com/cpp-for-everything/WebFrame/blob/master/example) for more information.
 # Additional info
 - Currently working on setting up ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=while)
 
