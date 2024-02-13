@@ -8,11 +8,11 @@
 | GCC, Clang, MSVC  | -std=c++2a _or_ -std=c++20    |
 # Testing
 ## Cppcheck - static code analysis
-Check the static code analysis of the project [here](https://cpp-for-everything.github.io/WebFrame/main/reports/codeql_report/).
+Check the static code analysis of the project [here](https://cpp-for-everything.github.io/WebFrame/codeql_report/).
 ## Performance
-Check the performance check of the project [here](cpp-for-everything.github.io/WebFrame/main/reports/benchmark).
+Check the performance check of the project [here](https://cpp-for-everything.github.io/WebFrame/benchmark/).
 ## Code documentation
-Check the Doxygen documentation of the library [here](https://cpp-for-everything.github.io/WebFrame/main/reports/docs/).
+Check the Doxygen documentation of the library [here](https://cpp-for-everything.github.io/WebFrame/docs/).
 # How to use
 
 1. Make sure to include the library
