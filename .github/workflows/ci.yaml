@@ -113,8 +113,6 @@ jobs:
           submodules: 'recursive'
 
       - name: Setup Cache
-        if: success()
-        continue-on-error: ${{ matrix.os == 'macos-13' }}
         uses: ./.github/actions/setup_cache
         with:
           compiler: ${{ matrix.compiler }}
@@ -123,8 +121,6 @@ jobs:
           generator: ${{ matrix.generator }}
 
       - name: Setup Cpp
-        if: success()
-        continue-on-error: ${{ matrix.os == 'macos-13' }}
         uses: aminya/setup-cpp@v1
         with:
           compiler: ${{ matrix.compiler }}
@@ -147,14 +143,11 @@ jobs:
         # make sure coverage is only enabled for Debug builds, since it sets -O0 to make sure coverage
         # has meaningful results
       - name: Configure CMake
-        if: success()
         continue-on-error: ${{ matrix.os == 'macos-13' }}
         run: |
           cmake -S . -B ./build -G "${{matrix.generator}}" -DCMAKE_BUILD_TYPE:STRING=${{matrix.build_type}} -DENABLE_DEVELOPER_MODE:BOOL=${{matrix.developer_mode}} -DOPT_ENABLE_COVERAGE:BOOL=${{ matrix.build_type == 'Debug' && matrix.developer_mode == 'OFF' }} -DGIT_SHA:STRING=${{ github.sha }}
 
       - name: Build
-        if: success()
-        continue-on-error: ${{ matrix.os == 'macos-13' }}
         # Execute the build.  You can specify a specific target with "--target <NAME>"
         run: |
           cmake --build ./build --config ${{matrix.build_type}}
@@ -202,7 +195,15 @@ jobs:
           name: ${{ runner.os }}-coverage
           files: ./build/coverage.xml
 
+      - name: Raise warning
+        if: ${{ failure() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.summary.addRaw(':x: Experimental support failed for ${{ matrix.os }}, ${{ matrix.compiler }}, ${{ matrix.generator }}, ${{ matrix.build_type }}, ${{ matrix.developer_mode }}', false)
+
       - name: Success
+        if: ${{ always() }}
         run: |
           exit 0
 
