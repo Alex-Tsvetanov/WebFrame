@@ -206,14 +206,14 @@ jobs:
     uses: ./.github/workflows/benchmark-and-deploy.yaml
   clang-format:
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     needs: [Benchmark]
     uses: ./.github/workflows/auto-clang-format.yml
   gh-pages:
     if: ${{ github.ref == 'refs/heads/main' }}
     permissions:
-      contents: read
+      contents: write
       pages: write
       id-token: write
     needs: [clang-format]
