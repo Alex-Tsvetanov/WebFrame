@@ -10,8 +10,7 @@
 #include <ws2tcpip.h>
 #endif
 
-#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) ||               \
-                         (defined(__APPLE__) && defined(__MACH__)))
+#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -39,8 +38,7 @@ extern "C" {
 #define __WORDSIZE 32
 #endif
 
-#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) ||               \
-                         (defined(__APPLE__) && defined(__MACH__)))
+#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
 typedef unsigned char uint8;
 typedef char int8;
 typedef unsigned short uint16;
@@ -52,8 +50,8 @@ typedef int SOCKET;
 
 #ifdef _WIN32
 struct iovec {
-  void *iov_base;
-  size_t iov_len;
+	void* iov_base;
+	size_t iov_len;
 };
 
 typedef unsigned char uint8;
@@ -135,13 +133,12 @@ typedef long int int64;
 #define CONNECT(a, b, c) connect(a, b, c)
 #define CLOSE(a) closesocket(a)
 #define READ(a, b, c) read(a, b, c)
-#define RECV(a, b, c, d) recv(a, (char *)b, c, d)
-#define RECVFROM(a, b, c, d, e, f)                                             \
-  recvfrom(a, (char *)b, c, d, (sockaddr *)e, (int *)f)
+#define RECV(a, b, c, d) recv(a, (char*)b, c, d)
+#define RECVFROM(a, b, c, d, e, f) recvfrom(a, (char*)b, c, d, (sockaddr*)e, (int*)f)
 #define RECV_FLAGS MSG_WAITALL
 #define SELECT(a, b, c, d, e) select((int32)a, b, c, d, e)
-#define SEND(a, b, c, d) send(a, (const char *)b, (int)c, d)
-#define SENDTO(a, b, c, d, e, f) sendto(a, (const char *)b, (int)c, d, e, f)
+#define SEND(a, b, c, d) send(a, (const char*)b, (int)c, d)
+#define SENDTO(a, b, c, d, e, f) sendto(a, (const char*)b, (int)c, d, e, f)
 #define SEND_FLAGS 0
 #define SENDFILE(a, b, c, d) sendfile(a, b, c, d)
 #define SET_SOCKET_ERROR(x, y) errno = y
@@ -149,26 +146,24 @@ typedef long int int64;
 #define SOCKET_ERROR_TIMEDOUT EAGAIN
 #define WRITE(a, b, c) write(a, b, c)
 #define WRITEV(a, b, c) Writev(b, c)
-#define GETSOCKOPT(a, b, c, d, e) getsockopt(a, b, c, (char *)d, (int *)e)
-#define SETSOCKOPT(a, b, c, d, e) setsockopt(a, b, c, (char *)d, (int)e)
+#define GETSOCKOPT(a, b, c, d, e) getsockopt(a, b, c, (char*)d, (int*)e)
+#define SETSOCKOPT(a, b, c, d, e) setsockopt(a, b, c, (char*)d, (int)e)
 #define GETHOSTBYNAME(a) gethostbyname(a)
 #endif
 
-#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) ||               \
-                         (defined(__APPLE__) && defined(__MACH__)))
+#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
 #define SOCKET_ERROR (-1)
 #define INVALID_SOCKET (-1)
 #define ACCEPT(a, b, c) accept(a, b, c)
 #define CONNECT(a, b, c) connect(a, b, c)
 #define CLOSE(a) close(a)
 #define READ(a, b, c) read(a, b, c)
-#define RECV(a, b, c, d) recv(a, (void *)b, c, d)
-#define RECVFROM(a, b, c, d, e, f)                                             \
-  recvfrom(a, (char *)b, c, d, (sockaddr *)e, f)
+#define RECV(a, b, c, d) recv(a, (void*)b, c, d)
+#define RECVFROM(a, b, c, d, e, f) recvfrom(a, (char*)b, c, d, (sockaddr*)e, f)
 #define RECV_FLAGS MSG_WAITALL
 #define SELECT(a, b, c, d, e) select(a, b, c, d, e)
-#define SEND(a, b, c, d) send(a, (const int8 *)b, c, d)
-#define SENDTO(a, b, c, d, e, f) sendto(a, (const int8 *)b, c, d, e, f)
+#define SEND(a, b, c, d) send(a, (const int8*)b, c, d)
+#define SENDTO(a, b, c, d, e, f) sendto(a, (const int8*)b, c, d, e, f)
 #define SEND_FLAGS 0
 #define SENDFILE(a, b, c, d) sendfile(a, b, c, d)
 #define SET_SOCKET_ERROR(x, y) errno = y
@@ -176,10 +171,8 @@ typedef long int int64;
 #define SOCKET_ERROR_TIMEDOUT EAGAIN
 #define WRITE(a, b, c) write(a, b, c)
 #define WRITEV(a, b, c) writev(a, b, c)
-#define GETSOCKOPT(a, b, c, d, e)                                              \
-  getsockopt((int)a, (int)b, (int)c, (void *)d, (socklen_t *)e)
-#define SETSOCKOPT(a, b, c, d, e)                                              \
-  setsockopt((int)a, (int)b, (int)c, (const void *)d, (int)e)
+#define GETSOCKOPT(a, b, c, d, e) getsockopt((int)a, (int)b, (int)c, (void*)d, (socklen_t*)e)
+#define SETSOCKOPT(a, b, c, d, e) setsockopt((int)a, (int)b, (int)c, (const void*)d, (int)e)
 #define GETHOSTBYNAME(a) gethostbyname(a)
 #endif
 
@@ -190,7 +183,7 @@ typedef long int int64;
 /*---------------------------------------------------------------------------*/
 #define STRUCT_STAT struct stat
 #define LSTAT(x, y) lstat(x, y)
-#define FILE_HANDLE FILE *
+#define FILE_HANDLE FILE*
 #define CLEARERR(x) clearerr(x)
 #define FCLOSE(x) fclose(x)
 #define FEOF(x) feof(x)
@@ -209,7 +202,7 @@ typedef long int int64;
 /*                                                                           */
 /*---------------------------------------------------------------------------*/
 #if defined(_WIN32)
-#define GET_CLOCK_COUNT(x) QueryPerformanceCounter((LARGE_INTEGER *)x)
+#define GET_CLOCK_COUNT(x) QueryPerformanceCounter((LARGE_INTEGER*)x)
 #else
 #define GET_CLOCK_COUNT(x) gettimeofday(x, NULL)
 #endif
@@ -242,12 +235,12 @@ typedef long int int64;
 }
 #endif
 
-void *get_in_addr(struct sockaddr *sa) {
-  if (sa->sa_family == AF_INET) {
-    return &(((struct sockaddr_in *)sa)->sin_addr);
-  }
+void* get_in_addr(struct sockaddr* sa) {
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
 
-  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 #ifdef _WIN32
@@ -276,20 +269,21 @@ void *get_in_addr(struct sockaddr *sa) {
 
 #ifdef _WIN32
 int nonblock_config(SOCKET s) {
-  u_long iMode = 1;
-  return ioctlsocket(s, FIONBIO, &iMode);
+	u_long iMode = 1;
+	return ioctlsocket(s, FIONBIO, &iMode);
 }
 int block_config(SOCKET socket) {
-  u_long iMode = 0;
-  return ioctlsocket(socket, FIONBIO, &iMode);
+	u_long iMode = 0;
+	return ioctlsocket(socket, FIONBIO, &iMode);
 }
 #endif
-#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) ||               \
-                         (defined(__APPLE__) && defined(__MACH__)))
+#if !defined(_WIN32) && (defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
 int nonblock_config(SOCKET s) { return fcntl(s, F_SETFL, O_NONBLOCK); }
 int block_config(SOCKET socket) {
-  const int flags = fcntl(socket, F_GETFL, 0);
-  if (!(flags & O_NONBLOCK)) { return 0; }
-  return fcntl(socket, F_SETFL, flags ^ O_NONBLOCK);
+	const int flags = fcntl(socket, F_GETFL, 0);
+	if (!(flags & O_NONBLOCK)) {
+		return 0;
+	}
+	return fcntl(socket, F_SETFL, flags ^ O_NONBLOCK);
 }
 #endif

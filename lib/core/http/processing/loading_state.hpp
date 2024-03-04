@@ -1,7 +1,7 @@
 #pragma once
 
 namespace webframe::core {
-    enum class LoadingState {
+	enum class LoadingState {
 		NOT_STARTED = -1,
 		METHOD = 0,
 		URI = 1,

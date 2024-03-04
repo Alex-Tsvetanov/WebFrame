@@ -1,34 +1,33 @@
 #pragma once
 
+#include <optional>
+
 #include "../../core.hpp"
 #include "../exceptions/socket_not_created.hpp"
 #include "../exceptions/unable_to_bind_to_socket.hpp"
 #include "../exceptions/unable_to_retrieve_address.hpp"
-#include <optional>
 
 namespace {
-    using route_variables_container = std::vector<std::string>;
-    using regex_id_t = size_t;
+	using route_variables_container = std::vector<std::string>;
+	using regex_id_t = size_t;
 
-    struct executor_data {
+	struct executor_data {
 		std::string regex;
-        std::regex matcher;
-        route_variables_container vars;
-        webframe::utils::responser executor;
-        executor_data() {}
-        executor_data(std::string a, route_variables_container b, webframe::utils::responser c) : regex(a), matcher(std::regex(a)), vars(b), executor(c)
-        {}
-    };
-    
-    std::chrono::duration<double, std::milli> timer(
-        const std::chrono::time_point<
-            std::chrono::system_clock,
-            std::chrono::duration<long long int, std::ratio<1, 1000000000>>>
-            start) {
-        return std::chrono::duration<double, std::milli>(
-            std::chrono::system_clock::now() - start);
-    }
-}
+		std::regex matcher;
+		route_variables_container vars;
+		webframe::utils::responser executor;
+		executor_data() {}
+		executor_data(std::string a, route_variables_container b, webframe::utils::responser c)
+		    : regex(a), matcher(std::regex(a)), vars(b), executor(c) {}
+	};
+
+	std::chrono::duration<double, std::milli> timer(
+	    const std::chrono::time_point<std::chrono::system_clock,
+	                                  std::chrono::duration<long long int, std::ratio<1, 1000000000>>>
+	        start) {
+		return std::chrono::duration<double, std::milli>(std::chrono::system_clock::now() - start);
+	}
+}  // namespace
 
 namespace webframe::core {
 	class application {
@@ -66,8 +65,7 @@ namespace webframe::core {
 
 		inline application& set_error_logger(std::ostream* _logger);
 
-		application& set_static(const std::string& path,
-		                         const std::string& alias);
+		application& set_static(const std::string& path, const std::string& alias);
 
 #ifdef USE_INJA
 		application& set_templates(const std::string& path);
@@ -77,8 +75,7 @@ namespace webframe::core {
 		response get_file(const std::string& path);
 
 		template <typename Ret, typename... Ts>
-		inline application& route(const std::string& path,
-		                    std::function<Ret(Ts...)> const& res);
+		inline application& route(const std::string& path, std::function<Ret(Ts...)> const& res);
 
 		template <typename F>
 		inline application& route(const std::string& path, F _res);
@@ -87,17 +84,13 @@ namespace webframe::core {
 		application& route(const std::string& path, utils::responser res);
 
 	public:
-		application& extend_with(const router& set_of_routes,
-		                          const std::string& prefix = "");
+		application& extend_with(const router& set_of_routes, const std::string& prefix = "");
 
-		response respond(const std::string& path,
-		                 const std::string& http = "1.1");
+		response respond(const std::string& path, const std::string& http = "1.1");
 
-		inline response respond(const request& req,
-		                        const std::string& http = "1.1");
+		inline response respond(const request& req, const std::string& http = "1.1");
 
-		inline response respond(const char* p,
-		                        const std::string& http = "1.1");
+		inline response respond(const char* p, const std::string& http = "1.1");
 
 	private:
 		int responder(SOCKET socket);
@@ -105,6 +98,7 @@ namespace webframe::core {
 		bool initialized_sockets();
 		SOCKET get_listener(const char* PORT);
 		utils::generator<SOCKET> gen_clients(SOCKET listener, const std::string PORT, std::function<void()> on_end);
+
 	public:
 		application& run(const char* PORT, const size_t cores, std::optional<size_t> requests = std::nullopt);
 

@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include "Core-version.hpp"
-
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -27,26 +25,26 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
-#include "utils/regex_matcher_wrapper.hpp"
 
+#include "Core-version.hpp"
 #include "c/host.h"
+#include "utils/regex_matcher_wrapper.hpp"
 
 #ifdef USE_INJA
 #include <inja/inja.hpp>
 #endif
 
 #include "http/processing/loading_state.hpp"
-#include "http/request/method.hpp"
-#include "http/processing/request.hpp"
 #include "http/processing/path_variables.hpp"
+#include "http/processing/request.hpp"
+#include "http/request/method.hpp"
 #include "http/response/response.hpp"
 #include "http/response/status_line.hpp"
-
-#include "utils/sync_file.hpp"
+#include "utils/generator.hpp"
 #include "utils/lambda2function.hpp"
 #include "utils/respond_manager.hpp"
 #include "utils/server_status.hpp"
-#include "utils/generator.hpp"
+#include "utils/sync_file.hpp"
 
 using namespace std::literals::string_literals;
 
@@ -75,14 +73,11 @@ namespace {
 					if (str[i] == ':') break;
 					curr_val_regex += str[i];
 				}
-				if (curr_val_regex == "string" || curr_val_regex == "text")
-					curr_val_regex = "[" + regexAnyChar + "]+";
-				if (curr_val_regex == "char" || curr_val_regex == "symbol")
-					curr_val_regex = "[" + regexAnyChar + "]";
+				if (curr_val_regex == "string" || curr_val_regex == "text") curr_val_regex = "[" + regexAnyChar + "]+";
+				if (curr_val_regex == "char" || curr_val_regex == "symbol") curr_val_regex = "[" + regexAnyChar + "]";
 				if (curr_val_regex == "digit") curr_val_regex = "[0-9]";
 				if (curr_val_regex == "number") curr_val_regex = "[0-9]+";
-				if (curr_val_regex == "path")
-					curr_val_regex = "[" + regexAnyChar + "\\/]+";
+				if (curr_val_regex == "path") curr_val_regex = "[" + regexAnyChar + "\\/]+";
 				format += curr_val_regex;
 				format += ")";
 			} else if (str[i] == '/') {
@@ -98,13 +93,13 @@ namespace {
 	T1 my_min(T1 a, T1 b) {
 		return (((a) < (b)) ? (a) : (b));
 	}
-}
+}  // namespace
 
 namespace webframe::core {
 	class router;
 	class application;
 }  // namespace webframe::core
 
-#include "internal/threads/threads.hpp"
-#include "internal/router/router.hpp"
 #include "internal/application/application.hpp"
+#include "internal/router/router.hpp"
+#include "internal/threads/threads.hpp"
