@@ -1,13 +1,12 @@
 var searchData=
 [
-  ['infosynchronizedfile_83',['InfoSynchronizedFile',['../de/d4e/class_info_synchronized_file.html',1,'InfoSynchronizedFile'],['../de/d4e/class_info_synchronized_file.html#ac1609b14fc825123305f15d9fff642d2',1,'InfoSynchronizedFile::InfoSynchronizedFile(std::basic_ostream&lt; char &gt; *path)'],['../de/d4e/class_info_synchronized_file.html#a429db438dd36594205aaf38481e5ec34',1,'InfoSynchronizedFile::InfoSynchronizedFile()']]],
-  ['init_84',['init',['../d8/df9/classwebframe_1_1core_1_1__application.html#ae0321f507007a76e9b5d0f878bcaa137',1,'webframe::core::_application::init()'],['../d1/d67/classwebframe_1_1core_1_1application.html#aa04c06ccfde441020ea32dcce377fa3a',1,'webframe::core::application::init()']]],
-  ['init_2ehpp_85',['init.hpp',['../d4/de9/http__basics_2init_8hpp.html',1,'(Global Namespace)'],['../d4/da0/_sync_output_2init_8hpp.html',1,'(Global Namespace)']]],
-  ['init_5froutes_86',['init_routes',['../db/d8c/core_2core_8hpp.html#a19bd9dce87e9d7915deaf481dddccbfe',1,'core.hpp']]],
-  ['inithttpcodes_87',['initHttpCodes',['../d8/df9/classwebframe_1_1core_1_1__application.html#ad8fe415d4484d7a7eae66f9762fd1472',1,'webframe::core::_application::initHttpCodes()'],['../d1/d67/classwebframe_1_1core_1_1application.html#a03a1cb48d000fb47802121667f167168',1,'webframe::core::application::initHttpCodes()']]],
-  ['initiate_88',['initiate',['../dc/d90/classwebframe_1_1server__status.html#ad4ccdf7b30d2d018c7fd341d4aa36975',1,'webframe::server_status']]],
-  ['int64_89',['int64',['../df/ded/host_8h.html#a168afaa12b2c08e4ae1d11ea4c296e64',1,'host.h']]],
-  ['interface_2ehpp_90',['interface.hpp',['../dd/d61/interface_8hpp.html',1,'']]],
-  ['is_5fover_91',['is_over',['../dc/d90/classwebframe_1_1server__status.html#a9938779644b9befbe918bf823f62d81e',1,'webframe::server_status']]],
-  ['itoa_92',['itoa',['../d2/dab/namespacewebframe_1_1core.html#a29fc1ceacf514c08209131158a946ffe',1,'webframe::core']]]
+  ['info_5fsynchronized_5ffile_85',['info_synchronized_file',['../d9/d57/classwebframe_1_1utils_1_1info__synchronized__file.html#aa2e4c5254972fbe4f744c2603748ab35',1,'webframe::utils::info_synchronized_file::info_synchronized_file(std::basic_ostream&lt; char &gt; *path)'],['../d9/d57/classwebframe_1_1utils_1_1info__synchronized__file.html#af89bdbd90f7a198fb239f2e559d1fd17',1,'webframe::utils::info_synchronized_file::info_synchronized_file()'],['../d9/d57/classwebframe_1_1utils_1_1info__synchronized__file.html',1,'webframe::utils::info_synchronized_file']]],
+  ['init_86',['init',['../d1/d67/classwebframe_1_1core_1_1application.html#abaee501029b6dfb239c7a6bf3458b960',1,'webframe::core::application']]],
+  ['inithttpcodes_87',['initHttpCodes',['../d1/d67/classwebframe_1_1core_1_1application.html#ad3349f5e7132ebe205ab5ebd16924a22',1,'webframe::core::application']]],
+  ['initial_5fsuspend_88',['initial_suspend',['../d3/d5c/structwebframe_1_1utils_1_1generator_1_1promise__type.html#a86aca5bc342adb07d973c208507c4a48',1,'webframe::utils::generator::promise_type']]],
+  ['initialized_5fsockets_89',['initialized_sockets',['../d1/d67/classwebframe_1_1core_1_1application.html#a6879de580aa065629caf80709ee613d8',1,'webframe::core::application']]],
+  ['initiate_90',['initiate',['../dd/d99/classwebframe_1_1utils_1_1server__status.html#ab410aef032c979a81054f5dee9293427',1,'webframe::utils::server_status']]],
+  ['int64_91',['int64',['../df/ded/host_8h.html#a168afaa12b2c08e4ae1d11ea4c296e64',1,'host.h']]],
+  ['is_5fstarted_92',['is_started',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#ab8ab8402aee3cf485c7f23a59d868f82',1,'webframe::utils::server_status::port']]],
+  ['is_5fstopped_93',['is_stopped',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#ad1d88c79e8872190f7e0711577feacbe',1,'webframe::utils::server_status::port']]]
 ];

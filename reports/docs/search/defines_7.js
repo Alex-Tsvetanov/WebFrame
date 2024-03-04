@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['init_5froutes_481',['init_routes',['../db/d8c/core_2core_8hpp.html#a19bd9dce87e9d7915deaf481dddccbfe',1,'core.hpp']]]
+  ['lstat_532',['LSTAT',['../df/ded/host_8h.html#a81b6b023bc11d11ae31bcbcafc24a12f',1,'host.h']]]
 ];

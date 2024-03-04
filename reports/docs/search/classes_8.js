@@ -1,8 +1,7 @@
 var searchData=
 [
-  ['regexmatcher_244',['RegexMatcher',['../d8/d28/classmatcher_1_1_regex_matcher.html',1,'matcher']]],
-  ['request_245',['request',['../d7/df1/classwebframe_1_1core_1_1request.html',1,'webframe::core']]],
-  ['response_246',['response',['../d4/db2/classwebframe_1_1core_1_1response.html',1,'webframe::core']]],
-  ['responser_247',['responser',['../d8/df4/structwebframe_1_1core_1_1responser.html',1,'webframe::core']]],
-  ['router_248',['router',['../d9/d72/classwebframe_1_1core_1_1router.html',1,'webframe::core']]]
+  ['server_5fstatus_275',['server_status',['../dd/d99/classwebframe_1_1utils_1_1server__status.html',1,'webframe::utils']]],
+  ['socket_5fnot_5fcreated_276',['socket_not_created',['../d8/dad/classwebframe_1_1exceptions_1_1socket__not__created.html',1,'webframe::exceptions']]],
+  ['status_5fline_277',['status_line',['../db/d97/structwebframe_1_1core_1_1status__line.html',1,'webframe::core']]],
+  ['synchronized_5ffile_278',['synchronized_file',['../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html',1,'webframe::utils']]]
 ];

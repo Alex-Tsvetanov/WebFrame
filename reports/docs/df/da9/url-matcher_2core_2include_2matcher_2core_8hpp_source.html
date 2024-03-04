@@ -111,20 +111,20 @@ $(function() {
 <div class="line"><a name="l00071"></a><span class="lineno">   71</span>&#160; </div>
 <div class="line"><a name="l00072"></a><span class="lineno">   72</span>&#160;<span class="keyword">namespace </span>{</div>
 <div class="line"><a name="l00073"></a><span class="lineno">   73</span>&#160;    <span class="keyword">struct </span>Limits {</div>
-<div class="line"><a name="l00074"></a><span class="lineno">   74</span>&#160;        <span class="keywordtype">size_t</span> <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>;</div>
+<div class="line"><a name="l00074"></a><span class="lineno">   74</span>&#160;        <span class="keywordtype">size_t</span> min;</div>
 <div class="line"><a name="l00075"></a><span class="lineno">   75</span>&#160;        std::optional&lt;size_t&gt; max;</div>
 <div class="line"><a name="l00076"></a><span class="lineno">   76</span>&#160;        </div>
 <div class="line"><a name="l00077"></a><span class="lineno">   77</span>&#160;        Limits() : Limits (0, std::nullopt) {}</div>
 <div class="line"><a name="l00078"></a><span class="lineno">   78</span>&#160;        </div>
-<div class="line"><a name="l00079"></a><span class="lineno">   79</span>&#160;        Limits(<span class="keywordtype">size_t</span> <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>, std::nullopt_t) {</div>
-<div class="line"><a name="l00080"></a><span class="lineno">   80</span>&#160;            this-&gt;min = <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>;</div>
+<div class="line"><a name="l00079"></a><span class="lineno">   79</span>&#160;        Limits(<span class="keywordtype">size_t</span> min, std::nullopt_t) {</div>
+<div class="line"><a name="l00080"></a><span class="lineno">   80</span>&#160;            this-&gt;min = min;</div>
 <div class="line"><a name="l00081"></a><span class="lineno">   81</span>&#160;            this-&gt;max = std::nullopt;</div>
 <div class="line"><a name="l00082"></a><span class="lineno">   82</span>&#160;        }</div>
 <div class="line"><a name="l00083"></a><span class="lineno">   83</span>&#160;        </div>
 <div class="line"><a name="l00084"></a><span class="lineno">   84</span>&#160;        Limits(std::nullopt_t, <span class="keywordtype">size_t</span> max) : Limits (0, max) {}</div>
 <div class="line"><a name="l00085"></a><span class="lineno">   85</span>&#160;        </div>
-<div class="line"><a name="l00086"></a><span class="lineno">   86</span>&#160;        Limits(<span class="keywordtype">size_t</span> <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>, <span class="keywordtype">size_t</span> max) {</div>
-<div class="line"><a name="l00087"></a><span class="lineno">   87</span>&#160;            this-&gt;min = <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>;</div>
+<div class="line"><a name="l00086"></a><span class="lineno">   86</span>&#160;        Limits(<span class="keywordtype">size_t</span> min, <span class="keywordtype">size_t</span> max) {</div>
+<div class="line"><a name="l00087"></a><span class="lineno">   87</span>&#160;            this-&gt;min = min;</div>
 <div class="line"><a name="l00088"></a><span class="lineno">   88</span>&#160;            this-&gt;max = max;</div>
 <div class="line"><a name="l00089"></a><span class="lineno">   89</span>&#160;        }</div>
 <div class="line"><a name="l00090"></a><span class="lineno">   90</span>&#160; </div>
@@ -149,13 +149,13 @@ $(function() {
 <div class="line"><a name="l00109"></a><span class="lineno">  109</span>&#160;        }</div>
 <div class="line"><a name="l00110"></a><span class="lineno">  110</span>&#160; </div>
 <div class="line"><a name="l00111"></a><span class="lineno">  111</span>&#160;        Limits&amp; operator--() {</div>
-<div class="line"><a name="l00112"></a><span class="lineno">  112</span>&#160;            <span class="keywordflow">if</span> (<a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> &gt; 0) <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> --;</div>
+<div class="line"><a name="l00112"></a><span class="lineno">  112</span>&#160;            <span class="keywordflow">if</span> (min &gt; 0) min --;</div>
 <div class="line"><a name="l00113"></a><span class="lineno">  113</span>&#160;            <span class="keywordflow">if</span> (max.has_value() &amp;&amp; max.value() &gt; 0) max = max.value() - 1;</div>
 <div class="line"><a name="l00114"></a><span class="lineno">  114</span>&#160;            <span class="keywordflow">return</span> *<span class="keyword">this</span>;</div>
 <div class="line"><a name="l00115"></a><span class="lineno">  115</span>&#160;        }</div>
 <div class="line"><a name="l00116"></a><span class="lineno">  116</span>&#160; </div>
 <div class="line"><a name="l00117"></a><span class="lineno">  117</span>&#160;        <span class="keywordtype">bool</span> is_required()<span class="keyword"> const </span>{</div>
-<div class="line"><a name="l00118"></a><span class="lineno">  118</span>&#160;            <span class="keywordflow">return</span> <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> &gt; 0;</div>
+<div class="line"><a name="l00118"></a><span class="lineno">  118</span>&#160;            <span class="keywordflow">return</span> min &gt; 0;</div>
 <div class="line"><a name="l00119"></a><span class="lineno">  119</span>&#160;        }</div>
 <div class="line"><a name="l00120"></a><span class="lineno">  120</span>&#160; </div>
 <div class="line"><a name="l00121"></a><span class="lineno">  121</span>&#160;        <span class="keywordtype">bool</span> is_allowed_to_repeat()<span class="keyword"> const </span>{</div>
@@ -327,7 +327,6 @@ $(function() {
 <div class="ttc" id="aclassmatcher_1_1_regex_matcher_html_adc1e0e6149ca966e1b18d0eb9ad70162"><div class="ttname"><a href="../../d8/d28/classmatcher_1_1_regex_matcher.html#adc1e0e6149ca966e1b18d0eb9ad70162">matcher::RegexMatcher::processSet</a></div><div class="ttdeci">static SubTree&lt; Node&lt; RegexData, char_t &gt; &gt; processSet(std::vector&lt; Node&lt; RegexData, char_t &gt; * &gt;, RegexData, ConstIterator &amp;)</div></div>
 <div class="ttc" id="aclassmatcher_1_1_regex_matcher_html_af0c4064759964859a052e412eeb63ebd"><div class="ttname"><a href="../../d8/d28/classmatcher_1_1_regex_matcher.html#af0c4064759964859a052e412eeb63ebd">matcher::RegexMatcher::RegexMatcher</a></div><div class="ttdeci">RegexMatcher()</div><div class="ttdoc">Construct a new Regex Matcher object.</div><div class="ttdef"><b>Definition:</b> <a href="../../df/da9/url-matcher_2core_2include_2matcher_2core_8hpp_source.html#l00317">core.hpp:317</a></div></div>
 <div class="ttc" id="anamespacematcher_html"><div class="ttname"><a href="../../db/dae/namespacematcher.html">matcher</a></div><div class="ttdoc">Public classes of the library.</div><div class="ttdef"><b>Definition:</b> <a href="../../df/da9/url-matcher_2core_2include_2matcher_2core_8hpp_source.html#l00021">core.hpp:21</a></div></div>
-<div class="ttc" id="anamespacewebframe_1_1core_html_ace1a8902f10487a29faaba1eab7930c0"><div class="ttname"><a href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">webframe::core::min</a></div><div class="ttdeci">T1 min(T1 a, T1 b)</div><div class="ttdef"><b>Definition:</b> <a href="../../db/d8c/core_2core_8hpp_source.html#l00036">core.hpp:36</a></div></div>
 <div class="ttc" id="anode_8cpp_html"><div class="ttname"><a href="../../d7/d70/node_8cpp.html">node.cpp</a></div></div>
 <div class="ttc" id="asubtree_8cpp_html"><div class="ttname"><a href="../../dd/db5/subtree_8cpp.html">subtree.cpp</a></div></div>
 <div class="ttc" id="aurl-matcher_2core_2include_2matcher_2impl_2core_8cpp_html"><div class="ttname"><a href="../../d7/d05/url-matcher_2core_2include_2matcher_2impl_2core_8cpp.html">core.cpp</a></div></div>

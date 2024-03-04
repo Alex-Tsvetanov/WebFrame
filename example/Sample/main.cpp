@@ -5,10 +5,10 @@
 #include <stdlib.h>
 
 int main() {
-  static_assert(webframe::core::_application::init(),
+  static_assert(webframe::core::application::init(),
                 "constexpr initiation failed");
   std::atomic<int> pass{0};
-  webframe::core::_application app;
+  webframe::core::application app;
   app.set_static("./example/Sample/static", "/static")
 #ifdef USE_INJA
       .set_templates("./example/Sample/static/templates")
@@ -54,10 +54,10 @@ int main() {
                throw std::logic_error("asdf");
              })
       .route("/{number}/4",
-             [&]([[maybe_unused]] const webframe::core::body_t &request_body,
+             [&]([[maybe_unused]] const webframe::utils::body_t &request_body,
                  [[maybe_unused]] int steps) { return "asdf"; })
       .route("/6",
-             [&]([[maybe_unused]] const webframe::core::body_t &request_body) {
+             [&]([[maybe_unused]] const webframe::utils::body_t &request_body) {
                return "asdf";
              })
       .route("/{text}/7",

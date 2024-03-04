@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
-  constexpr long long fasten = webframe::core::_application::init();
+  constexpr long long fasten = webframe::core::application::init();
   std::atomic<long long> pass{fasten};
   webframe::core::application app;
   app.route("/{number}/2",

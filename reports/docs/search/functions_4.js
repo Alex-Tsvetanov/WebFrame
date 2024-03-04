@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['detach_293',['detach',['../d4/d59/structwebframe_1_1core_1_1__application_1_1procedure__thread.html#a4126c1a91e33689c4db18d72eafe4d37',1,'webframe::core::_application::procedure_thread']]]
+  ['final_5fsuspend_339',['final_suspend',['../d3/d5c/structwebframe_1_1utils_1_1generator_1_1promise__type.html#a7254946c80f22f7a89dc5dbb3faf97a4',1,'webframe::utils::generator::promise_type']]]
 ];

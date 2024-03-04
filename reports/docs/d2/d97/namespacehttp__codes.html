@@ -106,7 +106,7 @@ Variables</h2></td></tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">constexpr</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -119,11 +119,11 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00052">52</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00052"></a><span class="lineno">   52</span>&#160;                                                   {</div>
-<div class="line"><a name="l00053"></a><span class="lineno">   53</span>&#160;  <span class="keywordflow">return</span> <a class="code" href="../../d2/d97/namespacehttp__codes.html#ab31813171da73d4792e4cd9e01dac96c">get_reason_by_code</a>(<a class="code" href="../../d8/df7/namespacewebframe_1_1__compile__time.html#a4feda887d261992c9c217be348d326d9">webframe::_compile_time::string_to_uint</a>(code_str));</div>
-<div class="line"><a name="l00054"></a><span class="lineno">   54</span>&#160;}</div>
-<div class="ttc" id="anamespacehttp__codes_html_ab31813171da73d4792e4cd9e01dac96c"><div class="ttname"><a href="../../d2/d97/namespacehttp__codes.html#ab31813171da73d4792e4cd9e01dac96c">http_codes::get_reason_by_code</a></div><div class="ttdeci">constexpr std::string_view get_reason_by_code(const std::string_view &amp;code_str)</div><div class="ttdoc">Transforms HTTP code to HTTP response message.</div><div class="ttdef"><b>Definition:</b> <a href="../../d7/dd0/codes_8hpp_source.html#l00052">codes.hpp:52</a></div></div>
+<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00053">53</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00053"></a><span class="lineno">   53</span>&#160;                                                   {</div>
+<div class="line"><a name="l00054"></a><span class="lineno">   54</span>&#160;  <span class="keywordflow">return</span> <a class="code" href="../../d2/d97/namespacehttp__codes.html#ab31813171da73d4792e4cd9e01dac96c">get_reason_by_code</a>(<a class="code" href="../../d8/df7/namespacewebframe_1_1__compile__time.html#a4feda887d261992c9c217be348d326d9">webframe::_compile_time::string_to_uint</a>(code_str));</div>
+<div class="line"><a name="l00055"></a><span class="lineno">   55</span>&#160;}</div>
+<div class="ttc" id="anamespacehttp__codes_html_ab31813171da73d4792e4cd9e01dac96c"><div class="ttname"><a href="../../d2/d97/namespacehttp__codes.html#ab31813171da73d4792e4cd9e01dac96c">http_codes::get_reason_by_code</a></div><div class="ttdeci">constexpr std::string_view get_reason_by_code(const std::string_view &amp;code_str)</div><div class="ttdoc">Transforms HTTP code to HTTP response message.</div><div class="ttdef"><b>Definition:</b> <a href="../../d7/dd0/codes_8hpp_source.html#l00053">codes.hpp:53</a></div></div>
 <div class="ttc" id="anamespacewebframe_1_1__compile__time_html_a4feda887d261992c9c217be348d326d9"><div class="ttname"><a href="../../d8/df7/namespacewebframe_1_1__compile__time.html#a4feda887d261992c9c217be348d326d9">webframe::_compile_time::string_to_uint</a></div><div class="ttdeci">constexpr unsigned int string_to_uint(const std::string_view &amp;str, unsigned int value=0, size_t ind=0)</div><div class="ttdoc">Generates number off of string.</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/dce/constexpr_8hpp_source.html#l09414">constexpr.hpp:9414</a></div></div>
 </div><!-- fragment -->
 </div>
@@ -147,7 +147,7 @@ Variables</h2></td></tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">constexpr</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -160,11 +160,11 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00043">43</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00043"></a><span class="lineno">   43</span>&#160;                                                               {</div>
-<div class="line"><a name="l00044"></a><span class="lineno">   44</span>&#160;  <span class="keywordflow">return</span> <a class="code" href="../../d2/d97/namespacehttp__codes.html#a64b1d16f985541221497e1ecbc96ef08">codes</a>[code / 100][code % 100];</div>
-<div class="line"><a name="l00045"></a><span class="lineno">   45</span>&#160;}</div>
-<div class="ttc" id="anamespacehttp__codes_html_a64b1d16f985541221497e1ecbc96ef08"><div class="ttname"><a href="../../d2/d97/namespacehttp__codes.html#a64b1d16f985541221497e1ecbc96ef08">http_codes::codes</a></div><div class="ttdeci">constexpr std::array&lt; std::array&lt; std::string_view, 18 &gt;, 6 &gt; codes</div><div class="ttdoc">List of all HTTP response messages (grouped by first digit of the code)</div><div class="ttdef"><b>Definition:</b> <a href="../../d7/dd0/codes_8hpp_source.html#l00018">codes.hpp:18</a></div></div>
+<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00044">44</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00044"></a><span class="lineno">   44</span>&#160;                                                                      {</div>
+<div class="line"><a name="l00045"></a><span class="lineno">   45</span>&#160;  <span class="keywordflow">return</span> <a class="code" href="../../d2/d97/namespacehttp__codes.html#a64b1d16f985541221497e1ecbc96ef08">codes</a>[code / 100][code % 100];</div>
+<div class="line"><a name="l00046"></a><span class="lineno">   46</span>&#160;}</div>
+<div class="ttc" id="anamespacehttp__codes_html_a64b1d16f985541221497e1ecbc96ef08"><div class="ttname"><a href="../../d2/d97/namespacehttp__codes.html#a64b1d16f985541221497e1ecbc96ef08">http_codes::codes</a></div><div class="ttdeci">constexpr std::array&lt; std::array&lt; std::string_view, 18 &gt;, 6 &gt; codes</div><div class="ttdoc">List of all HTTP response messages (grouped by first digit of the code)</div><div class="ttdef"><b>Definition:</b> <a href="../../d7/dd0/codes_8hpp_source.html#l00019">codes.hpp:19</a></div></div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -211,7 +211,7 @@ Variables</h2></td></tr>
 </div><!-- fragment -->
 <p>List of all HTTP response messages (grouped by first digit of the code) </p>
 
-<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00018">18</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="../../d7/dd0/codes_8hpp_source.html#l00019">19</a> of file <a class="el" href="../../d7/dd0/codes_8hpp_source.html">codes.hpp</a>.</p>
 
 </div>
 </div>

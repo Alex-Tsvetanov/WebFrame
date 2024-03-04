@@ -68,141 +68,56 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
-<a href="#nested-classes">Data Structures</a> &#124;
-<a href="#namespaces">Namespaces</a> &#124;
-<a href="#define-members">Macros</a> &#124;
-<a href="#enum-members">Enumerations</a> &#124;
-<a href="#func-members">Functions</a>  </div>
+<a href="#namespaces">Namespaces</a>  </div>
   <div class="headertitle">
 <div class="title">core.hpp File Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><code>#include &lt;fstream&gt;</code><br />
+<div class="textblock"><code>#include &quot;<a class="el" href="../../d1/dcd/_core-version_8hpp_source.html">Core-version.hpp</a>&quot;</code><br />
+<code>#include &lt;chrono&gt;</code><br />
+<code>#include &lt;filesystem&gt;</code><br />
+<code>#include &lt;fstream&gt;</code><br />
+<code>#include &lt;functional&gt;</code><br />
+<code>#include &lt;future&gt;</code><br />
 <code>#include &lt;iomanip&gt;</code><br />
 <code>#include &lt;ios&gt;</code><br />
 <code>#include &lt;iostream&gt;</code><br />
-<code>#include &lt;sstream&gt;</code><br />
-<code>#include &lt;chrono&gt;</code><br />
-<code>#include &lt;filesystem&gt;</code><br />
-<code>#include &lt;functional&gt;</code><br />
-<code>#include &lt;future&gt;</code><br />
 <code>#include &lt;map&gt;</code><br />
 <code>#include &lt;optional&gt;</code><br />
 <code>#include &lt;regex&gt;</code><br />
 <code>#include &lt;set&gt;</code><br />
+<code>#include &lt;sstream&gt;</code><br />
 <code>#include &lt;string&gt;</code><br />
+<code>#include &lt;string_view&gt;</code><br />
 <code>#include &lt;thread&gt;</code><br />
 <code>#include &lt;type_traits&gt;</code><br />
 <code>#include &lt;utility&gt;</code><br />
-<code>#include &quot;<a class="el" href="../../d1/dcd/_core-version_8hpp_source.html">Core-version.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../df/ded/host_8h_source.html">./c/host.h</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d4/da0/_sync_output_2init_8hpp_source.html">SyncOutput/init.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d4/de9/http__basics_2init_8hpp_source.html">http_basics/init.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d7/dd0/codes_8hpp_source.html">http_consts/codes.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d4/dce/constexpr_8hpp_source.html">http_consts/constexpr.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d2/d5d/mime_8hpp_source.html">http_consts/mime.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../df/dd9/lambda2function_8hpp_source.html">util/lambda2function.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../d7/d20/respond__manager_8hpp_source.html">util/respond_manager.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../dd/d2b/server__status_8hpp_source.html">util/server_status.hpp</a>&quot;</code><br />
-<code>#include &quot;<a class="el" href="../../dd/d61/interface_8hpp_source.html">interface.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d2/dc7/regex__matcher__wrapper_8hpp_source.html">utils/regex_matcher_wrapper.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../df/ded/host_8h_source.html">c/host.h</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../da/d26/loading__state_8hpp_source.html">http/processing/loading_state.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d7/d9c/method_8hpp_source.html">http/request/method.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d6/d6f/request_8hpp_source.html">http/processing/request.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../de/dd8/path__variables_8hpp_source.html">http/processing/path_variables.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../db/da4/response_8hpp_source.html">http/response/response.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../dd/d54/status__line_8hpp_source.html">http/response/status_line.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../df/d97/sync__file_8hpp_source.html">utils/sync_file.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../df/dd9/lambda2function_8hpp_source.html">utils/lambda2function.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d7/d20/respond__manager_8hpp_source.html">utils/respond_manager.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../dd/d2b/server__status_8hpp_source.html">utils/server_status.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d6/d3c/generator_8hpp_source.html">utils/generator.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d8/df1/threads_8hpp_source.html">internal/threads/threads.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d4/dfa/router_8hpp_source.html">internal/router/router.hpp</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="../../d4/d01/application_8hpp_source.html">internal/application/application.hpp</a>&quot;</code><br />
 </div>
 <p><a href="../../db/d8c/core_2core_8hpp_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
-Data Structures</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d9/d72/classwebframe_1_1core_1_1router.html">webframe::core::router</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d8/df9/classwebframe_1_1core_1_1__application.html">webframe::core::_application</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../dd/d85/structwebframe_1_1core_1_1__application_1_1cmp.html">webframe::core::_application::cmp</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d4/d59/structwebframe_1_1core_1_1__application_1_1procedure__thread.html">webframe::core::_application::procedure_thread</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../da/d82/structwebframe_1_1core_1_1__application_1_1thread__pool.html">webframe::core::_application::thread_pool</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="namespaces"></a>
 Namespaces</h2></td></tr>
 <tr class="memitem:d8/d8d/namespacewebframe"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d8/d8d/namespacewebframe.html">webframe</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:d2/dab/namespacewebframe_1_1core"><td class="memItemLeft" align="right" valign="top"> &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html">webframe::core</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="define-members"></a>
-Macros</h2></td></tr>
-<tr class="memitem:a19bd9dce87e9d7915deaf481dddccbfe"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../db/d8c/core_2core_8hpp.html#a19bd9dce87e9d7915deaf481dddccbfe">init_routes</a>(name)&#160;&#160;&#160;  const <a class="el" href="../../d9/d72/classwebframe_1_1core_1_1router.html">webframe::core::router</a> name = <a class="el" href="../../d9/d72/classwebframe_1_1core_1_1router.html">webframe::core::router</a>()</td></tr>
-<tr class="separator:a19bd9dce87e9d7915deaf481dddccbfe"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="enum-members"></a>
-Enumerations</h2></td></tr>
-<tr class="memitem:a4d3dbfb2f01c284d2f64b03e9303ba9d"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9d">webframe::core::method</a> { <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da5e543256c480ac577d30f76f9120eb74">webframe::core::undefined</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da7528035a93ee69cedb1dbddb2f0bfcc8">webframe::core::GET</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9dae15e216fc1c639f787b1231ecdfa1bf8">webframe::core::HEAD</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9daa02439ec229d8be0e74b0c1602392310">webframe::core::POST</a>
-, <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da3e75383a5992a6d15fb81e872e46e256">webframe::core::PUT</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9daa411e38bec92b6b745d90fb89b288f51">webframe::core::DDELETE</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9dab57e2519e26151feacdbe52076bc39ec">webframe::core::CONNECT</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da164dd62adb30ca051b5289672a572f9b">webframe::core::OPTIONS</a>
-, <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da2d3e4144aa384b18849ab9a8abad74d6">webframe::core::TRACE</a>
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da63bc9a3997d66d835d9f3ec29451407d">webframe::core::PATCH</a>
-<br />
- }</td></tr>
-<tr class="separator:a4d3dbfb2f01c284d2f64b03e9303ba9d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a198e079c6b72d7c5c9c7b03cccbd3ecf"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecf">webframe::core::LoadingState</a> { <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa06972acc3aafeb3a65dbd996c8dedc73">webframe::core::NOT_STARTED</a> = -1
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa725e74fd6435d86483781e2bd8e9d2c7">webframe::core::METHOD</a> = 0
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa8447306210a0972ac94b7d774799df1a">webframe::core::URI</a> = 1
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa97675cc85a90832f856d20eea1e2a599">webframe::core::PARAM_KEY</a> = 2
-, <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa9bb914d2eaedd80abc450b5a48f4bf67">webframe::core::PARAM_VALUE</a> = 3
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa5f62abfe2b751d73c0dbc11fbe42d3c2">webframe::core::HTTP_IN_PROGRESS</a> = 4
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfafd7055e62e3e635eaf0a72be9f6d0bc6">webframe::core::HTTP_LOADED</a> = 5
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa8f3db42316951855563f9491cf767355">webframe::core::HEADER_ROW</a> = 6
-, <br />
-&#160;&#160;<a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa786329b34bbe53ab40a54a19cd597f2d">webframe::core::BODY</a> = 7
-, <a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfab638272ceeff54912f043465e9a28c9b">webframe::core::LOADED</a> = 8
-<br />
- }</td></tr>
-<tr class="separator:a198e079c6b72d7c5c9c7b03cccbd3ecf"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
-Functions</h2></td></tr>
-<tr class="memitem:ace1a8902f10487a29faaba1eab7930c0"><td class="memTemplParams" colspan="2">template&lt;typename T1 &gt; </td></tr>
-<tr class="memitem:ace1a8902f10487a29faaba1eab7930c0"><td class="memTemplItemLeft" align="right" valign="top">T1&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">webframe::core::min</a> (T1 a, T1 b)</td></tr>
-<tr class="separator:ace1a8902f10487a29faaba1eab7930c0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa281a2b9fce637589b92e62dbc4df5e0"><td class="memItemLeft" align="right" valign="top">constexpr const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#aa281a2b9fce637589b92e62dbc4df5e0">webframe::core::method_to_string</a> (const method &amp;m)</td></tr>
-<tr class="memdesc:aa281a2b9fce637589b92e62dbc4df5e0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Casts webframe::method to const char*.  <a href="../../d2/dab/namespacewebframe_1_1core.html#aa281a2b9fce637589b92e62dbc4df5e0">More...</a><br /></td></tr>
-<tr class="separator:aa281a2b9fce637589b92e62dbc4df5e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af2a3a8ac18c2b1cf1a919b388a49d52c"><td class="memItemLeft" align="right" valign="top">constexpr method&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#af2a3a8ac18c2b1cf1a919b388a49d52c">webframe::core::string_to_method</a> (const char *m)</td></tr>
-<tr class="memdesc:af2a3a8ac18c2b1cf1a919b388a49d52c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Casts const char* to webframe::method.  <a href="../../d2/dab/namespacewebframe_1_1core.html#af2a3a8ac18c2b1cf1a919b388a49d52c">More...</a><br /></td></tr>
-<tr class="separator:af2a3a8ac18c2b1cf1a919b388a49d52c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0695b70fba69bc69684017f4cd2af9c4"><td class="memItemLeft" align="right" valign="top">_application &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="../../d2/dab/namespacewebframe_1_1core.html#a0695b70fba69bc69684017f4cd2af9c4">webframe::core::create_app</a> ()</td></tr>
-<tr class="separator:a0695b70fba69bc69684017f4cd2af9c4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Macro Definition Documentation</h2>
-<a id="a19bd9dce87e9d7915deaf481dddccbfe"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a19bd9dce87e9d7915deaf481dddccbfe">&#9670;&nbsp;</a></span>init_routes</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define init_routes</td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname">name</td><td>)</td>
-          <td>&#160;&#160;&#160;  const <a class="el" href="../../d9/d72/classwebframe_1_1core_1_1router.html">webframe::core::router</a> name = <a class="el" href="../../d9/d72/classwebframe_1_1core_1_1router.html">webframe::core::router</a>()</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="../../db/d8c/core_2core_8hpp_source.html#l00781">781</a> of file <a class="el" href="../../db/d8c/core_2core_8hpp_source.html">core.hpp</a>.</p>
-
-</div>
-</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

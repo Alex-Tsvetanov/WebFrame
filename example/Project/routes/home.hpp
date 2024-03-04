@@ -3,6 +3,6 @@
 
 #include <core/core.hpp>
 
-init_routes(home).route("/home", []() { return "This is my home page"; });
+auto home = webframe::core::router().route("/home", []() { return "This is my home page"; });
 
 #endif

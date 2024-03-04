@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['loading_400',['loading',['../d7/df1/classwebframe_1_1core_1_1request.html#aa063c558fa4009bc955b3dfe41a52db1',1,'webframe::core::request']]],
-  ['logger_401',['logger',['../d8/df9/classwebframe_1_1core_1_1__application.html#a2ee188951a1bf43c51d7f742325fa7f7',1,'webframe::core::_application']]]
+  ['number_5fof_5frequests_453',['number_of_requests',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#a9b21dbd997a5d375edc078efa8c5c383',1,'webframe::utils::server_status::port']]]
 ];

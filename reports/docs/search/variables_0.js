@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['_5fpath_385',['_path',['../de/d22/class_synchronized_file.html#a6672879ac9239605621f1705fc37a18c',1,'SynchronizedFile']]],
-  ['_5fwritermutex_386',['_writerMutex',['../de/d22/class_synchronized_file.html#a25159c05d559c3fbf66e61e00358b8d0',1,'SynchronizedFile']]]
+  ['_5fpath_431',['_path',['../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#a0388fee90f74eec68c89df8a228a4a4e',1,'webframe::utils::synchronized_file']]],
+  ['_5fwritermutex_432',['_writerMutex',['../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#af4101c2b4c9b8e6d5634fb2584dd21e5',1,'webframe::utils::synchronized_file']]]
 ];

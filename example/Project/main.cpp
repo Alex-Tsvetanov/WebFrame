@@ -5,7 +5,7 @@
 #include <thread>
 
 int main([[maybe_unused]] int args, [[maybe_unused]] char **argv) {
-  webframe::core::_application app;
+  webframe::core::application app;
 
   // setup
 #ifdef USE_INJA

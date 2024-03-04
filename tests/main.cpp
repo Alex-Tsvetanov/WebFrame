@@ -19,20 +19,16 @@ std::ostream *null;
 SCENARIO("application responser can respond with the correct header") {
   GIVEN("Standard application with /") {
 
-    webframe::core::_application &app = webframe::core::create_app();
+    webframe::core::application app;
     app.route("/", []() { return ""; });
 
     THEN("responser should respond with status code 200 by default") {
-      auto r = (*app.get_routes().begin())
-                   .second.call("1.1", "", webframe::core::path_vars())
-                   .to_string();
+      auto r = app.respond("/").to_string();
       REQUIRE_THAT(r, StartsWith("HTTP/1.1 200 OK"));
     }
-
-    delete &app;
   }
   GIVEN("Internl server error within a request") {
-    webframe::core::_application &app = webframe::core::create_app();
+    webframe::core::application app;
     app.route("/", []() {
       return webframe::core::response(
           webframe::core::status_line("500"),
@@ -40,45 +36,32 @@ SCENARIO("application responser can respond with the correct header") {
     });
 
     THEN("responser should respond with status code 200 by default") {
-      auto r = (*app.get_routes().begin())
-                   .second.call("1.1", "", webframe::core::path_vars())
-                   .to_string();
+      auto r = app.respond("/").to_string();
       REQUIRE_THAT(r, StartsWith("HTTP/1.1 500 Internal Server Error"));
     }
-
-    delete &app;
   }
 }
 
 SCENARIO("application responser can respond with the correct body") {
   GIVEN("Standard application with / and body \"sample\"") {
-    webframe::core::_application &app = webframe::core::create_app();
+    webframe::core::application app;
     app.route("/", []() { return "sample"; });
 
     THEN("responser should respond with correct HTML") {
-      auto r = (*app.get_routes().begin())
-                   .second.call("1.1", "", webframe::core::path_vars())
-                   .to_string();
+      auto r = app.respond("/").to_string();
       REQUIRE_THAT(r, ContainsSubstring("sample"));
     }
 
-    delete &app;
   }
   GIVEN("Standard application with /{user} and body {{user}}") {
-    webframe::core::_application &app = webframe::core::create_app();
+    webframe::core::application app;
     app.route("/{text}", [](std::string username) { return username; });
 
     THEN("responser should respond with the given path variable value") {
-      auto params = webframe::core::path_vars();
-      params += {"username", "string"};
-
-      auto r = (*app.get_routes().begin())
-                   .second.call("1.1", "", params)
-                   .to_string();
-      REQUIRE_THAT(r, ContainsSubstring("username"));
+      const std::string data = "username";
+      auto r = app.respond("/" + data).to_string();
+      REQUIRE_THAT(r, ContainsSubstring(data));
     }
-
-    delete &app;
   }
 }
 

@@ -1,5 +1,6 @@
 var searchData=
 [
-  ['undefined_452',['undefined',['../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da5e543256c480ac577d30f76f9120eb74',1,'webframe::core']]],
-  ['uri_453',['URI',['../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa8447306210a0972ac94b7d774799df1a',1,'webframe::core']]]
+  ['signaled_501',['SIGNALED',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#aed2f5c96b5ed6cb90155a7d25e2a3cf6a22436e41decbdd61a524034be9d2709c',1,'webframe::utils::server_status::port']]],
+  ['started_502',['STARTED',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#aed2f5c96b5ed6cb90155a7d25e2a3cf6a173372b0b771ed4da80824a9e577d053',1,'webframe::utils::server_status::port']]],
+  ['stopped_503',['STOPPED',['../dd/d62/classwebframe_1_1utils_1_1server__status_1_1port.html#aed2f5c96b5ed6cb90155a7d25e2a3cf6a8edaeca961588cc68cbf2f30a8ac6dc3',1,'webframe::utils::server_status::port']]]
 ];

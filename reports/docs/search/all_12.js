@@ -1,10 +1,12 @@
 var searchData=
 [
-  ['thread_5fpool_200',['thread_pool',['../d4/d59/structwebframe_1_1core_1_1__application_1_1procedure__thread.html#afca6cfb70e97ab06aae35b57adc027db',1,'webframe::core::_application::procedure_thread::thread_pool()'],['../da/d82/structwebframe_1_1core_1_1__application_1_1thread__pool.html#a5fd57af49331ea5d494744f1d9380e20',1,'webframe::core::_application::thread_pool::thread_pool()'],['../da/d82/structwebframe_1_1core_1_1__application_1_1thread__pool.html',1,'webframe::core::_application::thread_pool']]],
-  ['timer_201',['timer',['../d8/df9/classwebframe_1_1core_1_1__application.html#a2d5da3d5166c74c5ae7bd112e7b930af',1,'webframe::core::_application']]],
-  ['to_5fstring_202',['to_string',['../d4/db2/classwebframe_1_1core_1_1response.html#a32a880ab10b62cdeadf26ec7faa627a5',1,'webframe::core::response::to_string()'],['../db/d97/structwebframe_1_1core_1_1status__line.html#a9da10a205a0ec4ad6eb2111a30a04fe7',1,'webframe::core::status_line::to_string()']]],
-  ['trace_203',['TRACE',['../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da2d3e4144aa384b18849ab9a8abad74d6',1,'webframe::core']]],
-  ['true_204',['TRUE',['../df/ded/host_8h.html#aa8cecfc5c5c054d2875c03e77b7be15d',1,'host.h']]],
-  ['try_5flock_205',['try_lock',['../d4/d59/structwebframe_1_1core_1_1__application_1_1procedure__thread.html#ad55587a1c07cb6e4164d0184296fa716',1,'webframe::core::_application::procedure_thread']]],
-  ['type_206',['type',['../d1/d66/structwebframe_1_1__compile__time_1_1var__enum__over_3_01std_1_1integer__sequence_3_01_t_00_01_is_8_8_8_01_4_01_4.html#ad2873ecdc3fa2d0ca107d507e59c1b5d',1,'webframe::_compile_time::var_enum_over&lt; std::integer_sequence&lt; T, Is... &gt; &gt;::type()'],['../d4/d92/structdetail_1_1deduce__type_3_01_r_e_t_u_r_n___t_y_p_e_07_c_l_a_s_s___t_y_p_e_1_1_5_08_07_a_r_g_s_8_8_8_08_01const_01_4.html#add7429481888a8e8f9e055dcee6508b0',1,'detail::deduce_type&lt; RETURN_TYPE(CLASS_TYPE::*)(ARGS...) const &gt;::type()'],['../d1/dc8/structwebframe_1_1core_1_1path__vars_1_1var.html#a7b42d5f5439ed3ec6ed2030df22252f1',1,'webframe::core::path_vars::var::type()']]]
+  ['uint64_223',['uint64',['../df/ded/host_8h.html#a151d6b4fc026bbbf0b057d78f2543f50',1,'host.h']]],
+  ['unable_5fto_5fbind_5fsocket_224',['unable_to_bind_socket',['../d5/db5/classwebframe_1_1exceptions_1_1unable__to__bind__socket.html#afffede39c50173935c9a32a9e8a7621d',1,'webframe::exceptions::unable_to_bind_socket::unable_to_bind_socket()'],['../d5/db5/classwebframe_1_1exceptions_1_1unable__to__bind__socket.html',1,'webframe::exceptions::unable_to_bind_socket']]],
+  ['unable_5fto_5fbind_5fto_5fsocket_2ehpp_225',['unable_to_bind_to_socket.hpp',['../df/d4a/unable__to__bind__to__socket_8hpp.html',1,'']]],
+  ['unable_5fto_5fretrieve_5faddress_226',['unable_to_retrieve_address',['../de/ddf/classwebframe_1_1exceptions_1_1unable__to__retrieve__address.html#ac1c8d24d2c5af924f3283d4243f4fecd',1,'webframe::exceptions::unable_to_retrieve_address::unable_to_retrieve_address()'],['../de/ddf/classwebframe_1_1exceptions_1_1unable__to__retrieve__address.html',1,'webframe::exceptions::unable_to_retrieve_address']]],
+  ['unable_5fto_5fretrieve_5faddress_2ehpp_227',['unable_to_retrieve_address.hpp',['../db/da8/unable__to__retrieve__address_8hpp.html',1,'']]],
+  ['undefined_228',['undefined',['../d2/dab/namespacewebframe_1_1core.html#a4d3dbfb2f01c284d2f64b03e9303ba9da5e543256c480ac577d30f76f9120eb74',1,'webframe::core']]],
+  ['unhandled_5fexception_229',['unhandled_exception',['../d3/d5c/structwebframe_1_1utils_1_1generator_1_1promise__type.html#a0e0412e51acd3c844bca4bd21a59d657',1,'webframe::utils::generator::promise_type']]],
+  ['uri_230',['uri',['../d7/df1/classwebframe_1_1core_1_1request.html#aef2e151573ef993c6eff461e5dcdd5af',1,'webframe::core::request']]],
+  ['uri_231',['URI',['../d2/dab/namespacewebframe_1_1core.html#a198e079c6b72d7c5c9c7b03cccbd3ecfa8447306210a0972ac94b7d774799df1a',1,'webframe::core']]]
 ];

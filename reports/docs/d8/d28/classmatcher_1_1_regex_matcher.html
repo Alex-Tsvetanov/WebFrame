@@ -312,9 +312,9 @@ template&lt;typename ConstIterator &gt; </div>
 <div class="line"><a name="l00127"></a><span class="lineno">  127</span>&#160;            <span class="keywordflow">if</span> (*it == <span class="charliteral">&#39;)&#39;</span> &amp;&amp; inBrackets)</div>
 <div class="line"><a name="l00128"></a><span class="lineno">  128</span>&#160;                <span class="keywordflow">break</span>;</div>
 <div class="line"><a name="l00129"></a><span class="lineno">  129</span>&#160;            <span class="keywordflow">if</span> (*it == <span class="charliteral">&#39;[&#39;</span>) { <span class="comment">// start of a set</span></div>
-<div class="line"><a name="l00130"></a><span class="lineno">  130</span>&#160;                <span class="keyword">const</span> <span class="keyword">auto</span> parents = nodeLayers.back();</div>
-<div class="line"><a name="l00131"></a><span class="lineno">  131</span>&#160;                SubTree&lt;Node&lt;RegexData, char_t&gt;&gt; newNodes = <a class="code" href="../../d8/d28/classmatcher_1_1_regex_matcher.html#adc1e0e6149ca966e1b18d0eb9ad70162">processSet</a>(parents.get_leafs(), regex, it);</div>
-<div class="line"><a name="l00132"></a><span class="lineno">  132</span>&#160;                <span class="keywordflow">for</span> (<span class="keyword">auto</span> parent : parents.get_leafs()) {</div>
+<div class="line"><a name="l00130"></a><span class="lineno">  130</span>&#160;                <span class="keyword">const</span> <span class="keyword">auto</span> latest_parents = nodeLayers.back();</div>
+<div class="line"><a name="l00131"></a><span class="lineno">  131</span>&#160;                SubTree&lt;Node&lt;RegexData, char_t&gt;&gt; newNodes = <a class="code" href="../../d8/d28/classmatcher_1_1_regex_matcher.html#adc1e0e6149ca966e1b18d0eb9ad70162">processSet</a>(latest_parents.get_leafs(), regex, it);</div>
+<div class="line"><a name="l00132"></a><span class="lineno">  132</span>&#160;                <span class="keywordflow">for</span> (<span class="keyword">auto</span> parent : latest_parents.get_leafs()) {</div>
 <div class="line"><a name="l00133"></a><span class="lineno">  133</span>&#160;                    <span class="keywordflow">for</span> (<span class="keyword">auto</span> newNode : newNodes.get_leafs()) {</div>
 <div class="line"><a name="l00134"></a><span class="lineno">  134</span>&#160;                        parent-&gt;connect_with(newNode, regex);</div>
 <div class="line"><a name="l00135"></a><span class="lineno">  135</span>&#160;                    }</div>
@@ -440,13 +440,13 @@ template&lt;typename ConstIterator &gt; </div>
 <div class="line"><a name="l00016"></a><span class="lineno">   16</span>&#160;            it++;</div>
 <div class="line"><a name="l00017"></a><span class="lineno">   17</span>&#160;        </div>
 <div class="line"><a name="l00018"></a><span class="lineno">   18</span>&#160;        std::list&lt;Limits&gt;::iterator answer = Node&lt;RegexData, char_t&gt;::all_limits.insert(Node&lt;RegexData, char_t&gt;::all_limits.end(), Limits::common_edge);</div>
-<div class="line"><a name="l00019"></a><span class="lineno">   19</span>&#160;        <span class="keywordtype">bool</span> <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> = <span class="keyword">true</span>;</div>
+<div class="line"><a name="l00019"></a><span class="lineno">   19</span>&#160;        <span class="keywordtype">bool</span> min = <span class="keyword">true</span>;</div>
 <div class="line"><a name="l00020"></a><span class="lineno">   20</span>&#160;        <span class="keywordtype">size_t</span> number = 0;</div>
 <div class="line"><a name="l00021"></a><span class="lineno">   21</span>&#160; </div>
 <div class="line"><a name="l00022"></a><span class="lineno">   22</span>&#160;        number = 0;</div>
 <div class="line"><a name="l00023"></a><span class="lineno">   23</span>&#160;        <span class="keywordflow">while</span>(*it != <span class="charliteral">&#39;}&#39;</span>) {</div>
 <div class="line"><a name="l00024"></a><span class="lineno">   24</span>&#160;            <span class="keywordflow">if</span> (*it == <span class="charliteral">&#39;,&#39;</span>) {</div>
-<div class="line"><a name="l00025"></a><span class="lineno">   25</span>&#160;                <a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> = <span class="keyword">false</span>;</div>
+<div class="line"><a name="l00025"></a><span class="lineno">   25</span>&#160;                min = <span class="keyword">false</span>;</div>
 <div class="line"><a name="l00026"></a><span class="lineno">   26</span>&#160;                answer-&gt;min = number;</div>
 <div class="line"><a name="l00027"></a><span class="lineno">   27</span>&#160;                number = 0;</div>
 <div class="line"><a name="l00028"></a><span class="lineno">   28</span>&#160;            }</div>
@@ -456,11 +456,11 @@ template&lt;typename ConstIterator &gt; </div>
 <div class="line"><a name="l00032"></a><span class="lineno">   32</span>&#160;            it ++;</div>
 <div class="line"><a name="l00033"></a><span class="lineno">   33</span>&#160;        }</div>
 <div class="line"><a name="l00034"></a><span class="lineno">   34</span>&#160; </div>
-<div class="line"><a name="l00035"></a><span class="lineno">   35</span>&#160;        <span class="keywordflow">if</span> (!<a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> &amp;&amp; number != 0)</div>
+<div class="line"><a name="l00035"></a><span class="lineno">   35</span>&#160;        <span class="keywordflow">if</span> (!min &amp;&amp; number != 0)</div>
 <div class="line"><a name="l00036"></a><span class="lineno">   36</span>&#160;            answer-&gt;max = number;</div>
-<div class="line"><a name="l00037"></a><span class="lineno">   37</span>&#160;        <span class="keywordflow">if</span> (!<a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a> &amp;&amp; number == 0)</div>
+<div class="line"><a name="l00037"></a><span class="lineno">   37</span>&#160;        <span class="keywordflow">if</span> (!min &amp;&amp; number == 0)</div>
 <div class="line"><a name="l00038"></a><span class="lineno">   38</span>&#160;            answer-&gt;max = std::nullopt;</div>
-<div class="line"><a name="l00039"></a><span class="lineno">   39</span>&#160;        <span class="keywordflow">if</span> (<a class="code" href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">min</a>)</div>
+<div class="line"><a name="l00039"></a><span class="lineno">   39</span>&#160;        <span class="keywordflow">if</span> (min)</div>
 <div class="line"><a name="l00040"></a><span class="lineno">   40</span>&#160;            answer-&gt;max = number;</div>
 <div class="line"><a name="l00041"></a><span class="lineno">   41</span>&#160; </div>
 <div class="line"><a name="l00042"></a><span class="lineno">   42</span>&#160;        <span class="keyword">const</span> <span class="keywordtype">size_t</span> leafs = lastest.get_leafs().size();</div>
@@ -485,7 +485,6 @@ template&lt;typename ConstIterator &gt; </div>
 <div class="line"><a name="l00061"></a><span class="lineno">   61</span>&#160; </div>
 <div class="line"><a name="l00062"></a><span class="lineno">   62</span>&#160;        <span class="keywordflow">return</span> answer;</div>
 <div class="line"><a name="l00063"></a><span class="lineno">   63</span>&#160;    }</div>
-<div class="ttc" id="anamespacewebframe_1_1core_html_ace1a8902f10487a29faaba1eab7930c0"><div class="ttname"><a href="../../d2/dab/namespacewebframe_1_1core.html#ace1a8902f10487a29faaba1eab7930c0">webframe::core::min</a></div><div class="ttdeci">T1 min(T1 a, T1 b)</div><div class="ttdef"><b>Definition:</b> <a href="../../db/d8c/core_2core_8hpp_source.html#l00036">core.hpp:36</a></div></div>
 </div><!-- fragment -->
 </div>
 </div>

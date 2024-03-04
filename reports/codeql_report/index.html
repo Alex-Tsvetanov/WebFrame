@@ -150,7 +150,7 @@
         <label class="checkBtn disabled"><input type="checkbox" onclick="toggleSeverity(this)" id="warning"disabled/>warning</label>
         <label class="checkBtn disabled"><input type="checkbox" onclick="toggleSeverity(this)" id="portability"disabled/>portability</label>
         <label class="checkBtn disabled"><input type="checkbox" onclick="toggleSeverity(this)" id="performance"disabled/>performance</label>
-        <label class="checkBtn disabled"><input type="checkbox" onclick="toggleSeverity(this)" id="style"disabled/>style</label>
+        <label class="checkBtn"><input type="checkbox" onclick="toggleSeverity(this)" id="style"checked/>style</label>
         <label class="checkBtn"><input type="checkbox" onclick="toggleSeverity(this)" id="information"checked/>information</label>
         | 
         <label class="checkBtn"><input type="checkbox" onclick="toggleTool(this)" id="cppcheck"checked/>cppcheck</label>
@@ -168,9 +168,11 @@
        <label><input type="checkbox" class="idToggle" onclick="toggleAll()" checked> Toggle all</label>
        <table>
            <tr><th>Show</th><th>#</th><th>Defect ID</th></tr>
+            <tr><td><input type="checkbox" class="idToggle" onclick="toggleDisplay(this)" id="unusedFunction" name="unusedFunction" checked></td><td>4</td><td>unusedFunction</td></tr>
+            <tr><td><input type="checkbox" class="idToggle" onclick="toggleDisplay(this)" id="noExplicitConstructor" name="noExplicitConstructor" checked></td><td>2</td><td>noExplicitConstructor</td></tr>
             <tr><td><input type="checkbox" class="idToggle" onclick="toggleDisplay(this)" id="missingIncludeSystem" name="missingIncludeSystem" checked></td><td>1</td><td>missingIncludeSystem</td></tr>
             <tr><td><input type="checkbox" class="idToggle" onclick="toggleDisplay(this)" id="syntaxError" name="syntaxError" checked></td><td>1</td><td>syntaxError</td></tr>
-           <tr><td></td><td>2</td><td>total</td></tr>
+           <tr><td></td><td>8</td><td>total</td></tr>
        </table>
        <p><a href="stats.html">Statistics</a></p>
     </div>
@@ -179,11 +181,23 @@
        <table class="summaryTable">
        <tr><th>Line</th><th>Id</th><th>CWE</th><th>Severity</th><th>Message</th></tr>
       <tbody class="fileEntry">
-       <tr><td colspan="5"><a href="1.html"></a></td></tr>
+       <tr><td colspan="5"><a href="4.html"></a></td></tr>
          <tr class="missingIncludeSystem sev_information issue"><td></td><td>missingIncludeSystem</td><td></td><td>information</td><td>Cppcheck cannot find all the include files (use --check-config for details)</td></tr>
       <tbody class="fileEntry">
-       <tr><td colspan="5"><a href="0.html">lib/core/http_consts/constexpr.hpp</a></td></tr>
+       <tr><td colspan="5"><a href="0.html">lib/core/http/predef/constexpr.hpp</a></td></tr>
          <tr class="syntaxError sev_error issue"><td><a href="0.html#line-9441">9441</a></td><td>syntaxError</td><td></td><td>error</td><td class="error">syntax error</td></tr>
+      <tbody class="fileEntry">
+       <tr><td colspan="5"><a href="2.html">lib/core/http/processing/path_variables.cpp</a></td></tr>
+         <tr class="unusedFunction sev_style issue"><td><a href="2.html#line-12">12</a></td><td>unusedFunction</td><td><a href="https://cwe.mitre.org/data/definitions/561.html">561</a></td><td>style</td><td>The function &apos;get&apos; is never used.</td></tr>
+      <tbody class="fileEntry">
+       <tr><td colspan="5"><a href="1.html">lib/core/http/processing/path_variables.hpp</a></td></tr>
+         <tr class="noExplicitConstructor sev_style issue"><td><a href="1.html#line-24">24</a></td><td>noExplicitConstructor</td><td><a href="https://cwe.mitre.org/data/definitions/398.html">398</a></td><td>style</td><td>Struct &apos;var&apos; has a constructor with 1 argument that is not explicit.</td></tr>
+         <tr class="noExplicitConstructor sev_style issue"><td><a href="1.html#line-38">38</a></td><td>noExplicitConstructor</td><td><a href="https://cwe.mitre.org/data/definitions/398.html">398</a></td><td>style</td><td>Struct &apos;path_vars&apos; has a constructor with 1 argument that is not explicit.</td></tr>
+      <tbody class="fileEntry">
+       <tr><td colspan="5"><a href="3.html">lib/core/http/request/method.cpp</a></td></tr>
+         <tr class="unusedFunction sev_style issue"><td><a href="3.html#line-4">4</a></td><td>unusedFunction</td><td><a href="https://cwe.mitre.org/data/definitions/561.html">561</a></td><td>style</td><td>The function &apos;strings_equal&apos; is never used.</td></tr>
+         <tr class="unusedFunction sev_style issue"><td><a href="3.html#line-10">10</a></td><td>unusedFunction</td><td><a href="https://cwe.mitre.org/data/definitions/561.html">561</a></td><td>style</td><td>The function &apos;method_to_string&apos; is never used.</td></tr>
+         <tr class="unusedFunction sev_style issue"><td><a href="3.html#line-22">22</a></td><td>unusedFunction</td><td><a href="https://cwe.mitre.org/data/definitions/561.html">561</a></td><td>style</td><td>The function &apos;string_to_method&apos; is never used.</td></tr>
       </tbody>
        </table>
     </div>

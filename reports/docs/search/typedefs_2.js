@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['req_5fvars_427',['req_vars',['../d2/dab/namespacewebframe_1_1core.html#a622c46c245a1184e1e4c5b41b437b807',1,'webframe::core']]]
+  ['req_5fvars_475',['req_vars',['../d7/df1/classwebframe_1_1core_1_1request.html#af6cb758d513ba8fba705d03d036b15c0',1,'webframe::core::request']]]
 ];

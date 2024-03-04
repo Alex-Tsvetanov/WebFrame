@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['uint64_420',['uint64',['../df/ded/host_8h.html#a151d6b4fc026bbbf0b057d78f2543f50',1,'host.h']]],
-  ['uri_421',['uri',['../d7/df1/classwebframe_1_1core_1_1request.html#aef2e151573ef993c6eff461e5dcdd5af',1,'webframe::core::request']]]
+  ['value_470',['value',['../d1/dc8/structwebframe_1_1core_1_1path__vars_1_1var.html#ab4bb637b5fee64524c4c8a8f4b0d1e52',1,'webframe::core::path_vars::var']]],
+  ['vars_471',['vars',['../dc/d1d/structwebframe_1_1core_1_1path__vars.html#a03edfdc48d51cb63901f0f1b7227bfe0',1,'webframe::core::path_vars']]]
 ];

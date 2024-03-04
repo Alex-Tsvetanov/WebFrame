@@ -131,7 +131,7 @@ $(function() {
 <div class="line"><a name="l00058"></a><span class="lineno">   58</span>&#160;                }</div>
 <div class="line"><a name="l00059"></a><span class="lineno">   59</span>&#160;                <span class="keywordflow">else</span> <span class="keywordflow">if</span> (it-&gt;second.has_value() &amp;&amp; limit == std::nullopt) {</div>
 <div class="line"><a name="l00060"></a><span class="lineno">   60</span>&#160;                    (it-&gt;second.value()-&gt;min) ++;</div>
-<div class="line"><a name="l00061"></a><span class="lineno">   61</span>&#160;                    <span class="keywordflow">if</span> (it-&gt;second.has_value()) {</div>
+<div class="line"><a name="l00061"></a><span class="lineno">   61</span>&#160;                    <span class="keywordflow">if</span> (it-&gt;second.value()-&gt;max.has_value()) {</div>
 <div class="line"><a name="l00062"></a><span class="lineno">   62</span>&#160;                        (it-&gt;second.value()-&gt;max.value()) ++;</div>
 <div class="line"><a name="l00063"></a><span class="lineno">   63</span>&#160;                    }</div>
 <div class="line"><a name="l00064"></a><span class="lineno">   64</span>&#160;                }</div>

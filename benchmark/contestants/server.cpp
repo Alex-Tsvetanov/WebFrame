@@ -4,19 +4,19 @@
 #include <stdlib.h>
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
-  constexpr long long fasten = webframe::core::_application::init();
+  constexpr long long fasten = webframe::core::application::init();
   long long pass = fasten;
   webframe::core::application app;
   app.route("/{number}/2",
             [&](long long steps) {
-              for (long long i = 0; i < (1ull << steps); i++) {
+              for (unsigned long long i = 0; i < (1ull << steps); i++) {
                 pass = pass + rand();
               }
               return "Hello World!";
             })
       .route("/{number}/1", [&](long long steps) {
         volatile unsigned long long int test = 0;
-        for (long long i = 0; i < (1ull << steps); i++) {
+        for (unsigned long long i = 0; i < (1ull << steps); i++) {
           test++;
         }
         return "Hello World!";

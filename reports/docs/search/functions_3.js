@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['convert_5fpath_5fto_5fregex_291',['convert_path_to_regex',['../d8/df9/classwebframe_1_1core_1_1__application.html#a892641220b1ce5288bdfc3473575e98e',1,'webframe::core::_application']]],
-  ['create_5fapp_292',['create_app',['../d2/dab/namespacewebframe_1_1core.html#a0695b70fba69bc69684017f4cd2af9c4',1,'webframe::core']]]
+  ['error_5fsynchronized_5ffile_337',['error_synchronized_file',['../dd/da3/classwebframe_1_1utils_1_1error__synchronized__file.html#aa03d0bd73107812b3ae8e9d3f4ac1247',1,'webframe::utils::error_synchronized_file::error_synchronized_file(std::basic_ostream&lt; char &gt; *path)'],['../dd/da3/classwebframe_1_1utils_1_1error__synchronized__file.html#a40e6a097870fac949bf1089b0641b56f',1,'webframe::utils::error_synchronized_file::error_synchronized_file()']]],
+  ['extend_5fwith_338',['extend_with',['../d1/d67/classwebframe_1_1core_1_1application.html#a92328199b3c98dec54c89a646392cca6',1,'webframe::core::application']]]
 ];
