@@ -143,7 +143,7 @@ Additional Inherited Members</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="../../df/d97/sync__file_8hpp_source.html#l00042">42</a> of file <a class="el" href="../../df/d97/sync__file_8hpp_source.html">sync_file.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00043"></a><span class="lineno">   43</span>&#160;      : <a class="code" href="../../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#abfbf7cfcf69d955c2f78b6d743b3d705">synchronized_file</a>(path) {}</div>
+<div class="fragment"><div class="line"><a name="l00042"></a><span class="lineno">   42</span>&#160;: <a class="code" href="../../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#abfbf7cfcf69d955c2f78b6d743b3d705">synchronized_file</a>(path) {}</div>
 <div class="ttc" id="aclasswebframe_1_1utils_1_1synchronized__file_html_abfbf7cfcf69d955c2f78b6d743b3d705"><div class="ttname"><a href="../../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#abfbf7cfcf69d955c2f78b6d743b3d705">webframe::utils::synchronized_file::synchronized_file</a></div><div class="ttdeci">synchronized_file()</div><div class="ttdef"><b>Definition:</b> <a href="../../df/d97/sync__file_8hpp_source.html#l00025">sync_file.hpp:25</a></div></div>
 </div><!-- fragment -->
 </div>
@@ -171,8 +171,8 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../df/d97/sync__file_8hpp_source.html#l00045">45</a> of file <a class="el" href="../../df/d97/sync__file_8hpp_source.html">sync_file.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00045"></a><span class="lineno">   45</span>&#160;: <a class="code" href="../../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#abfbf7cfcf69d955c2f78b6d743b3d705">synchronized_file</a>() {}</div>
+<p class="definition">Definition at line <a class="el" href="../../df/d97/sync__file_8hpp_source.html#l00044">44</a> of file <a class="el" href="../../df/d97/sync__file_8hpp_source.html">sync_file.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00044"></a><span class="lineno">   44</span>&#160;: <a class="code" href="../../d0/d28/classwebframe_1_1utils_1_1synchronized__file.html#abfbf7cfcf69d955c2f78b6d743b3d705">synchronized_file</a>() {}</div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -213,16 +213,16 @@ template&lt;typename T &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../df/d97/sync__file_8hpp_source.html#l00094">94</a> of file <a class="el" href="../../df/d97/sync__file_8hpp_source.html">sync_file.hpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00094"></a><span class="lineno">   94</span>&#160;                                                                              {</div>
-<div class="line"><a name="l00095"></a><span class="lineno">   95</span>&#160;  <span class="keywordflow">if</span> (file._path == <span class="keyword">nullptr</span>) <span class="keywordflow">return</span> file;</div>
-<div class="line"><a name="l00096"></a><span class="lineno">   96</span>&#160;  <span class="keyword">const</span> std::lock_guard&lt;std::shared_mutex&gt; locker(file._writerMutex);</div>
+<p class="definition">Definition at line <a class="el" href="../../df/d97/sync__file_8hpp_source.html#l00091">91</a> of file <a class="el" href="../../df/d97/sync__file_8hpp_source.html">sync_file.hpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00091"></a><span class="lineno">   91</span>&#160;                                                                                  {</div>
+<div class="line"><a name="l00092"></a><span class="lineno">   92</span>&#160;        <span class="keywordflow">if</span> (file._path == <span class="keyword">nullptr</span>) <span class="keywordflow">return</span> file;</div>
+<div class="line"><a name="l00093"></a><span class="lineno">   93</span>&#160;        <span class="keyword">const</span> std::lock_guard&lt;std::shared_mutex&gt; locker(file._writerMutex);</div>
+<div class="line"><a name="l00094"></a><span class="lineno">   94</span>&#160; </div>
+<div class="line"><a name="l00095"></a><span class="lineno">   95</span>&#160;        (*file._path) &lt;&lt; val;</div>
+<div class="line"><a name="l00096"></a><span class="lineno">   96</span>&#160;        (*file._path).flush();</div>
 <div class="line"><a name="l00097"></a><span class="lineno">   97</span>&#160; </div>
-<div class="line"><a name="l00098"></a><span class="lineno">   98</span>&#160;  (*file._path) &lt;&lt; val;</div>
-<div class="line"><a name="l00099"></a><span class="lineno">   99</span>&#160;  (*file._path).flush();</div>
-<div class="line"><a name="l00100"></a><span class="lineno">  100</span>&#160; </div>
-<div class="line"><a name="l00101"></a><span class="lineno">  101</span>&#160;  <span class="keywordflow">return</span> file;</div>
-<div class="line"><a name="l00102"></a><span class="lineno">  102</span>&#160;}</div>
+<div class="line"><a name="l00098"></a><span class="lineno">   98</span>&#160;        <span class="keywordflow">return</span> file;</div>
+<div class="line"><a name="l00099"></a><span class="lineno">   99</span>&#160;    }</div>
 </div><!-- fragment -->
 </div>
 </div>

@@ -145,6 +145,7 @@ RawStringFormats:
     BasedOnStyle:    google
 ReflowComments:  true
 SortJavaStaticImport: Before
+SortIncludes: false
 SpaceAfterCStyleCast: false
 SpaceAfterLogicalNot: false
 SpaceAfterTemplateKeyword: true

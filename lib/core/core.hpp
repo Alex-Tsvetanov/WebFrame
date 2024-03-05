@@ -100,6 +100,6 @@ namespace webframe::core {
 	class application;
 }  // namespace webframe::core
 
-#include "internal/application/application.hpp"
 #include "internal/router/router.hpp"
 #include "internal/threads/threads.hpp"
+#include "internal/application/application.hpp"

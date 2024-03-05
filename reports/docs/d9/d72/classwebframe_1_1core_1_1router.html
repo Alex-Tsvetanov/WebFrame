@@ -129,17 +129,17 @@ template&lt;typename F &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../d9/da3/router_8cpp_source.html#l00015">15</a> of file <a class="el" href="../../d9/da3/router_8cpp_source.html">router.cpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00015"></a><span class="lineno">   15</span>&#160;                                                       {</div>
-<div class="line"><a name="l00016"></a><span class="lineno">   16</span>&#160;        <span class="keyword">const</span> <span class="keyword">auto</span> res = <a class="code" href="../../df/dd9/lambda2function_8hpp.html#a47f7bdc85fce92b9a89892a50580dfad">wrap</a>(_res);</div>
-<div class="line"><a name="l00017"></a><span class="lineno">   17</span>&#160;        <span class="keywordflow">if</span> (<a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.find(path) == <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.end())</div>
-<div class="line"><a name="l00018"></a><span class="lineno">   18</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = utils::responser(res);</div>
-<div class="line"><a name="l00019"></a><span class="lineno">   19</span>&#160;        <span class="keywordflow">else</span>  <span class="comment">// rewriting path</span></div>
-<div class="line"><a name="l00020"></a><span class="lineno">   20</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = utils::responser(res);</div>
-<div class="line"><a name="l00021"></a><span class="lineno">   21</span>&#160;        <span class="keywordflow">return</span> *<span class="keyword">this</span>;</div>
-<div class="line"><a name="l00022"></a><span class="lineno">   22</span>&#160;    }</div>
+<p class="definition">Definition at line <a class="el" href="../../d9/da3/router_8cpp_source.html#l00014">14</a> of file <a class="el" href="../../d9/da3/router_8cpp_source.html">router.cpp</a>.</p>
+<div class="fragment"><div class="line"><a name="l00014"></a><span class="lineno">   14</span>&#160;                                                       {</div>
+<div class="line"><a name="l00015"></a><span class="lineno">   15</span>&#160;        <span class="keyword">const</span> <span class="keyword">auto</span> res = <a class="code" href="../../df/dd9/lambda2function_8hpp.html#a47f7bdc85fce92b9a89892a50580dfad">wrap</a>(_res);</div>
+<div class="line"><a name="l00016"></a><span class="lineno">   16</span>&#160;        <span class="keywordflow">if</span> (<a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.find(path) == <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.end())</div>
+<div class="line"><a name="l00017"></a><span class="lineno">   17</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = utils::responser(res);</div>
+<div class="line"><a name="l00018"></a><span class="lineno">   18</span>&#160;        <span class="keywordflow">else</span>  <span class="comment">// rewriting path</span></div>
+<div class="line"><a name="l00019"></a><span class="lineno">   19</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = utils::responser(res);</div>
+<div class="line"><a name="l00020"></a><span class="lineno">   20</span>&#160;        <span class="keywordflow">return</span> *<span class="keyword">this</span>;</div>
+<div class="line"><a name="l00021"></a><span class="lineno">   21</span>&#160;    }</div>
 <div class="ttc" id="aclasswebframe_1_1core_1_1router_html_a2b87bc60d5f786ae312b687668a3eefa"><div class="ttname"><a href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">webframe::core::router::routes</a></div><div class="ttdeci">std::map&lt; std::string, utils::responser &gt; routes</div><div class="ttdef"><b>Definition:</b> <a href="../../d4/dfa/router_8hpp_source.html#l00008">router.hpp:8</a></div></div>
-<div class="ttc" id="alambda2function_8hpp_html_a47f7bdc85fce92b9a89892a50580dfad"><div class="ttname"><a href="../../df/dd9/lambda2function_8hpp.html#a47f7bdc85fce92b9a89892a50580dfad">wrap</a></div><div class="ttdeci">auto wrap(const CLOSURE &amp;fn)</div><div class="ttdef"><b>Definition:</b> <a href="../../df/dd9/lambda2function_8hpp_source.html#l00020">lambda2function.hpp:20</a></div></div>
+<div class="ttc" id="alambda2function_8hpp_html_a47f7bdc85fce92b9a89892a50580dfad"><div class="ttname"><a href="../../df/dd9/lambda2function_8hpp.html#a47f7bdc85fce92b9a89892a50580dfad">wrap</a></div><div class="ttdeci">auto wrap(const CLOSURE &amp;fn)</div><div class="ttdef"><b>Definition:</b> <a href="../../df/dd9/lambda2function_8hpp_source.html#l00022">lambda2function.hpp:22</a></div></div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -172,13 +172,13 @@ template&lt;typename Ret , typename... Ts&gt; </div>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="../../d9/da3/router_8cpp_source.html#l00005">5</a> of file <a class="el" href="../../d9/da3/router_8cpp_source.html">router.cpp</a>.</p>
-<div class="fragment"><div class="line"><a name="l00006"></a><span class="lineno">    6</span>&#160;                                                        {</div>
-<div class="line"><a name="l00007"></a><span class="lineno">    7</span>&#160;        <span class="keywordflow">if</span> (<a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.find(path) == <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.end())</div>
-<div class="line"><a name="l00008"></a><span class="lineno">    8</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = responser(res);</div>
-<div class="line"><a name="l00009"></a><span class="lineno">    9</span>&#160;        <span class="keywordflow">else</span>  <span class="comment">// rewriting path</span></div>
-<div class="line"><a name="l00010"></a><span class="lineno">   10</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = responser(res);</div>
-<div class="line"><a name="l00011"></a><span class="lineno">   11</span>&#160;        <span class="keywordflow">return</span> *<span class="keyword">this</span>;</div>
-<div class="line"><a name="l00012"></a><span class="lineno">   12</span>&#160;    }</div>
+<div class="fragment"><div class="line"><a name="l00005"></a><span class="lineno">    5</span>&#160;                                                                                   {</div>
+<div class="line"><a name="l00006"></a><span class="lineno">    6</span>&#160;        <span class="keywordflow">if</span> (<a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.find(path) == <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>.end())</div>
+<div class="line"><a name="l00007"></a><span class="lineno">    7</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = responser(res);</div>
+<div class="line"><a name="l00008"></a><span class="lineno">    8</span>&#160;        <span class="keywordflow">else</span>  <span class="comment">// rewriting path</span></div>
+<div class="line"><a name="l00009"></a><span class="lineno">    9</span>&#160;            <a class="code" href="../../d9/d72/classwebframe_1_1core_1_1router.html#a2b87bc60d5f786ae312b687668a3eefa">routes</a>[path] = responser(res);</div>
+<div class="line"><a name="l00010"></a><span class="lineno">   10</span>&#160;        <span class="keywordflow">return</span> *<span class="keyword">this</span>;</div>
+<div class="line"><a name="l00011"></a><span class="lineno">   11</span>&#160;    }</div>
 </div><!-- fragment -->
 </div>
 </div>
@@ -203,7 +203,7 @@ template&lt;typename Ret , typename... Ts&gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="../../d4/dfa/router_8hpp_source.html#l00018">18</a> of file <a class="el" href="../../d4/dfa/router_8hpp_source.html">router.hpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="../../d4/dfa/router_8hpp_source.html#l00017">17</a> of file <a class="el" href="../../d4/dfa/router_8hpp_source.html">router.hpp</a>.</p>
 
 </div>
 </div>

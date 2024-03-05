@@ -353,10 +353,8 @@ namespace webframe::core {
 
 	utils::generator<SOCKET> application::gen_clients(SOCKET listener, const std::string PORT,
 	                                                  std::function<void()> on_end) {
-		std::mutex m;
 		while (application::port_status.get_status(PORT.c_str()) !=
 		       webframe::utils::server_status::port::Status::SIGNALED) {
-			std::lock_guard<std::mutex> lk(m);
 			// Accept a request
 			SOCKET client = ACCEPT(listener, NULL, NULL);
 			if (client == INVALID_SOCKET) {
