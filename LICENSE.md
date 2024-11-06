@@ -1,3 +1,45 @@
+# WebFrame License Agreement
+
+WebFrame offers flexible licensing options to cater to the requirements of different users:
+
+## Commercial License
+
+The **Commercial License** is ideal for developing proprietary or commercial software where you prefer not to share your source code with third parties or cannot comply with the terms of the GNU General Public License version 3 (GPLv3).
+
+- **Who Should Use It?**
+  - Businesses developing closed-source web applications.
+  - Developers needing proprietary licensing terms.
+- **Benefits:**
+  - Freedom to choose your own licensing terms for your software.
+  - No requirement to disclose your source code.
+  - Access to professional support and updates (if offered).
+
+### Included Components
+
+The commercial license for WebFrame includes commercial usage rights for the following components without additional fees:
+
+- **RegexMatcher**
+
+## Open-Source License
+
+WebFrame is also available under the **GNU General Public License version 3 (GPLv3)**. This license is appropriate if you are willing to comply with its terms, which include:
+
+- Making your source code available when distributing your application.
+- Allowing others to modify and distribute your code under the same license.
+- Including a copy of the GPLv3 license text with your application.
+
+- **Who Should Use It?**
+  - Open-source project developers.
+  - Educational institutions and non-commercial entities compliant with GPLv3.
+
+## Third-Party Dependencies
+
+WebFrame utilizes third-party libraries that may have their own licensing terms. It is your responsibility to ensure compliance with these licenses:
+
+- **inja**: Licensed under the MIT License.
+
+## Full Text of GNU GPLv3
+```
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
@@ -620,55 +662,10 @@ copy of the Program in return for a fee.
 
                      END OF TERMS AND CONDITIONS
 
-            How to Apply These Terms to Your New Programs
+```
+## Contact Information
 
-  If you develop a new program, and you want it to be of the greatest
-possible use to the public, the best way to achieve this is to make it
-free software which everyone can redistribute and change under these terms.
+For inquiries, support, or to obtain a commercial license for WebFrame, please contact:
 
-  To do so, attach the following notices to the program.  It is safest
-to attach them to the start of each source file to most effectively
-state the exclusion of warranty; and each file should have at least
-the "copyright" line and a pointer to where the full notice is found.
-
-    {one line to give the program's name and a brief idea of what it does.}
-    Copyright (C) {year}  {name of author}
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-Also add information on how to contact you by electronic and paper mail.
-
-  If the program does terminal interaction, make it output a short
-notice like this when it starts in an interactive mode:
-
-    {project}  Copyright (C) {year}  {fullname}
-    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
-    This is free software, and you are welcome to redistribute it
-    under certain conditions; type `show c' for details.
-
-The hypothetical commands `show w' and `show c' should show the appropriate
-parts of the General Public License.  Of course, your program's commands
-might be different; for a GUI interface, you would use an "about box".
-
-  You should also get your employer (if you work as a programmer) or school,
-if any, to sign a "copyright disclaimer" for the program, if necessary.
-For more information on this, and how to apply and follow the GNU GPL, see
-<http://www.gnu.org/licenses/>.
-
-  The GNU General Public License does not permit incorporating your program
-into proprietary programs.  If your program is a subroutine library, you
-may consider it more useful to permit linking proprietary applications with
-the library.  If this is what you want to do, use the GNU Lesser General
-Public License instead of this License.  But first, please read
-<http://www.gnu.org/philosophy/why-not-lgpl.html>.
+- **Email:** [alex_tsvetanov_2002@abv.bg](mailto:alex_tsvetanov_2002@abv.bg)
+- **Website:** [Alex Tsvetanov](alex-tsvetanov.github.io)
