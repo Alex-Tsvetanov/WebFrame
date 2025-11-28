@@ -1,5 +1,47 @@
 #include "application.hpp"
 
+#include <cerrno>
+
+namespace {
+int last_socket_error() {
+#ifdef _WIN32
+	return WSAGetLastError();
+#else
+	return errno;
+#endif
+}
+
+bool is_would_block(int error_code) {
+#ifdef _WIN32
+	return error_code == WSAEWOULDBLOCK;
+#else
+	return error_code == EWOULDBLOCK || error_code == EAGAIN;
+#endif
+}
+
+bool wait_for_socket(SOCKET socket, bool for_read) {
+	fd_set read_set;
+	fd_set write_set;
+	fd_set* r = nullptr;
+	fd_set* w = nullptr;
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+	if (for_read) {
+		FD_ZERO(&read_set);
+		FD_SET(socket, &read_set);
+		r = &read_set;
+	} else {
+		FD_ZERO(&write_set);
+		FD_SET(socket, &write_set);
+		w = &write_set;
+	}
+	int nfds = static_cast<int>(socket) + 1;
+	int status = SELECT(nfds, r, w, nullptr, &timeout);
+	return status > 0;
+}
+}  // namespace
+
 namespace webframe::core {
 	application::application() : routes(&executors) {
 #ifdef USE_INJA
@@ -203,11 +245,18 @@ namespace webframe::core {
 			const std::size_t capacity = 1024;
 			char data[capacity];
 			int total_recv = 0;
-			int n = 0;
-			do {
-				n = RECV(socket, data, capacity, 0);
-				if (n < 0) {
+			while (true) {
+				const int n = RECV(socket, data, capacity, 0);
+				if (n == 0) {
 					break;
+				}
+				if (n < 0) {
+					const int err = last_socket_error();
+					if (is_would_block(err)) {
+						if (!wait_for_socket(socket, true)) continue;
+						continue;
+					}
+					throw std::runtime_error("recv failed with error " + std::to_string(err));
 				}
 
 				total_recv += n;
@@ -218,7 +267,9 @@ namespace webframe::core {
 				                                    // is not full and the last char
 				                                    // is \0 -> body is filled
 					break;
-			} while (n > 0);
+
+				wait_for_socket(socket, true);
+			}
 
 			this->logger << "(responder) Read state: " << (int)r.getState() << " " << total_recv << "\n";
 
@@ -233,10 +284,21 @@ namespace webframe::core {
 			res = this->respond(r, r.http);
 			const std::string& response = res.to_string();
 			const size_t responseSize = response.size();
-			int status;
-			status = SEND(socket, response.c_str(), responseSize, 0);
-			if (status == SOCKET_ERROR) {
-				return -1;
+			size_t sent = 0;
+			while (sent < responseSize) {
+				int status = SEND(socket, response.c_str() + sent, static_cast<int>(responseSize - sent), 0);
+				if (status == 0) {
+					return -1;
+				}
+				if (status == SOCKET_ERROR) {
+					const int err = last_socket_error();
+					if (is_would_block(err)) {
+						if (!wait_for_socket(socket, false)) continue;
+						continue;
+					}
+					return -1;
+				}
+				sent += static_cast<size_t>(status);
 			}
 			this->performancer << r.uri << ": " << timer(t1).count() << "miliseconds\n";
 		} catch (std::exception const& e) {
@@ -246,7 +308,22 @@ namespace webframe::core {
 			    this->routes.match("500").value().executor.call(r.http, "", {{std::string(e.what()), "string"}});
 			const std::string& response = res.to_string();
 			const size_t responseSize = response.size();
-			SEND(socket, response.c_str(), responseSize, 0);
+			size_t sent = 0;
+			while (sent < responseSize) {
+				int status = SEND(socket, response.c_str() + sent, static_cast<int>(responseSize - sent), 0);
+				if (status == 0) {
+					return -1;
+				}
+				if (status == SOCKET_ERROR) {
+					const int err = last_socket_error();
+					if (is_would_block(err)) {
+						if (!wait_for_socket(socket, false)) continue;
+						continue;
+					}
+					return -1;
+				}
+				sent += static_cast<size_t>(status);
+			}
 			return -1;
 		} catch (...) {
 			return -2;
@@ -320,7 +397,7 @@ namespace webframe::core {
 
 		// Bind the socket to the address of my local machine and
 		// port number
-		status = bind(listener, res->ai_addr, sizeof(*res->ai_addr) /*res->ai_addrlen*/);
+		status = bind(listener, res->ai_addr, static_cast<int>(res->ai_addrlen));
 		if (status < 0) {
 			this->errors << "(main) bind error: " << status << " " << gai_strerror(status) << "\n";
 			application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
@@ -362,6 +439,7 @@ namespace webframe::core {
 			}
 			this->logger << "(thread " << std::this_thread::get_id()
 			             << ") Client invalid: " << (client == INVALID_SOCKET) << "\n";
+
 			this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
 
 			// Check if the socket is valid
@@ -371,10 +449,10 @@ namespace webframe::core {
 				selTimeout.tv_usec = 0;
 				fd_set readSet;
 				FD_ZERO(&readSet);
-				FD_SET(client + 1, &readSet);
 				FD_SET(client, &readSet);
 
-				int status = SELECT(client + 1, &readSet, nullptr, nullptr, &selTimeout);
+				int status = SELECT(static_cast<int>(client) + 1, &readSet, nullptr, nullptr, &selTimeout);
+
 				this->logger << "(thread " << std::this_thread::get_id() << ") SELECT status is " << status << "\n";
 				if (status < 0) {
 					this->errors << "(thread " << std::this_thread::get_id() << ") INVALID SOCKET: " << client
@@ -411,14 +489,32 @@ namespace webframe::core {
 		});
 		const size_t threads = my_min(cores, requests.value_or(cores));
 
+		auto getter_mutex = std::make_shared<std::mutex>();
+		auto stop_flag = std::make_shared<std::atomic<bool>>(false);
 		thread_pool pool = thread_pool(
-		    threads, std::make_shared<utils::generator<SOCKET>>(std::move(get_clients)),
-		    [this](std::shared_ptr<utils::generator<SOCKET>> get_client,
+		    threads, std::make_shared<utils::generator<SOCKET>>(std::move(get_clients)), getter_mutex, stop_flag,
+		    [this](std::shared_ptr<utils::generator<SOCKET>> get_client, std::shared_ptr<std::mutex> getter_mutex,
+		           std::shared_ptr<std::atomic<bool>> stop_flag,
 		           std::shared_ptr<std::optional<size_t>> requests) {
 			    this->logger << "(thread " << std::this_thread::get_id() << ") Thread started\n";
 			    do {
-				    SOCKET client = get_client->getNextValue();
+				    if (stop_flag->load()) {
+					    this->logger << "(thread " << std::this_thread::get_id() << ") Stop requested\n";
+					    break;
+				    }
+				    std::optional<SOCKET> next_client;
+				    {
+					    std::lock_guard<std::mutex> lock(*getter_mutex);
+					    next_client = get_client->getNextValue();
+				    }
+
+				    if (!next_client.has_value()) {
+					    this->logger << "(thread " << std::this_thread::get_id() << ") No more clients, exiting\n";
+					    break;
+				    }
+				    SOCKET client = next_client.value();
 				    this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
+
 				    this->logger << "(thread " << std::this_thread::get_id() << ") Requestor " << client
 				                 << " is getting handled\n";
 
@@ -429,12 +525,13 @@ namespace webframe::core {
 					                 << ") (callback) Requests: " << requests->value() << "\n";
 				    });
 			    } while (true);
-		    },
+			},
 		    application::port_status.requests_left(PORT));
 		this->logger << "(main) Thread pool generated\n";
 		application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
 		pool.start();
 		this->logger << "(main) Thread pool started\n";
+		pool.stop();
 		return *this;
 	}
 

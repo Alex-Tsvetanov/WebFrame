@@ -8,6 +8,8 @@ namespace coro_std = std::experimental;
 namespace coro_std = std;
 #endif
 
+#include <optional>
+
 namespace webframe::utils {
 
 	template <typename T>
@@ -30,10 +32,14 @@ namespace webframe::utils {
 			oth.coro = nullptr;
 			return *this;
 		}
-		T getNextValue() {
+		std::optional<T> getNextValue() {
+			if (!coro || coro.done()) return std::nullopt;
 			coro.resume();
+			if (!coro.promise().value_ready) return std::nullopt;
+			coro.promise().value_ready = false;
 			return coro.promise().current_value;
 		}
+
 		struct promise_type {
 			promise_type() {}
 
@@ -45,12 +51,15 @@ namespace webframe::utils {
 
 			coro_std::suspend_always yield_value(const T value) {
 				current_value = value;
+				value_ready = true;
 				return {};
 			}
+
 			void return_void() {}
 			void unhandled_exception() { std::exit(1); }
 
 			T current_value;
+			bool value_ready = false;
 		};
 	};
 }  // namespace webframe::utils
