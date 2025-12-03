@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include <winsock.h>
 
 #include <cerrno>
 
@@ -56,6 +57,9 @@ namespace webframe::core {
 		    .handle("500",
 		            [&](const std::string& reason) { return "Error 500: Internal server error: " + reason + "."; });
 	}
+
+	application::~application() { stop_pool(); }
+
 	constexpr bool application::initHttpCodes([[maybe_unused]] const unsigned int code) {
 		/*std::visit(
 		            [](auto code) {
@@ -237,6 +241,25 @@ namespace webframe::core {
 
 	void application::wait_end(const char* PORT) { application::port_status.wait_to_stop(PORT); }
 
+	void application::stop_pool() {
+		if (this->pool_stop_flag) this->pool_stop_flag->store(true);
+		if (this->client_queue_cv) this->client_queue_cv->notify_all();
+		if (this->listener_socket != INVALID_SOCKET) {
+			CLOSE(this->listener_socket);
+			this->listener_socket = INVALID_SOCKET;
+		}
+		if (this->accept_thread.joinable()) this->accept_thread.join();
+		if (this->pool) {
+			this->pool->stop();
+			this->pool->join();
+			this->pool.reset();
+		}
+		this->client_queue.reset();
+		this->client_queue_mutex.reset();
+		this->client_queue_cv.reset();
+		this->pool_stop_flag.reset();
+	}
+
 	void application::request_stop(const char* PORT) { application::port_status.signal_to_stop(PORT); }
 
 	int application::responder(SOCKET socket) {
@@ -268,7 +291,6 @@ namespace webframe::core {
 				                                    // is \0 -> body is filled
 					break;
 
-				wait_for_socket(socket, true);
 			}
 
 			this->logger << "(responder) Read state: " << (int)r.getState() << " " << total_recv << "\n";
@@ -405,7 +427,7 @@ namespace webframe::core {
 			throw exceptions::unable_to_bind_socket();
 		}
 
-		status = listen(listener, 128);
+		status = listen(listener, SOMAXCONN);
 		if (status < 0) {
 			this->errors << "(main) listen error: " << gai_strerror(status) << "\n";
 			application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
@@ -428,50 +450,9 @@ namespace webframe::core {
 		return listener;
 	}
 
-	utils::generator<SOCKET> application::gen_clients(SOCKET listener, const std::string PORT,
-	                                                  std::function<void()> on_end) {
-		while (application::port_status.get_status(PORT.c_str()) !=
-		       webframe::utils::server_status::port::Status::SIGNALED) {
-			// Accept a request
-			SOCKET client = ACCEPT(listener, NULL, NULL);
-			if (client == INVALID_SOCKET) {
-				continue;
-			}
-			this->logger << "(thread " << std::this_thread::get_id()
-			             << ") Client invalid: " << (client == INVALID_SOCKET) << "\n";
-
-			this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
-
-			// Check if the socket is valid
-			{
-				struct timeval selTimeout;
-				selTimeout.tv_sec = 1;
-				selTimeout.tv_usec = 0;
-				fd_set readSet;
-				FD_ZERO(&readSet);
-				FD_SET(client, &readSet);
-
-				int status = SELECT(static_cast<int>(client) + 1, &readSet, nullptr, nullptr, &selTimeout);
-
-				this->logger << "(thread " << std::this_thread::get_id() << ") SELECT status is " << status << "\n";
-				if (status < 0) {
-					this->errors << "(thread " << std::this_thread::get_id() << ") INVALID SOCKET: " << client
-					             << " was skipped (" << status << ")\n";
-					continue;
-				}
-
-				this->logger << "(thread " << std::this_thread::get_id() << ") Client " << client
-				             << " vs invalid socket " << INVALID_SOCKET << "\n";
-				this->logger << "(thread " << std::this_thread::get_id() << ") Requestor " << client
-				             << " is still valid\n";
-
-				co_yield client;
-			}
-		}
-		on_end();
-	}
-
 	application& application::run(const char* PORT, const size_t cores, std::optional<size_t> requests) {
+		stop_pool();
+
 		application::port_status.initiate(PORT, requests);
 		if (!initialized_sockets()) {
 			application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
@@ -479,60 +460,114 @@ namespace webframe::core {
 			return *this;
 		}
 		this->logger << "(main) Startup done\n";
-		SOCKET listener = get_listener(PORT);
-		this->logger << "(main) Listener setup " << listener << "\n";
-		auto get_clients = gen_clients(listener, std::string(PORT), [port = std::string(PORT)]() -> void {
-			application::port_status.change_status(port.c_str(), webframe::utils::server_status::port::Status::STOPPED);
-#ifdef _WIN32
-			WSACleanup();
-#endif
-		});
+		this->listener_socket = get_listener(PORT);
+		this->logger << "(main) Listener setup " << this->listener_socket << "\n";
 		const size_t threads = my_min(cores, requests.value_or(cores));
 
-		auto getter_mutex = std::make_shared<std::mutex>();
-		auto stop_flag = std::make_shared<std::atomic<bool>>(false);
-		thread_pool pool = thread_pool(
-		    threads, std::make_shared<utils::generator<SOCKET>>(std::move(get_clients)), getter_mutex, stop_flag,
-		    [this](std::shared_ptr<utils::generator<SOCKET>> get_client, std::shared_ptr<std::mutex> getter_mutex,
-		           std::shared_ptr<std::atomic<bool>> stop_flag,
-		           std::shared_ptr<std::optional<size_t>> requests) {
-			    this->logger << "(thread " << std::this_thread::get_id() << ") Thread started\n";
-			    do {
-				    if (stop_flag->load()) {
-					    this->logger << "(thread " << std::this_thread::get_id() << ") Stop requested\n";
-					    break;
-				    }
-				    std::optional<SOCKET> next_client;
-				    {
-					    std::lock_guard<std::mutex> lock(*getter_mutex);
-					    next_client = get_client->getNextValue();
-				    }
+this->client_queue = std::make_shared<std::queue<SOCKET>>();
+this->client_queue_mutex = std::make_shared<std::mutex>();
+this->client_queue_cv = std::make_shared<std::condition_variable>();
+this->pool_stop_flag = std::make_shared<std::atomic<bool>>(false);
+this->pool = std::make_unique<thread_pool>(
+    threads, this->client_queue, this->client_queue_mutex, this->client_queue_cv, this->pool_stop_flag,
+    [this](std::shared_ptr<std::queue<SOCKET>> client_queue, std::shared_ptr<std::mutex> queue_mutex,
+           std::shared_ptr<std::condition_variable> queue_cv, std::shared_ptr<std::atomic<bool>> stop_flag,
+           std::shared_ptr<std::optional<size_t>> requests) {
+        this->logger << "(thread " << std::this_thread::get_id() << ") Thread started\n";
+        while (true) {
+            SOCKET client;
+            {
+                std::unique_lock<std::mutex> lock(*queue_mutex);
+                queue_cv->wait(lock, [&]() { return stop_flag->load() || !client_queue->empty(); });
+                if (stop_flag->load() && client_queue->empty()) {
+                    this->logger << "(thread " << std::this_thread::get_id() << ") Stop requested\n";
+                    break;
+                }
+                client = client_queue->front();
+                client_queue->pop();
+            }
 
-				    if (!next_client.has_value()) {
-					    this->logger << "(thread " << std::this_thread::get_id() << ") No more clients, exiting\n";
-					    break;
-				    }
-				    SOCKET client = next_client.value();
-				    this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
+            if (!wait_for_socket(client, true)) {
+                this->logger << "(thread " << std::this_thread::get_id()
+                             << ") Client " << client << " not ready, closing\n";
+                CLOSE(client);
+                continue;
+            }
 
-				    this->logger << "(thread " << std::this_thread::get_id() << ") Requestor " << client
-				                 << " is getting handled\n";
+            this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
+            this->logger << "(thread " << std::this_thread::get_id() << ") Requestor " << client
+                         << " is getting handled\n";
 
-				    this->handler(client, [this, requests]() {
-					    if (!requests->has_value()) return;
-					    requests->value()--;
-					    this->logger << "(thread " << std::this_thread::get_id()
-					                 << ") (callback) Requests: " << requests->value() << "\n";
-				    });
-			    } while (true);
-			},
-		    application::port_status.requests_left(PORT));
-		this->logger << "(main) Thread pool generated\n";
-		application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
-		pool.start();
-		this->logger << "(main) Thread pool started\n";
-		pool.stop();
-		return *this;
-	}
+            this->handler(client, [this, requests]() {
+                if (!requests->has_value()) return;
+                requests->value()--;
+                this->logger << "(thread " << std::this_thread::get_id()
+                             << ") (callback) Requests: " << requests->value() << "\n";
+            });
+        }
+    },
+    application::port_status.requests_left(PORT));
+this->logger << "(main) Thread pool generated\n";
+application::port_status.change_status(PORT, webframe::utils::server_status::port::Status::STARTED);
+this->pool->start();
+
+std::string port_copy(PORT);
+this->accept_thread = std::thread([this, port = std::move(port_copy)]() mutable {
+    while (!this->pool_stop_flag->load()) {
+        if (application::port_status.get_status(port.c_str()) ==
+            webframe::utils::server_status::port::Status::SIGNALED) {
+            this->pool_stop_flag->store(true);
+            this->client_queue_cv->notify_all();
+            break;
+        }
+        SOCKET client = ACCEPT(this->listener_socket, NULL, NULL);
+        if (client == INVALID_SOCKET) {
+            if (this->pool_stop_flag->load()) break;
+            continue;
+        }
+        this->logger << "(thread " << std::this_thread::get_id()
+                     << ") Client invalid: " << (client == INVALID_SOCKET) << "\n";
+
+        this->logger << "(thread " << std::this_thread::get_id() << ") Client found: " << client << "\n";
+
+        struct timeval selTimeout;
+        selTimeout.tv_sec = 1;
+        selTimeout.tv_usec = 0;
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(client, &readSet);
+        int status = SELECT(static_cast<int>(client) + 1, &readSet, nullptr, nullptr, &selTimeout);
+        this->logger << "(thread " << std::this_thread::get_id() << ") SELECT status is " << status << "\n";
+        if (status < 0) {
+            this->errors << "(thread " << std::this_thread::get_id() << ") INVALID SOCKET: " << client
+                         << " was skipped (" << status << ")\n";
+            CLOSE(client);
+            continue;
+        }
+        this->logger << "(thread " << std::this_thread::get_id() << ") Client " << client
+                     << " vs invalid socket " << INVALID_SOCKET << "\n";
+        this->logger << "(thread " << std::this_thread::get_id() << ") Requestor " << client
+                     << " is still valid\n";
+
+        if (this->pool_stop_flag->load()) {
+            CLOSE(client);
+            break;
+        }
+        {
+            std::lock_guard<std::mutex> lock(*this->client_queue_mutex);
+            this->client_queue->push(client);
+        }
+        this->client_queue_cv->notify_one();
+    }
+    this->client_queue_cv->notify_all();
+    application::port_status.change_status(port.c_str(), webframe::utils::server_status::port::Status::STOPPED);
+#ifdef _WIN32
+    WSACleanup();
+#endif
+});
+
+this->logger << "(main) Thread pool started\n";
+return *this;
+}
 
 }  // namespace webframe::core

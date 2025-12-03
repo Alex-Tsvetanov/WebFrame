@@ -1,7 +1,7 @@
-cmake_minimum_required (VERSION 3.14)
+cmake_minimum_required(VERSION 3.14)
 
 # Sockets for windows should be linked
-if (WIN32)
+if(WIN32)
     list(APPEND EXTRA_LIBS wsock32 ws2_32)
     add_definitions(-DNOMINMAX)
 endif()
@@ -11,14 +11,13 @@ find_package(Threads REQUIRED)
 list(APPEND EXTRA_LIBS ${CMAKE_THREAD_LIBS_INIT})
 
 ## Add necessary flags
-if(CMAKE_USE_PTHREADS_INIT) 
+if(CMAKE_USE_PTHREADS_INIT)
     add_definitions(-DUSE_PTHREAD)
 endif()
 
 # URL Matcher should be compiled
 add_subdirectory("url-matcher")
-set_target_properties(regexmatcher_core PROPERTIES COMPILE_FLAGS ${DEPENDANCES_WARNING_LEVEL})
-list(APPEND EXTRA_LIBS RegexMatcher::core)
+list(APPEND EXTRA_LIBS RegexMatcher)
 
 # Add inja if required
 if(USE_INJA)
@@ -31,7 +30,7 @@ if(USE_INJA)
 endif()
 
 # Compile Webframe::Core
-add_library(Core STATIC 
+add_library(Core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/core.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/http/processing/request.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/http/request/method.cpp

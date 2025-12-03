@@ -1,6 +1,12 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <queue>
+#include <thread>
 
 #include "../../core.hpp"
 #include "../exceptions/socket_not_created.hpp"
@@ -34,6 +40,13 @@ namespace webframe::core {
 	private:
 		std::vector<executor_data> executors;
 		RegexMatcher<executor_data> routes;
+		std::unique_ptr<thread_pool> pool;
+		std::shared_ptr<std::queue<SOCKET>> client_queue;
+		std::shared_ptr<std::mutex> client_queue_mutex;
+		std::shared_ptr<std::condition_variable> client_queue_cv;
+		std::shared_ptr<std::atomic<bool>> pool_stop_flag;
+		std::thread accept_thread;
+		SOCKET listener_socket = INVALID_SOCKET;
 
 #ifdef USE_INJA
 		std::string template_dir;
@@ -47,6 +60,7 @@ namespace webframe::core {
 
 	public:
 		application();
+		~application();
 
 		static constexpr bool initHttpCodes([[maybe_unused]] const unsigned int code = 0);
 		static constexpr bool init();
@@ -82,6 +96,7 @@ namespace webframe::core {
 
 	private:
 		application& route(const std::string& path, utils::responser res);
+		void stop_pool();
 
 	public:
 		application& extend_with(const router& set_of_routes, const std::string& prefix = "");
@@ -97,7 +112,6 @@ namespace webframe::core {
 		void handler(SOCKET client, const std::function<void()>& callback);
 		bool initialized_sockets();
 		SOCKET get_listener(const char* PORT);
-		utils::generator<SOCKET> gen_clients(SOCKET listener, const std::string PORT, std::function<void()> on_end);
 
 	public:
 		application& run(const char* PORT, const size_t cores, std::optional<size_t> requests = std::nullopt);
