@@ -1,0 +1,9 @@
+cc_library(
+    name = "valdi_http_cpp",
+    srcs = glob(["**/*.cpp"]),
+    hdrs = glob(["**/*.hpp"]),
+    includes = [],
+    visibility = ["//visibility:public"],
+    deps = ["@valdi//valdi:valdi_runtime"],
+    alwayslink = 1,
+)

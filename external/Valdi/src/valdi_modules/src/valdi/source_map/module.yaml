@@ -1,0 +1,9 @@
+output_target: release
+disable_code_coverage: true
+
+dependencies:
+  - coreutils
+  - jasmine
+
+allowed_debug_dependencies:
+  - jasmine

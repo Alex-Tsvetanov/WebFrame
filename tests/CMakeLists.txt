@@ -1,10 +1,35 @@
-cmake_minimum_required(VERSION 3.14)
+# Tests CMakeLists.txt
 
-add_subdirectory(Catch2)
-set_target_properties(Catch2 PROPERTIES COMPILE_FLAGS ${DEPENDANCES_WARNING_LEVEL})
+# Find or fetch Catch2
+include(FetchContent)
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.5.2
+)
+FetchContent_MakeAvailable(Catch2)
 
-add_executable(Core-Tests main.cpp)
-target_include_directories(Core-Tests PUBLIC "${PROJECT_SOURCE_DIR}/tests")
-target_link_libraries(Core-Tests PUBLIC Core Catch2::Catch2)
+# Unit tests
+add_executable(unit_tests
+    test_expected.cpp
+    test_error.cpp
+    test_from_string.cpp
+    test_router.cpp
+    test_response.cpp
+    test_static_files.cpp
+    test_chunked.cpp
+    test_compression.cpp
+    test_range.cpp
+    test_object_pool.cpp
+    test_connection_pool.cpp
+    test_auth_state.cpp
+    http2_tests.cpp
+    test_view.cpp
+)
 
-add_test(NAME Webframe-Core-Tests COMMAND Core-Tests)
+target_link_libraries(unit_tests PRIVATE coroute Catch2::Catch2WithMain)
+
+# Register tests with CTest
+include(CTest)
+include(Catch)
+catch_discover_tests(unit_tests)

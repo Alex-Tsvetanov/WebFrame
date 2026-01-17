@@ -1,0 +1,21 @@
+diff --git a/android/rules.bzl b/android/rules.bzl
+index bb979c0fd6a..398ea08ced1 100644
+--- a/android/rules.bzl
++++ b/android/rules.bzl
+@@ -49,6 +49,11 @@ load(
+     _android_tools_defaults_jar = "android_tools_defaults_jar",
+ )
+
++load(
++    "//rules/android_local_test:rule.bzl",
++    _android_local_test = "android_local_test",
++)
++
+ # Current version. Tools may check this to determine compatibility.
+ RULES_ANDROID_VERSION = "0.1.0"
+
+@@ -60,3 +65,4 @@ android_ndk_repository = _android_ndk_repository
+ android_sdk = _android_sdk
+ android_sdk_repository = _android_sdk_repository
+ android_tools_defaults_jar = _android_tools_defaults_jar
++android_local_test = _android_local_test

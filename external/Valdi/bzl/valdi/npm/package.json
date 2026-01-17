@@ -1,0 +1,18 @@
+{
+  "name": "valdi",
+  "pnpm": {
+    "packageExtensions": {
+      "@babel/core": {
+        "peerDependencies": {
+          "@babel/preset-typescript": "*"
+        }
+      },
+      "gulp-typescript": {
+        "peerDependencies": {
+          "source-map": "*",
+          "@types/source-map": "*"
+        }
+      }
+    }
+  }
+}

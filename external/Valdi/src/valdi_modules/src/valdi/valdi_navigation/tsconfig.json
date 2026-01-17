@@ -1,0 +1,17 @@
+{
+  "extends": "../_configs/base.tsconfig.json",
+  "compilerOptions": {
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "strict": true,
+    "jsx": "preserve",
+    "paths": {
+      "valdi_navigation/*": ["./*"],
+      "foundation/*": ["../foundation/*"],
+      "valdi_core/*": ["../valdi_core/*"],
+      "coreutils/*": ["../coreutils/*"],
+      "valdi_tsx/*": ["../valdi_tsx/*"],
+      "valdi_test/*": ["../valdi_test/*"]
+    }
+  }
+}

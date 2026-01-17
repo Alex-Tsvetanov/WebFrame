@@ -1,0 +1,13 @@
+output_target: release
+
+dependencies:
+  - valdi_core
+
+allowed_debug_dependencies:
+  - valdi_test
+  - jasmine
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

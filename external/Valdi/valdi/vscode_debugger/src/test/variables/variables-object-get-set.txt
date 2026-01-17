@@ -1,0 +1,6 @@
+> result: {getter: <accessor>, accessor: <accessor>}
+    > get accessor: () => {}
+    > set accessor: () => {}
+    > get getter: () => {}
+    > set setter: () => {}
+    > __proto__: Object

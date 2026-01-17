@@ -1,0 +1,3 @@
+workspace(name = "snap_client_toolchains")
+
+print("Hello our workspace!")

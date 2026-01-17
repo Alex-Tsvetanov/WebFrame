@@ -1,0 +1,5 @@
+output_target: debug
+disable_code_coverage: true
+compilation_mode: js
+disable_annotation_processing: true
+single_file_codegen: true

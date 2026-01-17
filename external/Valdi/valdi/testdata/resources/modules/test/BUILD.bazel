@@ -1,0 +1,27 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "test",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+    ]) + ["load_strategy.json"],
+    android_output_target = "release",
+    inline_assets = True,
+    ios_module_name = "SCCTest",
+    ios_output_target = "release",
+    legacy_vue_srcs = glob([
+        "src/**/*.vue",
+    ]),
+    res = glob([
+        "res/**/*.png",
+    ]),
+    test_target_name = "test_test",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+        "//src/valdi_modules/src/valdi/worker",
+    ],
+)

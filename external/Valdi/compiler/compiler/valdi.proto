@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package Valdi;
+
+option objc_class_prefix = "SCValdi";
+option java_package = "snapchat.valdi";
+option cc_enable_arenas = true;
+option optimize_for = CODE_SIZE;
+
+// Defines a static attribute name
+// and its value.
+message NodeAttribute {
+  enum Type {
+    NODE_ATTRIBUTE_TYPE_STRING = 0;
+    NODE_ATTRIBUTE_TYPE_INT = 1;
+    NODE_ATTRIBUTE_TYPE_DOUBLE = 2;
+  }
+
+  Type type = 1;
+  string name = 2;
+  // Set if the type is STRING
+  string str_value = 3;
+  // Set if type is INT
+  int64 int_value = 4;
+  // Set if double is INT
+  double double_value = 5;
+}
+
+////////////////////////
+// Downloadable module
+//
+
+message DownloadableModuleArtifact {
+  // The url on which the artifact can be downloaded.
+  string url = 1;
+  // The sha256 digest of the artifact data that can be used for verification.
+  bytes sha256Digest = 2;
+}
+
+message DownloadableModuleAssets {
+  DownloadableModuleArtifact artifact = 1;
+
+  // The device density for which the assets contained
+  // in this artifact are optimized for.
+  // List of known density:
+  // iPhone @2x: 2
+  // iPhone @3x: 3
+  // Android mdpi: 1
+  // Android hdpi: 1.5
+  // Android xhdpi: 2
+  // Android xxhdpi: 3
+  // Android xxxhdpi: 4
+  double device_density = 3;
+}
+
+// Manifest stored in a .valdimodule when the module
+// is downloadable. Contains all the dependencies and all
+// the urls in which the artifact can be downloaded from.
+message DownloadableModuleManifest {
+  // The name which uniquely identifies the module
+  string name = 1;
+  // Where to download the .valdimodule containing the compiled sources
+  // Can be unset if this module only contains assets
+  DownloadableModuleArtifact artifact = 2;
+  // The list of available artifacts containing the assets.
+  repeated DownloadableModuleAssets assets = 3;
+  // The list of module dependencies on this module.
+  // This can be used to ensure that they are available before
+  // attempting to use the module.
+  repeated string dependencies = 4;
+  // Whether the downloadable assets are also available locally
+  bool has_local_assets = 5;
+}
+
+////////////////////////
+// Discovery protocol
+//
+
+message DaemonAwakeMessage {
+  // The list of device ids that should connect to the announced service
+  repeated string device_ids = 16;
+  // The list of usernames that should connect to the announced service
+  repeated string usernames = 17;
+
+  // addresses at which the daemon service is listening
+  repeated string service_addresses = 1;
+  // port at which the daemon service is listening
+  int32 service_port = 2;
+  // The id of the daemon process
+  string process_id = 3;
+}
+
+message ClientAwakeMessage {
+  string device_id = 1;
+  string username = 2;
+}
+
+message DaemonServiceDiscoveryPayload {
+  oneof message {
+    DaemonAwakeMessage daemon_awake_message = 1;
+    ClientAwakeMessage client_awake_message = 2;
+  }
+}
+
+////////////////////////
+// CSS
+//
+
+// A tree, generated bottom-up from all CSS styles in the document, for
+// efficient selector matching.
+
+message StyleNode {
+  repeated StyleDeclaration styles = 1;
+  CSSRuleIndex ruleIndex = 2;
+}
+
+message StyleDeclaration {
+  NodeAttribute attribute = 1;
+  int32 priority = 2; // value corresponding to CSS specificity
+  int32 order = 3;
+  int32 id = 4;
+}
+
+message NamedStyleNode {
+  string name = 1;
+  StyleNode node = 2;
+}
+
+message CSSRuleIndex {
+  // To determine the rules that match an element, elements should start with
+  // the current element and the document's root CSSRuleIndex, and recur up
+  // through matching ruleIndexes and the element's ancestry. For a particular
+  // element and ruleIndex, the ruleIndex's properties should be checked in the
+  // order they appear in this proto, and the current ruleIndex should be
+  // reassigned if a match is found.
+  repeated NamedStyleNode id_rules = 1;
+  repeated NamedStyleNode class_rules = 2;
+  repeated NamedStyleNode tag_rules =
+      3; // the universal selector is implemented as a tagRule with tag '*'
+  repeated AttributeRule attribute_rules = 4;
+  StyleNode first_child_rule = 5;
+  StyleNode last_child_rule = 6;
+  repeated NthChildRule nth_child_rules = 7;
+  CSSRuleIndex ancestor_rules = 8;
+  CSSRuleIndex direct_parent_rules = 9;
+
+  message AttributeRule {
+    enum Type {
+      EQUALS = 0;                // [title="flower"]
+      CONTAINS_WORD = 1;         // [title~="flower"]
+      STARTS_WITH_WORD = 2;      // [title|="flower"]
+      STARTS_WITH_SUBSTRING = 3; // [title^="flower"]
+      ENDS_WITH_SUBSTRING = 4;   // [title$="flower"]
+      CONTAINS_SUBSTRING = 5;    // [title*="flower"]
+      HAS_ATTRIBUTE = 6;         // [title]
+    }
+    Type type = 1;
+    NodeAttribute attribute = 2;
+    StyleNode node = 3;
+  }
+
+  message NthChildRule {
+    int32 n = 1;
+    int32 offset = 2;
+    StyleNode node = 3;
+  }
+}
+
+////////////////////////
+// Configs
+//
+
+message TsnConfig {
+  // List of tsn enabled modules; all TSN-built modules if empty
+  repeated string enabled_modules = 1;
+}

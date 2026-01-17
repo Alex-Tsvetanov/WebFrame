@@ -1,0 +1,13 @@
+load("//bzl/valdi:valdi_android_library.bzl", "valdi_android_library")
+
+valdi_android_library(
+    name = "native_module_android",
+    srcs = glob([
+        "**/*.kt",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/helloworld/src/valdi/hello_world:hello_world_api_kt",
+        "//valdi:valdi_android_support",
+    ],
+)

@@ -1,0 +1,21 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "navigation_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_navigation",
+    ],
+)
+
+valdi_application(
+    name = "navigation_example_app",
+    root_component_path = "App@navigation_example/NavigationExample",
+    title = "Valdi Navigation",
+    deps = [":navigation_example"],
+)

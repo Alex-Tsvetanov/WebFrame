@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "moduleDetection": "force",
+        "target": "ES2016",
+        "module": "commonjs",
+        "baseUrl": ".",
+        "lib": [
+            "dom",
+            "ES2019"
+        ],
+        "noImplicitReturns": true,
+        "noImplicitAny": true,
+        "importHelpers": false,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "jsx": "preserve",
+        "rootDirs": [
+            ".",
+        ],
+    }
+}

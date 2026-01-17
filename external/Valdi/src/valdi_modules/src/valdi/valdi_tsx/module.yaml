@@ -1,0 +1,6 @@
+output_target: release
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

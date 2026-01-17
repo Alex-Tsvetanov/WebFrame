@@ -1,0 +1,92 @@
+//
+//  JSDocs.swift
+//  Compiler
+//
+//  Created by Simon Corsin on 12/15/18.
+//  Copyright © 2018 Snap Inc. All rights reserved.
+//
+
+import Foundation
+
+class JSDocs {
+
+    static let allSymbols: Set<String> = [
+        "abstract",
+        "access",
+        "alias",
+        "async",
+        "augments",
+        "author",
+        "borrows",
+        "callback",
+        "class",
+        "classdesc",
+        "constant",
+        "constructs",
+        "copyright",
+        "default",
+        "deprecated",
+        "description",
+        "enum",
+        "event",
+        "example",
+        "exports",
+        "external",
+        "file",
+        "fires",
+        "function",
+        "generator",
+        "global",
+        "hideconstructor",
+        "ignore",
+        "implements",
+        "inheritdoc",
+        "inner",
+        "instance",
+        "interface",
+        "kind",
+        "lends",
+        "license",
+        "listens",
+        "member",
+        "memberof",
+        "mixes",
+        "mixin",
+        "module",
+        "name",
+        "namespace",
+        "override",
+        "package",
+        "param",
+        "private",
+        "property",
+        "protected",
+        "public",
+        "readonly",
+        "requires",
+        "returns",
+        "see",
+        "since",
+        "static",
+        "summary",
+        "this",
+        "throws",
+        "todo",
+        "tutorial",
+        "type",
+        "typedef",
+        "variation",
+        "version",
+        "yields",
+        "ts-ignore",
+        "link",
+        "extends",
+        "nocollapse",
+        "constructor",
+        "return",
+        "internal",
+        "owner",
+        "method"
+    ]
+
+}

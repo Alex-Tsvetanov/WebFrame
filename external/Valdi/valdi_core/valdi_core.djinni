@@ -1,0 +1,156 @@
+@extern "src/bindings/value.yaml"
+@extern "src/bindings/interned_string.yaml"
+@extern "src/bindings/result.yaml"
+@extern "src/bindings/bytes.yaml"
+
+AnimationType = enum {
+  linear;
+  easeIn;
+  easeOut;
+  easeInOut;
+}
+
+AttributeType = enum {
+  string;
+  double;
+  int;
+  boolean;
+  color;
+  untyped;
+}
+
+Platform = enum {
+  ios;
+  android;
+  skia;
+}
+
+AssetOutputType = enum {
+  bytes;
+  imageIOS;
+  imageAndroid;
+  imageSnapDrawing;
+  videoIOS;
+  videoAndroid;
+  lottie;
+  dummy;
+}
+
+Animator = interface +j +o {
+  # The Value is a wrapped completion callback
+  flushAnimations(completion: Value);
+
+  # Cancel an animation
+  cancel();
+}
+
+AssetLoadObserver = interface +j +o {
+  onLoad(asset: Asset, loadedAsset: Value, error: optional<InternedString>);
+}
+
+# Represents a loadable asset like an Image
+Asset = interface +c {
+  # Return a string that uniquely identifies this asset
+  getIdentifier(): InternedString;
+
+  # Measure the width that should be used for this asset
+  # given a max width and height.
+  measureWidth(maxWidth: f64, maxHeight: f64): f64;
+
+  # Measure the height that should be used for this asset
+  # given a max width and height.
+  measureHeight(maxWidth: f64, maxHeight: f64): f64;
+
+  # Append a load observer, which will be notified
+  # when the asset is loaded.
+  addLoadObserver(observer: AssetLoadObserver, outputType: AssetOutputType, preferredWidth: i32, preferredHeight: i32, filter: Value);
+
+  # Remove a previously registered load observer
+  removeLoadObserver(observer: AssetLoadObserver);
+
+  # Update the preferred width and height of a previously registered load observer
+  updateLoadObserverPreferredSize(observer: AssetLoadObserver, preferredWidth: i32, preferredHeight: i32);
+}
+
+Cancelable = interface +j +o {
+  cancel();
+}
+
+CompositeAttributePart = record {
+  attribute: InternedString;
+  type: AttributeType;
+  optional: bool;
+  invalidateLayoutOnChange: bool;
+}
+
+ModuleFactory = interface +j +o +c {
+  # Return the path of the module, which represents its path
+  # when imported from TypeScript.
+  getModulePath(): InternedString;
+
+  # Returns the module exports object that should be returned to
+  # TypeScript when the module is imported.
+  loadModule(): Value;
+}
+
+# The ModuleFactoriesProvider will be invoked when the RuntimeManager is initialized
+# to provide additional built-in Modules that will be exposed to the JS runtime environment.
+ModuleFactoriesProvider = interface +j +o +c {
+  # Create and return the module factories that will be exposed to the JS runtime environment.
+  createModuleFactories(runtimeManager: Value): list<ModuleFactory>;
+}
+
+HTTPRequest = record {
+  url: InternedString;
+  method: InternedString;
+  headers: Value;
+  body: optional<Bytes>;
+  # Between 0 being lowest, to 10 being maximum
+  priority: i32;
+}
+
+HTTPResponse = record {
+  statusCode: i32;
+  headers: Value;
+  body: optional<Bytes>;
+}
+
+HTTPRequestManagerCompletion = interface +c {
+  onComplete(response: HTTPResponse);
+  onFail(error: string);
+}
+
+HTTPRequestManager = interface +j +o {
+  performRequest(request: HTTPRequest, completion: HTTPRequestManagerCompletion): Cancelable;
+}
+
+JavaScriptEngineType  = enum {
+  Auto;
+  QuickJS;
+  JSCore;
+  V8;
+  Hermes;
+}
+
+JSRuntimeNativeObjectsManager = interface +c {
+  getReachableObjectsDescription(): Value;
+}
+
+JSRuntime = interface +c {
+
+  # Push the module unmarshalled using the schema in the given marshaller handle
+  # into the marshaller.
+  pushModuleToMarshaller(nativeObjectsManager: JSRuntimeNativeObjectsManager, path: InternedString, marshallerHandle: i64): i32;
+
+  addModuleUnloadObserver(path: InternedString, observer: Value);
+
+  preloadModule(path: InternedString, maxDepth: i32);
+
+  createNativeObjectsManager(): JSRuntimeNativeObjectsManager;
+
+  destroyNativeObjectsManager(nativeObjectsManager: JSRuntimeNativeObjectsManager);
+
+  createWorker(): JSRuntime;
+
+  runOnJsThread(runnable: Value);
+}

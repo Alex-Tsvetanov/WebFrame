@@ -1,0 +1,8 @@
+{
+    reason : new
+    source : {
+        name : moduleWrapper/index.js
+        path : ${workspaceFolder}/moduleWrapper/index.js
+        sourceReference : 0
+    }
+}

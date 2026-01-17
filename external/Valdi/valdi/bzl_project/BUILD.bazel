@@ -1,0 +1,80 @@
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_build_test")
+load("@rules_xcodeproj//xcodeproj:defs.bzl", "top_level_target", "xcodeproj")
+
+xcodeproj(
+    name = "test.xcodeproj",
+    bazel_path = "bzl",
+    project_name = "valdi_test",
+    tags = ["manual"],
+    top_level_targets = [
+        top_level_target(
+            "@valdi//valdi:test",
+            target_environments = [
+            ],
+        ),
+    ],
+)
+
+xcodeproj(
+    name = "test_core_ios.xcodeproj",
+    bazel_path = "bzl",
+    project_name = "valdi_core_ios_test",
+    tags = ["manual"],
+    top_level_targets = [
+        top_level_target(
+            "@valdi//valdi_core:test_ios",
+            target_environments = [],
+        ),
+    ],
+)
+
+xcodeproj(
+    name = "test_runtime.xcodeproj",
+    bazel_path = "bzl",
+    project_name = "valdi_test_runtime",
+    tags = ["manual"],
+    top_level_targets = [
+        top_level_target(
+            "@valdi//valdi:test_runtime",
+            target_environments = [
+            ],
+        ),
+    ],
+)
+
+xcodeproj(
+    name = "valdi_standalone.xcodeproj",
+    bazel_path = "bzl",
+    project_name = "valdi_standalone",
+    tags = ["manual"],
+    top_level_targets = [
+        top_level_target(
+            ":valdi_standalone_macos",
+            target_environments = [
+            ],
+        ),
+    ],
+)
+
+macos_build_test(
+    name = "valdi_standalone_macos",
+    minimum_os_version = "14.0",
+    targets = [
+        "//valdi:valdi_standalone",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+xcodeproj(
+    name = "tsn.xcodeproj",
+    bazel_path = "bzl",
+    project_name = "tsn",
+    tags = ["manual"],
+    top_level_targets = [
+        top_level_target(
+            "//src/tsn/tests:integration_tests_app",
+            target_environments = [
+            ],
+        ),
+    ],
+)

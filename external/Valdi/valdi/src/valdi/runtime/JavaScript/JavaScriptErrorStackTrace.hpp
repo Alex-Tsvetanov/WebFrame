@@ -1,0 +1,35 @@
+//
+//  JavaScriptErrorStackTrace.hpp
+//  valdi
+//
+//  Created by Simon Corsin on 6/11/21.
+//
+
+#pragma once
+
+#include "valdi/runtime/JavaScript/JSValueRefHolder.hpp"
+#include "valdi/runtime/JavaScript/JavaScriptTypes.hpp"
+
+#include <optional>
+
+namespace Valdi {
+
+/**
+ A JSStackTraceProvider which provides its stacktrace through an Error object, and will automatically
+ symbolicate the error when getStackTrace() is called.
+ */
+class JavaScriptErrorStackTrace : public JSStackTraceProvider {
+public:
+    JavaScriptErrorStackTrace(IJavaScriptContext& jsContext,
+                              const JSValue& jsValue,
+                              JSExceptionTracker& exceptionTracker);
+    ~JavaScriptErrorStackTrace() override;
+
+    StringBox getStackTrace() override;
+
+private:
+    JSValueRefHolder _error;
+    StringBox _stackTrace;
+};
+
+} // namespace Valdi

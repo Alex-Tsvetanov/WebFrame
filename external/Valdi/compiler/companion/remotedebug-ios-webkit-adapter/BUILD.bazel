@@ -1,0 +1,77 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@aspect_rules_js//npm:defs.bzl", "npm_package")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
+load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
+
+package(default_visibility = ["//compiler/companion:__subpackages__"])
+
+npm_link_all_packages(name = "node_modules")
+
+ts_config(
+    name = "config",
+    src = "tsconfig.json",
+    deps = [
+        "//compiler/companion:tsconfig",
+    ],
+)
+
+ts_project(
+    name = "lib",
+    srcs = glob(
+        ["src/**/*.ts"],
+        ["src/**/*.d.ts"],
+    ),
+    allow_js = True,
+    composite = True,
+    data = [
+        ":node_modules/@types/express",
+        ":node_modules/@types/ws",
+    ],
+    declaration = True,
+    extends = "//compiler/companion:tsconfig",
+    out_dir = "src",
+    resolve_json_module = True,
+    root_dir = "src",
+    source_map = True,
+    transpiler = "tsc",
+    tsconfig = ":config",
+    deps = [
+        ":node_modules/@types/debug",
+        ":node_modules/@types/express",
+        ":node_modules/@types/optimist",
+        ":node_modules/@types/request",
+        ":node_modules/@types/which",
+        ":node_modules/@types/ws",
+        ":node_modules/gulp-typescript",
+        ":node_modules/optimist",
+    ],
+)
+
+js_library(
+    name = "js",
+    srcs = [
+        "package.json",
+        ":lib",
+    ],
+    data = [
+        ":node_modules/debug",
+        ":node_modules/express",
+        ":node_modules/optimist",
+        ":node_modules/request",
+        ":node_modules/which",
+        ":node_modules/ws",
+    ],
+)
+
+npm_package(
+    name = "package",
+    srcs = [":js"],
+    package = "remotedebug-ios-webkit-adapter",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "pkg",
+    actual = ":package",
+    visibility = ["//visibility:public"],
+)

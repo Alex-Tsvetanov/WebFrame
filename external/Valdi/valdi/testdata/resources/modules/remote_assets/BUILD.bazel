@@ -1,0 +1,29 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "remote_assets",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    android_output_target = "release",
+    downloadable_assets = True,
+    inline_assets = True,
+    ios_module_name = "SCCRemoteAssets",
+    ios_output_target = "release",
+    legacy_vue_srcs = glob([
+        "src/**/*.vue",
+    ]),
+    prepared_upload_artifact_name = "remote_assets.valdiarchive",
+    res = glob([
+        "res/**/*.png",
+    ]),
+    valdi_copts = [
+        "--config-value",
+        "module_upload_base_url=http://localhost",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

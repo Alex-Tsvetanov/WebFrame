@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        we need this string to have at least one resource in each aar
+        because of bug in new Android gradle 3.1 plugin that
+        does not create res folder if there are no resources
+        https://issuetracker.google.com/issues/77591523
+    -->
+    <string name="place_holder"></string>
+</resources>

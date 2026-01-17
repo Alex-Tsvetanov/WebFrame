@@ -1,0 +1,351 @@
+module(name = "valdi", version = "0.1")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+bazel_dep(name = "toolchains_llvm", version = "1.3.0")
+bazel_dep(name = "apple_support", version = "1.21.0", repo_name = "build_bazel_apple_support")
+
+http_archive(
+    name = "protobuf_cpp",
+    strip_prefix = "protobuf-3.20.0",
+    build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
+    url = "https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz",
+    integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
+)
+bazel_dep(name = "rules_pkg", version = "0.9.1")
+single_version_override(
+    module_name = "rules_pkg",
+    version = "0.9.1",
+)
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.4.1")
+
+bazel_dep(name = "rules_cc", version = "0.0.17")
+
+bazel_dep(name = "bazel_skylib", version = "1.2.0")
+bazel_dep(name = "rules_java", version = "7.4.0")
+
+bazel_dep(name = "rules_android", version = "0.5.1")
+bazel_dep(name = "rules_android_ndk", version = "0.1.3")
+single_version_override(module_name = "rules_android_ndk", patches = [
+    "@valdi//third-party/rules_android_ndk/patches:expose_bins.patch",
+])
+
+remote_android_extensions = use_extension(
+    "@rules_android//bzlmod_extensions:android_extensions.bzl",
+    "remote_android_tools_extensions",
+)
+use_repo(remote_android_extensions, "android_gmaven_r8", "android_tools")
+
+android_sdk_repository_extension = use_extension("@rules_android//rules/android_sdk_repository:rule.bzl", "android_sdk_repository_extension")
+android_sdk_repository_extension.configure(
+    api_level = 35,
+    build_tools_version = "34.0.0",
+)
+use_repo(android_sdk_repository_extension, "androidsdk")
+
+register_toolchains(
+    "@rules_android//toolchains/android:all",
+    "@rules_android//toolchains/android_sdk:all",
+)
+register_toolchains("@androidsdk//:sdk-toolchain", "@androidsdk//:all")
+
+android_ndk_repository_extension = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension")
+use_repo(android_ndk_repository_extension, "androidndk")
+
+register_toolchains("@androidndk//:all")
+
+bazel_dep(name = "rules_kotlin", version = "1.9.0")
+single_version_override(
+    module_name = "rules_kotlin",
+    patches = ["@valdi//third-party/rules_kotlin:fix_manifest_custom_package.patch"],
+)
+bazel_dep(name = "rules_jvm_external", version = "6.2")
+
+bazel_dep(name = "rules_xcodeproj", version = "3.2.0")
+
+bazel_dep(name = "rules_swift", version = "3.1.2", repo_name = "build_bazel_rules_swift")
+
+bazel_dep(name = "rules_apple", version = "4.3.3", repo_name = "build_bazel_rules_apple")
+
+bazel_dep(name = "bazel_features", version = "1.10.0")
+
+bazel_dep(name = "platforms", version = "0.0.11")
+
+bazel_dep(name = "aspect_rules_js", version = "2.0.0")
+
+bazel_dep(name = "aspect_rules_ts", version = "3.7.0")
+
+http_archive(
+    name = "zoo",
+    url = "https://github.com/thecppzoo/zoo/archive/33b868300145773d8c433b6b3d6643eba6334f7d.zip",
+    build_file = "@valdi//third-party/zoo:zoo.BUILD",
+    integrity = "sha256-9GIWp7GyVdZn24mvsMGtzhDD2N+W5L5AO3o2tYHtnVk=",
+    strip_prefix = "zoo-33b868300145773d8c433b6b3d6643eba6334f7d",
+)
+
+http_archive(
+    name = "hermes",
+    url = "https://github.com/facebook/hermes/archive/880b1645b5dca974f4329dc4108692d301abee0d.zip",
+    integrity = "sha256-+GQiTtN6H8TQz/+YkVz73dHeYAZ86/9hAUwTlkISx48=",
+    strip_prefix = "hermes-880b1645b5dca974f4329dc4108692d301abee0d",
+    build_file = "@valdi//third-party/hermes:hermes.BUILD",
+)
+
+bazel_dep(name = "boringssl", version = "0.20250415.0")
+
+# TODO(simon): See if we can use upstream
+http_archive(
+    name = "boost",
+    build_file = "@valdi//third-party/boost:boost.BUILD",
+    patches = [
+        "@valdi//third-party/boost/patches:asio.patch",
+        "@valdi//third-party/boost/patches:global_asio_initializers.patch",
+        "@valdi//third-party/boost/patches:interprocess_emscripten.patch",
+        "@valdi//third-party/boost/patches:remove_invalid_file_1_78.patch",
+    ],
+    strip_prefix = "boost_1_78_0",
+    integrity = "sha256-hoHxddS9smxSIiZleT7vCEkNd1hSkzD5jTsp3Qc1vMw=",
+    url = "https://archives.boost.io/release/1.78.0/source/boost_1_78_0.tar.bz2",
+)
+
+http_archive(
+    name = "phmap",
+    build_file = "@valdi//third-party/phmap:phmap.BUILD",
+    strip_prefix = "parallel-hashmap-1.3.12",
+    integrity = "sha256-DMIDFEMhkkz7/MQB9C2CBMDdJOJ2DHocCRuqFtl3fAg=",
+    url = "https://github.com/greg7mdp/parallel-hashmap/archive/refs/tags/v1.3.12.tar.gz",
+)
+
+http_archive(
+    name = "fmt",
+    build_file = "@valdi//third-party/fmt:fmt.BUILD",
+    integrity = "sha256-XZjFBNAgX5EuIkSezep3a3jOC7CWknM0+AeB5yAITJ8=",
+    strip_prefix = "fmt-7.1.3",
+    url = "https://github.com/fmtlib/fmt/releases/download/7.1.3/fmt-7.1.3.zip",
+)
+
+bazel_dep(name = "android_macros")
+local_path_override(
+    module_name = "android_macros",
+    path = "bzl/macros",
+)
+
+bazel_dep(name = "snap_macros")
+local_path_override(
+    module_name = "snap_macros",
+    path = "bzl/valdi/snap_macros",
+)
+
+bazel_dep(name = "snap_client_toolchains")
+local_path_override(
+    module_name = "snap_client_toolchains",
+    path = "bzl/toolchains",
+)
+
+bazel_dep(name = "snap_platforms")
+local_path_override(
+    module_name = "snap_platforms",
+    path = "bzl/platforms",
+)
+
+bazel_dep(name = "skia_user_config")
+local_path_override(
+    module_name = "skia_user_config",
+    path = "third-party/skia_user_config",
+)
+
+bazel_dep(name = "rules_hdrs")
+local_path_override(
+    module_name = "rules_hdrs",
+    path = "third-party/rules_hdrs",
+)
+
+bazel_dep(name = "valdi_toolchain")
+local_path_override(
+    module_name = "valdi_toolchain",
+    path = "bin",
+)
+
+bazel_dep(name = "resvg_libs")
+local_path_override(
+    module_name = "resvg_libs",
+    path = "third-party/resvg/resvg_libs",
+)
+
+bazel_dep(name = "jsoncpp", version = "1.9.6")
+
+http_archive(
+    name = "harfbuzz",
+    strip_prefix = "harfbuzz-12.2.0",
+    build_file = "@valdi//third-party/harfbuzz:harfbuzz.BUILD",
+    integrity = "sha256-7LYDqkJqiyRmVxhme9pkqEwVBNt0VO5Mrb02Lupk5UU=",
+    urls = ["https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz"],
+)
+
+bazel_dep(name = "backward-cpp", version = "1.6")
+
+bazel_dep(name = "xxhash", version = "0.8.3")
+
+http_archive(
+    name = "zlib_chromium",
+    url = "https://github.com/simonis/zlib-chromium/archive/93867c6db67801f74c2d0840a271c7aa7fd6716c.zip",
+    build_file = "@valdi//third-party/zlib_chromium:zlib_chromium.BUILD",
+    integrity = "sha256-aybDRpEOnvUrCW8/wTFSuduz5Rk+YxYGdCUZYVY5G9g=",
+    strip_prefix = "zlib-chromium-93867c6db67801f74c2d0840a271c7aa7fd6716c",
+    patch_args = ["-p1"],
+    patches = [
+        "@valdi//third-party/zlib_chromium/patches:apple.patch",
+    ],
+)
+
+bazel_dep(name = "zstd", version = "1.5.7")
+
+http_archive(
+    name = "icu",
+    build_file = "@valdi//third-party/icu:icu.BUILD",
+    url = "https://github.com/unicode-org/icu/releases/download/release-68-1/icu4c-68_1-src.tgz",
+    strip_prefix = "icu",
+    integrity = "sha256-qfLj2LRDS45Th4tDCL0ebuUcnHBC4rGjdqvvtvuyny0=",
+)
+
+bazel_dep(name = "websocketpp", version = "0.8.2.bcr.3")
+
+http_archive(
+    name = "test262",
+    url = "https://github.com/tc39/test262/archive/refs/heads/main.zip",
+    build_file = "@valdi//third-party/test262:test262.BUILD",
+    strip_prefix = "test262-main",
+    integrity = "sha256-Lv/ZdXIV5f0n11oFTKBq22r0aLGF6HsDp36B1afgVDo=",
+)
+
+http_archive(
+    name = "resvg",
+    url = "https://github.com/RazrFalcon/resvg/archive/a739aef5d01360ec238c886bc50674f31458df00.zip",
+    build_file = "@valdi//third-party/resvg:resvg.BUILD",
+    strip_prefix = "resvg-a739aef5d01360ec238c886bc50674f31458df00",
+    integrity = "sha256-kohUhIYyFoaeIHLBhYwq6g7+h34r3i9/IIQoWyJAmSE=",
+)
+
+bazel_dep(name = "rules_license", version = "1.0.0")
+
+SKIA_URL = "https://github.com/google/skia/archive/8d5c6efb04514a31f09a2e865940f99cdf60ce21.zip"
+SKIA_STRIP_PREFIX = "skia-8d5c6efb04514a31f09a2e865940f99cdf60ce21"
+SKIA_INTEGRITY = "sha256-piM7FfzT3xekYxvwEDlejJ8Zj+zaxa3oIKpDsx1y6eQ="
+
+http_archive(
+    name = "skia",
+    url = SKIA_URL,
+    strip_prefix = SKIA_STRIP_PREFIX,
+    integrity = SKIA_INTEGRITY,
+)
+
+http_archive(
+    name = "libjpeg_turbo",
+    build_file = "@skia//bazel/external/libjpeg_turbo:BUILD.bazel",
+    url = "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo/+archive/e14cbfaa85529d47f9f55b0f104a579c1061f9ad.tar.gz",
+    patches = [
+        "@valdi//third-party/libjpeg_turbo:warning_fix.patch",
+        "@valdi//third-party/libjpeg_turbo:include_fix.patch",
+    ],
+)
+
+http_archive(
+    name = "libpng",
+    build_file = "@skia//bazel/external/libpng:BUILD.bazel",
+    url = "https://skia.googlesource.com/third_party/libpng.git/+archive/ed217e3e601d8e462f7fd1e04bed43ac42212429.tar.gz",
+    patch_args = ["-p1"],
+    patches = [
+        "@valdi//third-party/libpng:fix_armv7.patch",
+    ],
+)
+
+http_archive(
+    name = "libwebp",
+    build_file = "@skia//bazel/external/libwebp:BUILD.bazel",
+    url = "https://chromium.googlesource.com/webm/libwebp.git/+archive/845d5476a866141ba35ac133f856fa62f0b7445f.tar.gz",
+)
+
+http_archive(
+    name = "zlib_skia",
+    build_file = "@skia//bazel/external/zlib_skia:BUILD.bazel",
+    url = "https://chromium.googlesource.com/chromium/src/third_party/zlib/+archive/646b7f569718921d7d4b5b8e22572ff6c76f2596.tar.gz",
+    patch_args = ["-p1"],
+    patches = [
+        "@valdi//third-party/zlib_skia:android_ios_x86_64.patch",
+    ],
+)
+
+http_archive(
+    name = "freetype",
+    build_file = "@skia//bazel/external/freetype:BUILD.bazel",
+    url = "https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+archive/5d4e649f740c675426fbe4cdaffc53ee2a4cb954.tar.gz",
+)
+
+http_archive(
+    name = "expat",
+    build_file = "@skia//bazel/external/expat:BUILD.bazel",
+    url = "https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git/+archive/624da0f593bb8d7e146b9f42b06d8e6c80d032a3.tar.gz",
+)
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+
+maven.install(
+    name = "android_mvn",
+    artifacts = [
+        "androidx.annotation:annotation:1.1.0",
+        "androidx.appcompat:appcompat:1.2.0",
+        "androidx.appcompat:appcompat-resources:1.2.0",
+        "androidx.collection:collection:1.1.0",
+        "androidx.constraintlayout:constraintlayout:2.1.4",
+        "androidx.customview:customview:1.1.0",
+        "androidx.dynamicanimation:dynamicanimation:1.0.0",
+        "androidx.fragment:fragment:1.1.0",
+        "androidx.interpolator:interpolator:1.0.0",
+        "androidx.lifecycle:lifecycle-common:2.2.0",
+        "androidx.lifecycle:lifecycle-process:2.2.0",
+        "androidx.lifecycle:lifecycle-viewmodel:2.2.0",
+        "androidx.recyclerview:recyclerview:1.2.1",
+        "androidx.test.ext:junit:1.1.3",
+        "androidx.test:monitor:1.5.0",
+        "androidx.test:runner:1.5.0",
+        "com.google.android.material:material:1.2.0",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "com.google.code.gson:gson:2.8.6",
+        "com.google.protobuf.nano:protobuf-javanano:3.1.0",
+        "com.jakewharton.timber:timber:4.7.1",
+        "com.squareup.leakcanary:leakcanary-android:2.10",
+        "com.squareup.okhttp3:okhttp:4.9.0",
+        "com.squareup.okio:okio:2.10.0",
+        "io.reactivex.rxjava3:rxandroid:3.0.0",
+        "io.reactivex.rxjava3:rxjava:3.1.0",
+        "io.reactivex.rxjava3:rxkotlin:3.0.0",
+        "javax.inject:javax.inject:1",
+        "junit:junit:4.13.2",
+    ],
+    repositories = [
+        "https://repo1.maven.org/maven2",
+        "https://maven.google.com",
+    ],
+    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
+    use_starlark_android_rules = True,
+    version_conflict_policy = "pinned",
+)
+
+use_repo(maven, "android_mvn")
+
+http_archive(
+    name = "expat_config",
+    url = SKIA_URL,
+    strip_prefix = "{}/third_party/expat/include".format(SKIA_STRIP_PREFIX),
+    integrity = SKIA_INTEGRITY,
+)
+
+http_archive(
+    name = "freetype_config",
+    url = SKIA_URL,
+    strip_prefix = "{}/third_party/freetype2/include".format(SKIA_STRIP_PREFIX),
+    integrity = SKIA_INTEGRITY,
+)
+
+register_toolchains("@valdi//bzl/valdi:valdi_toolchain")

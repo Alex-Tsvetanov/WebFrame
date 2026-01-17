@@ -1,0 +1,41 @@
+load("//tsn:tsn.bzl", "tsn_binary")
+
+tsn_binary(
+    name = "nbody",
+    srcs = glob([
+        "nbody/*.ts",
+    ]) + ["tsconfig.json"],
+    entry_points = ["nbody/nbody_example.ts"],
+)
+
+tsn_binary(
+    name = "richards",
+    srcs = glob([
+        "richards/*.js",
+    ]) + ["tsconfig.json"],
+    entry_points = ["richards/richards.js"],
+)
+
+tsn_binary(
+    name = "stackoverflow_test",
+    srcs = glob([
+        "stackoverflow_test/*.ts",
+    ]) + ["tsconfig.json"],
+    entry_points = ["stackoverflow_test/stackoverflow.ts"],
+)
+
+tsn_binary(
+    name = "mandel",
+    srcs = glob([
+        "mandelbrot/*.ts",
+    ]) + ["tsconfig.json"],
+    entry_points = ["mandelbrot/mandel.ts"],
+)
+
+tsn_binary(
+    name = "microbench",
+    srcs = glob([
+        "microbench/*.js",
+    ]) + ["tsconfig.json"],
+    entry_points = ["microbench/microbench.js"],
+)

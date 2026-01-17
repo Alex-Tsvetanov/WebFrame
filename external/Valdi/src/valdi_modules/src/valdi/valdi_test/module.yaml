@@ -1,0 +1,14 @@
+output_target: debug
+
+single_file_codegen: true
+
+dependencies:
+  - jasmine
+  - source_map
+  - valdi_core
+  - valdi_standalone
+  - valdi_tsx
+allowed_debug_dependencies:
+  - jasmine
+  - source_map
+  - valdi_standalone

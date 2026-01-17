@@ -1,0 +1,30 @@
+load("@valdi//bzl:prebuilt_tools.bzl", "jscore_library")
+
+cc_library(
+    name = "jscore",
+    hdrs = select({
+        "//bzl/conditions:macos": {},
+        "//conditions:default": glob(["include/**/*.h"]),
+    }),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//bzl/conditions:macos": [":jscore_macos"],
+        "//conditions:default": [":jscore_library"],
+    }),
+)
+
+objc_library(
+    name = "jscore_macos",
+    sdk_frameworks = [
+        "JavaScriptCore",
+    ],
+)
+
+cc_import(
+    name = "jscore_library",
+    shared_library = select({
+        "//bzl/conditions:linux_x64": jscore_library(),
+    }),
+    visibility = ["//visibility:public"],
+)

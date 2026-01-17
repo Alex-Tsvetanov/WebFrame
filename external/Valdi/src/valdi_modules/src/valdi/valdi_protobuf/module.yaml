@@ -1,0 +1,24 @@
+web:
+  version: 1.0.3
+  publish_config: '{ "@snapchat:registry": "https://registry.npmjs.org/"
+    }'
+  main: src/Arena.js
+  scope: snapchat
+
+dependencies:
+  - coreutils
+  - valdi_core
+  - valdi_standalone
+exclude_patterns:
+  - .*\/scripts\/.*
+  - .*\/proto\/.*
+  - .*\/web\/.*
+exclude_globs:
+  - "**/scripts/**"
+  - "**/proto/**"
+  - "**/web/**"
+
+output_target: release
+
+allowed_debug_dependencies:
+  - valdi_standalone

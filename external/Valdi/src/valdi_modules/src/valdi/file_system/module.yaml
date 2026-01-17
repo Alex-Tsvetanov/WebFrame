@@ -1,0 +1,11 @@
+output_target: debug
+
+dependencies:
+  - valdi_core
+  - coreutils
+  - jasmine
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

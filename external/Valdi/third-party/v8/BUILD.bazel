@@ -1,0 +1,20 @@
+load("v8.bzl", "v8_module")
+
+v8_module(module = "monolith")
+
+cc_library(
+    name = "v8",
+    srcs = [],
+    hdrs = glob([
+        "include/**/*.h",
+    ]),
+    includes = [
+        "include/v8",
+    ],
+    strip_include_prefix = "include",
+    tags = ["app_size_owners=VALDI"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":v8_monolith",
+    ],
+)

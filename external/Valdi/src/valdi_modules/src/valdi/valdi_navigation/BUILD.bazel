@@ -1,0 +1,20 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "valdi_navigation",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]),
+    android_output_target = "release",
+    ios_module_name = "SCCValdiNavigation",
+    ios_output_target = "release",
+    single_file_codegen = False,
+    visibility = ["//visibility:public"],
+    deps = [
+        "@valdi//src/valdi_modules/src/valdi/foundation",
+        "@valdi//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

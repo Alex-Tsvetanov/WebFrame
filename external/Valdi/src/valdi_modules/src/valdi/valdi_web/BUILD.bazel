@@ -1,0 +1,52 @@
+load("@valdi//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+exports_files([
+    "index.js",
+])
+
+valdi_module(
+    name = "valdi_web",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "debug",
+    ios_module_name = "SCCValdiWebComponent",
+    ios_output_target = "debug",
+    res = glob([
+        "res/**/*.jpeg",
+        "res/**/*.jpg",
+        "res/**/*.png",
+        "res/**/*.svg",
+        "res/**/*.ttf",
+        "res/**/*.webp",
+    ]),
+    single_file_codegen = False,
+    strings_dir = "strings",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@valdi//src/valdi_modules/src/valdi/foundation",
+        "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_http",
+        "@valdi//src/valdi_modules/src/valdi/valdi_protobuf",
+        "@valdi//src/valdi_modules/src/valdi/valdi_test",
+        "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
+        # For now this dependency needs to be part of the module, not sure why
+        "@valdi//src/valdi_modules/src/valdi/web_renderer",
+    ],
+)
+
+valdi_exported_library(
+    name = "valdi_web_export",
+    ios_bundle_id = "com.snap.hello_world.lib",
+    ios_bundle_name = "HelloWorld",
+    web_package_name = "valdi_web_blob",
+    deps = [
+        ":valdi_web",
+    ],
+)

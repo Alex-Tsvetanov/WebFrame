@@ -1,0 +1,30 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "hello_world",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_class_path = "com.snap.valdi.modules.hello_world",
+    android_deps = ["//apps/helloworld/src/android:native_module_android"],
+    android_output_target = "release",
+    ios_deps = ["//apps/helloworld/src/ios:native_module_ios"],
+    ios_module_name = "SCCHelloWorld",
+    ios_output_target = "release",
+    native_deps = ["//apps/helloworld/src/cpp:native_module_cpp"],
+    res = glob([
+        "res/**/*.jpeg",
+        "res/**/*.jpg",
+        "res/**/*.png",
+        "res/**/*.svg",
+        "res/**/*.webp",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

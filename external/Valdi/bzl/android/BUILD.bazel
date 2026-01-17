@@ -1,0 +1,12 @@
+sh_binary(
+    name = "zip_relative",
+    srcs = ["zip_relative.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# For use in package_aar to generate a stub_jar for JavaInfo.
+genrule(
+    name = "empty_jar",
+    outs = ["empty.jar"],
+    cmd = "echo UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA== | base64 -d > $@",
+)

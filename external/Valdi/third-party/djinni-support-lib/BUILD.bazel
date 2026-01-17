@@ -1,0 +1,199 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
+load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_FLAGS")
+
+alias(
+    name = "djinni-support-lib",
+    actual = ":djinni_support_lib",
+    visibility = ["//visibility:public"],
+)
+
+# Make visible to other packages who want to export and publish headers
+exports_files(
+    glob([
+        "src/djinni/**/*.*",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "djinni_support_lib",
+    tags = [
+        "core_target",
+        "exported",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_support_lib_cc",
+    ] + select({
+        "@valdi//bzl/conditions:wasm": [":djinni_support_lib_wasm"],
+        "@valdi//bzl/conditions:ios": [":djinni_support_lib_objc"],
+        "@valdi//bzl/conditions:macos": [":djinni_support_lib_objc"],
+        "@valdi//bzl/conditions:android_with_jni": [":djinni_support_lib_jni"],
+        "//conditions:default": [],
+    }),
+)
+
+JNI_DEFINES = select({
+    "@valdi//bzl/conditions:android_with_jni": ["DATAREF_JNI=1"],
+    "@valdi//bzl/conditions:ios": ["DATAREF_OBJC=1"],
+    "@valdi//bzl/conditions:macos": ["DATAREF_OBJC=1"],
+    "@valdi//bzl/conditions:wasm": ["DATAREF_WASM=1"],
+    # explicitly set to 0 so that the ifdefs in DataRef.hpp won't automatically
+    # choose a platform implementation
+    "//conditions:default": [
+        "DATAREF_JNI=0",
+        "DATAREF_OBJC=0",
+        "DATAREF_WASM=0",
+    ],
+})
+
+cc_library(
+    name = "djinni_support_lib_cc",
+    srcs = glob(["src/djinni/cpp/*.cpp"]),
+    hdrs = glob(["src/djinni/**/*.h*"]),
+    copts = COMMON_COMPILE_FLAGS + ["-fvisibility=default"],
+    defines = JNI_DEFINES,
+    strip_include_prefix = "src",
+    tags = [
+        "core_target",
+        "exported",
+        "exported_c",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "djinni_support_lib_jni",
+    srcs = glob(
+        ["src/djinni/jni/**/*.cpp"],
+        exclude = ["src/djinni/jni/djinni_main.cpp"],
+    ),
+    hdrs = glob(["src/djinni/**/*.h*"]),
+    copts = ["-Wno-shorten-64-to-32"],
+    defines = ["DATAREF_JNI=1"],
+    deps = [":djinni_support_lib_cc"],
+    alwayslink = 1,
+)
+
+swift_interop_hint(
+    name = "djinni_support_lib_objc_swift_interop",
+    module_name = "djinni_support_lib_objc",
+    system_pcms = select({
+        "@valdi//bzl/conditions:explicit_modules": [
+            "@build_bazel_rules_swift//system_sdks:system_sdks",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+objc_library(
+    name = "djinni_support_lib_objc",
+    srcs = glob([
+        "src/**/*.mm",
+        "src/djinni/objc/*.cpp",
+        "src/djinni/**/*.h",
+    ]),
+    hdrs = glob(
+        [
+            "src/djinni/objc/*.h",
+        ],
+        exclude = [
+            "src/djinni/objc/DJICppWrapperCache+Private.h",
+            "src/djinni/objc/DJIMarshal+Private.h",
+            "src/djinni/objc/DJIObjcWrapperCache+Private.h",
+            "src/djinni/objc/DJIError.h",
+        ],
+    ),
+    aspect_hints = [":djinni_support_lib_objc_swift_interop"],
+    copts = COMMON_COMPILE_FLAGS + OBJC_FLAGS,
+    defines = [
+        "DATAREF_OBJC=1",
+    ],
+    tags = [
+        "core_target",
+        "exported",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":djinni_support_lib_cc"],
+)
+
+java_library(
+    name = "djinni_support_lib_java",
+    srcs = glob(["src/djinni/java/**/*.java"]),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "djinni_support_lib_wasm",
+    srcs = glob([
+        "src/djinni/wasm/*.cpp",
+        "src/djinni/wasm/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/djinni/wasm/*.hpp",
+        "src/djinni/cpp/*.hpp",
+    ]),
+    copts = [
+        "-fexceptions",
+    ],
+    defines = ["DATAREF_WASM=1"],
+    strip_include_prefix = "src/djinni",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_support_lib_cc",
+    ],
+)
+
+cc_library(
+    name = "djinni_support_lib_valdi",
+    srcs = glob([
+        "src/djinni/valdi/*.cpp",
+        "src/djinni/valdi/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/djinni/valdi/*.hpp",
+        "src/djinni/cpp/*.hpp",
+    ]),
+    copts = [
+        "-fexceptions",
+    ],
+    strip_include_prefix = "src/djinni",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_support_lib_cc",
+        "@valdi//valdi_core",
+    ],
+)
+
+swift_library(
+    name = "djinni_support_lib_swift",
+    srcs = glob(["src/djinni/swift/*.swift"]),
+    copts = [
+        "-cxx-interoperability-mode=default",
+        "-Xcc",
+        "-std=c++20",
+    ],
+    module_name = "DjinniSupport",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_support_lib_swiftxx",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)
+
+cc_library(
+    name = "djinni_support_lib_swiftxx",
+    srcs = glob(["src/djinni/swiftxx/*.cpp"]),
+    hdrs = glob(["src/djinni/swiftxx/*.hpp"]),
+    aspect_hints = [":djinni_support_lib_swift_interop"],
+    includes = ["swiftxx"],
+    visibility = ["//visibility:public"],
+    deps = [":djinni_support_lib"],
+)
+
+swift_interop_hint(
+    name = "djinni_support_lib_swift_interop",
+    module_name = "DjinniSupportCxx",
+    tags = ["manual"],
+)

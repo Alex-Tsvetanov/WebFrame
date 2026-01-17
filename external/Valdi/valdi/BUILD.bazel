@@ -1,0 +1,1021 @@
+load("@android_macros//:android.bzl", "android_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_kotlin//kotlin:core.bzl", "kt_kotlinc_options")
+load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
+load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_FLAGS", "OBJC_ONLY_FLAGS")
+load("//bzl/conditions:custom_selects.bzl", "custom_selects")
+load("//bzl/valdi:valdi_static_resource.bzl", "valdi_static_resource")
+load("valdi.bzl", "ANDROIDX_RUNTIME_LIBRARIES", "valdi_test", COMPILER_FLAGS_COMPAT = "COMPILER_FLAGS")
+
+exports_files(["src/valdi/.clang-tidy"])
+
+kt_kotlinc_options(
+    name = "kotlinc_opts",
+    warn = "off",
+)
+
+selects.config_setting_group(
+    name = "is_debug_flavor",
+    match_any = [
+        "@snap_client_toolchains//:sc_build_flag_debug",
+        "@snap_platforms//flavors:client_development",
+        "@snap_platforms//flavors:platform_development",
+    ],
+)
+
+custom_selects.config_setting_inverse(
+    "is_nondebug_flavor",
+    inverse_of = ":is_debug_flavor",
+)
+
+selects.config_setting_group(
+    name = "is_debug_ios",
+    match_all = [
+        "//bzl/conditions:ios",
+        ":is_debug_flavor",
+    ],
+)
+
+selects.config_setting_group(
+    name = "desktop",
+    match_any = [
+        "//bzl/conditions:linux",
+        "//bzl/conditions:macos",
+    ],
+)
+
+selects.config_setting_group(
+    name = "apple",
+    match_any = [
+        "//bzl/conditions:ios",
+        "//bzl/conditions:macos",
+    ],
+)
+
+selects.config_setting_group(
+    name = "hermes_full_enabled",
+    match_any = [
+        ":is_debug_flavor",
+        ":desktop",
+    ],
+)
+
+selects.config_setting_group(
+    name = "hermes_enabled",
+    match_any = [
+        ":is_debug_flavor",
+        ":desktop",
+    ],
+)
+
+selects.config_setting_group(
+    name = "jscore_enabled",
+    match_any = [
+        "//bzl/conditions:ios",
+        "//bzl/conditions:macos",
+        "//bzl/conditions:linux_x64",
+    ],
+)
+
+selects.config_setting_group(
+    name = "quickjs_enabled",
+    match_any = [
+        ":is_debug_ios",
+        "//bzl/conditions:macos",
+        "//bzl/conditions:linux",
+        "//bzl/conditions:android",
+    ],
+)
+
+custom_selects.config_setting_inverse(
+    "libcxx_rtti_enabled",
+    inverse_of = "@snap_client_toolchains//:sc_build_flag_libcxx_rtti_disabled",
+)
+
+selects.config_setting_group(
+    name = "hermes_api_enabled",
+    match_all = [
+        ":hermes_full_enabled",
+        ":libcxx_rtti_enabled",
+    ],
+)
+
+COMPILER_FLAGS = COMPILER_FLAGS_COMPAT + ["-fno-exceptions"]
+
+CC_COMPILER_FLAGS = COMMON_COMPILE_FLAGS + COMPILER_FLAGS
+
+# Main rule building the valdi framework with the modules
+# matching the current platform being build.
+alias(
+    name = "valdi",
+    actual = select({
+        "//bzl/conditions:ios": ":valdi_ios",
+        "//bzl/conditions:android_with_jni": ":valdi_android",
+        "//bzl/conditions:macos": ":valdi_macos",
+        "//conditions:default": ":valdi_runtime",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# The core library, contains the C++ runtime and the JS engine
+# abstraction
+cc_library(
+    name = "valdi_runtime",
+    srcs = glob([
+        "src/valdi/runtime/**/*.c",
+        "src/valdi/runtime/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/runtime/**/*.h",
+        "src/valdi/runtime/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + CC_COMPILER_FLAGS + ["-Wno-deprecated-this-capture"],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_proto_cc",
+        "//libs/utils:utils_encoding_cc",
+        "//third-party/yoga",
+        "//valdi:djinni_generated_cc",
+        "//valdi_core:valdi_core_cc",
+        "//valdi_protobuf",
+        "@boost",
+        "@boringssl//:crypto",
+        "@fmt",
+        "@harfbuzz",
+        "@phmap",
+        "@zstd",
+    ],
+)
+
+# ViewManager implementation using the snap_drawing library.
+cc_library(
+    name = "valdi_snap_drawing",
+    srcs = glob([
+        "src/valdi/snap_drawing/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/snap_drawing/**/*.hpp",
+        "src/valdi/snap_drawing/**/*.h",
+    ]),
+    copts = CC_COMPILER_FLAGS + ["-Wno-deprecated-this-capture"],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime",
+        "//snap_drawing",
+        "@zlib_chromium",
+    ],
+)
+
+# Implementation of the JS engine abstraction
+# using JavaScriptCore
+cc_library(
+    name = "valdi_jscore",
+    srcs = glob([
+        "src/valdi/jscore/**/*.cpp",
+        "src/valdi/jscore/**/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/jscore/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    defines = ["VALDI_HAS_JSCORE"],
+    strip_include_prefix = "src",
+    deps = [":valdi_runtime"] + select({
+        "//bzl/conditions:ios": [],
+        "//conditions:default": ["//third-party/jscore"],
+    }),
+)
+
+# Implementation of the JS engine abstraction
+# using QuickJS
+cc_library(
+    name = "valdi_quickjs",
+    srcs = glob([
+        "src/valdi/quickjs/**/*.c",
+        "src/valdi/quickjs/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/quickjs/**/*.h",
+        "src/valdi/quickjs/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    defines = ["VALDI_HAS_QUICKJS"],
+    strip_include_prefix = "src",
+    deps = [
+        ":valdi_runtime",
+        "//third-party/quickjs",
+        "//tsn",
+    ],
+)
+
+# Implementation of the JS engine abstraction
+# using Hermes
+cc_library(
+    name = "valdi_hermes",
+    srcs = glob([
+        "src/valdi/hermes/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/hermes/**/*.hpp",
+    ]),
+    copts = COMPILER_FLAGS_COMPAT + COMMON_COMPILE_FLAGS + [
+        "-Wno-deprecated-this-capture",
+        "-Wno-vla-cxx-extension",
+    ],
+    defines = ["VALDI_HAS_HERMES"],
+    local_defines = select({
+        ":hermes_api_enabled": [
+            "HERMES_API",
+            "VALDI_HAS_WEBSOCKET_SERVER",
+        ],
+        "//conditions:default": [],
+    }),
+    strip_include_prefix = "src",
+    deps = [
+        ":valdi_runtime",
+        "//libs/utils:utils_logging_cc",
+        "//libs/utils:utils_oss_cc",
+        "@websocketpp",
+    ] + select({
+        ":hermes_full_enabled": [
+            "@hermes",
+        ],
+        "//conditions:default": [
+            "@hermes//:hermes_lean",
+        ],
+    }) + select({
+        ":hermes_api_enabled": [
+            "@hermes//:hermes_api",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "valdi_v8",
+    srcs = glob([
+        "src/valdi/v8/**/*.c",
+        "src/valdi/v8/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/v8/**/*.h",
+        "src/valdi/v8/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    defines = [
+        "VALDI_HAS_V8",
+        "V8_COMPRESS_POINTERS",
+    ],
+    strip_include_prefix = "src",
+    deps = [
+        ":valdi_runtime",
+        "//third-party/v8",
+    ],
+)
+
+# Exposes the generated and hand-written JNI code,
+# for using Valdi from Java.
+cc_library(
+    name = "valdi_jni",
+    srcs = glob([
+        "src/valdi/jni/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/jni/**/*.hpp",
+        "src/bindings/include/**/*_jni.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    includes = [
+        "src",
+        "src/bindings/include",
+    ],
+    deps = [
+        ":valdi_runtime",
+        "//valdi:djinni_generated_cc",
+        "//valdi:djinni_jni",
+        "//valdi_core:valdi_core_jni",
+    ],
+    alwayslink = True,
+)
+
+SNAP_DRAWING_ENABLED_DEFINES = ["SNAP_DRAWING_ENABLED"]
+
+# Target to be used by //src/valdi/compiler/toolbox:valdi_compiler_toolbox
+# which only includes engines with pre-compilation support.
+cc_library(
+    name = "valdi_jsbridge_for_toolbox",
+    srcs = glob([
+        "src/valdi/jsbridge/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/jsbridge/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_quickjs",
+    ] + select({
+        "//bzl/valdi:js_bytecode_format_hermes": [":valdi_hermes"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "valdi_runtime_with_vm",
+    srcs = glob([
+        "src/valdi/jsbridge/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/jsbridge/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    local_defines = select({
+        "//bzl/valdi:js_engine_hermes": ["VALDI_JS_ENGINE_DEFAULT_HERMES"],
+        "//bzl/valdi:js_engine_quickjs": ["VALDI_JS_ENGINE_DEFAULT_QUICKJS"],
+        "//bzl/valdi:js_engine_jscore": ["VALDI_JS_ENGINE_DEFAULT_JSCORE"],
+        "//bzl/valdi:js_engine_auto": [],
+    }),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [":valdi_runtime"] + select({
+        ":hermes_enabled": [":valdi_hermes"],
+        "//conditions:default": [],
+    }) + select({
+        ":jscore_enabled": [":valdi_jscore"],
+        "//conditions:default": [],
+    }) + select({
+        ":quickjs_enabled": [":valdi_quickjs"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "cli_runner",
+    srcs = glob([
+        "src/valdi/jsbridge/**/*.cpp",
+        "src/valdi/cli_runner/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/jsbridge/**/*.hpp",
+        "src/valdi/cli_runner/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_quickjs",
+        ":valdi_standalone_runtime",
+    ],
+)
+
+# Exposes the full Android integration of the runtime,
+# backed by the JavaScriptCore or QuickJS JS engine.
+cc_library(
+    name = "valdi_android",
+    srcs = glob([
+        "src/valdi/android/**/*.c",
+        "src/valdi/android/**/*.cpp",
+        "src/valdi/android/**/*.h",
+        "src/valdi/android/**/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/android/**/*.h",
+        "src/valdi/android/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS + ["-DANDROID"],
+    defines = SNAP_DRAWING_ENABLED_DEFINES,
+    linkopts = [
+        "-landroid",
+        "-lEGL",
+        "-lGLESv3",
+        "-llog",
+        "-ljnigraphics",
+    ],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_jni",
+        ":valdi_runtime_with_vm",
+        ":valdi_snap_drawing",
+        "//libs/utils:utils_encoding_cc",
+        "//valdi_core:valdi_core_android",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "valdi_proto_cc",
+    srcs = glob([
+        "protogen-lite/valdi/**/*.h",
+        "protogen-lite/valdi/**/*.cc",
+    ]),
+    hdrs = glob(["protogen-lite/valdi/**/*.h"]),
+    copts = COMMON_COMPILE_FLAGS + [
+        "-Wno-deprecated-declarations",
+        "-Wno-gcc-compat",
+        "-Wno-zero-length-array",
+    ],
+    defines = ["GRPC_USE_PROTO_LITE"],
+    strip_include_prefix = "protogen-lite",
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = ["@protobuf_cpp//:protobuf_lite"],
+)
+
+ANDROID_XML_RES = glob(["res/xml/**/*.xml"])
+
+ANDROID_FONT_RES = glob(
+    ["res/font/**"],
+    exclude = ["**/.DS_Store"],
+)
+
+ANDROID_DEBUG_RES = ANDROID_XML_RES + ANDROID_FONT_RES
+
+ANDROID_PROD_RES = ANDROID_XML_RES
+
+android_library(
+    name = "valdi_res",
+    custom_package = "com.snapchat.client",
+    manifest = "src/valdi/android/AndroidManifest.xml",
+    resource_files = select({
+        "@snap_platforms//flavors:client_development": ANDROID_DEBUG_RES,
+        "@snap_platforms//flavors:platform_development": ANDROID_DEBUG_RES,
+        "@snap_platforms//flavors:master": ANDROID_DEBUG_RES,
+        "//conditions:default": ANDROID_PROD_RES,
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# Contains all the Android Java code without native code
+kt_android_library(
+    name = "valdi_java",
+    srcs = glob([
+        "src/java/**/*.java",
+        "src/java/**/*.kt",
+    ]) + ["//valdi:djinni_java_srcs"],
+    kotlinc_opts = ":kotlinc_opts",
+    visibility = ["//visibility:public"],
+    exports = [
+        ":valdi_res",
+        "//valdi_core:valdi_core_java",
+        "@android_mvn//:androidx_lifecycle_lifecycle_common",
+        "@android_mvn//:androidx_lifecycle_lifecycle_process",
+    ],
+    deps = [
+        ":valdi_res",
+        "//third-party/djinni-support-lib:djinni_support_lib_java",
+        "//valdi_core:valdi_core_java",
+        "@android_mvn//:io_reactivex_rxjava3_rxandroid",
+        "@android_mvn//:io_reactivex_rxjava3_rxjava",
+        "@android_mvn//:io_reactivex_rxjava3_rxkotlin",
+        "@android_mvn//:javax_inject_javax_inject",
+    ] + ANDROIDX_RUNTIME_LIBRARIES,
+)
+
+# An Android support library, providing additional optional tooling
+kt_android_library(
+    name = "valdi_android_support",
+    srcs = glob([
+        "src/android_support/java/**/*.kt",
+    ]),
+    custom_package = "com.snap.valdi.support",
+    kotlinc_opts = ":kotlinc_opts",
+    manifest = "src/valdi/android/AndroidManifest.xml",
+    resource_files = glob(["src/android_support/res/**"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_java",
+    ],
+)
+
+kt_jvm_test(
+    name = "test_java",
+    srcs = glob([
+        "test/java/**/*.kt",
+    ]),
+    args = [
+        "--select-package=com.snap.valdi",
+    ],
+    main_class = "org.junit.platform.console.ConsoleLauncher",
+    runtime_deps = [
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_engine",
+        "@android_mvn//:org_junit_platform_junit_platform_launcher",
+        "@android_mvn//:org_junit_platform_junit_platform_reporting",
+    ],
+    deps = [
+        ":valdi_java",
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_api",
+        "@android_mvn//:org_junit_jupiter_junit_jupiter_params",
+        "@android_mvn//:org_junit_platform_junit_platform_console",
+    ],
+)
+
+# Allows to use Valdi in headless mode without UI, without
+# a platform specific integration.
+cc_library(
+    name = "valdi_standalone_runtime",
+    srcs = glob([
+        "src/valdi/standalone_runtime/**/*.c",
+        "src/valdi/standalone_runtime/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/standalone_runtime/**/*.h",
+        "src/valdi/standalone_runtime/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    defines = SNAP_DRAWING_ENABLED_DEFINES,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime",
+        ":valdi_snap_drawing",
+        "@backward-cpp",
+    ],
+)
+
+filegroup(
+    name = "valdi_ios_public_hdrs",
+    srcs = glob([
+        "src/valdi/ios/**/*.h",
+    ]) + ["//valdi:djinni_objc_hdrs"],
+    visibility = ["//visibility:public"],
+)
+
+swift_interop_hint(
+    name = "valdi_cpp_ios_swift_interop",
+    suppressed = True,
+)
+
+# Objective-C++ code integration Valdi with iOS.
+# Exposed as a separate rule from valdi_ios since
+# bazel doesn't seem to like mixing Objective-C++ with
+# Objective-C.
+objc_library(
+    name = "valdi_cpp_ios",
+    srcs = glob([
+        "src/valdi/ios/**/*.mm",
+    ]),
+    hdrs = [":valdi_ios_public_hdrs"] + glob([
+        "src/bindings/include/**/*_objc.hpp",
+    ]),
+    aspect_hints = [":valdi_cpp_ios_swift_interop"],
+    copts = OBJC_FLAGS + COMPILER_FLAGS + [
+        "-Wno-deprecated-declarations",
+        "-I.",
+    ],
+    defines = SNAP_DRAWING_ENABLED_DEFINES,
+    includes = [
+        "generated-src/objc",
+        "src",
+        "src/bindings/include",
+    ],
+    tags = ["exported"],
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_snap_drawing",
+        "//libs/utils:utils_obj_cpp_ptr_wrapper",
+        "//src/valdi_modules/src/valdi/drawing:drawing_objc",
+        "//valdi:djinni_objc_cpp",
+    ],
+)
+
+# Exposes the full iOS integration of the runtime,
+# backed by the JavaScriptCore engine.
+# This code is not compatible with C++
+objc_library(
+    name = "valdi_ios",
+    srcs = glob([
+        "src/valdi/ios/**/*.m",
+    ]),
+    copts = OBJC_ONLY_FLAGS + COMPILER_FLAGS + [
+        "-I.",
+    ],
+    defines = SNAP_DRAWING_ENABLED_DEFINES,
+    implementation_deps = [
+        ":valdi_runtime",
+        "@valdi//valdi_core:valdi_core_objc",
+    ],
+    sdk_frameworks = [
+        "UIKit",
+        "JavaScriptCore",
+        "QuartzCore",
+        "CoreGraphics",
+        "CoreImage",
+        "Security",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_cpp_ios",
+        "//valdi:djinni_objc",
+    ],
+)
+
+objc_library(
+    name = "valdi_ios_swift",
+    srcs = glob([
+        "src/valdi/swift/**/*.mm",
+    ]),
+    hdrs = glob([
+        "src/valdi/swift/**/*.h",
+    ]),
+    copts = COMPILER_FLAGS + ["-I."],
+    defines = SNAP_DRAWING_ENABLED_DEFINES,
+    module_name = "ValdiSwift",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_ios",
+        "//valdi_core:valdi_core_objc",
+    ],
+)
+
+ios_unit_test(
+    name = "valdi_ios_objc_test",
+    minimum_os_version = "13.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":objc_unit_tests_lib"],
+)
+
+objc_library(
+    name = "objc_unit_tests_lib",
+    testonly = True,
+    srcs = glob([
+        "test/ios/**/*.m",
+        "test/ios/**/*.mm",
+    ]),
+    copts = ["-I."],
+    includes = ["src"],
+    module_name = "ValdiIosObjcTests",
+    deps = [
+        ":valdi_ios",
+        "//src/valdi_modules/src/valdi/valdi_test:valdi_test_objc",
+        "@ocmock",
+    ],
+)
+
+ios_unit_test(
+    name = "valdi_ios_swift_test",
+    minimum_os_version = "13.0",
+    runner = "@build_bazel_rules_apple//apple/testing/default_runner:ios_xctestrun_ordered_runner",
+    deps = [":unit_tests_lib"],
+)
+
+swift_library(
+    name = "unit_tests_lib",
+    testonly = True,
+    srcs = glob([
+        "test/ios_swift/**/*.swift",
+    ]),
+    module_name = "ValdiIosSwiftTests",
+    deps = [
+        ":valdi_ios",
+        "//valdi_core:valdi_core_swift_marshaller",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = glob(["test/utils/**/*.cpp"]),
+    hdrs = glob(["test/utils/**/*.hpp"]),
+    copts = COMMON_COMPILE_FLAGS,
+    strip_include_prefix = "test/utils",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_standalone_runtime",
+        "//valdi_core",
+    ],
+)
+
+cc_library(
+    name = "benchmark_utils",
+    testonly = 1,
+    srcs = glob(["test/benchmark/utils/**/*.cpp"]),
+    hdrs = glob(["test/benchmark/utils/**/*.hpp"]),
+    copts = COMMON_COMPILE_FLAGS,
+    strip_include_prefix = "test",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//valdi_core",
+    ],
+)
+
+valdi_test(
+    name = "test_runtime",
+    srcs = glob(["test/runtime/**/*.cpp"]),
+    deps = [
+        ":test_utils",
+        ":valdi_runtime",
+        "//valdi/testdata/resources/modules/test:test_cpp",
+    ],
+)
+
+valdi_test(
+    name = "test_snap_drawing",
+    srcs = glob(["test/snap_drawing/**/*.cpp"]),
+    data = ["testdata/0x0.bmp"],
+    deps = [
+        ":test_utils",
+        ":valdi_snap_drawing",
+        "//snap_drawing:test_utils",
+    ],
+)
+
+# Embed generated .valdiarchive containing the fake uploaded resources
+valdi_static_resource(
+    name = "remote_assets_static_res",
+    srcs = [
+        "//valdi/testdata/resources/modules/remote:remote.valdiarchive",
+        "//valdi/testdata/resources/modules/remote_assets:remote_assets.valdiarchive",
+    ],
+)
+
+valdi_test(
+    name = "test_integration",
+    srcs = glob([
+        "test/integration/**/*.cpp",
+    ]) + [":remote_assets_static_res"],
+    hdrs = glob(["test/integration/**/*.hpp"]),
+    deps = [
+        ":test_utils",
+        ":valdi_runtime_with_vm",
+        "//src/valdi_modules/src/valdi/persistence:persistence_native",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        "//src/valdi_modules/src/valdi/valdi_protobuf:valdi_protobuf_native",
+        "//tsn",
+        "//valdi/testdata/resources/modules/local:local_native",
+        "//valdi/testdata/resources/modules/remote:remote_native",
+        "//valdi/testdata/resources/modules/remote_assets:remote_assets_native",
+        "//valdi/testdata/resources/modules/test:test_cpp",
+        "//valdi/testdata/resources/modules/test:test_native",
+        "//valdi/testdata/resources/modules/test2:test2_native",
+    ],
+)
+
+valdi_test(
+    name = "test_hermes",
+    srcs = glob(["test/hermes/**/*.cpp"]),
+    deps = [
+        ":test_utils",
+        ":valdi_hermes",
+    ],
+)
+
+cc_test(
+    name = "test",
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":test_hermes_lib",
+        ":test_integration_lib",
+        ":test_runtime_lib",
+        ":test_snap_drawing_lib",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "protobuf_benchmark",
+    testonly = 1,
+    srcs = glob([
+        "test/benchmark/ProtobufBenchmark.cpp",
+    ]),
+    linkstatic = True,
+    deps = [
+        ":test_utils",
+        ":valdi_runtime_with_vm",
+        ":valdi_standalone_runtime",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "string_benchmark",
+    testonly = 1,
+    srcs = glob([
+        "test/benchmark/string_benchmark.cpp",
+    ]),
+    linkstatic = True,
+    deps = [
+        ":benchmark_utils",
+        "//valdi_core",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "heapdump_benchmark",
+    testonly = 1,
+    srcs = ["test/benchmark/JavaScriptHeapDump_benchmark.cpp"],
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_binary(
+    name = "valdi_standalone",
+    srcs = glob([
+        "src/valdi/standalone/**/*.cpp",
+        "src/valdi/standalone/**/*.hpp",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_standalone_runtime",
+    ],
+)
+
+cc_binary(
+    name = "startup_benchmark",
+    srcs = glob([
+        "src/valdi/startup_benchmark/**/*.cpp",
+    ]),
+    linkstatic = True,
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_standalone_runtime",
+        "//src/valdi_modules/src/valdi/valdi_core:valdi_core_native",
+        "//tsn",
+        "//valdi/testdata/resources/modules/startup_benchmark:startup_benchmark_native",
+    ],
+)
+
+#TODO(rjaber): Remove eventually but having a playground is nice
+cc_binary(
+    name = "v8-playground",
+    srcs = glob([
+        "v8-playground/**/*.cpp",
+    ]),
+    copts = [
+        "-DV8_COMPRESS_POINTERS",
+    ],
+    deps = [
+        ":valdi_runtime",
+        ":valdi_v8",
+        "//valdi_core",
+    ],
+)
+
+objc_library(
+    name = "valdi_macos",
+    srcs = glob([
+        "src/valdi/macos/**/*.c",
+        "src/valdi/macos/**/*.m",
+        "src/valdi/macos/**/*.mm",
+        "src/valdi/macos/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/macos/**/*.h",
+        "src/valdi/macos/**/*.hpp",
+    ]),
+    copts = OBJC_FLAGS + ["-I."],
+    includes = [
+        "src",
+    ],
+    sdk_frameworks = [
+        "AppKit",
+        "Metal",
+        "QuartzCore",
+        "MetalKit",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_runtime_with_vm",
+        ":valdi_snap_drawing",
+        ":valdi_standalone_runtime",
+    ],
+)
+
+objc_library(
+    name = "valdi_macos_desktop_lib",
+    srcs = glob([
+        "src/valdi/standalone_desktop/**/*.m",
+        "src/valdi/standalone_desktop/**/*.mm",
+    ]),
+    hdrs = glob([
+        "src/valdi/standalone_desktop/**/*.h",
+    ]),
+    copts = ["-I."],
+    includes = [
+        "src",
+    ],
+    sdk_frameworks = [
+        "AppKit",
+        "Metal",
+        "QuartzCore",
+        "MetalKit",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi",
+        "//valdi_core",
+    ],
+)
+
+filegroup(
+    name = "valdi_desktop_plist",
+    srcs = [
+        "src/valdi/standalone_desktop/Info.plist",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+kt_jvm_library(
+    name = "annotation_processor_lib",
+    srcs = glob(["src/java_plugin/processor/**/*.kt"]),
+    deps = [],
+)
+
+java_plugin(
+    name = "annotation_processor",
+    processor_class = "com.snap.valdi.annotation_processor.ValdiAnnotationProcessor",
+    visibility = ["//visibility:public"],
+    deps = [":annotation_processor_lib"],
+)
+
+filegroup(
+    name = "proguard-rules",
+    srcs = [
+        "src/java/proguard-rules.pro",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+CC_COMPILER_FLAGS = COMMON_COMPILE_FLAGS + COMPILER_FLAGS_COMPAT + ["-fno-exceptions"]
+
+cc_library(
+    name = "djinni_generated_cc",
+    hdrs = glob(["generated-src/cpp/**/*.hpp"]),
+    copts = CC_COMPILER_FLAGS,
+    strip_include_prefix = "generated-src/cpp",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "djinni_objc_hdrs",
+    srcs = glob([
+        "generated-src/objc/valdi/**/*.h",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+objc_library(
+    name = "djinni_objc",
+    srcs = glob([
+        "generated-src/objc/valdi/**/*.m",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+objc_library(
+    name = "djinni_objc_cpp",
+    srcs = glob([
+        "generated-src/objc/valdi/**/*.mm",
+    ]),
+    hdrs = glob([
+        "generated-src/objc/valdi/**/*.h",
+    ]),
+    includes = [
+        "generated-src/objc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_generated_cc",
+        "//valdi_core:valdi_core_objc",
+    ],
+)
+
+cc_library(
+    name = "djinni_jni",
+    srcs = glob([
+        "generated-src/jni/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "generated-src/jni/**/*.hpp",
+    ]),
+    copts = CC_COMPILER_FLAGS,
+    includes = [
+        "generated-src/jni",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":djinni_generated_cc",
+        "//third-party/djinni-support-lib:djinni_support_lib",
+        "//valdi_core:valdi_core_jni",
+    ],
+)
+
+filegroup(
+    name = "djinni_java_srcs",
+    srcs = glob([
+        "generated-src/java/**/*.java",
+    ]),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,10 @@
+load("//tsn:tsn.bzl", "tsn_library")
+
+tsn_library(
+    name = "rtl",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.json",
+    ]),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,90 @@
+parameters:
+  runTests: true
+  runFrameworkTests: false
+
+steps:
+- task: NodeTool@0
+  displayName: Use Node
+  inputs:
+    versionSpec: 12.13.0
+    checkLatest: true
+
+- bash: |
+    /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+    echo ">>> Started xvfb"
+  displayName: Start xvfb
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+
+- task: Npm@1
+  displayName: npm install
+  inputs:
+    verbose: false
+
+- task: Gulp@0
+  displayName: gulp compile
+  inputs:
+    targets: compile
+    publishJUnitResults: true
+
+# A shell script here due to https://github.com/microsoft/azure-pipelines-tasks/issues/12650
+- task: CmdLine@2
+  displayName: npm test
+  inputs:
+    script: npm test
+  timeoutInMinutes: 12
+  condition: eq(${{ parameters.runTests }}, true)
+  env:
+    DISPLAY: ':99.0'
+
+- task: CmdLine@2
+  displayName: npm test (framework tests)
+  inputs:
+    script: npm test
+  timeoutInMinutes: 10
+  condition: eq(${{ parameters.runFrameworkTests }}, true)
+  env:
+    FRAMEWORK_TESTS: 1
+    DISPLAY: ':99.0'
+
+- task: Gulp@0
+  displayName: gulp lint
+  inputs:
+    targets: lint
+  condition: eq(${{ parameters.runTests }}, true)
+
+- task: PublishTestResults@2
+  displayName: Publish Tests Results
+  inputs:
+    testResultsFiles: '*-results.xml'
+    searchFolder: '$(Build.ArtifactStagingDirectory)/test-results'
+  condition: and(succeededOrFailed(), eq(${{ parameters.runTests }}, true))
+
+- task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+  displayName: 'Component Detection'
+  inputs:
+    ignoreDirectories: 'testdata,demos,.vscode-test'
+
+- ${{ if eq(parameters.name, 'Windows') }}:
+  - task: securedevelopmentteam.vss-secure-development-tools.build-task-uploadtotsa.TSAUpload@1
+    displayName: 'TSA upload to Codebase: vscode-js-debug_master Version: TsaV2'
+    inputs:
+      tsaVersion: TsaV2
+      codebase: NewOrUpdate
+      codeBaseName: 'vscode-js-debug_master'
+      notificationAlias: 'webdiag-extensions@microsoft.com'
+      instanceUrlForTsaV2: DEVDIV
+      projectNameDEVDIV: DevDiv
+      areaPath: 'DevDiv\TypeScript\HTML Experiences\Diagnostics\Debugger'
+      uploadAPIScan: false
+      uploadBinSkim: false
+      uploadFortifySCA: false
+      uploadFxCop: false
+      uploadModernCop: false
+      uploadPoliCheck: false
+      uploadPREfast: false
+      uploadRoslyn: false
+      uploadTSLint: false
+
+- ${{ if eq(parameters.name, 'Windows') }}:
+  - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
+    displayName: 'Publish Security Analysis Logs'

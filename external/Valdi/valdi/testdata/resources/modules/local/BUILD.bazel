@@ -1,0 +1,21 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "local",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    android_output_target = "release",
+    ios_module_name = "SCCLocal",
+    ios_output_target = "release",
+    legacy_vue_srcs = glob([
+        "src/**/*.vue",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+        "//valdi/testdata/resources/modules/remote",
+    ],
+)

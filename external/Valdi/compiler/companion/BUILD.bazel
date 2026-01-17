@@ -1,0 +1,233 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@aspect_rules_js//npm:defs.bzl", "npm_link_package", "npm_package")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_config", "ts_project")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@valdi_npm//:defs.bzl", "npm_link_all_packages")
+load("@valdi_npm//compiler/companion:webpack/package_json.bzl", webpack_bin = "bin")
+
+npm_link_all_packages(name = "node_modules")
+
+npm_link_package(
+    name = "remotedebug-ios-webkit-adapter-package",
+    src = "//compiler/companion/remotedebug-ios-webkit-adapter:package",
+    package = "remotedebug-ios-webkit-adapter",
+    root_package = package_name(),
+)
+
+bool_flag(
+    name = "dev_mode",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "dev_mode_enabled",
+    flag_values = {
+        ":dev_mode": "true",
+    },
+)
+
+js_binary(
+    name = "bin_wrapper",
+    copy_data_to_bin = False,
+    data = select({
+        ":dev_mode_enabled": glob([
+            "dist_dev/**/*.js",
+            "dist_dev/**/*.js.map",
+            "dist_dev/**/*.node",
+        ]),
+        "//conditions:default": glob([
+            "dist/**/*.js",
+            "dist/**/*.js.map",
+            "dist/**/*.node",
+        ]),
+    }),
+    entry_point = select({
+        ":dev_mode_enabled": "dist_dev/bundle.js",
+        "//conditions:default": "dist/bundle.js",
+    }),
+    env = {
+        "NODE_ENV": "production",
+        "UV_THREADPOOL_SIZE": "1",
+    },
+    node_options = [
+        # "--inspect-brk", # allows you to debug the companion using chrome://inspect in Chrome
+        "--max-old-space-size=4096",
+        "--enable-source-maps",
+        "--v8-pool-size=1",
+    ],
+    visibility = ["//visibility:public"],
+    # log_level = "debug", # increase verbosity of logs if you need to debug anything
+)
+
+ts_project(
+    name = "locales",
+    srcs = glob([
+        "supported-locales/src/**/*.ts",
+    ]),
+    composite = True,
+    declaration = True,
+    out_dir = "supported-locales/out",
+    resolve_json_module = True,
+    root_dir = "supported-locales/src",
+    transpiler = "tsc",
+    tsconfig = "supported-locales/tsconfig.json",
+    deps = [
+        ":node_modules/@types/better-sqlite3",
+        ":node_modules/@types/convert-source-map",
+        ":node_modules/@types/istanbul-lib-coverage",
+        ":node_modules/@types/js-yaml",
+        ":node_modules/@types/lodash",
+        ":node_modules/@types/node",
+        ":node_modules/@types/source-map",
+    ],
+)
+
+ts_project(
+    name = "lib",
+    srcs = glob(
+        ["src/**/*.ts"],
+        # excludes
+        ["src/**/*.spec.ts"],
+    ),
+    allow_js = True,
+    assets = glob([
+        "src/**/*.node",
+        "src/**/*.json",
+    ]),
+    composite = True,
+    data = [
+        ":locales",
+        ":node_modules/@babel/preset-typescript",
+        ":node_modules/better-sqlite3",
+        ":node_modules/convert-source-map",
+        ":node_modules/express",
+        ":node_modules/fast-glob",
+        ":node_modules/istanbul-lib-coverage",
+        ":node_modules/istanbul-lib-instrument",
+        ":node_modules/js-yaml",
+        ":node_modules/lodash",
+        ":node_modules/source-map",
+        ":node_modules/terser",
+        ":node_modules/typescript",
+        ":node_modules/xml-js",
+    ],
+    declaration = True,
+    out_dir = "src",
+    root_dir = "src",
+    source_map = True,
+    transpiler = "tsc",
+    tsconfig = ":tsconfig",
+    deps = [
+        ":locales",
+        ":node_modules/@babel/preset-typescript",
+        ":node_modules/@babel/types",
+        ":node_modules/@types/better-sqlite3",
+        ":node_modules/@types/convert-source-map",
+        ":node_modules/@types/istanbul-lib-coverage",
+        ":node_modules/@types/js-yaml",
+        ":node_modules/@types/lodash",
+        ":node_modules/@types/node",
+        ":node_modules/@types/source-map",
+        ":node_modules/express",
+        ":node_modules/fast-glob",
+        ":node_modules/terser",
+        ":node_modules/typescript",
+        ":node_modules/xml-js",
+        ":remotedebug-ios-webkit-adapter-package",
+    ],
+)
+
+ts_config(
+    name = "tsconfig",
+    src = "tsconfig.bazel.json",
+    visibility = ["//compiler/companion:__subpackages__"],
+    deps = ["tsconfig.base.json"],
+)
+
+js_binary(
+    name = "ts_bin_wrapper",
+    copy_data_to_bin = False,
+    data = [":lib"],
+    entry_point = "src/index.js",
+    env = {
+        "NODE_ENV": "production",
+        "UV_THREADPOOL_SIZE": "1",
+    },
+    node_options = [
+        # "--inspect-brk", # allows you to debug the companion using chrome://inspect in Chrome
+        "--max-old-space-size=4096",
+        "--enable-source-maps",
+        "--v8-pool-size=1",
+    ],
+    visibility = ["//visibility:public"],
+    # log_level = "debug", # increase verbosity of logs if you need to debug anything
+)
+
+npm_package(
+    name = "package",
+    srcs = [
+        "package.json",
+        ":lib",
+    ],
+    package = "valdi-compiler-js",
+    root_paths = [package_name()],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    glob(["src/sqlite_bindings/*.node"]),
+    visibility = ["//visibility:public"],
+)
+
+webpack_bin.webpack(
+    name = "bundle_js",
+    srcs = [
+        "COMMIT_HASH",
+        "webpack.config.js",
+        ":lib",
+        ":node_modules/@types/ws",
+        ":node_modules/better-sqlite3",
+        ":node_modules/convert-source-map",
+        ":node_modules/fast-glob",
+        ":node_modules/istanbul-lib-coverage",
+        ":node_modules/istanbul-lib-instrument",
+        ":node_modules/js-yaml",
+        ":node_modules/lodash",
+        ":node_modules/node-loader",
+        ":node_modules/source-map",
+        ":node_modules/terser",
+        ":node_modules/ts-loader",
+        ":node_modules/typescript",
+        ":node_modules/webpack",
+        ":node_modules/ws",
+        ":node_modules/xml-js",
+        ":remotedebug-ios-webkit-adapter-package",
+    ],
+    outs = ["dist/bundle.js"],
+    chdir = package_name(),
+)
+
+genrule(
+    name = "sqlite_binaries",
+    srcs = [
+        ":src/sqlite_bindings/better_sqlite3_macos_arm64.node",
+        ":src/sqlite_bindings/better_sqlite3_linux_x86_64.node",
+    ],
+    outs = [
+        "dist/better_sqlite3_macos_arm64.node",
+        "dist/better_sqlite3_linux_x86_64.node",
+    ],
+    cmd = """
+    mkdir -p $(RULEDIR)/dist && \
+        cp $(location :src/sqlite_bindings/better_sqlite3_macos_arm64.node) $(RULEDIR)/dist/ && \
+        cp $(location :src/sqlite_bindings/better_sqlite3_linux_x86_64.node) $(RULEDIR)/dist/
+    """,
+)
+
+filegroup(
+    name = "bundle",
+    srcs = [
+        ":bundle_js",
+        ":sqlite_binaries",
+    ],
+)

@@ -1,0 +1,35 @@
+name: Result
+typedef: 'record'
+params: []
+prefix: ""
+cpp:
+  typename: 'Valdi::PlatformResult'
+  header: '"valdi_core/cpp/Utils/PlatformResult.hpp"'
+  byValue: false
+objc:
+  typename: 'SCValdiResult'
+  pointer: true
+  hash: '%s.hash'
+  boxed: 'SCValdiResult'
+  header: '"valdi_core/SCValdiResult.h"'
+objcpp:
+  translator: 'ValdiIOS::ResultTranslator'
+  header: '"valdi_core/bindings/ResultTranslator_objc.hpp"'
+java:
+  reference: true
+  typename: 'com.snap.valdi.utils.ValdiResult'
+  generic: true
+  hash: '%s.hashCode()'
+  boxed: 'com.snap.valdi.utils.ValdiResult'
+jni:
+  translator: 'ValdiAndroid::ResultTranslator'
+  header: '"valdi_core/bindings/ResultTranslator_jni.hpp"'
+  typename: jobject
+  typeSignature: 'Lcom/snap/valdi/utils/ValdiResult;'
+wasm:
+  typename: 'em::val'
+  translator: 'ValdiWasm::ResultTranslator'
+  header: '"valdi_core/bindings/ResultTranslator_wasm.hpp"'
+ts:
+  typename: 'any'
+  module: ''

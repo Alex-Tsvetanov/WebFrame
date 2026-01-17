@@ -1,0 +1,14 @@
+output_target: release
+
+dependencies:
+  - coreutils
+  - valdi_core
+  - valdi_standalone
+
+allowed_debug_dependencies:
+  - valdi_standalone
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

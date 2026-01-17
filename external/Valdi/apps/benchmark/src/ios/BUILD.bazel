@@ -1,0 +1,12 @@
+objc_library(
+    name = "native_module_ios",
+    srcs = glob([
+        "**/*.m",
+    ]),
+    hdrs = [],
+    copts = ["-I."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/benchmark/src/valdi/benchmark:benchmark_api_objc",
+    ],
+)

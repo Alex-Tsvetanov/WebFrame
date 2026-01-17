@@ -1,0 +1,54 @@
+//
+//  SCValdiTextLayout.h
+//  valdi-ios
+//
+//  Created by Simon Corsin on 12/21/22.
+//
+
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+/**
+ A TextLayout implementation that leverages TextKit.
+ Used for layouts that requires introspection at runtime
+ on how the characters are actually laid out.
+ */
+@interface SCValdiTextLayout : NSObject
+
+@property (copy, nonatomic, nullable) NSAttributedString* attributedString;
+
+@property (assign, nonatomic) CGSize size;
+@property (assign, nonatomic) NSUInteger maxNumberOfLines;
+@property (readonly, nonatomic) CGRect usedRect;
+
+- (instancetype)init;
+
+/**
+ Draw the entire text layout inside the given rect
+ */
+- (void)drawInRect:(CGRect)rect;
+
+/**
+ Return the closest character index at the given point.
+ Returns NSNotFound if there are no characters close to the given point.
+ */
+- (NSInteger)characterIndexAtPoint:(CGPoint)point;
+
+/**
+ Return the bounding rect for the given range of characters.
+ */
+- (CGRect)boundingRectForRange:(NSRange)range;
+
+/**
+ Return the bounding rect for the given attributed string, constrained to the
+ given maxSize and max number of lines.
+ */
++ (CGRect)boundingRectWithAttributedString:(NSAttributedString*)attributedString
+                                   maxSize:(CGSize)maxSize
+                          maxNumberOfLines:(NSUInteger)maxNumberOfLines;
+
+@end
+
+NS_ASSUME_NONNULL_END

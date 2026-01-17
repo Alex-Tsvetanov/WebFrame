@@ -1,0 +1,9 @@
+output_target: release
+
+allowed_debug_dependencies:
+  - jasmine
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

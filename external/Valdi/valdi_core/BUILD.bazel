@@ -1,0 +1,399 @@
+load("@android_macros//:android.bzl", "android_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint", "swift_library")
+load("@rules_hdrs//umbrella_header:umbrella_header.bzl", "umbrella_header")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@valdi//bzl:modulemap.bzl", "modulemap")
+load("@valdi//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_FLAGS")
+load("djinni_compat.bzl", "generate_djinni_compat_target")
+
+COMPILER_FLAGS_CC = [
+    # '-Os', # Uncomment to enable optimizations
+    "-Wno-c11-extensions",
+    "-Wno-c99-extensions",
+    "-Wno-keyword-macro",
+    "-Wno-vla-extension",
+    "-Wno-zero-length-array",
+    "-Wno-deprecated-declarations",
+    "-Wno-pedantic",
+    "-Wno-shorten-64-to-32",
+    "-Wno-implicit-int",
+] + select({
+    "//conditions:default": [],
+    "//bzl/conditions:android_with_jni": ["-DANDROID"],
+})
+
+COMPILER_FLAGS = COMPILER_FLAGS_CC + ["-fno-exceptions"]
+
+# Main rule building the valdi framework with the modules
+# matching the current platform being build.
+alias(
+    name = "valdi_core",
+    actual = selects.with_or({
+        ("@platforms//os:ios", "@platforms//os:macos"): ":valdi_core_objc",
+        "//bzl/conditions:android_with_jni": ":valdi_core_android",
+        "//conditions:default": ":valdi_core_cc",
+    }),
+    tags = [
+        "core_target",
+        "exported",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+objc_library(
+    name = "test_ios_lib",
+    srcs = glob([
+        "test/ios/**/*.mm",
+    ]),
+    copts = OBJC_FLAGS + COMPILER_FLAGS,
+    deps = [
+        ":valdi_core",
+        "@gtest",
+    ],
+    alwayslink = True,
+)
+
+cc_test(
+    name = "test_ios",
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":test_ios_lib",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "valdi_core_bindings_cc",
+    hdrs = glob([
+        "src/bindings/include/**/*_valdi.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    strip_include_prefix = "src/bindings/include",
+)
+
+# The core library, contains the C++ runtime and the JS engine
+# abstraction
+cc_library(
+    name = "valdi_core_cc",
+    srcs = glob([
+        "src/valdi_core/cpp/**/*.c",
+        "src/valdi_core/cpp/**/*.cpp",
+        "src/bindings/include/**/*_valdi.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi_core/cpp/**/*.h",
+        "src/valdi_core/cpp/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS_CC,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":private_djinni_generated_cc",
+        ":valdi_core_bindings_cc",
+        "//libs/utils:utils_core_cc",
+        "//libs/utils:utils_encoding_cc",
+        "@boost",
+        "@fmt",
+        "@jsoncpp",
+        "@phmap",
+        "@zoo",
+    ],
+)
+
+# Exposes the generated and hand-written JNI code,
+# for using Valdi from Java.
+cc_library(
+    name = "valdi_core_jni",
+    srcs = glob([
+        "src/valdi_core/jni/**/*.cpp",
+        "generated-src/jni/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi_core/jni/**/*.hpp",
+        "generated-src/jni/**/*.hpp",
+        "src/bindings/include/**/*_jni.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    includes = [
+        "generated-src/jni",
+        "src",
+        "src/bindings/include",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":private_djinni_generated_cc",
+        ":valdi_core_cc",
+        "@valdi//third-party/yoga",  # for fbjni
+    ],
+    alwayslink = True,
+)
+
+# valdi_core target for the android integration of the runtime
+cc_library(
+    name = "valdi_core_android",
+    srcs = glob([
+        "src/valdi_core/android/**/*.c",
+        "src/valdi_core/android/**/*.cpp",
+        "src/valdi_core/android/**/*.h",
+        "src/valdi_core/android/**/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/valdi_core/android/**/*.h",
+        "src/valdi_core/android/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    linkopts = [
+        "-landroid",
+        "-lEGL",
+        "-lGLESv3",
+        "-llog",
+        "-ljnigraphics",
+    ],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [":valdi_core_jni"],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "private_djinni_generated_cc",
+    hdrs = glob(["generated-src/cpp/**/*.hpp"]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    strip_include_prefix = "generated-src/cpp",
+)
+
+android_library(
+    name = "valdi_core_res",
+    custom_package = "com.snapchat.client",
+    manifest = "src/valdi_core/android/AndroidManifest.xml",
+    resource_files = glob(["res/**"]),
+    visibility = ["//visibility:public"],
+)
+
+kt_android_library(
+    name = "valdi_core_java",
+    srcs = glob([
+        "src/java/**/*.java",
+        "src/java/**/*.kt",
+        "generated-src/java/**/*.java",
+    ]),
+    visibility = ["//visibility:public"],
+    exports = [
+        ":valdi_core_res",
+    ],
+    deps = [
+        ":valdi_core_res",
+        "//third-party/djinni-support-lib:djinni_support_lib_java",
+        "@android_mvn//:androidx_annotation_annotation",
+        "@android_mvn//:androidx_appcompat_appcompat",
+        "@android_mvn//:androidx_core_core",
+        "@android_mvn//:androidx_lifecycle_lifecycle_common",
+        "@android_mvn//:androidx_lifecycle_lifecycle_process",
+    ],
+)
+
+PRIVATE_HEADERS = [
+    "src/valdi_core/ios/valdi_core/Valdi.h",
+    "src/valdi_core/ios/valdi_core/SCValdiBlockHelper.h",
+    "src/valdi_core/ios/valdi_core/SCValdiFunctionWithCPPFunction.h",
+    "src/valdi_core/ios/valdi_core/SCValdiLogger.h",
+    "src/valdi_core/ios/valdi_core/SCValdiObjCConversionUtils.h",
+    "src/valdi_core/ios/valdi_core/SCValdiObjCValue.h",
+    "src/valdi_core/ios/valdi_core/SCValdiObjCValueDelegate.h",
+    "src/valdi_core/ios/valdi_core/SCValdiTouches.h",
+    "src/valdi_core/ios/valdi_core/SCValdiValueUtils.h",
+    "src/valdi_core/ios/valdi_core/ValueFunctionWithSCValdiFunction.h",
+] + glob([
+    "generated-src/objc/valdi_core/*+Private.h",
+    "src/valdi_core/ios/valdi_core/*+CPP.h",
+    "src/valdi_core/ios/valdi_core/*+Private.h",
+])
+
+MAC_OS_DEPENDENCIES = glob([
+    "src/valdi_core/ios/**/SCValdiReferenceTable.mm",
+    "src/valdi_core/ios/**/SCValdiObjCConversionUtils.mm",
+    "src/valdi_core/ios/**/SCValdiError.m",
+    "src/valdi_core/ios/**/SCValdiFunctionWithCPPFunction.mm",
+    "src/valdi_core/ios/**/SCValdiUndefinedValue.m",
+    "src/valdi_core/ios/**/SCValdiWrappedValue.mm",
+    "src/valdi_core/ios/**/SCValdiActionCompat.m",
+    "src/valdi_core/ios/**/SCValdiSharedLogger.m",
+    "src/valdi_core/ios/**/SCValdiMarshaller.mm",
+    "src/valdi_core/ios/**/SCValdiFunctionWithBlock.mm",
+    "src/valdi_core/ios/**/SCValdiFunction.m",
+    "src/valdi_core/ios/**/SCValdiInternedString.mm",
+    "src/valdi_core/ios/**/ValueFunctionWithSCValdiFunction.mm",
+    "src/valdi_core/ios/**/SCValdiMarshallableObjectDescriptor.m",
+])
+
+OBJC_HEADERS = glob(
+    [
+        "src/valdi_core/ios/valdi_core/**/*.h",
+        "generated-src/objc/valdi_core/**/*.h",
+    ],
+    exclude = PRIVATE_HEADERS,
+)
+
+cc_library(
+    name = "valdi_core_swift_interop_lib",
+    srcs = glob(["src/valdi_core/ios/swift/**/*.cpp"]),
+    hdrs = glob([
+        "src/valdi_core/ios/swift/**/*.h",
+        "src/valdi_core/ios/swift/**/*.hpp",
+    ]),
+    aspect_hints = [":valdi_core_swift_interop"],
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    linkopts = ["-framework CoreFoundation"],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_core_cc",
+    ],
+)
+
+modulemap(
+    name = "valdi_core_swift_interop_module_map",
+    hdrs = glob([
+        "src/valdi_core/ios/swift/**/*.h",
+    ]),
+    module_name = "ValdiCoreCPP",
+    tags = ["manual"],
+)
+
+swift_interop_hint(
+    name = "valdi_core_swift_interop",
+    module_map = ":valdi_core_swift_interop_module_map",
+    module_name = "ValdiCoreCPP",
+    tags = ["manual"],
+)
+
+swift_library(
+    name = "valdi_core_swift_marshaller",
+    srcs = glob([
+        "src/valdi_core/ios/swift/**/*.swift",
+    ]),
+    copts = ["-Osize"],
+    module_name = "ValdiCoreSwift",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_core_cpp_objc",
+        ":valdi_core_swift_interop_lib",
+    ],
+)
+
+filegroup(
+    name = "valdi_core_ios_public_hdrs",
+    srcs = OBJC_HEADERS,
+    visibility = ["//visibility:public"],
+)
+
+umbrella_header(
+    name = "valdi_core-umbrella",
+    hdrs = [":valdi_core_ios_public_hdrs"],
+    tags = ["manual"],
+    umbrella_header_name = "valdi_core-umbrella",
+    visibility = ["//visibility:private"],
+)
+
+swift_interop_hint(
+    name = "valdi_core_cpp_objc_swift_interop_hint",
+    module_name = "valdi_core",
+    system_pcms = select({
+        "@valdi//bzl/conditions:explicit_modules": [
+            "@build_bazel_rules_swift//system_sdks:system_sdks",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = ["manual"],
+)
+
+objc_library(
+    name = "valdi_core_cpp_objc",
+    srcs = glob([
+        "src/bindings/include/**/*_objc.hpp",
+        "generated-src/objc/valdi_core/**/*.mm",
+    ]) + select({
+        "@platforms//os:ios": glob([
+            "src/valdi_core/ios/**/*.mm",
+        ]),
+        "@platforms//os:macos": MAC_OS_DEPENDENCIES,
+    }) + PRIVATE_HEADERS,
+    hdrs = OBJC_HEADERS + [
+        ":valdi_core-umbrella",  # umbrella header is a public header
+    ],
+    aspect_hints = [":valdi_core_cpp_objc_swift_interop_hint"],  # This hint allows Swift to see the C++ interop
+    copts = OBJC_FLAGS + COMPILER_FLAGS,
+    includes = [
+        "generated-src/objc",
+        "src/bindings/include",
+        "src/valdi_core/ios",
+    ],
+    module_name = "valdi_core",
+    sdk_frameworks = select({
+        "@platforms//os:ios": ["UIKit"],
+        "@platforms//os:macos": [],
+    }),
+    tags = [
+        "core_target",
+        "exported",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":private_djinni_generated_cc",
+        ":valdi_core_cc",
+        "@phmap",
+    ],
+)
+
+# This code is not compatible with C++, so avoid client_objc_library()
+objc_library(
+    name = "valdi_core_objc",
+    srcs = glob([
+        "generated-src/objc/valdi_core/**/*.m",
+    ]) + select({
+        "@platforms//os:ios": glob([
+            "src/valdi_core/ios/**/*.m",
+        ]),
+        "//conditions:default": [],
+    }),
+    copts = COMPILER_FLAGS,
+    enable_modules = True,
+    sdk_frameworks = select({
+        "@platforms//os:ios": [
+            "CoreMedia",
+            "CoreVideo",
+            "AVFoundation",
+            "UIKit",
+            "JavaScriptCore",
+            "QuartzCore",
+            "CoreGraphics",
+            "Security",
+        ],
+        "@platforms//os:macos": [],
+    }),
+    tags = [
+        "core_target",
+        "exported",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":valdi_core_cpp_objc",
+    ],
+)
+
+generate_djinni_compat_target(
+    source_target = "valdi_core_cc",
+    target = "cc",
+)
+
+generate_djinni_compat_target(
+    source_target = "valdi_core_jni",
+    target = "jni",
+)
+
+generate_djinni_compat_target(
+    source_target = "valdi_core_objc",
+    target = "objc",
+)

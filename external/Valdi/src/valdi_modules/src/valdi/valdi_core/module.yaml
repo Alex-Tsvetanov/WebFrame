@@ -1,0 +1,38 @@
+output_target: release
+
+web:
+  version: 1.0.2
+  publish_config: '{ "@snapchat:registry": "https://registry.npmjs.org/"
+    }'
+  main: src/AnimationOptions.js
+  scope: snapchat
+
+dependencies:
+  - coreutils
+  - source_map
+  - jasmine
+  - valdi_tsx
+
+allowed_debug_dependencies:
+  - jasmine
+
+compilation_mode:
+  native:
+    include_patterns:
+      - .*/src/Init\.js
+      - .*/src/ModuleLoader\.ts
+      - .*/src/Renderer\.ts
+      - .*/src/JSX.*\.ts
+      - .*/src/TsnHelper\.ts
+      - .*/utils/Buffer\.ts
+      - .*/utils/CallbackInternal\.ts
+      - .*/utils/IdentifyableObject\.ts
+      - .*/utils/PartialUtils\.ts
+      - .*/utils/PropertyList\.ts
+      - .*/utils/When\.ts
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"
+

@@ -1,0 +1,47 @@
+COMPILER_FLAGS = [
+    "-Wno-conditional-uninitialized",
+    "-Wno-implicit-float-conversion",
+    "-Wno-pedantic",
+    "-Wno-shorten-64-to-32",
+    "-Wno-sign-compare",
+    "-Wno-unreachable-code",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-fno-exceptions",
+    "-Wno-unused-function",
+    "-Wno-unused-but-set-variable",
+    "-Wno-unknown-warning-option",
+    "-Os",  # Always set optimization on
+]
+
+cc_library(
+    name = "quickjs",
+    hdrs = glob([
+        "include/quickjs/*.h",
+    ]),
+    includes = ["include"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [":quickjs_internal"],
+)
+
+cc_library(
+    name = "quickjs_internal",
+    srcs = glob([
+        "src/quickjs/*.c",
+        "src/quickjs/*.h",
+    ]),
+    copts = COMPILER_FLAGS,
+    local_defines = ["CONFIG_VERSION='\"2021-03-27\"'"],
+    strip_include_prefix = "src/quickjs",
+    deps = ["quickjs_includes"],
+)
+
+cc_library(
+    name = "quickjs_includes",
+    hdrs = glob([
+        "include/quickjs/*.h",
+    ]),
+    strip_include_prefix = "include/quickjs",
+)

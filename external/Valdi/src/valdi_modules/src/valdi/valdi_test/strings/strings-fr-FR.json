@@ -1,0 +1,9 @@
+{
+  "l10nsvc": "sourcefile",
+  "my_first": {
+    "defaultMessage": "Mon premier texte"
+  },
+  "my_second": {
+    "defaultMessage": "Mon second texte avec un total de {total}"
+  }
+}

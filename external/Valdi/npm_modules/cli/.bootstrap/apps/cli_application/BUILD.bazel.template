@@ -1,0 +1,7 @@
+load("@valdi//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+
+valdi_cli_application(
+    name = "{{MODULE_NAME}}_app",
+    script_path = "{{MODULE_NAME}}/src/index",
+    deps = ["//modules/{{MODULE_NAME}}"],
+)

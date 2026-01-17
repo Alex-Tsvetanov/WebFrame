@@ -1,0 +1,236 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_swift//swift/internal:feature_names.bzl", "SWIFT_FEATURE_USE_C_MODULES")
+load(":custom_selects.bzl", "custom_selects")
+
+config_setting(
+    name = "android_arm32",
+    constraint_values = [
+        "@platforms//cpu:armv7",
+        "@platforms//os:android",
+    ],
+)
+
+config_setting(
+    name = "android_arm64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:android",
+    ],
+)
+
+config_setting(
+    name = "android_x64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:android",
+    ],
+)
+
+selects.config_setting_group(
+    name = "linux",
+    match_all = [
+        "@platforms//os:linux",
+        ":not_wasm",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    "linux_arm64",
+    match_all = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+        ":not_wasm",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    "linux_x64",
+    match_all = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+        ":not_wasm",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android",
+    constraint_values = [
+        "@platforms//os:android",
+    ],
+)
+
+# disable JNI. Only relevant for Android builds.
+config_setting(
+    name = "jni_disabled",
+    define_values = {
+        "jni_disabled": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+custom_selects.config_setting_inverse(
+    name = "jni_enabled",
+    inverse_of = ":jni_disabled",
+    visibility = ["//visibility:public"],
+)
+
+# build for android assuming this will be loaded in an apk with a jni env
+selects.config_setting_group(
+    "android_with_jni",
+    match_all = [
+        ":android",
+        ":jni_enabled",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    "macos",
+    match_all = [
+        "@platforms//os:macos",
+        ":not_wasm",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "x64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+selects.config_setting_group(
+    "macos_arm64",
+    match_all = [
+        ":macos",
+        ":arm64",
+        ":not_wasm",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    "macos_x86_64",
+    match_all = [
+        ":macos",
+        ":x64",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_arm64",
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:arm64",
+        "@build_bazel_apple_support//constraints:device",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_x86_64",
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:x86_64",
+        "@build_bazel_apple_support//constraints:simulator",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios_arm64_sim",
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:arm64",
+        "@build_bazel_apple_support//constraints:simulator",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "ios",
+    constraint_values = [
+        "@platforms//os:ios",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "link_shared_libcxx",
+    constraint_values = [
+        # Currently only supported on linux, but could be extended to android if ever needed.
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    define_values = {
+        "libcxx": "shared",
+    },
+)
+
+# The emscripten toolchain sets cpu=wasm here
+# https://github.com/emscripten-core/emsdk/blob/main/bazel/emscripten_toolchain/BUILD.bazel#L51
+# This setting allows conditions in the form of "//bzl/conditions:wasm", that will be triggered
+# when the emscripten toolchain is set.
+config_setting(
+    name = "wasm",
+    values = {
+        "cpu": "wasm",
+    },
+)
+
+custom_selects.config_setting_inverse(
+    name = "not_wasm",
+    inverse_of = ":wasm",
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "open_source_build",
+    define_values = {
+        "open_source_build": "true",
+    },
+)
+
+# Following config flags correspond to the values of the --strip Bazel flag.
+# see https://bazel.build/docs/user-manual#strip
+config_setting(
+    name = "strip_always",
+    values = {
+        "strip": "always",
+    },
+)
+
+config_setting(
+    name = "strip_never",
+    values = {
+        "strip": "never",
+    },
+)
+
+# This setting is used to enable the use of explicit modules in Swift.
+config_setting(
+    name = "explicit_modules",
+    values = {
+        "features": SWIFT_FEATURE_USE_C_MODULES,
+    },
+)
+
+# strip when compilation_mode is fastbuild
+config_setting(
+    name = "strip_sometimes",
+    values = {
+        "strip": "sometimes",
+    },
+)

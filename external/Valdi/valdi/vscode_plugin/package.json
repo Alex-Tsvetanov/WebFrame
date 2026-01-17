@@ -1,0 +1,51 @@
+{
+	"name": "valdi-vivaldi",
+	"displayName": "valdi-vivaldi",
+	"publisher": "snap",
+	"description": "Valdi VS Code extension",
+	"version": "0.0.3",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Snapchat/Valdi.git"
+	},
+	"engines": {
+		"vscode": "^1.75.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"workspaceContains:**/valdi_config.yaml"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": []
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile && npm run lint",
+		"lint": "eslint src --ext ts",
+		"test": "node ./out/test/runTest.js",
+		"package-extension": "mkdir -p ./build && npx vsce package --out build/valdi-vivaldi.vsix"
+	},
+	"devDependencies": {
+		"@types/glob": "^8.1.0",
+		"@types/mocha": "^10.0.1",
+		"@types/node": "^20.5.9",
+		"@types/tail": "^2.2.1",
+		"@types/vscode": "^1.75.0",
+		"@typescript-eslint/eslint-plugin": "^6.6.0",
+		"@typescript-eslint/parser": "^6.6.0",
+		"@vscode/test-electron": "^2.3.4",
+		"@vscode/vsce": "^2.21.0",
+		"eslint": "^8.48.0",
+		"glob": "^10.3.4",
+		"mocha": "^10.2.0",
+		"typescript": "^5.1.6"
+	},
+	"dependencies": {
+		"tail": "^2.2.6"
+	}
+}

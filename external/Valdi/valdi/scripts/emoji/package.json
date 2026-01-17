@@ -1,0 +1,25 @@
+{
+  "name": "valdi-core-scripts",
+  "version": "1.0.0",
+  "description": "Support scripts for Valdi Core",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Snapchat/Valdi.git"
+  },
+  "license": "ISC",
+  "bin": "bin/valdi-core-scripts",
+  "pkg": {
+    "assets": []
+  },
+  "scripts": {
+    "emoji_gen": "ts-node src/emoji_gen/index.ts"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.7.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.4.0",
+    "ts-node": "^10.9.2"
+  }
+}

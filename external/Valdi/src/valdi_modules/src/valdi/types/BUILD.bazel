@@ -1,0 +1,8 @@
+filegroup(
+    name = "types",
+    srcs = [
+        "Long.d.ts",
+        "globals.d.ts",
+    ],
+    visibility = ["//visibility:public"],
+)

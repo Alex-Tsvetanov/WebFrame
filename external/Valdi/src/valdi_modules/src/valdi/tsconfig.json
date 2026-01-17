@@ -1,0 +1,10 @@
+{
+  // If you'd like to apply a TypeScript project configuration to all bundles,
+  // go modify "./_configs/base.tsconfig.json".
+  "extends": "./_configs/base.tsconfig.json",
+  "include": [
+    // Listing NativeTemplateElements.d.ts so that the Valdi compiler processes the annotations.
+    // We don't actually want to compile anything else under the root project.
+    "valdi_tsx/src/NativeTemplateElements.d.ts"
+  ]
+}

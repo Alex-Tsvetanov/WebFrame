@@ -1,0 +1,35 @@
+name: InternedString
+typedef: 'record'
+params: []
+prefix: ""
+cpp:
+  typename: 'Valdi::StringBox'
+  header: '"valdi_core/cpp/Utils/StringBox.hpp"'
+  byValue: false
+objc:
+  typename: 'NSString'
+  pointer: true
+  hash: '%s.hash'
+  boxed: 'NSString'
+  header: '<Foundation/Foundation.h>'
+objcpp:
+  translator: 'ValdiIOS::InternedStringTranslator'
+  header: '"valdi_core/bindings/InternedStringTranslator_objc.hpp"'
+java:
+  reference: true
+  typename: 'java.lang.String'
+  generic: true
+  hash: '%s.hashCode()'
+  boxed: 'java.lang.String'
+jni:
+  translator: 'ValdiAndroid::InternedStringTranslator'
+  header: '"valdi_core/bindings/InternedStringTranslator_jni.hpp"'
+  typename: jobject
+  typeSignature: 'Ljava/lang/String;'
+wasm:
+  typename: 'em::val'
+  translator: 'ValdiWasm::InternedStringTranslator'
+  header: '"valdi_core/bindings/InternedStringTranslator_wasm.hpp"'
+ts:
+  typename: 'any'
+  module: ''

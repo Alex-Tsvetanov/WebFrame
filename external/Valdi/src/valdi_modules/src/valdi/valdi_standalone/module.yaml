@@ -1,0 +1,9 @@
+output_target: debug
+disable_code_coverage: true
+
+dependencies:
+  - jasmine
+  - valdi_core
+  - file_system
+
+compilation_mode: js

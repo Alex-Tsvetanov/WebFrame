@@ -1,0 +1,9 @@
+{
+  global:
+    JNI_*;
+    Java_com_*;
+    GamesClient_*;
+    MapsClient_*;
+    VoiceMLClient_*;
+  local: *;
+};

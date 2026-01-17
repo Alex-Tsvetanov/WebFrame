@@ -1,0 +1,39 @@
+cc_library(
+    name = "prepared_headers_platform_specific",
+    hdrs = select({
+        "@valdi//bzl/conditions:ios_arm64": glob(["prepared_include/apple/**/*.h"]),
+        "@valdi//bzl/conditions:ios_x86_64": glob(["prepared_include/apple/**/*.h"]),
+        "@valdi//bzl/conditions:ios_arm64_sim": glob(["prepared_include/apple/**/*.h"]),
+        "@valdi//bzl/conditions:macos_x86_64": glob(["prepared_include/apple/**/*.h"]),
+        "@valdi//bzl/conditions:macos_arm64": glob(["prepared_include/apple/**/*.h"]),
+        "@valdi//bzl/conditions:android_arm32": glob(["prepared_include/android-armeabi-v7a/**/*.h"]),
+        "@valdi//bzl/conditions:android_arm64": glob(["prepared_include/android-arm64-v8a/**/*.h"]),
+        "@valdi//bzl/conditions:android_x64": glob(["prepared_include/android-x86_64/**/*.h"]),
+        "@valdi//bzl/conditions:linux": glob(["prepared_include/linux/**/*.h"]),
+    }),
+    strip_include_prefix = select({
+        "@valdi//bzl/conditions:ios_arm64": "prepared_include/apple",
+        "@valdi//bzl/conditions:ios_x86_64": "prepared_include/apple",
+        "@valdi//bzl/conditions:ios_arm64_sim": "prepared_include/apple",
+        "@valdi//bzl/conditions:macos_x86_64": "prepared_include/apple",
+        "@valdi//bzl/conditions:macos_arm64": "prepared_include/apple",
+        "@valdi//bzl/conditions:android_arm32": "prepared_include/android-armeabi-v7a",
+        "@valdi//bzl/conditions:android_arm64": "prepared_include/android-arm64-v8a",
+        "@valdi//bzl/conditions:android_x64": "prepared_include/android-x86_64",
+        "@valdi//bzl/conditions:linux": "prepared_include/linux",
+    }),
+)
+
+cc_library(
+    name = "prepared_headers_base",
+    hdrs = glob([
+        "prepared_include/llvh/**/*.inc",
+        "prepared_include/hermes/**/*.inc",
+    ]),
+    defines = [],
+    strip_include_prefix = "prepared_include",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":prepared_headers_platform_specific",
+    ],
+)

@@ -1,0 +1,13 @@
+diff --git boost/interprocess/permissions.hpp boost/interprocess/permissions.hpp
+index ab55411e..7e1514a8 100644
+--- boost/interprocess/permissions.hpp
++++ boost/interprocess/permissions.hpp
+@@ -69,6 +69,8 @@ class permissions
+ 
+    #if defined(BOOST_INTERPROCESS_WINDOWS)
+    typedef void*  os_permissions_type;
++   #elif EMSCRIPTEN
++   typedef unsigned os_permissions_type;
+    #else
+    typedef ::mode_t    os_permissions_type;
+    #endif

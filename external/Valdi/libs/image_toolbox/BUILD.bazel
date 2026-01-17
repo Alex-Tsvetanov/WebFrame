@@ -1,0 +1,26 @@
+cc_library(
+    name = "lib",
+    srcs = glob([
+        "src/image_toolbox/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/image_toolbox/**/*.hpp",
+    ]),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@resvg",
+        "@valdi//snap_drawing:snap_drawing_cc",
+        "@valdi//valdi_core:valdi_core_cc",
+    ],
+)
+
+cc_library(
+    name = "image_toolbox_c",
+    srcs = glob(["src/image_toolbox_c/**/*.cpp"]),
+    hdrs = glob(["src/image_toolbox_c/**/*.h"]),
+    strip_include_prefix = "src",
+    tags = ["swift_module=ImageToolbox"],
+    visibility = ["//visibility:public"],
+    deps = [":lib"],
+)

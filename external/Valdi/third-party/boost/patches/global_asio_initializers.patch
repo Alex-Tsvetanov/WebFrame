@@ -1,0 +1,100 @@
+diff --git boost/asio/detail/call_stack.hpp boost/asio/detail/call_stack.hpp
+index eb63e54..6c18c2c 100644
+--- boost/asio/detail/call_stack.hpp
++++ boost/asio/detail/call_stack.hpp
+@@ -114,9 +114,12 @@ private:
+   static tss_ptr<context> top_;
+ };
+ 
++// SNAP patch: moved to asio.cpp in third_party/boost
++#if defined(BOOST_ASIO_HEADER_ONLY)
+ template <typename Key, typename Value>
+ tss_ptr<typename call_stack<Key, Value>::context>
+ call_stack<Key, Value>::top_;
++#endif
+ 
+ } // namespace detail
+ } // namespace asio
+diff --git boost/asio/detail/noncopyable.hpp boost/asio/detail/noncopyable.hpp
+index 77cc71c..d3a9de5 100644
+--- boost/asio/detail/noncopyable.hpp
++++ boost/asio/detail/noncopyable.hpp
+@@ -26,11 +26,11 @@ namespace detail {
+ class noncopyable
+ {
+ protected:
+-  noncopyable() {}
+-  ~noncopyable() {}
+-private:
+-  noncopyable(const noncopyable&);
+-  const noncopyable& operator=(const noncopyable&);
++  noncopyable() = default;
++  ~noncopyable() = default;
++public:
++  noncopyable(const noncopyable&) = delete;
++  const noncopyable& operator=(const noncopyable&) = delete;
+ };
+ 
+ } // namespace detail
+diff --git boost/asio/detail/posix_global.hpp boost/asio/detail/posix_global.hpp
+index 357fe15..fc35fec 100644
+--- boost/asio/detail/posix_global.hpp
++++ boost/asio/detail/posix_global.hpp
+@@ -55,8 +55,11 @@ template <typename T>
+ template <typename T>
+ T* posix_global_impl<T>::static_ptr_ = 0;
+ 
++// SNAP patch: moved to asio.cpp in third_party/boost
++#if defined(BOOST_ASIO_HEADER_ONLY)
+ template <typename T>
+ posix_global_impl<T> posix_global_impl<T>::instance_;
++#endif
+ 
+ template <typename T>
+ T& posix_global()
+diff --git boost/asio/error.hpp boost/asio/error.hpp
+index 448d9ae..5ffd157 100644
+--- boost/asio/error.hpp
++++ boost/asio/error.hpp
+@@ -255,6 +255,8 @@ inline const boost::system::error_category& get_addrinfo_category()
+ extern BOOST_ASIO_DECL
+ const boost::system::error_category& get_misc_category();
+ 
++// SNAP patch: compiles fine without these global variables
++#if 0
+ static const boost::system::error_category&
+   system_category BOOST_ASIO_UNUSED_VARIABLE
+   = boost::asio::error::get_system_category();
+@@ -267,6 +269,7 @@ static const boost::system::error_category&
+ static const boost::system::error_category&
+   misc_category BOOST_ASIO_UNUSED_VARIABLE
+   = boost::asio::error::get_misc_category();
++#endif
+ 
+ } // namespace error
+ } // namespace asio
+diff --git boost/asio/execution_context.hpp boost/asio/execution_context.hpp
+index f89fb4c..069627b 100644
+--- boost/asio/execution_context.hpp
++++ boost/asio/execution_context.hpp
+@@ -309,7 +309,7 @@ class execution_context::id
+ {
+ public:
+   /// Constructor.
+-  id() {}
++  id()  = default;
+ };
+ 
+ /// Base class for all io_context services.
+@@ -397,8 +397,11 @@ public:
+   }
+ };
+ 
++// SNAP patch: moved to asio.cpp in third_party/boost
++#if defined(BOOST_ASIO_HEADER_ONLY)
+ template <typename Type>
+ service_id<Type> execution_context_service_base<Type>::id;
++#endif
+ 
+ } // namespace detail
+ } // namespace asio

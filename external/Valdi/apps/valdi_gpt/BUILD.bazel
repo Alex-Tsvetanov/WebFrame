@@ -1,0 +1,17 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
+
+valdi_application(
+    name = "valdi_gpt",
+    root_component_path = "ValdiGptApp@valdi_gpt/src/ValdiGptApp",
+    title = "ValdiGPT",
+    deps = ["//apps/valdi_gpt/src/valdi/valdi_gpt"],
+)
+
+valdi_exported_library(
+    name = "valdi_gpt_export",
+    ios_bundle_id = "com.snap.valdi_gpt.lib",
+    ios_bundle_name = "ValdiGPT",
+    web_package_name = "valdi_gpt_npm",
+    deps = ["//apps/valdi_gpt/src/valdi/valdi_gpt"],
+)

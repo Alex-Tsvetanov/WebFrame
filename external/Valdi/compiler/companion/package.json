@@ -1,0 +1,83 @@
+{
+  "name": "valdi-compiler-js",
+  "version": "1.0.0",
+  "description": "Contains the JS support app for the Valdi compiler",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Snapchat/Valdi.git"
+  },
+  "license": "ISC",
+  "bin": "bin/valdi-compiler-js",
+  "pkg": {
+    "assets": [
+      "./node_modules/@types",
+      "./node_modules/typescript/lib/*.d.ts",
+      "./tsconfig.json"
+    ]
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "build": "webpack",
+    "build-dev": "webpack --config webpack.dev.config.js",
+    "format": "prettier . --write",
+    "test": "jest --no-watchman",
+    "test-watch": "jest --watch",
+    "generate-tslibs": "ts-node src/tslibs/GenerateTSLibs.ts",
+    "main": "ts-node src/index.ts",
+    "compile": "tsc --project remotedebug-ios-webkit-adapter/tsconfig.json && tsc"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.20.1",
+    "@babel/types": "^7.22.5",
+    "@types/convert-source-map": "^2.0.0",
+    "@types/debug": "^4.1.8",
+    "@types/express": "^4.17.6",
+    "@types/js-yaml": "4.0.5",
+    "@types/lodash": "^4.14.149",
+    "@types/node": "^16.18.36",
+    "@types/request": "^2.48.5",
+    "@types/source-map": "^0.1.29",
+    "@types/terser": "^3.12.0",
+    "@types/which": "^1.3.2",
+    "@types/ws": "^7.2.5",
+    "better-sqlite3": "^9.5.0",
+    "bufferutil": "^4.0.8",
+    "convert-source-map": "^2.0.0",
+    "debug": "^4.3.4",
+    "express": "^4.17.1",
+    "fast-glob": "^3.2.12",
+    "istanbul-lib-coverage": "^3.2.0",
+    "istanbul-lib-instrument": "4.0.3",
+    "js-yaml": "^4.0.5",
+    "lodash": "^4.17.15",
+    "optimist": "^0.6.1",
+    "prettier": "^2.7.1",
+    "request": "^2.88.0",
+    "source-map": "^0.5.7",
+    "terser": "4.6.10",
+    "typescript": "5.3.3",
+    "underscore": "^1.8.3",
+    "utf-8-validate": "^5.0.10",
+    "which": "^1.3.1",
+    "ws": "^7.1.2",
+    "xml-js": "^1.6.11",
+    "yaml": "^2.1.1",
+    "remotedebug-ios-webkit-adapter":"file:./remotedebug-ios-webkit-adapter"
+  },
+  "devDependencies": {
+    "@types/istanbul-lib-coverage": "^2.0.4",
+    "@babel/preset-typescript": "^7.21.5",
+    "@types/better-sqlite3": "^7.6.10",
+    "@types/jest": "^26.0.14",
+    "@types/microsoft__typescript-etw": "^0.1.2",
+    "@types/underscore": "^1.7.33",
+    "jest": "^29.0.0",
+    "node-loader": "^2.0.0",
+    "ts-jest": "^29.1.2",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths-webpack-plugin": "^4.1.0",
+    "webpack": "^5.90.3",
+    "webpack-cli": "^5.1.4"
+  }
+}

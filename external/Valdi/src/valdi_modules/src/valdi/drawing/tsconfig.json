@@ -1,0 +1,45 @@
+{
+    "extends": "../../../../../modules/_configs/base.tsconfig.json",
+    "compilerOptions": {
+        "paths": {
+            "drawing/*": [
+                "./*"
+            ],
+            "jasmine/*": [
+                "../jasmine/*"
+            ],
+            "coreutils/*": [
+                "../coreutils/*"
+            ],
+            "source_map/*": [
+                "../source_map/*"
+            ],
+            "valdi_tsx/*": [
+                "../valdi_tsx/*"
+            ],
+            "valdi_core/*": [
+                "../valdi_core/*"
+            ],
+            "file_system/*": [
+                "../file_system/*"
+            ],
+            "valdi_standalone/*": [
+                "../valdi_standalone/*"
+            ],
+            "valdi_test/*": [
+                "../valdi_test/*",
+                "../../../../../bazel-out/darwin_arm64-fastbuild/bin/src/valdi_modules/src/valdi/valdi_test/.valdi_build/projectsync/generated_ts/valdi_test/*"
+            ],
+            "tslib": [
+                "../valdi_core/src/tslib"
+            ]
+        },
+        "types": [
+            "../../../../../modules/types/Long",
+            "../../../../../modules/types/globals"
+        ],
+        "rootDirs": [
+            ".."
+        ]
+    }
+}

@@ -1,0 +1,66 @@
+# Borrowed from downstream
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+
+UNDEFINED_SNAP_FLAVOR = "undefined"
+
+FLAVORS = [
+    "client_development",
+    "platform_development",
+    "platform_address_sanitizer",
+    "master",
+    "gold",
+    "alpha",
+    "production",
+    "diagnostic_production",
+    "sanitizer",
+    "sanitizer_debug",
+    "coverage",
+    "code_coverage",
+    "addlive_streamer",
+    "addlive_streamer_asserts",
+    "production_snapos",
+    "development_native_snapos",
+    "production_native_snapos",
+]
+
+string_flag(
+    name = "snap_flavor",
+    build_setting_default = UNDEFINED_SNAP_FLAVOR,
+    values = FLAVORS + [UNDEFINED_SNAP_FLAVOR],
+    visibility = ["//visibility:public"],
+)
+
+[config_setting(
+    name = flavor + "_flag",
+    flag_values = {
+        ":snap_flavor": flavor,
+    },
+    visibility = ["//visibility:public"],
+) for flavor in FLAVORS]
+
+[config_setting(
+    name = flavor + "_define",
+    define_values = {
+        "snap_flavor": flavor,
+    },
+    visibility = ["//visibility:public"],
+) for flavor in FLAVORS]
+
+[selects.config_setting_group(
+    flavor,
+    match_any = [
+        flavor + "_define",
+        flavor + "_flag",
+    ],
+    visibility = ["//visibility:public"],
+) for flavor in FLAVORS]
+
+selects.config_setting_group(
+    name = "test_setting",
+    match_any = [
+        ":production",
+        ":client_development",
+    ],
+)

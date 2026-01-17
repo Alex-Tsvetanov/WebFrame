@@ -1,0 +1,38 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "benchmark",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.js",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_class_path = "com.snap.valdi.modules.benchmark",
+    android_deps = ["//apps/benchmark/src/android:native_module_android"],
+    android_output_target = "release",
+    ios_deps = ["//apps/benchmark/src/ios:native_module_ios"],
+    ios_module_name = "Benchmark",
+    ios_output_target = "release",
+    native_deps = ["//apps/benchmark/src/cpp:native_module_cpp"],
+    protodecl_srcs = glob([
+        "src/**/*.protodecl",
+    ]),
+    res = glob([
+        "res/**/*.jpeg",
+        "res/**/*.jpg",
+        "res/**/*.png",
+        "res/**/*.svg",
+        "res/**/*.webp",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_navigation",
+        "//src/valdi_modules/src/valdi/valdi_protobuf",
+        "//src/valdi_modules/src/valdi/valdi_standalone",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

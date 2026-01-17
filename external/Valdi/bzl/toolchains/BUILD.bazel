@@ -1,0 +1,57 @@
+load("@rules_kotlin//kotlin:kotlin.bzl", "define_kt_toolchain")
+
+KOTLIN_LANGUAGE_LEVEL = "1.8"
+
+define_kt_toolchain(
+    name = "kotlin_toolchain",
+    api_version = KOTLIN_LANGUAGE_LEVEL,
+    jvm_target = "1.8",
+    language_version = KOTLIN_LANGUAGE_LEVEL,
+)
+
+config_setting(
+    name = "sc_build_flag_assert",
+    flag_values = {
+        "@valdi//bzl/runtime_flags:enable_asserts": "true",
+    },
+)
+
+config_setting(
+    name = "sc_build_flag_logging",
+    flag_values = {
+        "@valdi//bzl/runtime_flags:enable_logging": "true",
+    },
+)
+
+config_setting(
+    name = "sc_build_flag_tracing",
+    flag_values = {
+        "@valdi//bzl/runtime_flags:enable_tracing": "true",
+    },
+)
+
+config_setting(
+    name = "sc_build_flag_debug",
+    flag_values = {
+        "@valdi//bzl/runtime_flags:enable_debug": "true",
+    },
+)
+
+config_setting(
+    name = "sc_build_flag_libcxx_rtti_disabled",
+    flag_values = {
+        "@valdi//bzl/runtime_flags:disable_rtti": "true",
+    },
+)
+
+alias(
+    name = "llvm_ndk_28_0_13004108_strip",
+    actual = "@androidndk//:strip",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "llvm_ndk_28_0_13004108_strip_libs",
+    actual = "@androidndk//:strip_libs",
+    visibility = ["//visibility:public"],
+)

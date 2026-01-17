@@ -1,0 +1,31 @@
+#import "valdi_core/SCValdiModuleFactoryRegistry.h"
+#import <{{MODULE_NAME_PASCAL_CASED}}Types/{{MODULE_NAME_PASCAL_CASED}}Types.h>
+#import <Foundation/Foundation.h>
+
+@interface SCCCalculatorModule: NSObject<{{MODULE_NAME_PASCAL_CASED}}CalculatorModule>
+
+@end
+
+@implementation SCCCalculatorModule
+
+- (double)multiplyWithLeft:(double)left right:(double)right
+{
+    return left * right;
+}
+
+@end
+
+@interface SCCCalculatorModuleFactoryImpl : {{MODULE_NAME_PASCAL_CASED}}CalculatorModuleFactory
+
+@end
+
+@implementation SCCCalculatorModuleFactoryImpl
+
+VALDI_REGISTER_MODULE()
+
+- (id<{{MODULE_NAME_PASCAL_CASED}}CalculatorModule>)onLoadModule
+{
+    return [SCCCalculatorModule new];
+}
+
+@end

@@ -1,0 +1,10 @@
+{
+  "blacklist": [
+    "open_source/\\.aswb",
+    "open_source/bazel-.*",
+    "open_source/cli",
+    "open_source/docs",
+    "open_source/\\.git.*",
+    "\\.DS_Store"
+  ]
+}

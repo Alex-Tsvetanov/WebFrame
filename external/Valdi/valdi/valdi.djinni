@@ -1,0 +1,38 @@
+@extern "../valdi_core/src/bindings/value.yaml"
+@extern "../valdi_core/src/bindings/interned_string.yaml"
+@extern "../valdi_core/src/bindings/result.yaml"
+@extern "../valdi_core/src/bindings/bytes.yaml"
+
+@extern "../valdi/src/bindings/view.yaml"
+
+@extern "../valdi_core/generated-src/yaml/AttributeType.yaml"
+@extern "../valdi_core/generated-src/yaml/Platform.yaml"
+@extern "../valdi_core/generated-src/yaml/Animator.yaml"
+@extern "../valdi_core/generated-src/yaml/Asset.yaml"
+@extern "../valdi_core/generated-src/yaml/CompositeAttributePart.yaml"
+@extern "../valdi_core/generated-src/yaml/ModuleFactory.yaml"
+
+@extern "../valdi_core/generated-src/yaml/HTTPRequest.yaml"
+@extern "../valdi_core/generated-src/yaml/HTTPResponse.yaml"
+@extern "../valdi_core/generated-src/yaml/Cancelable.yaml"
+@extern "../valdi_core/generated-src/yaml/HTTPRequestManagerCompletion.yaml"
+@extern "../valdi_core/generated-src/yaml/HTTPRequestManager.yaml"
+@extern "../valdi_core/generated-src/yaml/JSRuntime.yaml"
+
+Keychain = interface +j +o {
+  # Store the given string blob into the keychain
+  store(key: InternedString, value: Bytes): Result;
+
+  # Retrieve the stored blob for the given key.
+  # Returns empty data if the value was not found.
+  get(key: InternedString): Bytes;
+
+  # Erase the stored blob for the given key.
+  erase(key: InternedString): bool;
+}
+
+RuntimeMessageHandler = interface +j +o +c {
+  onUncaughtJsError(errorCode: i32, moduleName: InternedString, errorMessage: string, stackTrace: string);
+  onJsCrash(moduleName: InternedString, errorMessage: string, stackTrace: string, isANR: bool);
+  onDebugMessage(level: i32, message: string);
+}

@@ -1,0 +1,16 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 8e36d0b7..d6e7064b 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -37,6 +37,11 @@ LIBPNG_SRCS = [
+         "intel/filter_sse2_intrinsics.c",
+         "intel/intel_init.c",
+     ],
++    "@platforms//cpu:armv7": [
++        "arm/arm_init.c",
++        "arm/filter_neon_intrinsics.c",
++        "arm/palette_neon_intrinsics.c",
++    ],
+     "@platforms//cpu:arm64": [
+         "arm/arm_init.c",
+         "arm/filter_neon_intrinsics.c",

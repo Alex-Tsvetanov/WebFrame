@@ -1,0 +1,9 @@
+{
+  "name": "jasmine-valdi",
+  "version": "1.0.0",
+  "description": "This module contains a mirror of jasmine lib for using it in Valdi. For details please check the README",
+  "dependencies": {
+    "@types/jasmine": "4.0.3",
+    "jasmine-core": "4.1.1"
+  }
+}

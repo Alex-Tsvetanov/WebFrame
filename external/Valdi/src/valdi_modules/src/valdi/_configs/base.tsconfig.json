@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "composite": true,
+    "target": "ES2016",
+    "module": "commonjs",
+    "baseUrl": "..",
+    "paths": {
+      "Valdi": [
+        "./valdi_core/src/Valdi",
+        "../src/valdi_modules/src/valdi/valdi_core/src/Valdi"
+      ],
+      "tslib": [
+        "./valdi_core/src/tslib.d.ts",
+        "../src/valdi_modules/src/valdi/valdi_core/src/tslib.d.ts"
+      ],
+      "jasmine": [
+        "./jasmine/src/jasmine.d.ts",
+        "../src/valdi_modules/src/valdi/jasmine/src/jasmine.d.ts"
+      ],
+      "*": [
+        "*",
+        "../src/valdi_modules/src/valdi/*",
+        "../../.valdi_build/hotreload/generated_ts/*",
+        "../../.valdi_build/compile/generated_ts/*"
+      ]
+    },
+    "lib": ["dom", "ES2019"],
+    "noImplicitReturns": true,
+    "noImplicitAny": true,
+    "importHelpers": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "preserve",
+    "rootDirs": [
+      "..",
+      "../../../.valdi_build/hotreload/generated_ts",
+      "../../../.valdi_build/compile/generated_ts"
+    ],
+    "types": ["../types/Long", "../types/globals"],
+    "typeRoots": ["."]
+  }
+}

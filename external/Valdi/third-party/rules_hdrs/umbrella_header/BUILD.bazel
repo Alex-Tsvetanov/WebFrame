@@ -1,0 +1,8 @@
+filegroup(
+    name = "pkg_filegroup",
+    srcs = [
+        "BUILD.bazel",
+        "umbrella_header.bzl",
+    ],
+    visibility = ["//:__pkg__"],
+)

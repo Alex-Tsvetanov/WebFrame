@@ -1,0 +1,35 @@
+name: Value
+typedef: 'record'
+params: []
+prefix: ""
+cpp:
+  typename: 'Valdi::Value'
+  header: '"valdi_core/cpp/Utils/Value.hpp"'
+  byValue: false
+objc:
+  typename: 'NSObject'
+  pointer: true
+  hash: '%s.hash'
+  boxed: 'NSObject'
+  header: '<Foundation/Foundation.h>'
+objcpp:
+  translator: 'ValdiIOS::ValueTranslator'
+  header: '"valdi_core/bindings/ValueTranslator_objc.hpp"'
+java:
+  reference: true
+  typename: 'java.lang.Object'
+  generic: true
+  hash: '%s.hashCode()'
+  boxed: 'java.lang.Object'
+jni:
+  translator: 'ValdiAndroid::ValueTranslator'
+  header: '"valdi_core/bindings/ValueTranslator_jni.hpp"'
+  typename: jobject
+  typeSignature: 'Ljava/lang/Object;'
+wasm:
+  typename: 'em::val'
+  translator: 'ValdiWasm::ValueTranslator'
+  header: '"valdi_core/bindings/ValueTranslator_wasm.hpp"'
+ts:
+  typename: 'any'
+  module: ''

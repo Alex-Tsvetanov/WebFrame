@@ -1,0 +1,19 @@
+{
+  "extends": "../../modules/_configs/base.tsconfig.json",
+  "compilerOptions": {
+    "types": ["../../modules/types/Long", "../../modules/types/globals"],
+    "paths": {
+      "navigation_example/*": ["./*"],
+      "valdi_tsx/*": ["../../src/valdi_modules/src/valdi/valdi_tsx/*"],
+      "valdi_navigation/*": [
+        "../../src/valdi_modules/src/valdi/valdi_navigation/*"
+      ],
+      "valdi_core/*": [
+        "../../src/valdi_modules/src/valdi/valdi_core/*"
+      ],
+      "valdi_core": [
+        "../../src/valdi_modules/src/valdi/valdi_core/src/tslib.d.ts"
+      ],
+    }
+  }
+}

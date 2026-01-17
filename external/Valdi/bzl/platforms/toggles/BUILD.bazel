@@ -1,0 +1,7 @@
+config_setting(
+    name = "ztrace_bare_enabled",
+    define_values = {
+        "enable_ztrace": "true",
+    },
+    visibility = ["//visibility:public"],
+)

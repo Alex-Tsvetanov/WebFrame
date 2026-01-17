@@ -1,0 +1,16 @@
+{
+    "name": "Coroute",
+    "version": "2.0.0",
+    "features": [
+        "C++20 Coroutines",
+        "IOCP (Windows)",
+        "io_uring (Linux)",
+        "Static file serving",
+        "Middleware support",
+        "Keep-alive connections"
+    ],
+    "performance": {
+        "rps": "~1,000,000",
+        "latency_median": "178µs"
+    }
+}

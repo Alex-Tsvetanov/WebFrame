@@ -1,0 +1,63 @@
+import 'jasmine/src/jasmine';
+import { arrayToString } from 'coreutils/src/Uint8ArrayUtils';
+import { fs, VALDI_MODULES_ROOT } from '../src/FileSystem';
+
+describe('File System Module', () => {
+  const newFSItems = {
+    file: `${VALDI_MODULES_ROOT}/file_system/test/new_test_file.txt`,
+    folder: `${VALDI_MODULES_ROOT}/file_system/test/new_folder`,
+  };
+
+  it('should read file with content inside', () => {
+    const fileName = `${VALDI_MODULES_ROOT}/file_system/test/test_file.txt`;
+    const fileContent = 'test data for file';
+    const result = fs.readFileSync(fileName, { encoding: 'utf8' });
+
+    expect(result).toEqual(fileContent);
+  });
+
+  it('should read file as array buffer', () => {
+    const fileName = `${VALDI_MODULES_ROOT}/file_system/test/test_file.txt`;
+    const fileContent = 'test data for file';
+    const result = fs.readFileSync(fileName);
+
+    expect(result).toBeInstanceOf(ArrayBuffer);
+
+    const stringContent = arrayToString(new Uint8Array(result as ArrayBuffer));
+
+    expect(stringContent).toEqual(fileContent);
+  });
+
+  it('should throw an error for read file operation if file does not exist', () => {
+    const fileName = `${VALDI_MODULES_ROOT}/file_system/test/no_file`;
+
+    expect(() => fs.readFileSync(fileName)).toThrowError(`Could not read the file at path: '${fileName}'`);
+  });
+
+  it('should create, write and remove the new file', () => {
+    const fileContent = 'test data for file';
+    fs.writeFileSync(newFSItems.file, fileContent);
+
+    const result = fs.readFileSync(newFSItems.file, { encoding: 'utf8' });
+
+    expect(result).toEqual(fileContent);
+
+    const resultFromFileRemove = fs.removeSync(newFSItems.file);
+
+    expect(resultFromFileRemove).toBeTrue();
+  });
+
+  it('should get current root directory for client repository', () => {
+    expect(() => fs.currentWorkingDirectory()).not.toThrow();
+  });
+
+  it('should create and remove a new folder', () => {
+    const result = fs.createDirectorySync(newFSItems.folder, false);
+
+    expect(result).toBeTrue();
+
+    const resultFromFolderRemove = fs.removeSync(newFSItems.folder);
+
+    expect(resultFromFolderRemove).toBeTrue();
+  });
+});

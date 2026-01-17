@@ -1,0 +1,466 @@
+% ============================================================================
+% Глава 7: Примерно приложение
+% ============================================================================
+\section{Примерно приложение}
+
+Теоретичните концепции и архитектурните решения, представени в предходните глави, придобиват практическа стойност едва когато бъдат приложени в реалистичен контекст. Настоящата глава представя Task Dashboard --- пълноценна система за управление на задачи в реално време, която служи като референтна имплементация за изграждане на production-ready уеб приложения с Coroute.
+
+Примерното приложение е проектирано с две основни цели. Първо, да демонстрира интеграцията на всички ключови компоненти на Coroute в едно цялостно решение: REST API, WebSocket комуникация, автентикация, middleware верига и server-side rendering. Второ, да илюстрира best practices и архитектурни patterns, които могат да се прилагат при изграждане на реални уеб приложения.
+
+\subsection{Описание на приложението}
+
+Task Dashboard е уеб приложение за колаборативно управление на задачи в екипна среда. Системата позволява на потребителите да създават, редактират и изтриват задачи, като промените се отразяват в реално време при всички свързани клиенти чрез WebSocket. Този use case е избран, защото изисква комбинация от традиционни HTTP операции (CRUD) и real-time комуникация, което е типично за съвременните уеб приложения.
+
+Приложението демонстрира следните функционалности на Coroute: REST API с пълен набор от CRUD операции за задачи и потребители, WebSocket за broadcast на актуализации в реално време, server-side rendering с HTML шаблони чрез inja библиотеката, session-based автентикация с cookie management, middleware верига за логване на заявки и защита на маршрути, и обслужване на статични файлове (CSS, JavaScript) с zero-copy I/O.
+
+\subsection{Структура на проекта}
+
+Проектът следва стандартна структура за C++ уеб приложения, с ясно разделение между различните слоеве на приложението. Source файловете са организирани по функционалност, а не по тип, което улеснява навигацията и поддръжката.
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, frame=none, numbers=none]
+Project/
++-- src/
+|   +-- main.cpp              # Entry point
+|   +-- app/                  # Server configuration
+|   |   +-- config.hpp        # Configuration
+|   |   +-- server.hpp        # Server setup
+|   +-- middleware/           # Middleware components
+|   |   +-- auth.cpp          # Authentication
+|   |   +-- logging.cpp       # Request logging
+|   +-- handlers/             # Route handlers
+|   |   +-- pages.cpp         # HTML pages
+|   |   +-- api/              # REST endpoints
+|   |   |   +-- tasks.cpp     # Task CRUD
+|   |   |   +-- users.cpp     # User management
+|   |   +-- websocket/        # Real-time hub
+|   |       +-- task_hub.cpp  # WebSocket handler
+|   +-- models/               # Data structures
+|   |   +-- task.hpp          # Task model
+|   |   +-- user.hpp          # User model
+|   +-- services/             # Business logic
+|       +-- task_service.hpp  # Task operations
+|       +-- user_service.hpp  # User operations
++-- templates/                # HTML templates
+|   +-- layout.html           # Base layout
+|   +-- pages/                # Page templates
+|       +-- index.html        # Dashboard
+|       +-- login.html        # Login page
++-- static/                   # Static assets
+|   +-- css/                  # Stylesheets
+|   +-- js/                   # JavaScript
++-- tests/                    # Unit tests
+\end{lstlisting}
+
+\subsection{Конфигурация}
+
+\subsubsection{Config клас}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Configuration class}]
+struct Config {
+    uint16_t port = 8080;
+    size_t thread_count = 4;
+    std::string static_path = "static";
+    std::string template_path = "templates";
+    
+    // TLS configuration (optional)
+    std::optional<TlsConfig> tls;
+    
+    static Config from_env() {
+        Config config;
+        
+        if (auto port = std::getenv("PORT")) {
+            config.port = static_cast<uint16_t>(std::stoi(port));
+        }
+        
+        if (auto threads = std::getenv("THREADS")) {
+            config.thread_count = std::stoul(threads);
+        }
+        
+        return config;
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Server setup}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Server initialization}]
+class Server {
+    coroute::App app_;
+    Config config_;
+    
+public:
+    explicit Server(const Config& config) : config_(config) {
+        app_.threads(config.thread_count);
+        
+        // Setup middleware
+        setup_middleware();
+        
+        // Setup routes
+        setup_routes();
+        
+        // Setup WebSocket
+        setup_websocket();
+        
+        // Setup static files
+        app_.static_files("/static", config.static_path);
+    }
+    
+    void run() {
+        app_.run(config_.port);
+    }
+    
+    void stop() {
+        app_.shutdown({
+            .drain_timeout = std::chrono::seconds(30),
+            .force_close_after_timeout = true
+        });
+    }
+};
+\end{lstlisting}
+
+\subsection{Middleware}
+
+\subsubsection{Logging middleware}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Request logging middleware}]
+Middleware logging_middleware() {
+    return [](Request& req, Next next) -> Task<Response> {
+        auto start = std::chrono::steady_clock::now();
+        
+        // Log request
+        std::cout << req.method_string() << " " << req.path() << std::endl;
+        
+        // Call next middleware/handler
+        auto resp = co_await next(req);
+        
+        // Log response time
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        auto ms = std::chrono::duration_cast<
+            std::chrono::milliseconds>(elapsed).count();
+        
+        std::cout << "  -> " << resp.status_code() 
+                  << " (" << ms << "ms)" << std::endl;
+        
+        co_return resp;
+    };
+}
+\end{lstlisting}
+
+\subsubsection{Authentication middleware}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Authentication middleware}]
+Middleware auth_middleware(UserService& user_service) {
+    return [&user_service](Request& req, Next next) -> Task<Response> {
+        // Check for session cookie
+        auto session_id = req.cookie("session_id");
+        if (!session_id) {
+            co_return Response::unauthorized("Not authenticated");
+        }
+        
+        // Validate session
+        auto user = user_service.get_by_session(*session_id);
+        if (!user) {
+            co_return Response::unauthorized("Invalid session");
+        }
+        
+        // Store user in request context
+        req.set_context("user", *user);
+        
+        // Continue to handler
+        co_return co_await next(req);
+    };
+}
+\end{lstlisting}
+
+\subsection{REST API handlers}
+
+\subsubsection{Task CRUD}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Task API handlers}]
+void setup_task_routes(App& app, TaskService& task_service, 
+                       TaskHub& task_hub) {
+    // List all tasks
+    app.get("/api/tasks", [&](Request& req) -> Task<Response> {
+        auto tasks = task_service.get_all();
+        co_return Response::json(tasks);
+    });
+    
+    // Get task by ID
+    app.get<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        auto task = task_service.get_by_id(id);
+        if (!task) {
+            co_return Response::not_found("Task not found");
+        }
+        co_return Response::json(*task);
+    });
+    
+    // Create task
+    app.post("/api/tasks", [&](Request& req) -> Task<Response> {
+        auto body = req.json<TaskCreateRequest>();
+        if (!body) {
+            co_return Response::bad_request("Invalid JSON");
+        }
+        
+        auto task = task_service.create(*body);
+        
+        // Broadcast to WebSocket clients
+        task_hub.broadcast({
+            .type = "task_created",
+            .payload = task
+        });
+        
+        co_return Response::created(task);
+    });
+    
+    // Update task
+    app.put<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        auto body = req.json<TaskUpdateRequest>();
+        if (!body) {
+            co_return Response::bad_request("Invalid JSON");
+        }
+        
+        auto task = task_service.update(id, *body);
+        if (!task) {
+            co_return Response::not_found("Task not found");
+        }
+        
+        // Broadcast update
+        task_hub.broadcast({
+            .type = "task_updated",
+            .payload = *task
+        });
+        
+        co_return Response::json(*task);
+    });
+    
+    // Delete task
+    app.del<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        if (!task_service.remove(id)) {
+            co_return Response::not_found("Task not found");
+        }
+        
+        // Broadcast deletion
+        task_hub.broadcast({
+            .type = "task_deleted",
+            .payload = {{"id", id}}
+        });
+        
+        co_return Response::no_content();
+    });
+}
+\end{lstlisting}
+
+\subsection{WebSocket handler}
+
+\subsubsection{TaskHub клас}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket TaskHub}]
+class TaskHub {
+    std::mutex mutex_;
+    std::set<WebSocketConnection*> clients_;
+    
+public:
+    void add_client(WebSocketConnection* client) {
+        std::lock_guard lock(mutex_);
+        clients_.insert(client);
+    }
+    
+    void remove_client(WebSocketConnection* client) {
+        std::lock_guard lock(mutex_);
+        clients_.erase(client);
+    }
+    
+    void broadcast(const json& message) {
+        std::lock_guard lock(mutex_);
+        auto data = message.dump();
+        
+        for (auto* client : clients_) {
+            // Fire-and-forget send
+            client->send(data);
+        }
+    }
+};
+\end{lstlisting}
+
+\subsubsection{WebSocket route}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket route setup}]
+void setup_websocket(App& app, TaskHub& task_hub) {
+    app.websocket("/ws", [&task_hub](
+        std::unique_ptr<WebSocketConnection> ws) -> Task<void> {
+        
+        auto* ws_ptr = ws.get();
+        task_hub.add_client(ws_ptr);
+        
+        // RAII cleanup
+        struct Cleanup {
+            TaskHub& hub;
+            WebSocketConnection* client;
+            ~Cleanup() { hub.remove_client(client); }
+        } cleanup{task_hub, ws_ptr};
+        
+        // Message loop
+        while (true) {
+            auto msg = co_await ws->receive();
+            if (!msg) break;  // Connection closed
+            
+            if (msg->type == WebSocketMessage::Text) {
+                // Handle client messages (e.g., subscriptions)
+                auto data = json::parse(msg->data);
+                // Process message...
+            }
+        }
+    });
+}
+\end{lstlisting}
+
+\subsection{HTML шаблони}
+
+\subsubsection{Template rendering}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Template rendering}]
+app.get("/", [&](Request& req) -> Task<Response> {
+    auto tasks = task_service.get_all();
+    auto stats = task_service.get_statistics();
+    
+    auto html = render_template("pages/index.html", {
+        {"tasks", tasks},
+        {"stats", stats},
+        {"user", req.context<User>("user")}
+    });
+    
+    co_return Response::html(html);
+});
+\end{lstlisting}
+
+\subsubsection{Примерен шаблон}
+
+\begin{lstlisting}[language=HTML, basicstyle=\small\ttfamily, caption={Dashboard template}]
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>Task Dashboard</h1>
+    
+    <div class="stats">
+        <div class="stat">
+            <span class="value">{{ stats.total }}</span>
+            <span class="label">Total Tasks</span>
+        </div>
+        <div class="stat">
+            <span class="value">{{ stats.completed }}</span>
+            <span class="label">Completed</span>
+        </div>
+    </div>
+    
+    <ul class="task-list" id="tasks">
+        {% for task in tasks %}
+        <li data-id="{{ task.id }}">
+            <span class="title">{{ task.title }}</span>
+            <span class="status">{{ task.status }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}
+\end{lstlisting}
+
+\subsection{JavaScript клиент}
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, caption={WebSocket client (JavaScript)}]
+const ws = new WebSocket(`ws://${location.host}/ws`);
+
+ws.onmessage = (event) => {
+    const { type, payload } = JSON.parse(event.data);
+    
+    switch (type) {
+        case 'task_created':
+            addTaskToList(payload);
+            break;
+        case 'task_updated':
+            updateTaskInList(payload);
+            break;
+        case 'task_deleted':
+            removeTaskFromList(payload.id);
+            break;
+    }
+};
+
+ws.onclose = () => {
+    // Reconnect after delay
+    setTimeout(() => location.reload(), 3000);
+};
+\end{lstlisting}
+
+\subsection{Entry point}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={main.cpp}]
+#include "app/config.hpp"
+#include "app/server.hpp"
+#include <csignal>
+
+namespace {
+    project::Server* g_server = nullptr;
+    
+    void signal_handler(int signal) {
+        if (signal == SIGINT || signal == SIGTERM) {
+            std::cout << "\nShutting down...\n";
+            if (g_server) {
+                g_server->stop();
+            }
+        }
+    }
+}
+
+int main() {
+    try {
+        auto config = project::Config::from_env();
+        
+        project::Server server(config);
+        g_server = &server;
+        
+        std::signal(SIGINT, signal_handler);
+        std::signal(SIGTERM, signal_handler);
+        
+        server.run();
+        
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << "\n";
+        return 1;
+    }
+}
+\end{lstlisting}
+
+\subsection{Анализ на архитектурните решения}
+
+Примерното приложение илюстрира няколко ключови архитектурни решения, които са характерни за Coroute и го отличават от други библиотеки.
+
+\subsubsection{Корутинен модел за WebSocket}
+
+WebSocket handler-ът демонстрира елегантността на корутинния модел. Вместо callback-базиран подход с регистрация на event handlers, кодът е структуриран като последователен цикъл с \texttt{co\_await}. Това значително опростява управлението на състоянието и обработката на грешки. RAII pattern-ът за cleanup гарантира, че клиентът се премахва от hub-а дори при неочаквано прекъсване на връзката.
+
+\subsubsection{Типово-безопасни route параметри}
+
+Маршрутите като \texttt{app.get<int>("/api/tasks/\{id\}", ...)} демонстрират типово-безопасното извличане на параметри. Параметърът \texttt{id} се конвертира автоматично към \texttt{int} и се подава на handler-а като типизиран аргумент. Грешки при конвертиране се обработват автоматично от библиотеката, връщайки 400 Bad Request.
+
+\subsubsection{Middleware композиция}
+
+Middleware веригата позволява модулно добавяне на cross-cutting concerns. Logging middleware-ът измерва времето за обработка на всяка заявка, а authentication middleware-ът защитава определени маршрути. Middleware компонентите са независими и могат да се комбинират в произволен ред.
+
+\subsection{Сравнение с други библиотеки}
+
+За да се оцени практическата стойност на Coroute, е полезно да се сравни сложността на имплементация на Task Dashboard с други библиотеки.
+
+При Express.js (Node.js), подобно приложение би изисквало приблизително същия обем код, но с callback-базиран или Promise-базиран асинхронен модел. JavaScript не предоставя compile-time type checking, което означава, че грешки в типовете на параметрите се откриват едва при runtime.
+
+При Drogon (C++), кодът би бил подобен по структура, но асинхронните операции биха използвали callbacks или частична coroutine поддръжка. Drogon предоставя ORM интеграция, която липсва в Coroute, но това е съзнателно архитектурно решение за запазване на модулност.
+
+При Flask (Python), приложението би било значително по-кратко поради динамичната природа на езика, но производителността би била с порядъци по-ниска. WebSocket поддръжката изисква допълнителни библиотеки като Flask-SocketIO.
+
+\subsection{Заключение}
+
+Task Dashboard демонстрира, че Coroute е подходящ за изграждане на пълноценни production-ready уеб приложения. Корутинният модел опростява асинхронния код, типово-безопасните параметри подобряват надеждността, а middleware системата позволява модулна архитектура. Примерното приложение може да служи като отправна точка за разработчици, които искат да използват Coroute в реални проекти.

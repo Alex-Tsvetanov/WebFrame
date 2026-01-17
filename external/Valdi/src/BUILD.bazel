@@ -1,0 +1,67 @@
+load("@android_macros//:android.bzl", "android_library")
+
+# Note don't add any c++ deps to this target as it doesn't work
+# Add C++ deps to the package_aar rule below
+android_library(
+    name = "dummy_android",
+    manifest = "platform-projects/android/dummy/src/main/AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    exports = [],
+)
+
+genrule(
+    name = "client_proguard-rules",
+    srcs = [
+        "platform-projects/android/client/proguard-rules.pro",
+        "//valdi:proguard-rules",
+    ],
+    outs = ["proguard.txt"],
+    cmd = """
+      : > $@
+      for f in $(SRCS); do
+        cat "$$f" >> $@
+        printf '\\n\\n' >> $@
+      done
+    """,
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "build_id_note_symbols.ld",
+    srcs = ["platform-projects/android/build_id_note_symbols.ld"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "android_exports.lst",
+    srcs = ["platform-projects/android/android_exports.lst"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "libdummy.so",
+    additional_linker_inputs = select({
+        "@snap_platforms//conditions:android": [
+            ":android_exports.lst",
+            ":build_id_note_symbols.ld",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = [
+        "-fuse-ld=lld",
+        "--no-undefined",
+        "-landroid",
+        "-ldl",
+        "-llog",
+        "-lm",
+        "-lz",
+    ] + select({
+        "@snap_platforms//conditions:android": ["-Wl,--version-script=$(location :android_exports.lst) $(location :build_id_note_symbols.ld)"],
+        "//conditions:default": [],
+    }),
+    linkshared = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/utils:utils_logging_cc",
+    ],
+)

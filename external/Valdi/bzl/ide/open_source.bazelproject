@@ -1,0 +1,33 @@
+directories:
+  # Add the directories you want added as source here
+  # By default, we've added your entire workspace ('.')
+  .
+
+# Automatically includes all relevant targets under the 'directories' above
+derive_targets_from_directories: false
+
+targets:
+  # If source code isn't resolving, add additional targets that compile it here
+  //valdi
+  //valdi:valdi_java
+  //valdi_core
+  //snap_drawing
+
+test_sources:
+  # A list of workspace-relative glob patterns, matching directories.
+  # Determines which sources IntelliJ treats as test sources.
+  */javatests/*
+  */src/test/*
+
+additional_languages:
+  c
+  kotlin
+  android
+
+workspace_type: android
+
+# Please uncomment an android-SDK platform. Available SDKs are:
+# Selects which android platform from your SDK directory to use.
+# Corresponds to a subdirectory in ~/<sdk>/platforms.
+android_sdk_platform: android-33
+android_min_sdk: 21

@@ -1,0 +1,1 @@
+Test workers are here and not under ../test so that hot_reloader test runs don't try to evaluate them as tests ouside of worker runtime, where e.g. location global property is not set.

@@ -1,0 +1,35 @@
+name: View
+typedef: 'record'
+params: []
+prefix: ""
+cpp:
+  typename: 'Valdi::Ref<Valdi::View>'
+  header: '"valdi/runtime/Views/View.hpp"'
+  byValue: false
+objc:
+  typename: 'UIView'
+  pointer: true
+  hash: '%s.hash'
+  boxed: 'UIView'
+  header: '<UIKit/UIKit.h>'
+objcpp:
+  translator: 'ValdiIOS::ViewTranslator'
+  header: '"valdi/bindings/ViewTranslator_objc.hpp"'
+java:
+  reference: true
+  typename: 'java.lang.Object'
+  generic: true
+  hash: '%s.hashCode()'
+  boxed: 'java.lang.Object'
+jni:
+  translator: 'ValdiAndroid::ViewTranslator'
+  header: '"valdi/bindings/ViewTranslator_jni.hpp"'
+  typename: jobject
+  typeSignature: 'Ljava/lang/Object;'
+wasm:
+  typename: 'em::val'
+  translator: 'ValdiWasm::ViewTranslator'
+  header: '"valdi_core/bindings/ViewTranslator_wasm.hpp"'
+ts:
+  typename: 'any'
+  module: ''

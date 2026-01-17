@@ -1,0 +1,12 @@
+downloadable: true
+
+output_target: release
+
+dependencies:
+  - test
+  - valdi_tsx
+
+allowed_debug_dependencies:
+  - test
+
+single_file_codegen: true

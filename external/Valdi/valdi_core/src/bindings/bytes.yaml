@@ -1,0 +1,38 @@
+name: Bytes
+typedef: 'record'
+params: []
+prefix: ''
+cpp:
+  typename: 'Valdi::BytesView'
+  header: '"valdi_core/cpp/Utils/Bytes.hpp"'
+  byValue: false
+objc:
+  typename: 'NSData'
+  pointer: true
+  hash: '%s.hash'
+  boxed: 'NSData'
+  header: '<Foundation/Foundation.h>'
+objcpp:
+  translator: 'ValdiIOS::BytesTranslator'
+  header: '"valdi_core/bindings/BytesTranslator_objc.hpp"'
+java:
+  reference: true
+  typename: 'byte[]'
+  generic: true
+  hash: '%s.hashCode()'
+  boxed: 'byte[]'
+jni:
+  translator: 'ValdiAndroid::BytesTranslator'
+  header: '"valdi_core/bindings/BytesTranslator_jni.hpp"'
+  typename: jbyteArray
+  typeSignature: '[B'
+wasm:
+  typename: 'em::val'
+  translator: 'ValdiWasm::BytesTranslator'
+  header: '"valdi_core/bindings/BytesTranslator_wasm.hpp"'
+ts:
+  typename: 'Uint8Array'
+  module: ''
+valdi:
+  translator: 'Valdi::BytesTranslator'
+  header: '"valdi_core/bindings/BytesTranslator_valdi.hpp"'

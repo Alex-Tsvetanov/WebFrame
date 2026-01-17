@@ -1,0 +1,7 @@
+> result: (3) [1, 2, 3, foo: 1]  // type=object
+    0: 1  // type=number
+    1: 2  // type=number
+    2: 3  // type=number
+    foo: 1  // type=number
+    length: 3  // type=number
+    > __proto__: Array(0)  // type=Array

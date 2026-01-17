@@ -1,0 +1,19 @@
+{
+  "name": "valdi_shared",
+  "version": "1.0.0",
+  "description": "Contains all Valdi vue files shared between clients",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Snapchat/Valdi.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "prettier": "^1.18.2",
+    "tslint": "^5.18.0",
+    "tslint-config-airbnb": "^5.11.1",
+    "typescript": "^3.9.3"
+  },
+  "scripts": {
+    "generate": "./generate.sh"
+  }
+}

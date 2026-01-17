@@ -1,0 +1,25 @@
+repositories:
+- path: ../proto
+  input_path: .
+  output_path: module
+
+files:
+  - path: module/test.proto
+    types:
+      - name: Message
+      - name: RepeatedMessage
+      - name: ParentMessage
+      - name: OneOfMessage
+      - name: OldMessage
+      - name: NewMessage
+      - name: ExternalMessages
+      - name: MapMessage
+      - name: OldEnumMessage
+      - name: NewEnumMessage
+  - path: module/test2.proto
+    types:
+      - name: Message2
+  - path: module/test4.proto
+    types:
+      - name: Message_With_Underscores
+      - name: M3ssage1WithNumb3r2

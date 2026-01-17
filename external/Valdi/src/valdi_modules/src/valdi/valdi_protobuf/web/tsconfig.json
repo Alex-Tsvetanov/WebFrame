@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",                // important
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "lib": ["DOM", "ES2020"],
+    "paths": {
+      "#root/src/valdi_protobuf/*": [
+        "../../valdi_protobuf/*",
+      ]
+    }
+  },
+  "include": [
+    "**/*",
+    "../src/headless/descriptor.ts"      // <-- add (path is relative to this tsconfig)
+  ]
+}

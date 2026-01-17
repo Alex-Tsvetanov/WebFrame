@@ -1,0 +1,23 @@
+load("//tsn:tsn.bzl", "tsn_binary", "tsn_library")
+
+tsn_library(
+    name = "integration_tests",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.json",
+    ]),
+    deps = [
+        "//tsn/rtl",
+    ],
+)
+
+tsn_binary(
+    name = "integration_tests_app",
+    entry_points = ["tsn_test_helpers/bootstrap.ts"] + glob(
+        [
+            "tsn_integration_tests/**/*.ts",
+        ] + ["tsn_test_helpers/epilogue.ts"],
+    ),
+    visibility = ["//visibility:public"],
+    deps = [":integration_tests"],
+)

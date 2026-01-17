@@ -1,0 +1,166 @@
+load("@valdi//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
+
+exports_files([
+    "scripts/compile_single.sh",
+])
+
+COMPILER_FLAGS = [
+    "-Os",  # Uncomment to enable optimizations
+    "-Wno-c11-extensions",
+    "-Wno-c99-extensions",
+    "-Wno-keyword-macro",
+    "-Wno-vla-extension",
+    "-Wno-zero-length-array",
+    "-Wno-gnu-statement-expression",
+    "-Wno-gnu-conditional-omitted-operand",
+    "-Wno-pedantic",
+    "-Wno-shorten-64-to-32",
+    "-fno-exceptions",
+]
+
+OUTPUT_COMPILER_FLAGS = COMPILER_FLAGS + [
+    "-Wno-unreachable-code",
+    "-Wno-unused-label",
+    "-Wno-unused-variable",
+]
+
+########################################
+#### TSN
+########################################
+cc_library(
+    name = "tsn",
+    srcs = glob([
+        "src/tsn/**/*.c",
+        "src/tsn/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/tsn/**/*.hpp",
+        "src/tsn/**/*.h",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//third-party/quickjs",
+        "@valdi//valdi_core",
+    ],
+)
+
+########################################
+#### Compiled Output / Runs
+########################################
+
+cc_library(
+    name = "compiled_output",
+    srcs = glob([
+        "output/**/*.cpp",
+    ]),
+    copts = OUTPUT_COMPILER_FLAGS + COMMON_COMPILE_FLAGS,
+    deps = [
+        ":tsn",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "main",
+    srcs = glob([
+        "main/**/*.cpp",
+    ]),
+    copts = COMPILER_FLAGS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tsn",
+    ],
+)
+
+########################################
+#### Test262 Tests
+########################################
+
+cc_library(
+    name = "test262_shared",
+    srcs = glob([
+        "src/test262/shared/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/test262/shared/**/*.hpp",
+    ]),
+    copts = COMPILER_FLAGS + COMMON_COMPILE_FLAGS,
+    strip_include_prefix = "src",
+    deps = [
+        "@valdi//valdi:valdi_runtime",
+        "@valdi//valdi_core",
+    ],
+)
+
+cc_binary(
+    name = "test262_preprocessor",
+    srcs = [
+        "src/test262/preprocessor/main.cpp",
+    ],
+    copts = COMPILER_FLAGS,
+    deps = [
+        ":test262_shared",
+        "@valdi//libs/utils:utils_oss_cc",
+        "@valdi//valdi:valdi_runtime",
+        "@valdi//valdi_core",
+    ],
+)
+
+genrule(
+    name = "test262_json",
+    srcs = ["scripts/bazel/test262_preprocess_test.sh"],
+    outs = ["test262cases.json"],
+    cmd = "$(location scripts/bazel/test262_preprocess_test.sh) -b $(location :test262_preprocessor) -t $(location @test262//:test262_tests) -o \"$@\"",
+    tools = [
+        ":test262_preprocessor",
+        "@test262//:test262_tests",
+    ],
+)
+
+filegroup(
+    name = "test262_skiplist",
+    srcs = [
+        "src/test262/skip_list.json",
+    ],
+)
+
+cc_binary(
+    name = "test262_runner",
+    srcs = glob([
+        "src/test262/runner/**/*.cpp",
+        "src/test262/runner/**/*.hpp",
+    ]),
+    copts = COMPILER_FLAGS,
+    deps = [
+        ":compiled_output",
+        ":test262_shared",
+        ":tsn",
+        "@valdi//valdi:valdi_runtime",
+        "@valdi//valdi_core",
+    ],
+)
+
+#TODO(rjaber): Find a way to split into seperate tests cases instead of treating it as one
+sh_test(
+    name = "262",
+    size = "large",
+    srcs = ["scripts/bazel/test262_run_test.sh"],
+    args = [
+        "-b",
+        "$(location :test262_runner)",
+        "-h",
+        "$(location @test262//:test262_harness)",
+        "-t",
+        "$(location :test262_json)",
+        "-s",
+        "$(location :test262_skiplist)",
+    ],
+    data = [
+        ":test262_json",
+        ":test262_runner",
+        ":test262_skiplist",
+        "@test262//:test262_harness",
+    ],
+)

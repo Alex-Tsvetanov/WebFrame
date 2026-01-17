@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    // Type Checking
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "strict": true,
+
+    // Modules
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Emit
+    "importHelpers": true,
+    "noEmitHelpers": true,
+    "noEmitOnError": true,
+    "removeComments": true,
+
+    // Interop Constraints
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+
+    // Language and Environment
+    "experimentalDecorators": true,
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+
+    "outDir": "./dist/",
+    "rootDir": "./src/",
+    "declaration": true,
+    "composite": true,
+
+    // Needed to avoid error TS2430 when building
+    "skipLibCheck": true,
+  },
+  "include": ["./src/**/*.ts"]
+
+}

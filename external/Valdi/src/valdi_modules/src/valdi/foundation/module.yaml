@@ -1,0 +1,14 @@
+output_target: release
+
+dependencies:
+  - valdi_core
+  - valdi_tsx
+allowed_debug_dependencies:
+  - valdi_test
+  - jasmine
+
+ios:
+  class_prefix: SCCFoundation
+  module_name: SCCFoundation
+android:
+  class_path: com.snap.valdi.foundation

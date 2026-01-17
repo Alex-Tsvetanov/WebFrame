@@ -1,0 +1,19 @@
+load("@valdi//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("@valdi//bzl/valdi:valdi_exported_library.bzl", "valdi_exported_library")
+
+valdi_application(
+    name = "{{MODULE_NAME}}_app",
+    ios_bundle_id = "com.website.{{MODULE_NAME}}",
+    ios_families = ["iphone"],
+    root_component_path = "App@{{MODULE_NAME}}/src/App",
+    title = "{{MODULE_NAME}}",
+    version = "1.0.0",
+    deps = ["//modules/{{MODULE_NAME}}"],
+)
+
+valdi_exported_library(
+    name = "{{MODULE_NAME}}_export",
+    ios_bundle_id = "com.website.{{MODULE_NAME}}.lib",
+    ios_bundle_name = "{{MODULE_NAME_PASCAL_CASED}}",
+    deps = ["//modules/{{MODULE_NAME}}"],
+)

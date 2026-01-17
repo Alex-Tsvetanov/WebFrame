@@ -1,0 +1,247 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+load("@valdi//bzl/conditions:selects.bzl", "selects")
+load("@valdi//bzl/valdi:valdi_toolchain.bzl", "valdi_toolchain")
+
+exports_files([
+    "AndroidManifest.xml.tpl",
+    "valdi_config.yaml.tpl",
+    "empty.c",
+    "empty.kt",
+    "empty.js",
+    "Info.plist",
+    "package.json.tmpl",
+    "tsconfig.json",
+])
+
+# Flag to control the valdi compilation log level
+string_flag(
+    name = "compilation_log_level",
+    build_setting_default = "error",
+    values = [
+        "verbose",
+        "debug",
+        "info",
+        "warn",
+        "error",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "assets_mode",
+    build_setting_default = "bundle",
+    values = [
+        # Assets are uploaded remotely, unless the
+        # module configuration itself opts out.
+        "upload",
+        # Assets are always bundled within the app
+        "bundle",
+        # Assets are omitted from the build
+        "strip",
+        # Assets are bundled inline within the .valdimodule
+        "inline",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "localization_mode",
+    build_setting_default = "inline",
+    values = [
+        # Localized strings are exported into a platform native format,
+        # using Localizable.strings files on iOS and strings.xml files
+        # on Android.
+        "external",
+        # Localized strings are bundled inline within the .valdimodule .
+        "inline",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "js_bytecode_format",
+    build_setting_default = "quickjs",
+    values = [
+        "none",
+        "hermes",
+        "quickjs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "js_bytecode_format_none",
+    flag_values = {
+        ":js_bytecode_format": "none",
+    },
+)
+
+config_setting(
+    name = "js_bytecode_format_hermes",
+    flag_values = {
+        ":js_bytecode_format": "hermes",
+    },
+)
+
+config_setting(
+    name = "js_bytecode_format_quickjs",
+    flag_values = {
+        ":js_bytecode_format": "quickjs",
+    },
+)
+
+config_setting(
+    name = "upload_assets",
+    flag_values = {
+        ":assets_mode": "upload",
+    },
+)
+
+config_setting(
+    name = "bundle_assets",
+    flag_values = {
+        ":assets_mode": "bundle",
+    },
+)
+
+config_setting(
+    name = "strip_assets",
+    flag_values = {
+        ":assets_mode": "strip",
+    },
+)
+
+config_setting(
+    name = "inline_assets",
+    flag_values = {
+        ":assets_mode": "inline",
+    },
+)
+
+string_flag(
+    name = "js_engine",
+    build_setting_default = "auto",
+    values = [
+        "auto",
+        "hermes",
+        "quickjs",
+        "jscore",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "js_engine_auto",
+    flag_values = {
+        ":js_engine": "auto",
+    },
+)
+
+config_setting(
+    name = "js_engine_hermes",
+    flag_values = {
+        ":js_engine": "hermes",
+    },
+)
+
+config_setting(
+    name = "js_engine_quickjs",
+    flag_values = {
+        ":js_engine": "quickjs",
+    },
+)
+
+config_setting(
+    name = "js_engine_jscore",
+    flag_values = {
+        ":js_engine": "jscore",
+    },
+)
+
+bool_flag(
+    name = "hot_reload_enabled",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "valdi_hot_reload_enabled",
+    flag_values = {
+        ":hot_reload_enabled": "true",
+    },
+)
+
+# Create an exhaustive set of configurations because Bazel doesn't support nested selects.
+# Not having nested selects means we have to list all possible conditions in a single flat select.
+# User by valdi_module.bzl to conditionally include apple_resource_bundles in the Valdi objc library.
+
+selects.config_setting_group(
+    name = "debug",
+    match_any = [
+        "//bzl/valdi/source_set:debug",
+        "//bzl/valdi/source_set:infer_debug",
+    ],
+)
+
+selects.config_setting_group(
+    name = "release",
+    match_any = [
+        "//bzl/valdi/source_set:release",
+        "//bzl/valdi/source_set:infer_release",
+    ],
+)
+
+selects.config_setting_combinations(
+    settings = [
+        {
+            ":debug": "debug",
+            ":release": "release",
+        },
+        {
+            ":upload_assets": "upload_assets",
+            ":bundle_assets": "bundle_assets",
+            ":strip_assets": "strip_assets",
+        },
+    ],
+)
+
+# Toolchain for compiling Bazel modules.
+toolchain_type(name = "toolchain_type")
+
+# Flag to control whether to use prebuilt companion binary or build from source
+bool_flag(
+    name = "use_prebuilt_companion",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "use_prebuilt_companion_enabled",
+    flag_values = {
+        ":use_prebuilt_companion": "true",
+    },
+)
+
+# Alias to choose between prebuilt binary and source-built companion
+alias(
+    name = "compiler_companion_source",
+    actual = select({
+        ":use_prebuilt_companion_enabled": "@valdi_toolchain//:valdi_compiler_companion",
+        "//conditions:default": "//compiler/companion:ts_bin_wrapper",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# Platform-specific rule definition, for macos
+valdi_toolchain(
+    name = "valdi",
+    compiler = "@valdi_toolchain//:valdi_compiler",
+    compiler_companion = ":compiler_companion_source",
+    compiler_toolbox = "@valdi_toolchain//:valdi_compiler_toolbox",
+    pngquant = "@valdi_toolchain//:pngquant",
+    sqldelight_compiler = "@valdi_toolchain//:sqldelight_compiler",
+)
+
+toolchain(
+    name = "valdi_toolchain",
+    toolchain = ":valdi",
+    toolchain_type = ":toolchain_type",
+)

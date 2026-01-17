@@ -1,0 +1,8 @@
+ios:
+  language: objc, swift
+
+output_target: release
+
+dependencies:
+  - valdi_core
+  - valdi_rxjs

@@ -1,0 +1,35 @@
+# Usage Instructions for This Module
+#
+# Step 1: Add this module to your `BUILD.bazel` file dependencies:
+#         `//src/valdi/valdi_web_renderer`
+#
+# Step 2: Import the module in your `.tsx` file:
+#         `import { NewModuleComponent } from 'valdi_web_renderer/src/NewModuleComponent';`
+#
+# Step 3: Render the component in your `onRender()` function:
+#         `<NewModuleComponent title={'Valdi'}/>`
+
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "web_renderer",
+    srcs = glob(
+        [
+            "src/**/*.ts",
+            "src/**/*.tsx",
+            "src/**/*.js",
+        ],
+    ),
+    res = glob([
+        "res/**/*.jpeg",
+        "res/**/*.jpg",
+        "res/**/*.png",
+        "res/**/*.svg",
+        "res/**/*.webp",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@valdi//src/valdi_modules/src/valdi/valdi_core",
+        "@valdi//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

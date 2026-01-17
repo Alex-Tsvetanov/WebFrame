@@ -1,0 +1,388 @@
+% ============================================================================
+% Глава 5: Реализация на протоколи
+% ============================================================================
+\section{Реализация на протоколи}
+
+След като разгледахме общата архитектура на Coroute, в тази глава ще се фокусираме върху конкретната имплементация на поддържаните протоколи: HTTP/1.1, HTTP/2, WebSocket и TLS. За всеки протокол ще представим ключовите аспекти на реализацията, включително парсване, сериализация и обработка на специфични сценарии.
+
+Имплементацията на протоколите следва принципа на ефективност -- минимизиране на копирането на данни, използване на zero-copy техники където е възможно, и асинхронна обработка чрез корутини. Същевременно, кодът е проектиран да бъде четим и поддържаем.
+
+\subsection{HTTP/1.1 парсер и сериализация}
+
+HTTP/1.1 е текстово-базиран протокол, което прави парсването относително просто, но изисква внимание към детайлите. Парсерът трябва да обработва различни edge cases като непълни заявки, невалидни хедъри и различни encoding-и.
+
+\subsubsection{Парсване на заявки}
+
+HTTP/1.1 заявките се парсват в метода \texttt{parse\_request()}. Процесът е асинхронен -- данните се четат на части от мрежата, докато се натрупа пълна заявка. Това е важно за ефективността, тъй като позволява на сървъра да обслужва други заявки докато чака данни от бавен клиент.
+
+\begin{enumerate}
+    \item Четене на хедъри до \texttt{\textbackslash r\textbackslash n\textbackslash r\textbackslash n}
+    \item Парсване на request line (метод, път, версия)
+    \item Парсване на хедъри
+    \item Четене на body (ако има Content-Length)
+\end{enumerate}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Парсване на HTTP заявка}]
+Task<expected<Request, Error>> App::parse_request(net::Connection& conn) {
+    constexpr size_t MAX_HEADER_SIZE = 8192;
+    constexpr size_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+    
+    // Read headers in chunks
+    auto buffer_ptr = buffer_pool_.acquire(MAX_HEADER_SIZE);
+    auto& buffer = *buffer_ptr;
+    
+    size_t total_read = 0;
+    size_t header_end_pos = std::string::npos;
+    
+    while (total_read < MAX_HEADER_SIZE) {
+        auto result = co_await conn.async_read(
+            buffer.data() + total_read, READ_CHUNK_SIZE);
+        if (!result) co_return unexpected(result.error());
+        
+        total_read += *result;
+        
+        // Search for \r\n\r\n
+        for (size_t i = search_start; i + 3 < total_read; ++i) {
+            if (buffer[i] == '\r' && buffer[i+1] == '\n' && 
+                buffer[i+2] == '\r' && buffer[i+3] == '\n') {
+                header_end_pos = i + 4;
+                break;
+            }
+        }
+        if (header_end_pos != std::string::npos) break;
+    }
+    
+    // Parse request line and headers...
+    co_return req;
+}
+\end{lstlisting}
+
+\subsubsection{URL декодиране}
+
+URL адресите могат да съдържат специални символи, които се кодират чрез percent-encoding (например, интервалът се кодира като \texttt{\%20}). Coroute автоматично декодира URL параметрите, така че потребителският код получава чистите стойности.
+
+Функцията \texttt{url\_decode} обработва три случая: percent-encoded символи (\texttt{\%XX}), знака плюс (който се интерпретира като интервал в query strings), и обикновени символи. Декодирането се извършва in-place за ефективност.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={URL decode функция}]
+static std::string url_decode(std::string_view str) {
+    std::string result;
+    result.reserve(str.size());
+    
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '%' && i + 2 < str.size()) {
+            // Decode %XX
+            char hex[3] = {str[i + 1], str[i + 2], '\0'};
+            long val = std::strtol(hex, nullptr, 16);
+            result += static_cast<char>(val);
+            i += 2;
+        } else if (str[i] == '+') {
+            result += ' ';
+        } else {
+            result += str[i];
+        }
+    }
+    return result;
+}
+\end{lstlisting}
+
+\subsubsection{Keep-Alive поддръжка}
+
+HTTP/1.1 въведе концепцията за persistent connections (keep-alive), която позволява множество HTTP заявки да се изпращат през една TCP връзка. Това е значително подобрение спрямо HTTP/1.0, където всяка заявка изискваше нова TCP връзка.
+
+Coroute поддържа keep-alive с конфигурируеми параметри. По подразбиране, една връзка може да обслужи до 100 заявки, след което се затваря. Също така има timeout -- ако клиентът не изпрати нова заявка в рамките на 30 секунди, връзката се затваря. Тези стойности могат да се конфигурират според нуждите на приложението.
+
+Важно е да се отбележи, че keep-alive е активен по подразбиране в HTTP/1.1. Клиентът трябва изрично да изпрати \texttt{Connection: close}, ако иска връзката да се затвори след заявката.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Keep-alive loop}]
+constexpr size_t MAX_REQUESTS_PER_CONNECTION = 100;
+constexpr auto KEEP_ALIVE_TIMEOUT = std::chrono::seconds(30);
+
+size_t request_count = 0;
+bool keep_alive = true;
+
+while (conn->is_open() && keep_alive) {
+    ++request_count;
+    
+    if (request_count > MAX_REQUESTS_PER_CONNECTION) break;
+    
+    auto req_result = co_await parse_request(*conn);
+    // ... handle request ...
+    
+    keep_alive = req.keep_alive();
+    
+    // Set Connection header
+    if (!keep_alive || request_count >= MAX_REQUESTS_PER_CONNECTION) {
+        resp.set_header("Connection", "close");
+    } else {
+        resp.set_header("Connection", "keep-alive");
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Zero-copy file transfer}
+
+При обслужване на статични файлове, традиционният подход изисква четене на файла в потребителско пространство и след това писане към сокета. Това означава две копирания на данните -- от файловата система към буфера на приложението, и от буфера към мрежовия стек.
+
+Coroute използва zero-copy техники, които позволяват на операционната система да прехвърли данните директно от файловата система към мрежовия стек, без копиране в потребителско пространство. На Windows това се постига чрез \texttt{TransmitFile}, на Linux чрез \texttt{sendfile} или \texttt{splice}, а на macOS чрез \texttt{sendfile}.
+
+Zero-copy е особено ефективен за големи файлове, където спестяването на копирания може значително да подобри производителността и да намали натоварването на CPU.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Zero-copy file serving}]
+if (resp.has_file() && req.method() != HttpMethod::HEAD) {
+    // Send headers first
+    auto headers_data = resp.serialize_headers();
+    co_await conn->async_write_all(headers_data.data(), headers_data.size());
+    
+    // Send file via zero-copy (TransmitFile/sendfile)
+    const auto& file_info = resp.file_info();
+    co_await send_file_zero_copy(
+        *conn, file_info.path, file_info.offset, file_info.length);
+}
+\end{lstlisting}
+
+\subsection{HTTP/2 поддръжка}
+
+HTTP/2 \cite{rfc7540} представлява значителна еволюция на HTTP протокола. За разлика от текстово-базирания HTTP/1.1, HTTP/2 е бинарен протокол, който въвежда мултиплексиране на потоци, компресия на хедъри и други оптимизации.
+
+Имплементацията на HTTP/2 в Coroute е пълноценна и включва поддръжка за всички основни функционалности на протокола. Сървърът може да обслужва HTTP/2 връзки както през TLS (h2), така и без криптиране (h2c), макар че последното се използва рядко в практиката.
+
+\subsubsection{ALPN}
+
+Application-Layer Protocol Negotiation (ALPN) е TLS разширение, което позволява на клиента и сървъра да се договорят за приложния протокол по време на TLS handshake. Това е стандартният механизъм за избор между HTTP/1.1 и HTTP/2 при HTTPS връзки.
+
+При конфигуриране на TLS, Coroute регистрира поддържаните протоколи в ред на предпочитание. Обикновено HTTP/2 (``h2'') е с по-висок приоритет от HTTP/1.1, тъй като предоставя по-добра производителност. След завършване на TLS handshake, сървърът проверява кой протокол е бил избран и насочва връзката към съответния handler.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={ALPN negotiation}]
+// Configure ALPN protocols
+if (http2_enabled_) {
+    tls_config.alpn_protocols = {"h2", "http/1.1"};
+} else {
+    tls_config.alpn_protocols = {"http/1.1"};
+}
+
+// After TLS handshake, check negotiated protocol
+auto* tls_conn = dynamic_cast<net::TlsConnection*>(conn_result->get());
+if (tls_conn) {
+    auto proto = tls_conn->negotiated_protocol();
+    if (proto && *proto == "h2") {
+        // Create HTTP/2 connection
+        auto h2_conn = std::make_shared<http2::Http2Connection>(
+            std::move(*conn_result));
+        handle_http2_connection(h2_conn).start_detached();
+    }
+}
+\end{lstlisting}
+
+\subsubsection{HTTP/2 Connection}
+
+HTTP/2 връзката управлява множество потоци:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={HTTP/2 connection handler}]
+h2_conn->set_handler([this](Request& r) -> Task<Response> {
+    auto match = router_.match(r.method(), r.path());
+    if (match) {
+        r.set_route_params(std::move(match.params));
+    }
+    co_return co_await middleware_chain_.execute_or_not_found(
+        r, match.handler);
+});
+
+Task<void> App::handle_http2_connection(
+    std::shared_ptr<http2::Http2Connection> h2_conn) {
+    active_connections_.fetch_add(1);
+    
+    try {
+        co_await h2_conn->run();
+    } catch (const std::exception& e) {
+        std::cerr << "HTTP/2 error: " << e.what() << std::endl;
+    }
+    
+    active_connections_.fetch_sub(1);
+}
+\end{lstlisting}
+
+\subsubsection{h2c Upgrade}
+
+HTTP/2 може да се използва и без TLS чрез h2c upgrade:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={h2c upgrade}]
+Task<bool> App::try_http2_upgrade(
+    std::unique_ptr<net::Connection>& conn, Request& req) {
+    if (!http2_enabled_) co_return false;
+    
+    // Check for h2c upgrade request
+    if (!http2::is_h2c_upgrade_request(req)) co_return false;
+    
+    // Upgrade the connection
+    auto h2_conn = co_await http2::upgrade_to_http2(
+        std::move(conn), req);
+    if (!h2_conn) co_return true;
+    
+    (*h2_conn)->set_handler([this](Request& r) -> Task<Response> {
+        // ... same handler as above ...
+    });
+    
+    handle_http2_connection(*h2_conn).start_detached();
+    co_return true;
+}
+\end{lstlisting}
+
+\subsection{WebSocket протокол}
+
+WebSocket \cite{rfc6455} е протокол, проектиран за двупосочна комуникация в реално време. За разлика от HTTP, където клиентът винаги инициира комуникацията, WebSocket позволява на сървъра да изпраща данни към клиента по всяко време.
+
+Coroute предоставя пълноценна поддръжка за WebSocket, включително автоматично upgrade от HTTP, обработка на текстови и бинарни съобщения, ping/pong за keep-alive, и graceful close. API-то е проектирано да бъде интуитивно и да се интегрира естествено с корутинния модел на библиотеката.
+
+\subsubsection{Проверка за WebSocket upgrade}
+
+WebSocket връзката започва като обикновена HTTP заявка с хедъри, указващи желание за upgrade. Сървърът трябва да провери дали заявката съдържа всички необходими хедъри преди да извърши upgrade.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket upgrade detection}]
+bool is_websocket_upgrade(const Request& req) {
+    auto upgrade = req.header("Upgrade");
+    auto connection = req.header("Connection");
+    auto key = req.header("Sec-WebSocket-Key");
+    auto version = req.header("Sec-WebSocket-Version");
+    
+    return upgrade && connection && key && version &&
+           *upgrade == "websocket" &&
+           connection->find("Upgrade") != std::string::npos &&
+           *version == "13";
+}
+\end{lstlisting}
+
+\subsubsection{Изчисляване на Accept Key}
+
+WebSocket handshake изисква изчисляване на accept key:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket accept key}]
+std::string compute_accept_key(std::string_view client_key) {
+    // Magic GUID from RFC 6455
+    constexpr auto MAGIC_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    
+    std::string combined = std::string(client_key) + MAGIC_GUID;
+    
+    // SHA-1 hash
+    auto hash = sha1(combined);
+    
+    // Base64 encode
+    return base64_encode(hash);
+}
+\end{lstlisting}
+
+\subsubsection{Upgrade процес}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket upgrade}]
+Task<expected<std::unique_ptr<WebSocketConnection>, Error>> 
+upgrade_to_websocket(std::unique_ptr<Connection> conn, const Request& req) {
+    // Create 101 Switching Protocols response
+    Response resp = create_upgrade_response(req);
+    
+    // Send upgrade response
+    auto data = resp.serialize();
+    auto result = co_await conn->async_write_all(data.data(), data.size());
+    if (!result) {
+        co_return unexpected(result.error());
+    }
+    
+    // Wrap connection in WebSocketConnection
+    co_return std::make_unique<WebSocketConnectionImpl>(std::move(conn));
+}
+\end{lstlisting}
+
+\subsubsection{WebSocket handler регистрация}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket handler}]
+app.websocket("/ws/chat", [](std::unique_ptr<WebSocketConnection> ws) 
+    -> Task<void> {
+    while (true) {
+        auto msg = co_await ws->receive();
+        if (!msg) break;  // Connection closed
+        
+        if (msg->type == WebSocketMessage::Text) {
+            // Echo back
+            co_await ws->send(msg->data);
+        }
+    }
+});
+\end{lstlisting}
+
+\subsubsection{WebSocket съобщения}
+
+WebSocket комуникацията използва фреймове:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket message types}]
+struct WebSocketMessage {
+    enum Type { Text, Binary, Close, Ping, Pong };
+    
+    Type type;
+    std::string data;
+};
+
+class WebSocketConnection {
+public:
+    // Receive next message
+    virtual Task<expected<WebSocketMessage, Error>> receive() = 0;
+    
+    // Send text message
+    virtual Task<expected<void, Error>> send(std::string_view text) = 0;
+    
+    // Send binary message
+    virtual Task<expected<void, Error>> send_binary(
+        std::span<const std::byte> data) = 0;
+    
+    // Close connection
+    virtual Task<void> close(uint16_t code = 1000) = 0;
+};
+\end{lstlisting}
+
+\subsection{TLS интеграция}
+
+Transport Layer Security (TLS) е от съществено значение за съвременните уеб приложения. Coroute предоставя пълноценна TLS поддръжка чрез интеграция с OpenSSL, една от най-широко използваните криптографски библиотеки.
+
+TLS интеграцията в Coroute е проектирана да бъде едновременно лесна за използване и гъвкава. За прости случаи е достатъчно да се предоставят пътищата до сертификата и частния ключ. За по-сложни сценарии са налични опции за верификация на клиентски сертификати, конфигуриране на cipher suites и други настройки.
+
+Coroute поддържа TLS 1.2 и TLS 1.3, като TLS 1.3 се предпочита когато е наличен. ALPN негоциацията е интегрирана, позволявайки автоматичен избор между HTTP/1.1 и HTTP/2.
+
+\subsubsection{TLS конфигурация}
+
+Конфигурирането на TLS изисква минимум сертификат и частен ключ. Сертификатът може да бъде self-signed за development или издаден от Certificate Authority за production.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={TLS configuration}]
+struct TlsConfig {
+    std::string cert_file;      // Server certificate
+    std::string key_file;       // Private key
+    std::string ca_file;        // CA certificate (optional)
+    std::string chain_file;     // Certificate chain (optional)
+    bool verify_client = false; // Client certificate verification
+    
+    // ALPN protocols
+    std::vector<std::string> alpn_protocols;
+};
+
+// Enable TLS on the app
+app.enable_tls({
+    .cert_file = "server.crt",
+    .key_file = "server.key",
+    .alpn_protocols = {"h2", "http/1.1"}
+});
+\end{lstlisting}
+
+\subsubsection{TLS Listener}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={TLS listener}]
+if (tls_enabled_ && tls_ctx_) {
+    tls_listener_ = std::make_unique<net::TlsListener>(
+        std::move(listener_), *tls_ctx_);
+    
+    [this]() -> Task<void> {
+        while (!cancel_source_.is_cancelled()) {
+            auto conn_result = co_await tls_listener_->accept();
+            if (!conn_result) continue;
+            
+            // Check ALPN and dispatch to appropriate handler
+            // ...
+        }
+    }().start_detached();
+}
+\end{lstlisting}

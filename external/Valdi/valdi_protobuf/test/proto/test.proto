@@ -1,0 +1,133 @@
+syntax = "proto3";
+package test;
+
+enum Enum {
+  VALUE_0 = 0;
+  VALUE_1 = 1;
+}
+
+/**
+Test
+multiline
+comment
+*/
+message OtherMessage {
+  string value = 1;
+}
+
+// Test comment
+// another line
+message Message {
+  int32 int32 = 1;
+  int64 int64 = 2;
+  uint32 uint32 = 3;
+  uint64 uint64 = 4;
+  sint32 sint32 = 5;
+  sint64 sint64 = 6;
+  fixed32 fixed32 = 7;
+  fixed64 fixed64 = 8;
+  sfixed32 sfixed32 = 9;
+  sfixed64 sfixed64 = 10;
+  float float = 11;
+  double double = 12;
+  bool bool = 13;
+  string string = 14;
+  bytes bytes = 15;
+  Enum enum = 16;
+  Message self_message = 17;
+  OtherMessage other_message = 18;
+}
+
+message RepeatedMessage {
+  repeated int32 int32 = 1;
+  repeated int64 int64 = 2;
+  repeated uint32 uint32 = 3;
+  repeated uint64 uint64 = 4;
+  repeated sint32 sint32 = 5;
+  repeated sint64 sint64 = 6;
+  repeated fixed32 fixed32 = 7;
+  repeated fixed64 fixed64 = 8;
+  repeated sfixed32 sfixed32 = 9;
+  repeated sfixed64 sfixed64 = 10;
+  repeated float float = 11;
+  repeated double double = 12;
+  repeated bool bool = 13;
+  repeated string string = 14;
+  repeated bytes bytes = 15;
+  repeated Enum enum = 16;
+  repeated RepeatedMessage self_message = 17;
+  repeated OtherMessage other_message = 18;
+}
+
+message ParentMessage {
+  ChildMessage child_message = 1;
+  ChildEnum child_enum = 2;
+
+  message ChildMessage {
+    string value = 1;
+  }
+
+  // Comment for child enum
+  enum ChildEnum {
+    // Comment for value 0
+    VALUE_0 = 0;
+    // Comment for value 1
+    VALUE_1 = 1;
+  }
+}
+
+message OneOfMessage {
+  oneof strings {
+    string string_0 = 1;
+    string string_1 = 2;
+  }
+  oneof messages {
+    OtherMessage message_0 = 3;
+    OtherMessage message_1 = 4;
+  }
+  oneof bytes {
+    bytes bytes_0 = 5;
+    bytes bytes_1 = 6;
+  }
+}
+
+message OldMessage {
+  string old_value = 1;
+}
+message NewMessage {
+  string old_value = 1;
+  string new_value = 2;
+}
+
+message OldEnumMessage {
+  enum OldEnum {
+    VALUE_0 = 0;
+    VALUE_1 = 1;
+  }
+  OldEnum value = 1;
+  repeated OldEnum repeated_value = 2;
+  map<string, OldEnum> mapped_value = 3;
+}
+
+message NewEnumMessage {
+  enum NewEnum {
+    VALUE_0 = 0;
+    VALUE_1 = 1;
+    VALUE_2 = 200;
+    VALUE_3 = 300;
+  }
+  NewEnum value = 1;
+  repeated NewEnum repeated_value = 2;
+  map<string, NewEnum> mapped_value = 3;
+}
+
+message MapMessage {
+  map<string, string> stringToString = 1;
+  map<string, int32> stringToNumber = 2;
+  map<string, int64> stringToSignedLong = 3;
+  map<string, uint64> stringToUnsignedLong = 4;
+  map<string, double> stringToDouble = 5;
+  map<string, OtherMessage> stringToMessage = 6;
+  map<int32, string> intToString = 7;
+  map<int64, string> longToString = 8;
+}

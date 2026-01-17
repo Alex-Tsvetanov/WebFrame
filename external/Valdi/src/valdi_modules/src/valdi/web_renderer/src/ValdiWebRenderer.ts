@@ -1,0 +1,31 @@
+import { RequireFunc } from 'valdi_core/src/IModuleLoader';
+declare const require: RequireFunc;
+
+// Require this to get the globals to run and setup env
+require('./ValdiWebRuntime');
+
+declare const moduleLoader: any;
+
+var customRequire = moduleLoader.resolveRequire('web_renderer/src/ValdiWebRenderer.ts');
+
+
+const { Renderer } = customRequire('valdi_core/src/Renderer');
+const rendererDelegate = customRequire('./ValdiWebRendererDelegate');
+type UpdateAttributeDelegate = typeof rendererDelegate.UpdateAttributeDelegate;
+type ValdiWebRendererDelegateType = typeof rendererDelegate.ValdiWebRendererDelegate;
+const ValdiWebRendererDelegate = rendererDelegate.ValdiWebRendererDelegate;
+
+
+export class ValdiWebRenderer extends Renderer implements UpdateAttributeDelegate {
+  delegate: ValdiWebRendererDelegateType;
+
+  constructor(private htmlRoot: HTMLElement) {
+    const delegate = new ValdiWebRendererDelegate(htmlRoot);
+    super('valdi-web-renderer', ['view', 'label', 'layout', 'scroll', 'image', 'textfield', 'spinner'], delegate);
+    delegate.setAttributeDelegate(this);
+    this.delegate = delegate;
+  }
+  updateAttribute(elementId: number, attributeName: string, attributeValue: any) {
+    super.attributeUpdatedExternally(elementId, attributeName, attributeValue);
+  }
+}

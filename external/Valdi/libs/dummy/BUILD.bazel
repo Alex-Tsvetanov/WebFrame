@@ -1,0 +1,49 @@
+cc_binary(
+    name = "dummy",
+    testonly = 1,
+    srcs = glob([
+        "src/dummy/**/*.cpp",
+    ]),
+    linkstatic = True,
+    deps = [
+        "//libs/utils:utils_cc",
+        "//libs/utils:utils_oss_cc",
+        "//third-party/djinni-support-lib:djinni_support_lib",
+        "//third-party/jscore",
+        "@backward-cpp",
+        "@boringssl//:ssl",
+        "@fmt",
+        "@gtest",
+        "@harfbuzz",
+        "@hermes",
+        "@jsoncpp",
+        "@phmap",
+        "@protobuf_cpp//:protobuf",
+        "@skia//:core",
+        "@xxhash",
+        "@zlib_chromium",
+        "@zstd",
+    ],
+)
+
+cc_test(
+    name = "test",
+    srcs = glob([
+        "test/**/*.cpp",
+    ]),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//libs/utils:utils_cc",
+        "//libs/utils:utils_oss_cc",
+        "@gtest//:gtest_main",
+    ],
+)
+
+android_library(
+    name = "dummy_android",
+    custom_package = "com.snapchat.client",
+    manifest = "src/manifest/AndroidManifest.xml",
+    resource_files = glob(["res/**"]),
+    visibility = ["//visibility:public"],
+)

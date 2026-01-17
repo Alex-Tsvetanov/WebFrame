@@ -1,0 +1,300 @@
+% ============================================================================
+% Глава 6: Типово-безопасно извличане на параметри
+% ============================================================================
+\section{Типово-безопасно извличане на параметри}
+
+Типовата безопасност е фундаментален принцип в съвременното софтуерно инженерство, който позволява откриване на грешки по време на компилация вместо по време на изпълнение. В контекста на уеб библиотеки, типовата безопасност при обработка на URL параметри е особено важна, тъй като некоректното конвертиране на входни данни може да доведе до runtime exceptions, security уязвимости или некоректно поведение на приложението.
+
+Настоящата глава представя механизма за типово-безопасно извличане на параметри в Coroute, който използва C++20 concepts и variadic templates за постигане на compile-time валидация. Този подход елиминира цял клас runtime грешки и значително намалява boilerplate кода, необходим за обработка на URL параметри.
+
+\subsection{Мотивация}
+
+Обработката на URL параметри е фундаментална задача за всеки уеб библиотека. В REST API, параметрите често са част от URL пътя -- например \texttt{/users/123} или \texttt{/orders/456/items/789}. Тези параметри трябва да бъдат извлечени и конвертирани към подходящи типове преди да могат да се използват в бизнес логиката.
+
+В традиционните уеб библиотеки параметрите от URL се извличат като низове и се конвертират ръчно. Този подход има няколко недостатъка: изисква boilerplate код за всяка конверсия, грешките се откриват едва по време на изпълнение, и е лесно да се забрави валидацията.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Традиционен подход}]
+// Traditional approach - error-prone
+app.get("/user/{id}", [](Request& req) -> Task<Response> {
+    auto id_str = req.param("id");  // Returns string
+    int id;
+    try {
+        id = std::stoi(id_str);  // Manual conversion
+    } catch (...) {
+        co_return Response::bad_request("Invalid ID");
+    }
+    // Use id...
+});
+\end{lstlisting}
+
+Coroute елиминира този boilerplate код чрез автоматично типово извличане:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Coroute подход}]
+// Coroute approach - type-safe
+app.get<int>("/user/{id}", [](int id, Request& req) -> Task<Response> {
+    // id is already an int, validated at runtime
+    // Type mismatch is a compile-time error
+    co_return Response::ok("User: " + std::to_string(id));
+});
+\end{lstlisting}
+
+\subsection{Template-базирани route handlers}
+
+\subsubsection{Регистрация с типови параметри}
+
+Методът \texttt{route()} използва variadic templates за указване на типовете:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Template route registration}]
+template<typename... Args, typename F>
+    requires std::invocable<F, Args..., Request&>
+void route(HttpMethod method, std::string pattern, F&& handler) {
+    add(method, std::move(pattern), 
+        make_handler<Args...>(std::forward<F>(handler)));
+}
+
+// Convenience methods
+template<typename... Args, typename F>
+    requires std::invocable<F, Args..., Request&>
+void get(std::string pattern, F&& handler) {
+    route<Args...>(HttpMethod::GET, std::move(pattern), 
+        std::forward<F>(handler));
+}
+\end{lstlisting}
+
+\textbf{C++20 Concepts:} Constraint-ът \texttt{requires std::invocable<F, Args..., Request\&>} гарантира, че handler функцията може да бъде извикана с посочените типове.
+
+\subsubsection{Генериране на wrapper handler}
+
+\texttt{make\_handler()} създава wrapper, който извлича параметрите:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={make\_handler implementation}]
+template<typename... Args, typename F>
+static Handler make_handler(F&& f) {
+    return [func = std::forward<F>(f)](Request& req) mutable 
+        -> Task<Response> {
+        return invoke_with_params<Args...>(
+            func, req, std::index_sequence_for<Args...>{});
+    };
+}
+\end{lstlisting}
+
+\subsubsection{Извличане и извикване}
+
+\texttt{invoke\_with\_params()} извлича всеки параметър и извиква handler-а:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={invoke\_with\_params implementation}]
+template<typename... Args, typename F, size_t... Is>
+static Task<Response> invoke_with_params(
+    F& func, Request& req, std::index_sequence<Is...>) {
+    
+    if constexpr (sizeof...(Args) == 0) {
+        // No parameters to extract
+        co_return co_await func(req);
+    } else {
+        // Extract each parameter from route_params
+        auto params = std::make_tuple(extract_param<Args>(req, Is)...);
+        
+        // Check if any extraction failed
+        if (!all_valid(std::get<Is>(params)...)) {
+            co_return Response::bad_request("Invalid route parameters");
+        }
+        
+        // Call the handler with extracted values
+        co_return co_await func(*std::get<Is>(params)..., req);
+    }
+}
+\end{lstlisting}
+
+\textbf{Fold expressions:} Изразът \texttt{(results.has\_value() \&\& ...)} използва C++17 fold expression за проверка на всички резултати.
+
+\subsection{FromString<T> trait система}
+
+Конверсията от низ към тип се извършва чрез trait класа \texttt{FromString<T>}.
+
+\subsubsection{Основна структура}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString trait}]
+template<typename T>
+struct FromString {
+    static expected<T, Error> parse(std::string_view s);
+};
+\end{lstlisting}
+
+\subsubsection{Специализация за целочислени типове}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString за integers}]
+template<std::integral T>
+struct FromString<T> {
+    static expected<T, Error> parse(std::string_view s) {
+        T value;
+        auto [ptr, ec] = std::from_chars(
+            s.data(), s.data() + s.size(), value);
+        
+        if (ec == std::errc{} && ptr == s.data() + s.size()) {
+            return value;
+        }
+        
+        return unexpected(Error::parse(
+            "Invalid integer: " + std::string(s)));
+    }
+};
+\end{lstlisting}
+
+\texttt{std::from\_chars()} е високопроизводителна функция от C++17, която не използва locale и е значително по-бърза от \texttt{std::stoi()}.
+
+\subsubsection{Специализация за floating-point типове}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString за floating-point}]
+template<std::floating_point T>
+struct FromString<T> {
+    static expected<T, Error> parse(std::string_view s) {
+        T value;
+        auto [ptr, ec] = std::from_chars(
+            s.data(), s.data() + s.size(), value);
+        
+        if (ec == std::errc{} && ptr == s.data() + s.size()) {
+            return value;
+        }
+        
+        return unexpected(Error::parse(
+            "Invalid number: " + std::string(s)));
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Специализация за std::string}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString за string}]
+template<>
+struct FromString<std::string> {
+    static expected<std::string, Error> parse(std::string_view s) {
+        return std::string(s);
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Потребителски типове}
+
+Потребителите могат да добавят специализации за собствени типове:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Custom FromString specialization}]
+// Custom UUID type
+struct UUID {
+    std::array<uint8_t, 16> data;
+    
+    static std::optional<UUID> from_string(std::string_view s);
+};
+
+template<>
+struct FromString<UUID> {
+    static expected<UUID, Error> parse(std::string_view s) {
+        auto uuid = UUID::from_string(s);
+        if (uuid) {
+            return *uuid;
+        }
+        return unexpected(Error::parse("Invalid UUID: " + std::string(s)));
+    }
+};
+
+// Usage
+app.get<UUID>("/resource/{id}", [](UUID id, Request& req) 
+    -> Task<Response> {
+    // id is a validated UUID
+});
+\end{lstlisting}
+
+\subsection{Compile-time проверка на типове}
+
+C++ компилаторът гарантира съответствие между:
+\begin{itemize}
+    \item Броя на \texttt{\{param\}} placeholders в URL шаблона
+    \item Броя на template параметрите
+    \item Сигнатурата на handler функцията
+\end{itemize}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Compile-time type checking}]
+// OK - 2 params, 2 template args, handler takes (int, string, Request&)
+app.get<int, std::string>("/user/{id}/post/{slug}", 
+    [](int id, std::string slug, Request& req) -> Task<Response> {
+        // ...
+    });
+
+// COMPILE ERROR - handler signature doesn't match
+app.get<int, std::string>("/user/{id}/post/{slug}", 
+    [](int id, Request& req) -> Task<Response> {  // Missing string param
+        // ...
+    });
+
+// COMPILE ERROR - wrong parameter type
+app.get<int>("/user/{id}", 
+    [](std::string id, Request& req) -> Task<Response> {  // Should be int
+        // ...
+    });
+\end{lstlisting}
+
+\subsection{Runtime валидация}
+
+При runtime, ако конверсията се провали, се връща автоматичен 400 Bad Request:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Runtime validation}]
+// Request: GET /user/abc (invalid integer)
+// Response: 400 Bad Request - "Invalid route parameters"
+
+// Request: GET /user/123 (valid integer)
+// Handler is called with id = 123
+\end{lstlisting}
+
+\subsection{Множество параметри}
+
+Coroute поддържа произволен брой параметри:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Multiple parameters}]
+app.get<int, int, std::string>("/org/{org_id}/team/{team_id}/member/{name}",
+    [](int org_id, int team_id, std::string name, Request& req) 
+        -> Task<Response> {
+        // All parameters are extracted and validated
+        co_return Response::ok(
+            "Org: " + std::to_string(org_id) + 
+            ", Team: " + std::to_string(team_id) +
+            ", Member: " + name
+        );
+    });
+\end{lstlisting}
+
+\subsection{Анализ на предимствата}
+
+Типово-безопасното извличане на параметри предоставя множество предимства, които могат да бъдат анализирани от няколко перспективи.
+
+\subsubsection{Коректност и надеждност}
+
+Основното предимство е елиминирането на цял клас runtime грешки. При традиционния подход, грешка в типа на параметъра (например подаване на низ вместо число) се открива едва при изпълнение, когато \texttt{std::stoi} хвърля exception. При Coroute подхода, несъответствие между декларирания тип и сигнатурата на handler-а е compile-time error. Това означава, че ако кодът се компилира успешно, типовете на параметрите са гарантирано коректни.
+
+\subsubsection{Производителност}
+
+Използването на \texttt{std::from\_chars} вместо \texttt{std::stoi} или \texttt{std::stod} има измерими performance предимства. \texttt{std::from\_chars} е locale-independent функция, въведена в C++17, която не извършва динамично заделяне на памет и не използва глобално състояние. Benchmark тестове показват, че \texttt{std::from\_chars} е 2-5 пъти по-бърза от традиционните функции за конверсия.
+
+\subsubsection{Разширяемост}
+
+Trait-базираният дизайн на \texttt{FromString<T>} позволява лесно добавяне на поддръжка за потребителски типове. Разработчиците могат да дефинират специализации за domain-specific типове като UUID, Email, или custom идентификатори, без да модифицират кода на библиотеката.
+
+\subsubsection{Документация чрез типове}
+
+Типовите параметри в сигнатурата на route handler-а служат като форма на документация. Когато разработчик види \texttt{app.get<int, std::string>("/user/\{id\}/post/\{slug\}", ...)}, типовете на параметрите са веднага ясни без необходимост от допълнителна документация.
+
+\subsection{Сравнение с други библиотеки}
+
+За да се оцени стойността на типово-безопасния подход, е полезно да се сравни с други популярни библиотеки.
+
+Express.js (Node.js) извлича всички параметри като низове чрез \texttt{req.params.id}. Конверсията и валидацията са изцяло отговорност на разработчика. JavaScript не предоставя compile-time type checking, така че грешки се откриват едва при runtime.
+
+Flask (Python) също извлича параметри като низове по подразбиране, макар че поддържа type converters като \texttt{<int:id>}. Тези converters обаче са runtime механизъм и не предоставят compile-time гаранции.
+
+Drogon (C++) поддържа типизирани параметри чрез макроси, но подходът е по-verbose и не използва съвременни C++20 features като concepts.
+
+Oat++ предоставя типово-безопасни DTO обекти, но изисква използване на специални wrapper типове вместо стандартни C++ типове.
+
+Coroute комбинира типовата безопасност с използване на стандартни C++ типове и съвременни езикови features, постигайки баланс между безопасност и удобство.
+
+\subsection{Заключение}
+
+Типово-безопасното извличане на параметри е ключова иновация в Coroute, която демонстрира как съвременните C++ features могат да подобрят надеждността и производителността на уеб приложения. Комбинацията от variadic templates, concepts и trait-базиран дизайн позволява елегантно решение, което е едновременно type-safe и performant.

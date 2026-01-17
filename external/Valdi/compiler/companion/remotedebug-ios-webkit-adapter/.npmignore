@@ -1,0 +1,8 @@
+test/
+typings/
+.readme/
+.vscode
+# SNAP: we included remotedebug-ios-webkit-adapter by just dropping its sources in the companion
+#       source tree. We need this src to _not_ be ignored by a package manager in this case,
+#       because it needs to be available to e.g. src/valdi_modules via its node_modules dir
+# src/

@@ -1,0 +1,150 @@
+# Borrowed from downstream with path modifications
+# harfbuzz-ft elminated due to freetype dependency
+
+COMPILER_FLAGS = [
+    "-Werror",
+    "-Wall",
+    "-Wextra",
+    "-Wno-unused-parameter",
+    "-Wc99-extensions",
+    "-Wno-unused-command-line-argument",
+    "-fdiagnostics-color",
+    "-DGRPC_USE_PROTO_LITE",
+    "-DHAVE_PTHREAD=1",
+    "-pedantic",
+    "-Wimplicit-fallthrough",
+    "-Wno-error=deprecated-declarations",
+    "-Wno-error=gnu-offsetof-extensions",
+    "-Wno-extra-semi",
+    "-Wno-format-pedantic",
+    "-Wno-gnu-anonymous-struct",
+    "-Wno-gnu-zero-variadic-macro-arguments",
+    "-Wno-nested-anon-types",
+    "-Wno-unreachable-code",
+    "-Wno-unused-local-typedef",
+    "-Wno-unused-variable",
+    "-Wshorten-64-to-32",
+    "-Wstring-conversion",
+    "-Wno-bitwise-instead-of-logical",
+    "-Wno-deprecated-this-capture",
+    "-Wno-ambiguous-reversed-operator",
+]
+
+LOCAL_DEFINES = [
+    "HAVE_ROUND",
+    "HAVE_OT",
+    "HAVE_UCDN",
+    "HB_NO_LEGACY",
+    "HAVE_UNISTD_H",
+    "HAVE_SYS_MMAN_H",
+    "HB_NO_PRAGMA_GCC_DIAGNOSTIC_WARNING",
+]
+
+# Source list mirrored from HarfBuzz 12.2.0 hb_base_sources and hb_subset_sources.
+SOURCES = [
+    "src/OT/Var/VARC/VARC.cc",
+    "src/graph/gsubgpos-context.cc",
+    "src/hb-aat-layout.cc",
+    "src/hb-aat-map.cc",
+    "src/hb-blob.cc",
+    "src/hb-buffer-serialize.cc",
+    "src/hb-buffer-verify.cc",
+    "src/hb-buffer.cc",
+    "src/hb-common.cc",
+    "src/hb-draw.cc",
+    "src/hb-face-builder.cc",
+    "src/hb-face.cc",
+    "src/hb-fallback-shape.cc",
+    "src/hb-font.cc",
+    "src/hb-map.cc",
+    "src/hb-number.cc",
+    "src/hb-ot-cff1-table.cc",
+    "src/hb-ot-cff2-table.cc",
+    "src/hb-ot-color.cc",
+    "src/hb-ot-face.cc",
+    "src/hb-ot-font.cc",
+    "src/hb-ot-layout.cc",
+    "src/hb-ot-map.cc",
+    "src/hb-ot-math.cc",
+    "src/hb-ot-meta.cc",
+    "src/hb-ot-metrics.cc",
+    "src/hb-ot-name.cc",
+    "src/hb-ot-shape-fallback.cc",
+    "src/hb-ot-shape-normalize.cc",
+    "src/hb-ot-shape.cc",
+    "src/hb-ot-shaper-arabic.cc",
+    "src/hb-ot-shaper-default.cc",
+    "src/hb-ot-shaper-hangul.cc",
+    "src/hb-ot-shaper-hebrew.cc",
+    "src/hb-ot-shaper-indic-table.cc",
+    "src/hb-ot-shaper-indic.cc",
+    "src/hb-ot-shaper-khmer.cc",
+    "src/hb-ot-shaper-myanmar.cc",
+    "src/hb-ot-shaper-syllabic.cc",
+    "src/hb-ot-shaper-thai.cc",
+    "src/hb-ot-shaper-use.cc",
+    "src/hb-ot-shaper-vowel-constraints.cc",
+    "src/hb-ot-tag.cc",
+    "src/hb-ot-var.cc",
+    "src/hb-outline.cc",
+    "src/hb-paint-bounded.cc",
+    "src/hb-paint-extents.cc",
+    "src/hb-paint.cc",
+    "src/hb-set.cc",
+    "src/hb-shape-plan.cc",
+    "src/hb-shape.cc",
+    "src/hb-shaper.cc",
+    "src/hb-static.cc",
+    "src/hb-style.cc",
+    "src/hb-subset-cff-common.cc",
+    "src/hb-subset-cff1.cc",
+    "src/hb-subset-cff2.cc",
+    "src/hb-subset-input.cc",
+    "src/hb-subset-instancer-iup.cc",
+    "src/hb-subset-instancer-solver.cc",
+    "src/hb-subset-plan-layout.cc",
+    "src/hb-subset-plan-var.cc",
+    "src/hb-subset-plan.cc",
+    "src/hb-subset-serialize.cc",
+    "src/hb-subset-table-cff.cc",
+    "src/hb-subset-table-color.cc",
+    "src/hb-subset-table-layout.cc",
+    "src/hb-subset-table-other.cc",
+    "src/hb-subset-table-var.cc",
+    "src/hb-subset.cc",
+    "src/hb-ucd.cc",
+    "src/hb-unicode.cc",
+]
+
+# Harfbuzz defines public headers as .h instead of .hh
+PUBLIC_HEADERS = glob([
+    "src/**/*.h",
+])
+
+cc_library(
+    name = "harfbuzz",
+
+    # Expose just the public headers (.h, not .hh).
+    hdrs = PUBLIC_HEADERS,
+    copts = COMPILER_FLAGS,
+    local_defines = LOCAL_DEFINES,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":harfbuzz_impl",
+    ],
+)
+
+cc_library(
+    name = "harfbuzz_impl",
+    srcs = SOURCES + glob([
+        # Harfbuzz defines its private headers using .hh instead of .h
+        "src/**/*.hh",
+    ]),
+    # Depend on public headers even though this target is private, since the public
+    # headers are included by private headers or .c files.
+    hdrs = PUBLIC_HEADERS,
+    copts = COMPILER_FLAGS,
+    local_defines = LOCAL_DEFINES,
+    deps = [],
+)

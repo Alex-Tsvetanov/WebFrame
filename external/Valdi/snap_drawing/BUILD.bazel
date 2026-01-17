@@ -1,0 +1,257 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_interop_hint")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS", "OBJC_ONLY_FLAGS")
+load("//bzl/conditions:custom_selects.bzl", "custom_selects")
+
+COMPILER_FLAGS = [
+    "-fno-exceptions",
+    "-Wno-deprecated-this-capture",
+]
+
+custom_selects.config_setting_inverse(
+    name = "not_linux",
+    inverse_of = "//bzl/conditions:linux",
+)
+
+selects.config_setting_group(
+    "lottie_enabled",
+    match_all = [
+        ":not_linux",
+    ],
+)
+
+cc_library(
+    name = "snap_drawing",
+    copts = COMMON_COMPILE_FLAGS,
+    visibility = ["//visibility:public"],
+    deps = selects.with_or({
+        ("//bzl/conditions:ios", "//bzl/conditions:macos"): [":snap_drawing_apple"],
+        "//bzl/conditions:android_with_jni": [":snap_drawing_android"],
+        "//conditions:default": [":snap_drawing_cc"],
+    }),
+)
+
+cc_library(
+    name = "snap_drawing_cc",
+    srcs = glob(
+        [
+            "src/snap_drawing/cpp/**/*.cpp",
+        ],
+        exclude = [
+            "src/snap_drawing/android/**/*.cpp",
+            "src/snap_drawing/apple/**/*.cpp",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/snap_drawing/cpp/**/*.hpp",
+        ],
+        exclude = [
+            "src/snap_drawing/android/**/*.hpp",
+            "src/snap_drawing/apple/**/*.hpp",
+        ],
+    ),
+    copts = COMPILER_FLAGS + COMMON_COMPILE_FLAGS,
+    defines = select({
+        ":lottie_enabled": ["SNAP_DRAWING_LOTTIE_ENABLED"],
+        "//conditions:default": [],
+    }),
+    linkstatic = False,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//third-party/yoga",
+        "//valdi_core:valdi_core_cc",
+        "@harfbuzz",
+        "@icu",
+        "@skia//:core",
+        "@skia//:jpeg_decode_codec",
+        "@skia//:jpeg_encode_codec",
+        "@skia//:png_decode_codec",
+        "@skia//:png_encode_codec",
+        "@skia//:skottie",
+        "@skia//:webp_decode_codec",
+        "@skia//:webp_encode_codec",
+    ] + select({
+        "//bzl/conditions:ios": [
+            "@skia//:fontmgr_coretext",
+            "@skia//:ganesh_metal",
+        ],
+        "//bzl/conditions:macos": [
+            "@skia//:fontmgr_coretext",
+            "@skia//:ganesh_metal",
+        ],
+        "//bzl/conditions:android_with_jni": [
+            "@skia//:fontmgr_android_freetype",
+            "@skia//:ganesh_egl_factory",
+            "@skia//:ganesh_gl",
+        ],
+        "@snap_platforms//conditions:android": [
+            "@skia//:fontmgr_android_freetype",
+            "@skia//:ganesh_egl_factory",
+            "@skia//:ganesh_gl",
+        ],
+        "//conditions:default": [
+            "@skia//:fontmgr_empty_freetype",
+        ],
+    }),
+    alwayslink = False,
+)
+
+cc_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = glob(["test/utils/**/*.cpp"]),
+    hdrs = glob(["test/utils/**/*.hpp"]),
+    copts = COMMON_COMPILE_FLAGS,
+    strip_include_prefix = "test/utils",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":snap_drawing",
+        "@gtest",
+    ],
+)
+
+LINUX_TEST_EXCLUSIONS = ["test/src/TextLayout_Tests.cpp"]
+
+LOTTIE_TEST_EXCLUSIONS = ["test/src/LottieLayer_tests.cpp"]
+
+cc_test(
+    name = "test",
+    srcs = select({
+        ":lottie_enabled": glob(
+            ["test/src/**/*.cpp"],
+        ),
+        "//bzl/conditions:linux": glob(
+            ["test/src/**/*.cpp"],
+            exclude = (LINUX_TEST_EXCLUSIONS + LOTTIE_TEST_EXCLUSIONS),
+        ),
+        "//conditions:default": glob(
+            ["test/src/**/*.cpp"],
+            exclude = LOTTIE_TEST_EXCLUSIONS,
+        ),
+    }),
+    copts = COMPILER_FLAGS,
+    data = glob(["testdata/**"]),
+    linkstatic = True,
+    deps = [
+        ":snap_drawing",
+        ":test_utils",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "benchmark",
+    srcs = glob(["src/benchmark/**/*.cpp"]),
+    linkstatic = True,
+    deps = [
+        ":snap_drawing",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)
+
+cc_library(
+    name = "snap_drawing_android",
+    srcs = glob([
+        "src/snap_drawing/android/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/snap_drawing/android/**/*.hpp",
+    ]),
+    copts = COMPILER_FLAGS + COMMON_COMPILE_FLAGS,
+    defines = select({
+        "//conditions:default": [],
+    }),
+    linkopts = [
+        "-landroid",
+        "-lEGL",
+        "-lGLESv3",
+        "-llog",
+        "-ljnigraphics",
+    ],
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":snap_drawing_cc",
+        "//valdi_core:valdi_core_android",
+    ],
+    alwayslink = True,
+)
+
+kt_android_library(
+    name = "snap_drawing_java",
+    srcs = glob([
+        "src/java/**/*.kt",
+    ]),
+    visibility = ["//visibility:public"],
+    exports = [
+    ],
+    deps = [
+        "//valdi_core:valdi_core_java",
+    ],
+)
+
+swift_interop_hint(
+    name = "snap_drawing_apple_swift_interop",
+    suppressed = True,
+    tags = ["manual"],
+)
+
+objc_library(
+    name = "snap_drawing_apple",
+    srcs = glob([
+        "src/snap_drawing/apple/**/*.m",
+        "src/snap_drawing/apple/**/*.mm",
+        "src/snap_drawing/apple/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/snap_drawing/apple/**/*.h",
+        "src/snap_drawing/apple/**/*.hpp",
+    ]),
+    aspect_hints = [":snap_drawing_apple_swift_interop"],
+    copts = OBJC_ONLY_FLAGS,
+    includes = [
+        "src",
+    ],
+    sdk_frameworks = [
+        "Metal",
+        "CoreGraphics",
+        "CoreText",
+        "CoreVideo",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":snap_drawing_cc",
+        "//valdi_core:valdi_core_objc",
+    ],
+)
+
+objc_library(
+    name = "snap_drawing_src-demo",
+    srcs = glob([
+        "src/demo/**/*.m",
+        "src/demo/**/*.mm",
+    ]),
+    copts = COMPILER_FLAGS + [
+        "-ObjC++",
+        "-std=c++20",
+    ],
+    sdk_frameworks = [
+        "AVFoundation",
+        "CoreMedia",
+        "CoreVideo",
+    ],
+    deps = [
+        ":snap_drawing",
+        "@valdi//valdi:valdi_standalone_runtime",
+    ],
+)
+
+cc_binary(
+    name = "snap_drawing-demo",
+    deps = [
+        ":snap_drawing_src-demo",
+    ],
+)

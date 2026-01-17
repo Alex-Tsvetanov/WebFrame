@@ -1,0 +1,24 @@
+disable_hotreload: true
+disable_annotation_processing: true
+disable_dependency_verification: true
+disable_code_coverage: true
+
+exclude_patterns:
+  # NOTE: to keep the bundle size down, we strip out mostly everything from RxJS we don't need.
+  # If you are building a new feature that requires an excluded operator, feel free to
+  # add it to the whitelist below.
+
+  - .*\/node_modules.*
+  # observable BLACKLIST
+  - .*\/observable\/dom\/.* # ajax and websocket observables; adds ~10kb
+  - .*\/observable\/bindNodeCallback\.ts # we're not in nodeland
+
+exclude_globs:
+  - "**/node_modules/**"
+  - "**/observable/dom/**"
+  - "**/observable/bindNodeCallback.ts"
+
+output_target: release
+
+dependencies:
+  - valdi_core

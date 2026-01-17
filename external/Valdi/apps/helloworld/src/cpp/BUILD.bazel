@@ -1,0 +1,13 @@
+cc_library(
+    name = "native_module_cpp",
+    srcs = ["CppModule.cpp"] + select({
+        "@valdi//bzl/conditions:macos": ["DesktopMyNativeModule.cpp"],
+        "@valdi//bzl/conditions:linux": ["DesktopMyNativeModule.cpp"],
+        "//conditions:default": [],
+    }),
+    hdrs = [],
+    includes = [],
+    visibility = ["//visibility:public"],
+    deps = ["@valdi//valdi_core"],
+    alwayslink = 1,
+)

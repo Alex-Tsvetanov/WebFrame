@@ -1,0 +1,45 @@
+load("@valdi//bzl/valdi:valdi_toolchain_binary.bzl", "valdi_toolchain_binary")
+
+cc_library(
+    name = "stamp",
+    srcs = [],
+    hdrs = glob([
+        "src/valdi/stamp/**/*.hpp",
+    ]),
+    linkstamp = "src/valdi/stamp/Stamp.cpp",
+    strip_include_prefix = "src",
+)
+
+cc_library(
+    name = "lib",
+    srcs = glob([
+        "src/valdi/compiler_toolbox/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/valdi/compiler_toolbox/**/*.hpp",
+    ]),
+    strip_include_prefix = "src",
+    deps = [
+        ":stamp",
+        "@valdi//libs/image_toolbox:lib",
+        "@valdi//valdi:valdi_jsbridge_for_toolbox",
+        "@valdi//valdi:valdi_standalone_runtime",
+    ],
+)
+
+cc_binary(
+    name = "valdi_compiler_toolbox_cc_bin",
+    srcs = glob([
+        "src/valdi/main/**/*.cpp",
+    ]),
+    stamp = 1,
+    deps = [
+        ":lib",
+    ],
+)
+
+valdi_toolchain_binary(
+    name = "valdi_compiler_toolbox",
+    bin = ":valdi_compiler_toolbox_cc_bin",
+    visibility = ["//visibility:public"],
+)

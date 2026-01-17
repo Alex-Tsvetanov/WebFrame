@@ -1,0 +1,13 @@
+diff --git a/rules/aar_import/impl.bzl b/rules/aar_import/impl.bzl
+index 46e1337..ad5eca3 100644
+--- a/rules/aar_import/impl.bzl
++++ b/rules/aar_import/impl.bzl
+@@ -150,7 +150,7 @@ def _process_resources(
+         deps = ctx.attr.deps,
+         exports = ctx.attr.exports,
+         exports_manifest = getattr(ctx.attr, "exports_manifest", True),
+-        propagate_resources = _acls.in_aar_propagate_resources(str(ctx.label)),
++        propagate_resources = True,
+ 
+         # Tool and Processing related inputs
+         aapt = _get_android_toolchain(ctx).aapt2.files_to_run,

@@ -1,0 +1,11 @@
+load("@valdi//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "{{MODULE_NAME}}",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [],
+)

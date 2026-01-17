@@ -1,0 +1,14 @@
+.git
+.github
+compiler/compiler/Compiler/.build
+npm_modules
+node_modules
+bzl/valdi/npm/node_modules
+compiler/companion/node_modules
+compiler/companion/remotedebug-ios-webkit-adapter/node_modules
+
+# Ignore bazel output and symlink directory. Required by bazel-diff.
+bazel-bin
+bazel-client
+bazel-out
+bazel-testlogs

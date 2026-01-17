@@ -1,0 +1,7 @@
+objc_library(
+    name = "ocmock",
+    non_arc_srcs = glob(["Source/OCMock/*.m"]),
+    hdrs = glob(["Source/OCMock/*.h"]),
+    includes = ["Source"],
+    visibility = ["//visibility:public"],
+)

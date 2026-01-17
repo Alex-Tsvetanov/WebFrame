@@ -1,0 +1,14 @@
+filegroup(
+    name = "valdi_base",
+    srcs = glob([
+        "types/*.ts",
+        "_configs/*.json",
+    ]) + ["tsconfig.json"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "minify_config",
+    srcs = [".terserrc.json"],
+    visibility = ["//visibility:public"],
+)

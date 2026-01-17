@@ -1,0 +1,52 @@
+syntax = "proto3";
+package ValdiDaemonRegistry;
+
+option objc_class_prefix = "SCCDaemonRegistry";
+option java_package = "snapchat.valdi.daemon.registry";
+option java_multiple_files = true;
+
+////////////////////////////////////////////////////////////////
+// Messages described here are used by a developer-only service,
+// currently running on `content-platform`. 
+// See /contentplatform/valdi-daemon-registry-service.proto
+////////////////////////////////////////////////////////////////
+
+// Describes a Valdi daemon service and the devices it's targeting
+message DaemonService {
+  string key = 1;
+  repeated string service_addresses = 2;
+  int32 service_port = 3;
+  string process_id = 4;
+
+  repeated string device_ids = 5;
+  repeated string usernames = 6;
+}
+
+message ListServicesRequest {
+  ListServicesFilters filters = 1;
+}
+
+message ListServicesFilters {
+  string device_id = 1;
+  string username = 2;
+}
+
+message ListServicesResponse { 
+  repeated DaemonService services = 1;
+}
+
+message RegisterServiceRequest {
+  DaemonService service = 1;
+}
+
+message RegisterServiceResponse {
+  bool success = 1;
+}
+
+message UnregisterServiceRequest {
+  string service_key = 1;
+}
+
+message UnregisterServiceResponse { 
+  bool success = 1;
+}

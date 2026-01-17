@@ -1,0 +1,8 @@
+{
+  "name": "valdi_core",
+  "version": "1.0.0",
+  "description": "package.json for maintaining versions of the npm dependencies included in the `valdi_core` Valdi module. For details please check the README.",
+  "dependencies": {
+    "tslib": "2.4.0"
+  }
+}

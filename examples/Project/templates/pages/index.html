@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">Task Dashboard</a>
+        </div>
+        <div class="nav-links">
+            {% if authenticated %}
+            <span class="nav-user">{{ username }}</span>
+            <a href="/logout" class="btn btn-outline">Logout</a>
+            {% else %}
+            <a href="/login" class="btn btn-primary">Login</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="dashboard">
+            <header class="dashboard-header">
+                <h1>Tasks</h1>
+                <button id="add-task-btn" class="btn btn-primary">+ New Task</button>
+            </header>
+
+            <div class="stats" id="stats">
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total">0</span>
+                    <span class="stat-label">Total</span>
+                </div>
+                <div class="stat-card stat-pending">
+                    <span class="stat-value" id="stat-pending">0</span>
+                    <span class="stat-label">Pending</span>
+                </div>
+                <div class="stat-card stat-progress">
+                    <span class="stat-value" id="stat-progress">0</span>
+                    <span class="stat-label">In Progress</span>
+                </div>
+                <div class="stat-card stat-completed">
+                    <span class="stat-value" id="stat-completed">0</span>
+                    <span class="stat-label">Completed</span>
+                </div>
+            </div>
+
+            <div class="connection-status" id="connection-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+
+            <div class="task-list" id="task-list">
+                <!-- Tasks will be loaded here -->
+            </div>
+        </div>
+
+        <!-- New Task Modal -->
+        <div class="modal" id="task-modal">
+            <div class="modal-content">
+                <h2 id="modal-title">New Task</h2>
+                <form id="task-form">
+                    <input type="hidden" id="task-id">
+                    <div class="form-group">
+                        <label for="task-title">Title</label>
+                        <input type="text" id="task-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-description">Description</label>
+                        <textarea id="task-description" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>

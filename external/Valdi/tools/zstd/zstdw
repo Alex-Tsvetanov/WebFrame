@@ -1,0 +1,21 @@
+#!/bin/bash
+
+set -euo pipefail
+
+unameOut="$(uname -s)"
+case "${unameOut}" in
+    Linux*)     machine=Linux;;
+    Darwin*)    machine=Mac;;
+    *)          machine="UNKNOWN:${unameOut}"
+esac
+
+DIR=$(cd $(dirname "${BASH_SOURCE[0]}"); pwd -P)
+
+if [[ $machine == "Mac" ]]; then
+    exec "${DIR}/bin/macos/zstd" "$@"
+elif [[ $machine == "Linux" ]]; then
+    exec "${DIR}/bin/linux/zstd" "$@"
+else
+    echo "Unsupported environment: $machine"
+    exit 1
+fi

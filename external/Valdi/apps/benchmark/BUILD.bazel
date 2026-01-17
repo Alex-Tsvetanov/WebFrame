@@ -1,0 +1,22 @@
+load("//bzl/valdi:valdi_application.bzl", "valdi_application")
+load("//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+
+valdi_cli_application(
+    name = "benchmark_cli",
+    script_path = "benchmark/src/main",
+    deps = ["//apps/benchmark/src/valdi/benchmark"],
+)
+
+valdi_application(
+    name = "benchmark",
+    android_activity_theme_name = "Theme.MyApp.Launch",
+    android_app_icon_name = "app_icon",
+    android_resource_files = glob(["app_assets/android/**"]),
+    ios_app_icons = glob(["app_assets/ios/Icons.xcassets/**"]),
+    ios_bundle_id = "com.snap.valdi.benchmark",
+    ios_families = ["iphone"],
+    root_component_path = "App@benchmark/src/BenchmarkApp",
+    title = "Valdi Benchmark",
+    version = "1.0.0",
+    deps = ["//apps/benchmark/src/valdi/benchmark"],
+)

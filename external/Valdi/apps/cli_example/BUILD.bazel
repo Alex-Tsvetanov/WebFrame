@@ -1,0 +1,18 @@
+load("//bzl/valdi:valdi_cli_application.bzl", "valdi_cli_application")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "cli_example",
+    srcs = glob([
+        "**/*.ts",
+        "**/*.tsx",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+valdi_cli_application(
+    name = "cli_example_app",
+    script_path = "cli_example/index",
+    deps = [":cli_example"],
+)

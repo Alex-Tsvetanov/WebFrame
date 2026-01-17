@@ -1,0 +1,8 @@
+{
+  "name": "valdi_protobuf",
+  "version": "1.0.0",
+  "description": "Dependencies for protobufs on web",
+  "dependencies": {
+    "protobufjs": "^7.5.3"
+  }
+}

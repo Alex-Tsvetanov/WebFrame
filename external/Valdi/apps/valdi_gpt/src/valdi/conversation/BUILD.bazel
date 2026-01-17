@@ -1,0 +1,31 @@
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+valdi_module(
+    name = "conversation",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SCCConversation",
+    ios_output_target = "release",
+    res = glob([
+        "res/**/*.jpeg",
+        "res/**/*.jpg",
+        "res/**/*.png",
+        "res/**/*.svg",
+        "res/**/*.webp",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//apps/valdi_gpt/src/valdi/ai_service",
+        "//src/valdi_modules/src/valdi/foundation",
+        "//src/valdi_modules/src/valdi/valdi_core",
+        "//src/valdi_modules/src/valdi/valdi_test",
+        "//src/valdi_modules/src/valdi/valdi_tsx",
+    ],
+)

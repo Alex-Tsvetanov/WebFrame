@@ -1,0 +1,28 @@
+#pragma once
+
+// NOTE: This header is auto-generated. Don't use it directly. Do #include "utils/platform/BuildFlags.hpp" instead
+
+namespace snap {
+
+// Controls the way SC_ASSERT is embedded into the final binary. Asserts are compiled out if set to false.
+constexpr bool kAssertsCompiledIn = @SC_BUILD_FLAG_ASSERT@;
+
+// Controls the way log insructions are embedded into the final binary. Logging is compiled out if set to false.
+constexpr bool kLoggingCompiledIn = @SC_BUILD_FLAG_LOGGING@;
+// Macros version that can be used in #if expressions
+#define SC_LOGGING_COMPILED_IN() @SC_BUILD_FLAG_LOGGING@
+
+// Controls tracing being compiled in. Not enabled if set to false.
+constexpr bool kTracingEnabled = @SC_BUILD_FLAG_TRACING@;
+#define SC_TRACING_COMPILED_IN() @SC_BUILD_FLAG_TRACING@
+
+// If this build is a development build
+constexpr bool kIsDevBuild = @SC_BUILD_FLAG_DEV@;
+
+constexpr bool kIsGoldBuild = @SC_BUILD_FLAG_GOLD@;
+
+constexpr bool kIsAppstoreBuild = @SC_BUILD_FLAG_APPSTORE@;
+
+constexpr bool kIsAlphaBuild = @SC_BUILD_FLAG_ALPHA@;
+
+} // namespace snap

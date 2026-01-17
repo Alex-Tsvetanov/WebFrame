@@ -1,0 +1,26 @@
+# We patch this file, because our custom version of Bazel has 4 segments in the version string.
+--- private/parse.bzl
++++ private/parse.bzl
+@@ -18,7 +18,7 @@
+         # An empty string is treated as a "dev version", which is greater than anything.
+         v = "999999.999999.999999"
+     release, prerelease = _partition(v.partition(" ")[0])
+-    segments = release.split(".")
++    segments = release.split(".")[:3]
+     if len(segments) != 3:
+         fail("invalid Bazel version '{}': got {} dot-separated segments, want 3".format(v, len(segments)))
+     return [_safe_int(s, v) for s in segments], not prerelease, prerelease
+
+# We patch this file, because our versioning scheme is incompatible with the one used by the library.
+# The patch below should be removed once we migrated to Bazel 7.0.2.x everywhere.
+--- features.bzl
++++ features.bzl
+@@ -34,7 +34,7 @@
+ _flags = struct(
+     # This flag was renamed in https://github.com/bazelbuild/bazel/pull/18313
+     allow_unresolved_symlinks = (
+-        "allow_unresolved_symlinks" if ge("7.0.0-pre.20230628.2") else "experimental_allow_unresolved_symlinks"
++        "allow_unresolved_symlinks" if ge("7.0.2.0") else "experimental_allow_unresolved_symlinks"
+     ),
+ )
+ 

@@ -1,0 +1,41 @@
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("//bzl/valdi:valdi_module.bzl", "valdi_module")
+
+# Example of including additional ts sources that get transpiled
+# and bundled into the node module target for this valdi module
+ts_project(
+    name = "valdi_http_web",
+    srcs = glob([
+        "web/**/*.ts",
+        "src/**/*.d.ts",
+    ]) + [
+        "//src/valdi_modules/src/valdi/coreutils:coreutils_dts",
+    ],
+    allow_js = True,
+    composite = True,
+    transpiler = "tsc",
+    tsconfig = "web/tsconfig.json",
+)
+
+valdi_module(
+    name = "valdi_http",
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "test/**/*.tsx",
+    ]) + [
+        "tsconfig.json",
+    ],
+    android_output_target = "release",
+    ios_module_name = "SCCValdiHTTP",
+    ios_output_target = "release",
+    native_deps = ["@valdi//src/valdi_modules/src/cpp/valdi_http:valdi_http_cpp"],
+    visibility = ["//visibility:public"],
+    # Include a web specific target, this is expected to be a JSInfo or NodeModuleInfo provider
+    web_deps = [":valdi_http_web"],
+    deps = [
+        "//src/valdi_modules/src/valdi/coreutils",
+        "//src/valdi_modules/src/valdi/valdi_core",
+    ],
+)

@@ -1,0 +1,18 @@
+package com.snap.modules.{{MODULE_NAME}}
+
+import com.snapchat.client.valdi_core.ModuleFactory
+import com.snap.valdi.modules.RegisterValdiModule
+import com.snap.modules.{{MODULE_NAME}}.CalculatorModuleFactory
+import com.snap.modules.{{MODULE_NAME}}.CalculatorModule
+
+@RegisterValdiModule
+class CalculatorModuleFactoryImpl: CalculatorModuleFactory() {
+
+    override fun onLoadModule(): CalculatorModule {
+        return object: CalculatorModule {
+            override fun multiply(left: Double, right: Double): Double {
+                return left * right
+            }
+        }
+    }
+}

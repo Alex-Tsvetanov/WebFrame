@@ -1,0 +1,14 @@
+load("@aspect_rules_js//npm:defs.bzl", "npm_link_package")
+
+# tsc demands that these be defined in the root of the workspace
+npm_link_package(
+    name = "valdi_tsx_link",
+    src = "@valdi//src/valdi_modules/src/valdi/valdi_tsx:valdi_tsx_dts",
+    visibility = ["//visibility:public"],
+)
+
+npm_link_package(
+    name = "valdi_core_link",
+    src = "@valdi//src/valdi_modules/src/valdi/valdi_core:valdi_core_dts",
+    visibility = ["//visibility:public"],
+)

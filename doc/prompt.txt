@@ -1,0 +1,85 @@
+# Agent Instruction Protocol: Linux Verification & Thesis Evolution
+
+**Role:** You are a Senior C++ Systems Architect and Academic Editor.
+**Context:** We have migrated the "Coroute" project from Windows to Arch Linux. The current thesis is written in **Bulgarian**.
+**Objective:** rigorous verification of the `io_uring` backend, hostile network benchmarking, profiling, and integrating these results into the thesis while addressing architectural criticism regarding safety and ecosystem maturity.
+
+---
+
+## Phase 1: Build & Verification (The Reality Check)
+
+**Goal:** Prove that the library uses native Linux asynchronous interfaces, not legacy fallbacks.
+
+1.  **Clean & Configure:**
+    * Wipe the `build` directory.
+    * Configure CMake explicitly for `io_uring`: `cmake -DCOROUTE_IO_BACKEND=io_uring -DCMAKE_BUILD_TYPE=Release ..`
+    * Compile the project.
+
+2.  **Syscall Auditing:**
+    * Run the server binary using `strace`.
+    * **Instruction:** Verify that `io_uring_enter` and `io_uring_submit` are the dominant system calls during request handling.
+    * **Fail Condition:** If you see `epoll_wait`, `select`, or `poll` as the main event loop driver, stop immediately. The implementation is flawed.
+
+---
+
+## Phase 2: Hostile Network Benchmarking
+
+**Goal:** Move beyond "localhost" benchmarks and prove stability under simulated WAN conditions.
+
+1.  **Network Simulation (Traffic Control):**
+    * Use `tc` (traffic control) to introduce artificial degradation on the loopback interface:
+        ```bash
+        sudo tc qdisc add dev lo root netem delay 50ms 10ms loss 1%
+        ```
+    * *Note:* Remind me to delete this rule (`sudo tc qdisc del dev lo root`) after data collection.
+
+2.  **Latency & Throughput Tests:**
+    * Run `wrk` (or `wrk2`) to measure throughput and **tail latency (p99, p99.9)** under these conditions.
+    * Run a concurrency stress test (e.g., 10,000 connections) to monitor memory stability and scheduler starvation.
+
+---
+
+## Phase 3: Profiling
+
+**Goal:** Provide empirical evidence of zero-copy efficiency and low overhead.
+
+1.  **Capture:**
+    * Run the server under high load (without network delay).
+    * Use `perf` to record execution: `sudo perf record -F 99 -g -p $(pgrep server) -- sleep 30`.
+
+2.  **Analysis:**
+    * Analyze the report to determine the ratio of CPU time spent in Kernel Mode (Syscalls) vs. User Mode.
+    * Confirm that `Task<T>` coroutine overhead is negligible (< 5% of total CPU).
+
+---
+
+## Phase 4: Thesis Updates (Language: Bulgarian)
+
+**CRITICAL:** The thesis is in **Bulgarian**. All text generated for the document must be in formal, academic Bulgarian.
+
+### [cite_start]1. Update Chapter 8 (Testing & Performance) [cite: 2314]
+* [cite_start]**Action:** Replace the existing Windows/IOCP data[cite: 2322, 2537].
+* **Insert:** New tables/graphs based on the Linux `io_uring` results.
+* **New Section:** Add a section "8.X Network Resilience" (Мрежова устойчивост).
+    * Describe the `tc` methodology.
+    * Present results showing how the server handles packet loss and latency (proving the scheduler doesn't block).
+* **Profiling Evidence:** Insert a summary of the `perf` analysis proving the efficiency of the implementation.
+
+### 2. Update Chapter 4 (Architecture) - Safety Section
+* [cite_start]**Critique Addressal:** We received feedback that "Coroutines introduce lifetime hell"[cite: 664].
+* **Action:** Add a subsection discussing "Memory Safety in Detached Coroutines" (Безопасност на паметта при detached корутини).
+    * Explain the risks of `start_detached`.
+    * Document the patterns used to mitigate `use-after-free` (e.g., smart pointers, RAII guards for connection lifecycles).
+
+### [cite_start]3. Update Chapter 9 (Future Development) [cite: 2727]
+* **Action:** Rewrite the "Future Directions" (Насоки за бъдещо развитие) to be more ambitious and specific.
+* **Ecosystem Expansion:**
+    * **HTTP/3 (QUIC):** Frame this as the solution to Head-of-Line blocking at the transport layer, necessary for unreliable networks.
+    * **Compile-Time ORM:** Introduce the work (from my separate repo) on a Compile-time Query Builder. [cite_start]Explain how this extends the thesis's philosophy of "Type Safety" [cite: 1401] to the database layer, eliminating runtime SQL string formatting errors.
+
+---
+
+**Execution Order:**
+1. Perform the Linux technical checks (Phase 1-3).
+2. Present the raw data (latency numbers, syscall counts) to me for approval.
+3. Upon approval, generate the Bulgarian text blocks for the thesis (Phase 4).

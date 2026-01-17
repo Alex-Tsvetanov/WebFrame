@@ -1,0 +1,33 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+
+# config_setting which is always "true"
+selects.config_setting_group(
+    "true",
+    match_any = [
+        ":stamp_binary_on",
+        ":stamp_binary_off",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# config_setting which is always "false"
+selects.config_setting_group(
+    "false",
+    match_all = [
+        ":stamp_binary_on",
+        ":stamp_binary_off",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "stamp_binary_on",
+    values = {"stamp": "1"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "stamp_binary_off",
+    values = {"stamp": "0"},
+    visibility = ["//visibility:public"],
+)

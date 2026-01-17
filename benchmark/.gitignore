@@ -1,0 +1,29 @@
+# Benchmark build artifacts
+build/
+results/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+
+# Python virtual environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+*.txt.tmp
+
+# Generated reports
+*.html
+charts/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,36 @@
+% ============================================================================
+% Резюме / Abstract
+% ============================================================================
+\section*{Резюме}
+
+Настоящата дипломна работа представя проектирането, реализацията и експерименталната оценка на Coroute --- високопроизводителна C++ библиотека за изграждане на уеб приложения, базирана на съвременните възможности на стандарта C++20. Основната цел на изследването е да се демонстрира, че комбинацията от stackless корутини, операционно-специфични асинхронни I/O механизми и алгоритмично оптимизирано маршрутизиране може да постигне производителност, съизмерима с водещите индустриални решения, при значително опростен програмен модел.
+
+Архитектурата на Coroute се основава на няколко ключови иновации. Първо, изпълнителният модел използва типа \texttt{Task<T>}, който реализира lazy корутини с поддръжка на detached изпълнение и кооперативно прекратяване. Този модел елиминира традиционните недостатъци на callback-базираното асинхронно програмиране, като запазва ефективността на неблокиращия I/O. Второ, мрежовият слой абстрахира платформено-специфичните механизми --- IOCP за Windows и io\_uring за Linux --- зад унифициран интерфейс, позволявайки zero-copy операции и batching на системни извиквания. Трето, маршрутизирането използва DFA-базиран алгоритъм, публикуван в „Matching Text from Start to Finish Against Multiple Regular Expressions" \cite{stankov2024regex}, който постига O(N) времева сложност спрямо дължината на URL-а, независимо от броя на регистрираните маршрути.
+
+Библиотеката поддържа множество протоколи върху един порт чрез ALPN негоциация: HTTP/1.1 с keep-alive, HTTP/2 с HPACK компресия и stream мултиплексиране, и WebSocket за двупосочна комуникация в реално време. Типово-безопасното извличане на параметри използва C++20 concepts за compile-time валидация, елиминирайки цял клас runtime грешки.
+
+Експерименталната оценка, проведена на система с AMD Ryzen 5 3600 (6 ядра, 12 нишки) и до 1024 конкурентни клиента, демонстрира throughput от 1,378,578 заявки в секунда за прости HTTP отговори, с медианна латентност от 212 микросекунди и 0\% error rate. Сравнителният анализ с Crow, Boost.Beast и Drogon показва, че Coroute постига сравнима или по-добра производителност при значително по-прост API.
+
+Научният принос на работата включва: интеграция на DFA-базирано маршрутизиране в пълноценен уеб библиотека; корутинен изпълнителен модел, специално проектиран за мрежови приложения; и демонстрация на практическата приложимост на подхода чрез production-scale примерно приложение.
+
+\vspace{1cm}
+
+\textbf{Ключови думи:} C++20, корутини, уеб сървър, HTTP/2, WebSocket, IOCP, io\_uring, DFA маршрутизиране, типова безопасност, асинхронен I/O
+
+\vspace{2cm}
+
+\section*{Abstract}
+
+This thesis presents the design, implementation, and experimental evaluation of Coroute --- a high-performance C++ library for building web applications based on modern C++20 features. The primary objective is to demonstrate that the combination of stackless coroutines, OS-native asynchronous I/O mechanisms, and algorithmically optimized routing can achieve performance comparable to leading industrial solutions while significantly simplifying the programming model.
+
+The architecture of Coroute is founded on several key innovations. The execution model employs the \texttt{Task<T>} type, implementing lazy coroutines with support for detached execution and cooperative cancellation. This model eliminates the traditional drawbacks of callback-based asynchronous programming while preserving the efficiency of non-blocking I/O. The network layer abstracts platform-specific mechanisms --- IOCP for Windows and io\_uring for Linux --- behind a unified interface, enabling zero-copy operations and syscall batching. Routing utilizes a DFA-based algorithm, published in ``Matching Text from Start to Finish Against Multiple Regular Expressions'' \cite{stankov2024regex}, achieving O(N) time complexity relative to URL length, independent of the number of registered routes.
+
+The library supports multiple protocols on a single port via ALPN negotiation: HTTP/1.1 with keep-alive, HTTP/2 with HPACK compression and stream multiplexing, and WebSocket for bidirectional real-time communication. Type-safe parameter extraction leverages C++20 concepts for compile-time validation, eliminating an entire class of runtime errors.
+
+Experimental evaluation on a system with AMD Ryzen 5 3600 (6 cores, 12 threads) and up to 1024 concurrent clients demonstrates throughput of 1,378,578 requests per second for simple HTTP responses, with median latency of 212 microseconds and 0\% error rate. Comparative analysis with Crow, Boost.Beast, and Drogon shows that Coroute achieves comparable or superior performance with a significantly simpler API.
+
+The scientific contributions include: integration of DFA-based routing into a full-featured web framework; a coroutine execution model specifically designed for network applications; and demonstration of practical applicability through a production-scale example application.
+
+\vspace{1cm}
+
+\textbf{Keywords:} C++20, coroutines, web server, HTTP/2, WebSocket, IOCP, io\_uring, DFA routing, type safety, asynchronous I/O

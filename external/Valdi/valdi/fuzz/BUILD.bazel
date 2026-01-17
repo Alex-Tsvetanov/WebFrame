@@ -1,0 +1,9 @@
+load("@rules_fuzzing//fuzzing:cc_defs.bzl", "cc_fuzz_test")
+
+cc_fuzz_test(
+    name = "ValdiModuleArchive_fuzz_test",
+    srcs = glob(["src/valdi/runtime/Resources/ValdiModuleArchive_fuzz_test.cpp"]),
+    deps = [
+        "//valdi",
+    ],
+)

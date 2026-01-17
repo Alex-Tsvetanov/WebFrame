@@ -1,0 +1,24 @@
+syntax = "proto3";
+package package_with_underscores;
+
+message Message_With_Underscores {
+  int32 field_underscore = 1;
+  int32 field_underscore_again = 2;
+  Enum_With_Underscores enum_value = 3;
+  Message_With_Underscores message_value = 4;
+}
+
+enum Enum_With_Underscores {
+  ENUM_VALUE_0 = 0;
+  ENUM_VALUE_1 = 1;
+  E2NUM_VALUE_WITH_NUMBER = 2;
+}
+
+message M3ssage1WithNumb3r2 {
+  int32 fie1ld = 1;
+  int32 field2 = 2;
+  int32 field_3 = 3;
+  int32 a4_fiel4d = 4;
+  int32 a5a_fiel5d = 5;
+  Enum_With_Underscores enum = 6;
+}

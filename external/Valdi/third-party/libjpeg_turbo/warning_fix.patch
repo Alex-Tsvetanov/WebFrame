@@ -1,0 +1,14 @@
+--- src/jpeg_nbits.h
++++ src/jpeg_nbits.h
+@@ -25,9 +25,11 @@
+ #if (defined(__GNUC__) && (defined(__arm__) || defined(__aarch64__))) || \
+     defined(_M_ARM) || defined(_M_ARM64)
+ #if !defined(__thumb__) || defined(__thumb2__)
++#ifndef USE_CLZ_INTRINSIC
+ #define USE_CLZ_INTRINSIC
+ #endif
+ #endif
++#endif
+
+ #ifdef USE_CLZ_INTRINSIC
+ #if defined(_MSC_VER) && !defined(__clang__)

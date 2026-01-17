@@ -1,0 +1,8 @@
+From facebook/yoga at commit 0be0e9fc0148aa609afdc31cb9670524f07050cb
+
+MODIFICATIONS:
+ - Using djinni to do initialize load in YGJNI.cpp
+ - Removing FB @DoNotStrip
+ - Not loading "yoga" using SoLoader as it lives within client
+ - Keeping track of whether a node was measured or not with the layout.didUseCustomMeasure
+ - Updated fbjni

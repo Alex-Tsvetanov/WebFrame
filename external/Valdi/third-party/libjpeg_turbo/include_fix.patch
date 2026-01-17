@@ -1,0 +1,15 @@
+--- BUILD.bazel
++++ BUILD.bazel
+@@ -230,11 +230,7 @@ cc_library(
+         "//conditions:default": [],
+     }),
+     hdrs = LIBJPEG_HEADERS,
+-    copts = [
+-        # There are some #include "neon-compat.h" etc that need this search path
+-        "-Iexternal/libjpeg_turbo/simd/arm/",
+-    ],
+-    includes = ["src"],
++    includes = ["src", "simd/arm"],
+     local_defines = JPEGTURBO_DEFINES,
+     textual_hdrs = JPEGTURBO_TEXT_HDRS,
+     visibility = ["//visibility:public"],

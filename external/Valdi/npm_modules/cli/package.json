@@ -1,0 +1,57 @@
+{
+  "name": "@snap/valdi",
+  "version": "1.0.5",
+  "description": "Valdi CLI tools for developers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Snapchat/Valdi.git",
+    "directory": "npm_modules/cli"
+  },
+  "publishConfig": { "access": "public" },
+  "bin": {
+    "valdi": "dist/index.js"
+  },
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "npm exec --package=typescript@5.9.2 tsc -- --project ./tsconfig.dist.json",
+    "test": "ts-node node_modules/jasmine/bin/jasmine",
+    "watch": "tsc --watch",
+    "main": "ts-node ./src/index.ts",
+    "format": "prettier --ignore-path .gitignore --write \"**/*.+(js|ts|json)\"",
+    "eslint": "eslint './{src,test}/**/*.{ts,tsx}'",
+    "eslint:fix": "npm run eslint -- --fix",
+    "cli:install": "npm ci && npm link",
+    "cli:uninstall": "PKG_NAME=$(npm pkg get name | tr -d '\"') && npm uninstall $PKG_NAME -g",
+    "cli:uninstall_all": "PKG_NAME=$(npm pkg get name | tr -d '\"') && npm uninstall $PKG_NAME && npm uninstall -g $PKG_NAME"
+  },
+  "dependencies": {
+    "@bazel/bazelisk": "^1.19.0",
+    "@types/inquirer": "^9.0.7",
+    "@types/yargs": "^17.0.32",
+    "@typescript-eslint/eslint-plugin": "^5.59.9",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-unicorn": "^47.0.0",
+    "extract-zip": "^2.0.1",
+    "glob": "^11.0.1",
+    "inquirer": "^8.0.0",
+    "jsonc-parser": "^3.3.1",
+    "ora": "^8.2.0",
+    "prettier": "^3.3.1",
+    "tslib": "^2.5.3",
+    "typescript": "^5.3.3",
+    "yaml": "^2.4.5",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/eslint": "^9.6.1",
+    "@types/jasmine": "^5.1.7",
+    "jasmine": "^5.6.0",
+    "ts-node": "^10.9.2"
+  },
+  "overrides": {
+    "brace-expansion": "2.0.2"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2017",
+    "lib": ["es2017"],
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "sourceMap": true,
+    "outDir": "./out/src",
+    "strict": true,
+    "noUnusedLocals": true,
+    "experimentalDecorators": true,
+    "alwaysStrict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node", "chai-subset", "chai-as-promised", "mocha"]
+  },
+  "include": ["src"]
+}

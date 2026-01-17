@@ -1,0 +1,10 @@
+---
+Checks: >
+  -google-readability-casting,
+  -misc-unused-parameters,
+  -modernize-use-nullptr,
+  -readability-convert-member-functions-to-static,
+  -readability-identifier-naming,
+  -readability-qualified-auto
+
+InheritParentConfig: true

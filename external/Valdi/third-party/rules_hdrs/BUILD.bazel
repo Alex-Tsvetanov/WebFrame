@@ -1,0 +1,28 @@
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:pkg.bzl", "pkg_tar")
+
+pkg_tar(
+    name = "pkg",
+    srcs = [
+        "//:hmap_pkg_files",
+        "//:umbrella_pkg_files",
+    ],
+    extension = "tar.gz",
+    visibility = ["//visibility:public"],
+)
+
+pkg_files(
+    name = "hmap_pkg_files",
+    srcs = [
+        "//hmap:pkg_filegroup",
+    ],
+    prefix = "hmap",
+)
+
+pkg_files(
+    name = "umbrella_pkg_files",
+    srcs = [
+        "//umbrella_header:pkg_filegroup",
+    ],
+    prefix = "umbrella_header",
+)

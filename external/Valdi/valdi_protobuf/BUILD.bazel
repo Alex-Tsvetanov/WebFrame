@@ -1,0 +1,77 @@
+load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
+
+COMPILER_FLAGS = COMMON_COMPILE_FLAGS + [
+    "-Wno-gcc-compat",
+    "-fno-exceptions",
+]
+
+cc_library(
+    name = "valdi_protobuf",
+    srcs = glob([
+        "src/valdi_protobuf/**/*.cpp",
+        "src/valdi_protobuf/**/*.hpp",
+    ]),
+    hdrs = glob([
+        "src/valdi_protobuf/**/*.hpp",
+    ]),
+    copts = COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":index_proto",
+        "//libs/utils:utils_core_cc",
+        "//libs/utils:utils_encoding_cc",
+        "//valdi_core:valdi_core_cc",
+        "@protobuf_cpp//:protobuf",
+    ],
+    alwayslink = False,
+)
+
+cc_library(
+    name = "index_proto",
+    srcs = ["src/valdi_protobuf/protos/DescriptorIndex.pb.cc"],
+    hdrs = ["src/valdi_protobuf/protos/DescriptorIndex.pb.h"],
+    copts = COMPILER_FLAGS,
+    strip_include_prefix = "src",
+    deps = [
+        "@protobuf_cpp//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "test_proto",
+    testonly = 1,
+    srcs = glob(["test/protogen/**/*.cc"]),
+    hdrs = glob(["test/protogen/**/*.h"]),
+    copts = COMMON_COMPILE_FLAGS,
+    strip_include_prefix = "test",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@protobuf_cpp//:protobuf",
+    ],
+)
+
+cc_test(
+    name = "test",
+    srcs = glob(["test/**/*.cpp"]),
+    linkstatic = 1,
+    deps = [
+        ":test_proto",
+        ":valdi_protobuf",
+        "@gtest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "benchmark",
+    testonly = 1,
+    srcs = glob([
+        "src/benchmark/*.cpp",
+    ]),
+    linkstatic = True,
+    deps = [
+        ":test_proto",
+        ":valdi_protobuf",
+        "@com_github_google_benchmark//:benchmark",
+    ],
+)

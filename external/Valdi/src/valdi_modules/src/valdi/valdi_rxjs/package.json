@@ -1,0 +1,8 @@
+{
+  "name": "rxjs-valdi",
+  "version": "1.0.0",
+  "description": "This module contains a mirror of rxjs lib for using it in Valdi. For details please check the README",
+  "dependencies": {
+    "rxjs": "7.5.5"
+  }
+}

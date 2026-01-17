@@ -1,0 +1,228 @@
+load("//bzl:expand_template.bzl", "expand_template")
+load("//bzl:valdi_library.bzl", "COMMON_COMPILE_FLAGS")
+
+ENABLE_ASSERT = {
+    "@snap_client_toolchains//:sc_build_flag_assert": ["true"],
+    "//conditions:default": ["false"],
+}
+
+ENABLE_LOGGING = {
+    "@snap_client_toolchains//:sc_build_flag_logging": ["true"],
+    "//conditions:default": ["false"],
+}
+
+ENABLE_TRACING = {
+    "@snap_client_toolchains//:sc_build_flag_tracing": ["true"],
+    "//conditions:default": ["false"],
+}
+
+DEV_BUILD = {
+    "@snap_platforms//flavors:client_development": ["true"],
+    "@snap_platforms//flavors:platform_development": ["true"],
+    "//conditions:default": ["false"],
+}
+
+# Map master and gold to gold for legacy compatibility
+GOLD_BUILD = {
+    "@snap_platforms//flavors:gold": ["true"],
+    "@snap_platforms//flavors:master": ["true"],
+    "//conditions:default": ["false"],
+}
+
+APPSTORE_BUILD = {
+    "@snap_platforms//flavors:production": ["true"],
+    "@snap_platforms//flavors:production_snapos": ["true"],
+    "//conditions:default": ["false"],
+}
+
+ALPHA_BUILD = {
+    "@snap_platforms//flavors:alpha": ["true"],
+    "//conditions:default": ["false"],
+}
+
+expand_template(
+    name = "generate_build_options",
+    src = ":src/utils/platform/BuildOptionsGenerated.hpp.in",
+    output = "BuildOptionsGenerated.hpp",
+    select_based_substitutions = {
+        "@SC_BUILD_FLAG_ASSERT@": ENABLE_ASSERT,
+        "@SC_BUILD_FLAG_LOGGING@": ENABLE_LOGGING,
+        "@SC_BUILD_FLAG_TRACING@": ENABLE_TRACING,
+        "@SC_BUILD_FLAG_DEV@": DEV_BUILD,
+        "@SC_BUILD_FLAG_GOLD@": GOLD_BUILD,
+        "@SC_BUILD_FLAG_APPSTORE@": APPSTORE_BUILD,
+        "@SC_BUILD_FLAG_ALPHA@": ALPHA_BUILD,
+    },
+)
+
+cc_library(
+    name = "build_options",
+    hdrs = [":generate_build_options"],
+    include_prefix = "build_options",
+    linkstatic = 1,
+)
+
+cc_library(
+    name = "utils_cc",
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils_base_cc",
+        ":utils_core_cc",
+    ],
+)
+
+cc_library(
+    name = "utils_core_cc",
+    srcs = glob([
+        "src/utils/platform/**/*.cpp",
+        "src/utils/debugging/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/platform/**/*.hpp",
+        "src/utils/debugging/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS,
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":build_options",
+        ":utils_base_cc",
+        ":utils_kitchensink_cc",
+        ":utils_time_cc",
+        "//third-party/djinni-support-lib:djinni_support_lib",  # needed for JvmUtils
+        "@fmt",
+        "@jsoncpp",  # needed for KeyValueStore
+    ] + select({
+        "@platforms//os:ios": [":utils_core_objc"],
+        "//conditions:default": [],
+    }),
+)
+
+objc_library(
+    name = "utils_core_objc",
+    srcs = glob([
+        "src/utils/debugging/**/*.mm",
+    ]),
+)
+
+# Everything else
+cc_library(
+    name = "utils_time_cc",
+    srcs = glob([
+        "src/utils/time/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/time/**/*.hpp",
+        "src/utils/platform/**/*.hpp",
+    ]),
+    copts = ["-fvisibility=default"],
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+cc_library(
+    name = "utils_encoding_cc",
+    srcs = glob([
+        "src/utils/encoding/**/*.cpp",
+        "src/utils/crypto/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/encoding/**/*.hpp",
+        "src/utils/crypto/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS,
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils_core_cc",
+        ":utils_logging_cc",
+        "@boost",
+        "@protobuf_cpp//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "utils_logging_cc",
+    srcs = glob([
+        "src/utils/logging/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/logging/**/*.hpp",
+        "src/utils/platform/**/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS,
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":build_options",
+        "@fmt",
+    ],
+)
+
+cc_library(
+    name = "utils_base_cc",
+    srcs = glob([
+        "src/utils/base/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/base/**/*.hpp",
+    ]),
+    includes = ["src"],
+    linkopts = [
+        "-lm",
+    ],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@boost",
+        "@fmt",
+        "@zoo",
+    ],
+)
+
+cc_library(
+    name = "utils_kitchensink_cc",
+    srcs = glob([
+        "src/utils/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils/*.hpp",
+    ]),
+    copts = COMMON_COMPILE_FLAGS + ["-fvisibility=default"],
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+cc_library(
+    name = "utils_oss_cc",
+    srcs = glob([
+        "src/utils_oss/**/*.cpp",
+    ]),
+    hdrs = glob([
+        "src/utils_oss/**/*.hpp",
+    ]),
+    linkstatic = 1,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils_cc",
+    ],
+)
+
+cc_library(
+    name = "utils_obj_cpp_ptr_wrapper",
+    hdrs = [
+        "src/utils/ObjCppPtrWrapper.hpp",
+    ],
+    includes = ["src"],
+    tags = ["exported"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,21 @@
+diff --git a/rules/attrs.bzl b/rules/attrs.bzl
+index 8b242584bea..4e1ec9e99ed 100644
+--- a/rules/attrs.bzl
++++ b/rules/attrs.bzl
+@@ -330,6 +330,10 @@ _ANDROID_TOOLCHAIN_ATTRS = dict(
+ 
+ ANDROID_TOOLS_DEFAULTS_JAR_ATTRS = _add(_ANDROID_SDK)
+ 
++_AUTOMATIC_EXEC_GROUPS_ENABLED = dict(
++    _use_auto_exec_groups = attr.bool(default = True),
++)
++
+ attrs = struct(
+     ANDROID_SDK = _ANDROID_SDK,
+     COMPILATION = _COMPILATION,
+@@ -339,4 +343,5 @@ attrs = struct(
+     tristate = _tristate,
+     add = _add,
+     replace = _replace,
++    AUTOMATIC_EXEC_GROUPS_ENABLED = _AUTOMATIC_EXEC_GROUPS_ENABLED,
+ )

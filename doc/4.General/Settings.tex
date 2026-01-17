@@ -1,0 +1,158 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+%\usepackage{hyperref}
+\usepackage[bulgarian]{babel}
+\usepackage{color}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{enumerate}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{multicol}
+\usepackage{parskip}
+\usepackage{subfiles}
+\usepackage[toc,page]{appendix}
+\usepackage{graphicx}
+\usepackage{tocloft}
+\usepackage{titlepic}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{cite}
+\usepackage[utf8]{inputenc}
+\usepackage{tabu}
+\usepackage{amsfonts}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing}
+\usepackage[nottoc]{tocbibind}
+\usepackage{filecontents}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{epstopdf}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{gensymb}
+\usepackage[compact]{titlesec}
+\usepackage{fancyvrb}
+\usepackage{eurosym}
+\usepackage{soul}
+\usepackage{longtable}
+\usepackage[margin=1in]{geometry}
+\pagestyle{plain}
+%\usepackage[a4paper, total={7in, 10in}]{geometry}  Dit is voor mee text p.pag
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage{subcaption}
+\definecolor{mygreen}{RGB}{28,172,0} 
+\definecolor{mylilas}{RGB}{170,55,241}
+\usepackage{subcaption}
+\usepackage{lscape}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{siunitx}
+
+% Define colors for syntax highlighting
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+% C++ language definition
+\lstdefinelanguage{ModernC++}{
+  keywords={alignas, alignof, and, and_eq, asm, atomic_cancel, atomic_commit, atomic_noexcept, auto, bitand, bitor, bool, break, case, catch, char, char8_t, char16_t, char32_t, class, compl, concept, const, consteval, 
+  constexpr, constinit, const_cast, continue, contract_assert, co_await, co_return, co_yield, decltype, default, delete, do, double, dynamic_cast, else, enum, explicit, export, extern, false, float, for, friend, goto, if, inline, int, long, mutable, namespace, new, noexcept, not, not_eq, nullptr, operator, or, or_eq, private, protected, public, reflexpr, register, reinterpret_cast, requires, return, short, signed, sizeof, static, static_assert, static_cast, struct, switch, synchronized, template, this, thread_local, throw, true, try, typedef, typeid, typename, union, unsigned, using, virtual, void, volatile, wchar_t, while, xor, xor_eq},
+  sensitive=true,
+  morecomment=[l]//,
+  morestring=[b]',
+  morestring=[b]",
+  showstringspaces=true,
+  basicstyle=\ttfamily\small              
+}
+
+\begin{document}
+% C++ listings configuration
+\definecolor{cppblue}{RGB}{0,0,180}
+\definecolor{cppgreen}{RGB}{0,128,0}
+\definecolor{cppred}{RGB}{180,0,0}
+\definecolor{cppgray}{RGB}{128,128,128}
+
+\lstset{
+    language=C++,
+    basicstyle=\small\ttfamily,
+    breaklines=true,
+    breakatwhitespace=true,
+    keywordstyle=\color{cppblue}\bfseries,
+    stringstyle=\color{cppred},
+    commentstyle=\color{cppgreen}\itshape,
+    identifierstyle=\color{black},
+    showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{cppgray},
+    numbersep=8pt,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{cppgray},
+    backgroundcolor=\color{white},
+    tabsize=4,
+    captionpos=b,
+    aboveskip=1.5\baselineskip,
+    belowskip=\baselineskip,
+    morekeywords={co_await, co_return, co_yield, Task, expected, unexpected, requires, concept, constexpr, noexcept, nullptr, override, final},
+    emph={Request, Response, Handler, Middleware, Router, App, Connection, WebSocketConnection, IoContext},
+    emphstyle=\color{cppblue},
+    extendedchars=true,
+    inputencoding=utf8,
+    literate={а}{{\cyra}}1 {б}{{\cyrb}}1 {в}{{\cyrv}}1 {г}{{\cyrg}}1 {д}{{\cyrd}}1
+             {е}{{\cyre}}1 {ж}{{\cyrzh}}1 {з}{{\cyrz}}1 {и}{{\cyri}}1 {й}{{\cyrishrt}}1
+             {к}{{\cyrk}}1 {л}{{\cyrl}}1 {м}{{\cyrm}}1 {н}{{\cyrn}}1 {о}{{\cyro}}1
+             {п}{{\cyrp}}1 {р}{{\cyrr}}1 {с}{{\cyrs}}1 {т}{{\cyrt}}1 {у}{{\cyru}}1
+             {ф}{{\cyrf}}1 {х}{{\cyrh}}1 {ц}{{\cyrc}}1 {ч}{{\cyrch}}1 {ш}{{\cyrsh}}1
+             {щ}{{\cyrshch}}1 {ъ}{{\cyrhrdsn}}1 {ь}{{\cyrsftsn}}1 {ю}{{\cyryu}}1 {я}{{\cyrya}}1
+             {А}{{\CYRA}}1 {Б}{{\CYRB}}1 {В}{{\CYRV}}1 {Г}{{\CYRG}}1 {Д}{{\CYRD}}1
+             {Е}{{\CYRE}}1 {Ж}{{\CYRZH}}1 {З}{{\CYRZ}}1 {И}{{\CYRI}}1 {Й}{{\CYRISHRT}}1
+             {К}{{\CYRK}}1 {Л}{{\CYRL}}1 {М}{{\CYRM}}1 {Н}{{\CYRN}}1 {О}{{\CYRO}}1
+             {П}{{\CYRP}}1 {Р}{{\CYRR}}1 {С}{{\CYRS}}1 {Т}{{\CYRT}}1 {У}{{\CYRU}}1
+             {Ф}{{\CYRF}}1 {Х}{{\CYRH}}1 {Ц}{{\CYRC}}1 {Ч}{{\CYRCH}}1 {Ш}{{\CYRSH}}1
+             {Щ}{{\CYRSHCH}}1 {Ъ}{{\CYRHRDSN}}1 {Ь}{{\CYRSFTSN}}1 {Ю}{{\CYRYU}}1 {Я}{{\CYRYA}}1,
+}
+\setlength{\parskip}{1\baselineskip}
+
+\title{Проектиране и разработване на библиотека на С++, подпомагаща създаването на уеб приложения}
+\author{Александър Цветанов}
+
+\input{4.General/Titlepage.tex}
+%\maketitle\thispagestyle{empty}
+
+\newpage
+\tableofcontents\thispagestyle{empty}
+
+%\section{Introduction}
+%\subsection{dit is een ondertitel}
+%\subsubsection{Dit is een onder-ondertitel}
+
+\newpage
+\input{1.Text/Main.tex}
+
+
+\end{document}

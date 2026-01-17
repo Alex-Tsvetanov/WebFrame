@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User - {{ name }}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+        }
+
+        .greeting {
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            margin-top: 20px;
+        }
+
+        .badge-logged-in {
+            background: #38ef7d;
+            color: #333;
+        }
+
+        .badge-guest {
+            background: #ccc;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>{{ greeting }}, {{ name }}!</h1>
+        <p class="greeting">You've accessed a View-based route</p>
+        {% if logged_in %}
+        <span class="badge badge-logged-in">Logged In</span>
+        {% else %}
+        <span class="badge badge-guest">Guest</span>
+        {% endif %}
+    </div>
+</body>
+
+</html>

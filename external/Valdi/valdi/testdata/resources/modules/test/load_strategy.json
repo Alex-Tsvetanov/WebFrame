@@ -1,0 +1,7 @@
+{
+  "ModulePreload@test/src/ModulePreload": {
+    "valdi_modules": [
+      "test2"
+    ]
+  }
+}

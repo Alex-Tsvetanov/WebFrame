@@ -1,0 +1,52 @@
+result: 42
+
+result: 'foo'
+
+result: 1234567890n
+
+<error>: Uncaught Error: foo
+
+<error>: Uncaught Object
+
+<error>: Uncaught 42
+
+> result: {foo: 3}
+    foo: 3
+    > __proto__: Object
+
+<error>: Uncaught ReferenceError: baz is not defined
+
+> result: Map(1) {hello => ƒ ()}
+    > get size: ƒ size()
+    > [[Entries]]: Array(1)
+    > __proto__: Map
+
+result: 42
+stderr> Uncaught Error: bar
+stderr> > Uncaught Error: bar
+stderr>
+<anonymous> @ <eval>/VM<xx>:1:26
+◀ setTimeout ▶
+<anonymous> @ <eval>/VM<xx>:1
+
+result: 42
+stderr> Uncaught Error: baz
+stderr> > Uncaught Error: baz
+stderr>
+<anonymous> @ <eval>/VM<xx>:1:26
+◀ setTimeout ▶
+<anonymous> @ <eval>/VM<xx>:1
+
+<error>: Uncaught Error: error1
+
+<error>: Uncaught Object
+
+result: 42
+stderr> Uncaught Error: error2
+stderr> > Uncaught Error: error2
+stderr>
+throwError @ ${workspaceFolder}/web/browserify/module1.ts:6:9
+<anonymous> @ <eval>/VM<xx>:1:27
+◀ setTimeout ▶
+<anonymous> @ <eval>/VM<xx>:1
+

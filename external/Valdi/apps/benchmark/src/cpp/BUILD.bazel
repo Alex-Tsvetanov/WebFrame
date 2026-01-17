@@ -1,0 +1,9 @@
+cc_library(
+    name = "native_module_cpp",
+    srcs = ["CppModule.cpp"],
+    hdrs = [],
+    includes = [],
+    visibility = ["//visibility:public"],
+    deps = ["@valdi//valdi_core"],
+    alwayslink = 1,
+)

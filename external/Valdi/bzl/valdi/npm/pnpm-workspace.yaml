@@ -1,0 +1,4 @@
+packages:
+ - .
+ - ../../../compiler/companion
+ - ../../../compiler/companion/remotedebug-ios-webkit-adapter

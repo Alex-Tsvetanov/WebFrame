@@ -1,0 +1,10 @@
+exports_files([
+    "Info.plist.tpl",
+    "ios_main.m.tpl",
+    "macos_main.m.tpl",
+    "AndroidDebugAppManifest.xml.tpl",
+    "AndroidReleaseAppManifest.xml.tpl",
+    "AndroidLibManifest.xml",
+    "StartActivity.kt.tpl",
+    "cli_main.cpp.tpl",
+])

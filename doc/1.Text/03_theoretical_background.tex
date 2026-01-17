@@ -1,0 +1,603 @@
+% ============================================================================
+% Глава 3: Теоретична основа
+% ============================================================================
+\section{Теоретична основа}
+
+Преди да пристъпим към описание на архитектурата и имплементацията на Coroute, е необходимо да представим теоретичните концепции, върху които е изградена библиотеката. Тази глава обхваща HTTP протоколите, WebSocket, TLS криптирането, C++20 корутините, асинхронния I/O и DFA-базираното маршрутизиране.
+
+Разбирането на тези концепции е от съществено значение за правилното използване на библиотеката и за вземане на информирани архитектурни решения при изграждане на уеб приложения.
+
+\subsection{HTTP протокол}
+
+Hypertext Transfer Protocol (HTTP) е основният протокол за комуникация в World Wide Web. От създаването си през 1991 година, HTTP е претърпял значителна еволюция, като всяка нова версия адресира ограниченията на предходната.
+
+\subsubsection{HTTP/1.1}
+
+HTTP/1.1, дефиниран в RFC 2616 \cite{rfc2616}, е текстово-базиран протокол, използващ модела заявка-отговор (request-response). При този модел клиентът изпраща заявка към сървъра, а сървърът отговаря с резултата. Всяка заявка е независима и не съхранява състояние между отделните обмени (stateless протокол).
+
+HTTP/1.1 въведе редица подобрения спрямо HTTP/1.0, включително persistent connections (keep-alive), chunked transfer encoding и подобрена кеширане. Въпреки тези подобрения, протоколът има фундаментални ограничения, които стават все по-проблематични при съвременните уеб приложения.
+
+Структура на HTTP заявка:
+\begin{verbatim}
+GET /path/to/resource HTTP/1.1
+Host: example.com
+User-Agent: Mozilla/5.0
+Accept: text/html
+\end{verbatim}
+
+Структура на HTTP отговор:
+\begin{verbatim}
+HTTP/1.1 200 OK
+Content-Type: text/html
+Content-Length: 1234
+
+<html>...</html>
+\end{verbatim}
+
+Въпреки широкото си разпространение, HTTP/1.1 има няколко съществени ограничения, които влияят негативно на производителността на съвременните уеб приложения.
+
+Първото и най-значимо ограничение е \textbf{head-of-line blocking}. При HTTP/1.1 заявките по една връзка се обработват последователно -- сървърът трябва да изпрати пълния отговор на първата заявка, преди да започне обработката на втората. Ако първата заявка е за голям ресурс, всички следващи заявки трябва да чакат, дори ако техните отговори са готови.
+
+Второто ограничение е свързано с \textbf{текстовите хедъри}. HTTP/1.1 хедърите са текстови и се повтарят при всяка заявка. При съвременните уеб приложения, които изпращат десетки заявки за една страница, това води до значителен overhead. Cookies, User-Agent и други хедъри могат да заемат стотици байтове, които се предават отново и отново.
+
+Третото ограничение е необходимостта от \textbf{множество TCP връзки} за постигане на паралелизъм. Браузърите обикновено отварят 6-8 паралелни връзки към един домейн, за да заобиколят head-of-line blocking. Това обаче води до допълнителен overhead от TCP handshakes и увеличена консумация на ресурси.
+
+\subsubsection{HTTP/2}
+
+HTTP/2, дефиниран в RFC 7540 \cite{rfc7540} и актуализиран в RFC 9113 \cite{rfc9113}, е бинарен протокол, проектиран да адресира ограниченията на HTTP/1.1. Разработен първоначално от Google под името SPDY, HTTP/2 беше стандартизиран през 2015 година и днес се поддържа от всички съвременни браузъри и сървъри.
+
+Ключовата иновация в HTTP/2 е \textbf{мултиплексирането}. Вместо да обработва заявките последователно, HTTP/2 позволява множество потоци (streams) да споделят една TCP връзка. Всеки поток има уникален идентификатор и може да пренася независима заявка-отговор двойка. Това елиминира head-of-line blocking на приложно ниво и позволява пълноценно използване на една TCP връзка.
+
+\textbf{HPACK компресията} \cite{rfc7541} е специализиран алгоритъм за компресия на HTTP хедъри. HPACK използва статична таблица с често срещани хедъри, динамична таблица за хедъри, специфични за връзката, и Huffman кодиране за стойностите. Това може да намали размера на хедърите с над 90\% в сравнение с HTTP/1.1.
+
+\textbf{Server Push} позволява на сървъра проактивно да изпраща ресурси към клиента, без клиентът да ги е заявил изрично. Например, когато клиентът заяви HTML страница, сървърът може едновременно да изпрати CSS и JavaScript файловете, които знае, че ще бъдат необходими. Това намалява латентността при зареждане на страници.
+
+\textbf{Приоритизацията} позволява на клиента да указва относителната важност на различните потоци. Браузърът може да даде по-висок приоритет на CSS файловете (необходими за рендериране) спрямо изображенията (които могат да се заредят по-късно).
+
+HTTP/2 използва фреймове като основна единица за комуникация. Всеки фрейм има фиксиран 9-байтов хедър, съдържащ дължина, тип, флагове и идентификатор на потока. Основните типове фреймове включват HEADERS за HTTP хедъри, DATA за тялото на съобщението, SETTINGS за конфигурационни параметри, WINDOW\_UPDATE за контрол на потока и GOAWAY за graceful затваряне на връзката.
+
+Фигура \ref{fig:http-comparison} илюстрира ключовата разлика между HTTP/1.1 и HTTP/2 при обработка на множество заявки.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.9]
+    % HTTP/1.1 side
+    \node[font=\bfseries] at (2.5, 5.5) {HTTP/1.1};
+    
+    % Connection 1
+    \draw[thick] (0, 0) rectangle (5, 5);
+    \node[font=\small] at (2.5, 4.7) {TCP връзка};
+    
+    % Sequential requests
+    \fill[blue!60] (0.3, 3.5) rectangle (4.7, 4.3);
+    \node[white, font=\small] at (2.5, 3.9) {Заявка 1};
+    
+    \fill[green!60] (0.3, 2.3) rectangle (4.7, 3.1);
+    \node[white, font=\small] at (2.5, 2.7) {Заявка 2};
+    
+    \fill[orange!60] (0.3, 1.1) rectangle (4.7, 1.9);
+    \node[white, font=\small] at (2.5, 1.5) {Заявка 3};
+    
+    % Arrows showing blocking
+    \draw[->, thick, red] (4.9, 3.9) -- (5.3, 3.9) -- (5.3, 2.75) -- (4.9, 2.75);
+    \node[red, font=\tiny, right] at (5.3, 3.3) {чака};
+    
+    \draw[->, thick, red] (4.9, 2.65) -- (5.6, 2.65) -- (5.6, 1.5) -- (4.9, 1.5);
+    \node[red, font=\tiny, right] at (5.6, 2.1) {чака};
+    
+    % Time arrow
+    \draw[->, thick] (0, -0.5) -- (5, -0.5);
+    \node[font=\small] at (2.5, -1) {Време $\rightarrow$};
+    
+    % HTTP/2 side
+    \node[font=\bfseries] at (10.5, 5.5) {HTTP/2};
+    
+    % Single connection with multiplexing
+    \draw[thick] (7.5, 0) rectangle (13.5, 5);
+    \node[font=\small] at (10.5, 4.7) {TCP връзка (мултиплексиране)};
+    
+    % Interleaved streams
+    \fill[blue!60] (8.3, 3.8) rectangle (9.5, 4.3);
+    \fill[green!60] (9.6, 3.8) rectangle (10.8, 4.3);
+    \fill[orange!60] (10.9, 3.8) rectangle (12.1, 4.3);
+    
+    \fill[blue!60] (8.3, 3.0) rectangle (9.5, 3.5);
+    \fill[green!60] (9.6, 3.0) rectangle (10.8, 3.5);
+    \fill[orange!60] (10.9, 3.0) rectangle (12.1, 3.5);
+    
+    \fill[blue!60] (8.3, 2.2) rectangle (9.5, 2.7);
+    \fill[green!60] (9.6, 2.2) rectangle (10.8, 2.7);
+    \fill[orange!60] (10.9, 2.2) rectangle (12.1, 2.7);
+    
+    \fill[blue!60] (8.3, 1.4) rectangle (9.5, 1.9);
+    \fill[green!60] (9.6, 1.4) rectangle (10.8, 1.9);
+    \fill[orange!60] (10.9, 1.4) rectangle (12.1, 1.9);
+    
+    % Stream labels
+    \node[font=\tiny] at (8.9, 1.1) {Stream 1};
+    \node[font=\tiny] at (10.2, 1.1) {Stream 2};
+    \node[font=\tiny] at (11.5, 1.1) {Stream 3};
+    
+    % Time arrow
+    \draw[->, thick] (7.5, -0.5) -- (13.5, -0.5);
+    \node[font=\small] at (10.5, -1) {Време $\rightarrow$};
+    
+    % Legend
+    \fill[blue!60] (7.5, -1.8) rectangle (8, -1.5);
+    \node[font=\tiny, right] at (8.1, -1.65) {Заявка 1};
+    \fill[green!60] (10, -1.8) rectangle (10.5, -1.5);
+    \node[font=\tiny, right] at (10.6, -1.65) {Заявка 2};
+    \fill[orange!60] (12.5, -1.8) rectangle (13, -1.5);
+    \node[font=\tiny, right] at (13.1, -1.65) {Заявка 3};
+\end{tikzpicture}
+\caption{Сравнение на HTTP/1.1 (последователна обработка с head-of-line blocking) и HTTP/2 (мултиплексиране на потоци)}
+\label{fig:http-comparison}
+\end{figure}
+
+\subsection{WebSocket протокол}
+
+WebSocket \cite{rfc6455} е протокол, проектиран за двупосочна комуникация в реално време върху една TCP връзка. Стандартизиран през 2011 година, WebSocket запълва важна празнина в уеб технологиите, позволявайки на сървъра да изпраща данни към клиента без клиентът да е направил изрична заявка.
+
+Преди WebSocket, разработчиците използваха различни техники за симулиране на real-time комуникация, като polling (периодични заявки от клиента), long polling (заявки, които сървърът задържа докато има нови данни) и Server-Sent Events (еднопосочен поток от сървъра). Всички тези техники имат недостатъци -- polling е неефективен, long polling създава сложност, а SSE е само еднопосочен.
+
+WebSocket решава тези проблеми, като предоставя пълноценна двупосочна комуникация с минимален overhead. След първоначалния handshake, данните се предават като леки фреймове без HTTP хедъри, което значително намалява латентността.
+
+Процесът на установяване на WebSocket връзка започва с HTTP Upgrade заявка. Клиентът изпраща стандартна HTTP заявка с хедъри \texttt{Upgrade: websocket} и \texttt{Connection: Upgrade}, заедно с криптографски ключ в \texttt{Sec-WebSocket-Key}. Сървърът отговаря с HTTP 101 Switching Protocols и изчислен accept key, базиран на клиентския ключ и фиксиран GUID. След този handshake, TCP връзката преминава в WebSocket режим.
+
+Заявка за upgrade изглежда по следния начин:
+\begin{verbatim}
+GET /chat HTTP/1.1
+Host: server.example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+\end{verbatim}
+
+WebSocket съобщенията се предават като фреймове. Всеки фрейм има хедър, съдържащ опкод (тип на съобщението), флагове и информация за дължината. Опкодът определя как да се интерпретира payload-а: 0x1 за текстови данни (UTF-8), 0x2 за бинарни данни, 0x8 за затваряне на връзката, 0x9 за ping и 0xA за pong. Ping/pong механизмът се използва за keep-alive и за проверка дали връзката е все още активна.
+
+Фигура \ref{fig:websocket-handshake} илюстрира процеса на WebSocket handshake.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.85]
+    % Client and Server boxes
+    \node[draw, thick, minimum width=2.5cm, minimum height=1cm, fill=blue!20] (client) at (0, 0) {Клиент};
+    \node[draw, thick, minimum width=2.5cm, minimum height=1cm, fill=green!20] (server) at (10, 0) {Сървър};
+    
+    % Lifelines
+    \draw[dashed, thick] (0, -0.5) -- (0, -10);
+    \draw[dashed, thick] (10, -0.5) -- (10, -10);
+    
+    % HTTP Upgrade Request
+    \draw[->, thick, blue] (0.2, -1.5) -- (9.8, -2.5);
+    \node[font=\small, align=left, fill=white] at (5, -1.5) {
+        \begin{tabular}{l}
+        GET /chat HTTP/1.1 \\
+        Upgrade: websocket \\
+        Connection: Upgrade \\
+        Sec-WebSocket-Key: dGhl...
+        \end{tabular}
+    };
+    
+    % Server processing
+    \node[font=\tiny, right] at (10.2, -3.5) {Валидация};
+    
+    % HTTP 101 Response
+    \draw[->, thick, green!60!black] (9.8, -4.5) -- (0.2, -5.5);
+    \node[font=\small, align=left, fill=white] at (5, -4.5) {
+        \begin{tabular}{l}
+        HTTP/1.1 101 Switching Protocols \\
+        Upgrade: websocket \\
+        Sec-WebSocket-Accept: s3pP...
+        \end{tabular}
+    };
+    
+    % WebSocket connection established
+    \draw[<->, thick, purple, dashed] (0.2, -7) -- (9.8, -7);
+    \node[font=\small, fill=white] at (5, -7) {WebSocket връзка установена};
+    
+    % Bidirectional messages
+    \draw[->, thick, orange] (0.2, -8) -- (9.8, -8.3);
+    \node[font=\tiny, above] at (5, -8) {Текстов/бинарен фрейм};
+    
+    \draw[->, thick, orange] (9.8, -8.8) -- (0.2, -9.1);
+    \node[font=\tiny, below] at (5, -9.1) {Текстов/бинарен фрейм};
+    
+    % Phase labels
+    \node[font=\footnotesize, gray] at (-2.5, -2) {HTTP фаза};
+    \node[font=\footnotesize, gray] at (-2.5, -8) {WebSocket фаза};
+    
+    % Divider
+    \draw[dotted, gray, thick] (-3, -6) -- (13, -6);
+\end{tikzpicture}
+\caption{Sequence диаграма на WebSocket handshake процеса}
+\label{fig:websocket-handshake}
+\end{figure}
+
+Важна характеристика на WebSocket е маскирането на данните от клиента към сървъра. Всички фреймове, изпратени от клиента, трябва да бъдат маскирани с 4-байтов ключ. Това е мярка за сигурност, предотвратяваща определени видове атаки срещу прокси сървъри.
+
+\subsection{TLS и сигурност}
+
+Transport Layer Security (TLS) е криптографски протокол, осигуряващ сигурна комуникация през интернет. TLS е наследник на SSL (Secure Sockets Layer) и е стандартът за криптиране на уеб трафик. Когато URL адрес започва с ``https://'', това означава, че връзката е защитена с TLS.
+
+TLS предоставя три основни гаранции за сигурност. Първо, \textbf{конфиденциалност} -- данните са криптирани и не могат да бъдат прочетени от трети страни. Второ, \textbf{интегритет} -- данните не могат да бъдат модифицирани незабелязано по време на предаване. Трето, \textbf{автентикация} -- клиентът може да верифицира идентичността на сървъра чрез цифрови сертификати.
+
+TLS 1.3 \cite{rfc8446}, публикуван през 2018 година, въвежда значителни подобрения спрямо предходните версии. Handshake процесът е опростен и изисква само един round-trip (1-RTT) за установяване на връзка, в сравнение с два round-trips при TLS 1.2. За клиенти, които вече са се свързвали със сървъра, е възможен 0-RTT режим, при който данни могат да се изпращат още с първия пакет.
+
+TLS 1.3 премахва поддръжката за остарели и несигурни криптографски алгоритми. Поддържат се само съвременни cipher suites, базирани на AEAD (Authenticated Encryption with Associated Data) алгоритми като AES-GCM и ChaCha20-Poly1305. Това опростява конфигурацията и елиминира възможността за downgrade атаки.
+
+\textbf{ALPN (Application-Layer Protocol Negotiation)} \cite{rfc7301} е TLS разширение, което позволява избор на приложен протокол по време на handshake. Това е механизмът, чрез който HTTP/2 се негоцира при TLS връзки.
+
+При ALPN негоциация, клиентът включва в ClientHello съобщението списък с поддържани протоколи, подредени по предпочитание. Например, съвременен браузър би изпратил ``h2'' (HTTP/2) и ``http/1.1'' като опции. Сървърът избира един от предложените протоколи (обикновено най-предпочитания, който поддържа) и го включва в ServerHello отговора. След завършване на TLS handshake, комуникацията продължава с избрания протокол.
+
+ALPN е критичен за HTTP/2, тъй като позволява на клиента и сървъра да се договорят за протокола преди да започнат да обменят HTTP данни. Без ALPN, би било необходимо допълнително round-trip за upgrade от HTTP/1.1 към HTTP/2.
+
+Фигура \ref{fig:tls-handshake} илюстрира TLS 1.3 handshake процеса с ALPN негоциация.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.8]
+    % Client and Server
+    \node[draw, thick, minimum width=2cm, minimum height=0.8cm, fill=blue!20] (client) at (0, 0) {Клиент};
+    \node[draw, thick, minimum width=2cm, minimum height=0.8cm, fill=green!20] (server) at (12, 0) {Сървър};
+    
+    % Lifelines
+    \draw[dashed] (0, -0.4) -- (0, -11);
+    \draw[dashed] (12, -0.4) -- (12, -11);
+    
+    % ClientHello
+    \draw[->, thick, blue] (0.2, -1) -- (11.8, -1.8);
+    \node[font=\footnotesize, fill=yellow!20, draw, rounded corners] at (6, -0.8) {
+        \begin{tabular}{c}
+        ClientHello \\
+        \tiny{+ key\_share + ALPN: [h2, http/1.1]}
+        \end{tabular}
+    };
+    
+    % ServerHello + Certificate + Finished
+    \draw[->, thick, green!60!black] (11.8, -3) -- (0.2, -4.5);
+    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -3.2) {
+        \begin{tabular}{c}
+        ServerHello + key\_share \\
+        \tiny{+ ALPN: h2}
+        \end{tabular}
+    };
+    
+    \draw[->, thick, green!60!black] (11.8, -5) -- (0.2, -5.8);
+    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -5) {
+        \begin{tabular}{c}
+        EncryptedExtensions \\
+        Certificate, CertificateVerify, Finished
+        \end{tabular}
+    };
+    
+    % Client Finished
+    \draw[->, thick, blue] (0.2, -7) -- (11.8, -7.5);
+    \node[font=\footnotesize, fill=blue!10, draw, rounded corners] at (6, -7) {Finished};
+    
+    % Encrypted Application Data
+    \draw[<->, thick, purple] (0.2, -9) -- (11.8, -9);
+    \node[font=\footnotesize, fill=purple!10, draw, rounded corners] at (6, -9) {HTTP/2 криптиран трафик};
+    
+    % RTT annotations
+    \draw[<->, thick, red] (-1.5, -1) -- (-1.5, -5.8);
+    \node[font=\tiny, red, rotate=90] at (-2, -3.4) {1-RTT};
+    
+    % Phase labels
+    \node[font=\tiny, gray, align=center] at (14, -3) {Криптиране\\започва};
+    \draw[->, gray] (13.5, -3) -- (12.2, -3);
+    
+    % Legend
+    \node[font=\tiny] at (6, -10.5) {TLS 1.3: 1-RTT handshake с ALPN за избор на HTTP/2};
+\end{tikzpicture}
+\caption{TLS 1.3 handshake с ALPN негоциация за HTTP/2}
+\label{fig:tls-handshake}
+\end{figure}
+
+\subsection{C++20 корутини}
+
+Корутините са една от най-значимите нови функционалности в C++20 \cite{cpp20standard}. Те представляват обобщение на концепцията за функция, позволявайки на функцията да спре изпълнението си в определени точки и да го възобнови по-късно, без да губи своето състояние.
+
+Традиционните функции следват модела ``call/return'' -- когато функция бъде извикана, тя се изпълнява до край и връща резултат. Корутините добавят възможността за ``suspend/resume'' -- функцията може да спре изпълнението си, да върне контрола на извикващия, и по-късно да продължи от точката, където е спряла.
+
+Тази възможност е изключително полезна за асинхронно програмиране. Вместо да използваме callbacks или promises, можем да пишем код, който изглежда синхронен и последователен, но всъщност се изпълнява асинхронно. Когато корутината срещне операция, която не може да завърши веднага (например четене от мрежата), тя спира и позволява на други корутини да се изпълняват. Когато операцията завърши, корутината се възобновява и продължава изпълнението си.
+
+C++20 въвежда три нови ключови думи за работа с корутини. \texttt{co\_await} се използва за спиране на корутината докато чака завършване на асинхронна операция. \texttt{co\_yield} се използва за генериране на стойност и временно спиране (полезно за генератори). \texttt{co\_return} се използва за връщане на крайния резултат и завършване на корутината.
+
+\subsubsection{Основни концепции}
+
+За да разберем как работят корутините в C++20, трябва да се запознаем с няколко ключови концепции: promise type, awaitable и coroutine handle.
+
+\textbf{Promise type} е тип, който контролира поведението на корутината. Когато компилаторът срещне функция, съдържаща \texttt{co\_await}, \texttt{co\_yield} или \texttt{co\_return}, той автоматично генерира код, който използва promise type за управление на корутината. Promise type определя какво се случва при стартиране на корутината, при нейното завършване, при връщане на стойност и при възникване на изключение.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Promise type структура}]
+struct Promise {
+    Task<T> get_return_object();
+    std::suspend_always initial_suspend();
+    FinalAwaiter final_suspend() noexcept;
+    void return_value(T value);
+    void unhandled_exception();
+};
+\end{lstlisting}
+
+Методът \texttt{get\_return\_object()} създава обекта, който се връща на извикващия при създаване на корутината. Методът \texttt{initial\_suspend()} определя дали корутината да започне изпълнение веднага или да изчака. Методът \texttt{final\_suspend()} определя какво се случва след завършване на корутината -- дали да се унищожи автоматично или да остане в паметта.
+
+\textbf{Awaitable} е тип, който може да се използва с оператора \texttt{co\_await}. Awaitable обектите представляват асинхронни операции, които могат да спрат корутината докато чакат завършване.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Awaitable интерфейс}]
+struct Awaitable {
+    bool await_ready();
+    void await_suspend(std::coroutine_handle<>);
+    T await_resume();
+};
+\end{lstlisting}
+
+Методът \texttt{await\_ready()} връща \texttt{true}, ако операцията вече е завършила и не е необходимо спиране. Методът \texttt{await\_suspend()} се извиква, когато корутината трябва да спре -- тук се регистрира callback за възобновяване. Методът \texttt{await\_resume()} връща резултата от операцията, когато корутината се възобнови.
+
+\textbf{Coroutine handle} е низкониво представяне на корутината, подобно на указател. Чрез handle можем да възобновим спряна корутина, да проверим дали е завършила, или да я унищожим. Handle-ът се използва вътрешно от awaitable обектите за управление на корутините.
+
+\subsubsection{Предимства на корутините}
+
+Корутините предоставят множество предимства пред традиционните подходи за асинхронно програмиране.
+
+Първото и най-важно предимство е \textbf{четимостта}. Асинхронният код, написан с корутини, изглежда почти идентично на синхронен код. Вместо вложени callbacks или сложни promise chains, имаме последователни изрази, разделени с \texttt{co\_await}. Това значително намалява когнитивното натоварване при четене и писане на асинхронен код.
+
+Второто предимство е \textbf{ефективността}. За разлика от нишките, корутините не изискват системни извиквания за създаване или превключване. Превключването между корутини е просто запазване и възстановяване на няколко регистъра -- операция, която отнема наносекунди вместо микросекунди.
+
+Третото предимство е \textbf{композируемостта}. Корутините могат свободно да се влагат една в друга. Една корутина може да извика друга корутина с \texttt{co\_await}, която от своя страна може да извика трета. Това позволява изграждане на сложна асинхронна логика от прости градивни блокове.
+
+Четвъртото предимство е, че корутините са \textbf{stackless}. Традиционните нишки изискват отделен стек (обикновено 1MB), който се заделя при създаване. Корутините съхраняват само локалните променливи и точката на изпълнение -- типично десетки до стотици байтове. Това позволява създаване на милиони едновременни корутини на машина с ограничена памет.
+
+Следният пример демонстрира как асинхронен код с корутини изглежда почти идентично на синхронен:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Пример за асинхронен код с корутини}]
+Task<Response> handle_request(Request& req) {
+    // Всяка от тези операции може да отнеме време,
+    // но кодът изглежда последователен
+    auto user = co_await db.find_user(req.param("id"));
+    auto posts = co_await db.get_posts(user.id);
+    co_return render_template("profile", user, posts);
+}
+\end{lstlisting}
+
+В този пример, докато \texttt{db.find\_user()} чака отговор от базата данни, корутината е спряна и нишката може да обслужва други заявки. Когато отговорът пристигне, корутината се възобновява и продължава със следващия ред.
+
+Фигура \ref{fig:coroutine-states} илюстрира жизнения цикъл на корутина и възможните преходи между състоянията.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    state/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.9cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % States
+    \node[state, fill=gray!20] (created) at (0, 0) {Created};
+    \node[state, fill=green!30] (running) at (4, 0) {Running};
+    \node[state, fill=yellow!30] (suspended) at (8, 0) {Suspended};
+    \node[state, fill=blue!30] (completed) at (4, -3) {Completed};
+    \node[state, fill=red!20] (destroyed) at (8, -3) {Destroyed};
+    
+    % Transitions
+    \draw[arrow] (created) -- node[above, font=\tiny] {resume()} (running);
+    \draw[arrow] (running) -- node[above, font=\tiny] {co\_await} (suspended);
+    \draw[arrow, bend left=20] (suspended) to node[below, font=\tiny] {resume()} (running);
+    \draw[arrow] (running) -- node[left, font=\tiny] {co\_return} (completed);
+    \draw[arrow] (completed) -- node[above, font=\tiny] {destroy()} (destroyed);
+    \draw[arrow] (suspended) -- node[right, font=\tiny] {destroy()} (destroyed);
+    
+    % Initial arrow
+    \draw[arrow] (-2, 0) -- node[above, font=\tiny] {create} (created);
+    
+    % Detached path
+    \draw[arrow, dashed, orange] (running) to[bend right=30] node[above, font=\tiny, sloped] {detached + done} (destroyed);
+    
+    % Legend
+    \node[font=\tiny, gray] at (4, -4.5) {Пунктирана линия: detached корутина се самоунищожава};
+\end{tikzpicture}
+\caption{State диаграма на жизнения цикъл на корутина}
+\label{fig:coroutine-states}
+\end{figure}
+
+\subsection{Асинхронен I/O}
+
+Асинхронният вход/изход (I/O) е фундаментална концепция за изграждане на високопроизводителни мрежови приложения. При синхронен I/O, когато програмата извърши операция като четене от сокет, тя блокира докато данните пристигнат. При асинхронен I/O, програмата инициира операцията и продължава изпълнението си, като бива уведомена когато операцията завърши.
+
+Различните операционни системи предоставят различни механизми за асинхронен I/O. Всеки от тях има своите характеристики и оптимални сценарии на използване. За постигане на максимална производителност, Coroute използва native механизма на всяка платформа.
+
+\subsubsection{IOCP (Windows)}
+
+I/O Completion Ports (IOCP) \cite{windowsiocp} е механизмът на Windows за мащабируем асинхронен I/O. IOCP е проектиран специално за сървърни приложения, които трябва да обслужват хиляди едновременни връзки.
+
+При IOCP, приложението създава completion port -- обект на ядрото, който служи като централна точка за събиране на завършени I/O операции. Когато приложението иска да извърши асинхронна операция (например четене от сокет), то подава заявка към операционната система и продължава изпълнението си. Когато операцията завърши, резултатът се поставя в completion port.
+
+Работни нишки извикват \texttt{GetQueuedCompletionStatus()}, за да извлекат завършени операции от completion port. Ако няма готови операции, нишката блокира ефективно, без да консумира CPU ресурси. Windows автоматично управлява броя на активните нишки, за да оптимизира използването на CPU.
+
+Едно от ключовите предимства на IOCP е неговата мащабируемост. Малък брой нишки (обикновено равен на броя на CPU ядрата) може да обслужва десетки хиляди едновременни връзки. Това е възможно, защото нишките не блокират при отделни I/O операции, а само при чакане за завършени операции.
+
+\subsubsection{io\_uring (Linux)}
+
+io\_uring \cite{iouring2019} е модерен Linux интерфейс за асинхронен I/O, въведен в ядро версия 5.1 (2019). Той е проектиран да замени по-старите интерфейси като epoll и aio, предоставяйки по-висока производителност и по-богата функционалност.
+
+Архитектурата на io\_uring се базира на две кръгови опашки (ring buffers), споделени между потребителското пространство и ядрото. Submission Queue (SQ) се използва от приложението за подаване на I/O заявки. Completion Queue (CQ) се използва от ядрото за връщане на резултати от завършени операции.
+
+Ключово предимство на io\_uring е възможността за batching на системни извиквания. Вместо да прави отделно системно извикване за всяка I/O операция, приложението може да добави множество заявки в SQ и да ги подаде наведнъж с едно извикване на \texttt{io\_uring\_enter()}. Това значително намалява overhead-а от превключване между потребителско пространство и ядро.
+
+io\_uring поддържа и zero-copy операции, при които данните се прехвърлят директно между мрежовия буфер и файловата система, без копиране в потребителското пространство. Това е особено полезно за файлови сървъри и CDN приложения.
+
+\subsubsection{kqueue (macOS/BSD)}
+
+kqueue \cite{kqueue} е механизъм за event notification, наличен в macOS и BSD операционните системи. Въведен първоначално във FreeBSD 4.1 (2000), kqueue предоставя унифициран интерфейс за наблюдение на различни типове събития.
+
+При kqueue, приложението регистрира интерес към определени събития чрез структури, наречени kevents. Събитията могат да бъдат свързани с файлови дескриптори (готовност за четене/писане), сигнали, таймери, промени във файловата система и други. След регистрация, приложението извиква \texttt{kevent()} за да получи списък с настъпили събития.
+
+Едно от предимствата на kqueue е неговата гъвкавост. За разлика от epoll, който работи само с файлови дескриптори, kqueue може да наблюдава разнообразни типове събития. Това опростява архитектурата на приложения, които трябва да реагират на множество видове асинхронни събития.
+
+kqueue също поддържа edge-triggered и level-triggered режими, подобно на epoll. В edge-triggered режим, събитие се докладва само когато състоянието се промени. В level-triggered режим, събитие се докладва докато условието е изпълнено. Edge-triggered режимът е по-ефективен, но изисква по-внимателно програмиране.
+
+Фигура \ref{fig:io-comparison} сравнява архитектурите на IOCP и io\_uring.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.75]
+    % IOCP Side
+    \node[font=\bfseries] at (3, 6) {IOCP (Windows)};
+    
+    % Application
+    \node[draw, thick, fill=blue!20, minimum width=5cm, minimum height=0.8cm] (app1) at (3, 5) {Приложение};
+    
+    % Worker threads
+    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t1) at (1, 3.5) {Thread 1};
+    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t2) at (3, 3.5) {Thread 2};
+    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t3) at (5, 3.5) {Thread N};
+    
+    % Completion Port
+    \node[draw, thick, fill=orange!30, minimum width=4cm, minimum height=1cm] (cp) at (3, 2) {Completion Port};
+    
+    % Kernel
+    \node[draw, thick, fill=gray!20, minimum width=5cm, minimum height=1.2cm] (kernel1) at (3, 0) {Windows Kernel};
+    
+    % Arrows
+    \draw[->, thick] (app1) -- (t1);
+    \draw[->, thick] (app1) -- (t2);
+    \draw[->, thick] (app1) -- (t3);
+    \draw[<->, thick] (t1) -- (cp);
+    \draw[<->, thick] (t2) -- (cp);
+    \draw[<->, thick] (t3) -- (cp);
+    \draw[<->, thick] (cp) -- (kernel1);
+    
+    \node[font=\tiny, gray] at (3, 1) {GetQueuedCompletionStatus()};
+    
+    % io_uring Side
+    \node[font=\bfseries] at (11, 6) {io\_uring (Linux)};
+    
+    % Application
+    \node[draw, thick, fill=blue!20, minimum width=5cm, minimum height=0.8cm] (app2) at (11, 5) {Приложение};
+    
+    % Ring buffers
+    \node[draw, fill=yellow!30, minimum width=2cm, minimum height=0.8cm, font=\tiny] (sq) at (9.5, 3) {SQ};
+    \node[draw, fill=purple!30, minimum width=2cm, minimum height=0.8cm, font=\tiny] (cq) at (12.5, 3) {CQ};
+    
+    % Shared memory indicator
+    \draw[<->, dashed, thick, red] (sq) -- (cq);
+    \node[font=\tiny, red] at (11, 3.25) {Споделена памет};
+    
+    % Kernel
+    \node[draw, thick, fill=gray!20, minimum width=5cm, minimum height=1.2cm] (kernel2) at (11, 0) {Linux Kernel};
+    
+    % Arrows
+    \draw[->, thick, blue] (app2) -- node[left, font=\tiny] {submit} (sq);
+    \draw[->, thick, green!60!black] (cq) -- node[right, font=\tiny] {poll} (app2);
+    \draw[->, thick] (sq) -- (kernel2);
+    \draw[->, thick] (kernel2) -- (cq);
+    
+    \node[font=\tiny, gray] at (11, 1.5) {io\_uring\_enter()};
+    
+    % Legend
+    \node[font=\tiny, align=left] at (3, -1.5) {
+        \textbf{IOCP:} Нишки чакат на completion port
+    };
+    \node[font=\tiny, align=left] at (11, -1.5) {
+        \textbf{io\_uring:} Zero-copy ring buffers, batching
+    };
+\end{tikzpicture}
+\caption{Сравнение на архитектурите на IOCP (Windows) и io\_uring (Linux)}
+\label{fig:io-comparison}
+\end{figure}
+
+\subsection{DFA-базирано маршрутизиране}
+
+Маршрутизирането е процесът на определяне кой handler да обработи дадена HTTP заявка, базирано на URL адреса и HTTP метода. В типично уеб приложение може да има стотици или дори хиляди различни маршрути, всеки с различен URL шаблон.
+
+Традиционният подход за маршрутизиране е последователно проверяване на всеки шаблон срещу входния URL. При този подход, за всяка входяща заявка се итерира през списъка с маршрути и се проверява дали URL-ът съответства на шаблона. Това води до времева сложност O(N × M), където N е броят на маршрутите, а M е дължината на URL-а. При голям брой маршрути, това може да стане значително забавяне.
+
+В научната публикация „Matching Text from Start to Finish Against Multiple Regular Expressions" \cite{stankov2024regex} е представен алтернативен подход, базиран на детерминиран краен автомат (DFA). Този алгоритъм позволява съпоставяне на входен текст с множество регулярни изрази едновременно, с линейна времева сложност спрямо дължината на входа.
+
+\subsubsection{Теоретична основа}
+
+За да разберем DFA-базираното маршрутизиране, трябва първо да се запознаем с теорията на формалните езици и автомати.
+
+Регулярните изрази и крайните автомати са еквивалентни по изразителна сила -- това е известно като теорема на Kleene. Всеки регулярен израз може да се преобразува в еквивалентен недетерминиран краен автомат (NFA), който от своя страна може да се преобразува в детерминиран краен автомат (DFA) \cite{rabin1959automata, thompson1968regex}.
+
+Краен автомат $M$ се дефинира формално като петорка $(Q, \Sigma, \delta, q_0, F)$, където $Q$ е крайно множество от състояния, $\Sigma$ е входната азбука (множеството от възможни символи), $\delta: Q \times \Sigma \rightarrow Q$ е функцията на преходите, $q_0 \in Q$ е началното състояние, и $F \subseteq Q$ е множеството от крайни (приемащи) състояния.
+
+При обработка на входен низ, автоматът започва от началното състояние $q_0$. За всеки символ от входа, автоматът преминава в ново състояние, определено от функцията на преходите $\delta$. Ако след обработка на целия вход автоматът е в крайно състояние от $F$, входът се приема; в противен случай се отхвърля.
+
+Ключовото предимство на DFA е, че за всяка комбинация от текущо състояние и входен символ има точно един възможен преход. Това означава, че обработката на входа изисква точно толкова стъпки, колкото е дължината на входа -- линейна времева сложност O(N).
+
+\subsubsection{Алгоритъм за изграждане на pattern graph}
+
+Алгоритъмът от „Matching Text from Start to Finish Against Multiple Regular Expressions" \cite{stankov2024regex} разширява класическия подход, като комбинира множество регулярни изрази в един обединен граф, наречен pattern graph. Този граф е подобен на trie структура, но с възможност за цикли, които са необходими за представяне на операторите за повторение (*, +, \{n,m\}).
+
+Процесът на изграждане започва с празен граф, съдържащ само начално състояние. За всеки регулярен израз (URL шаблон), алгоритъмът добавя съответните състояния и преходи към графа. Когато два шаблона споделят общ префикс, те споделят и съответните състояния в графа. Това е ключът към ефективността -- вместо да проверяваме всеки шаблон поотделно, ние обхождаме един общ граф.
+
+Всяко крайно състояние в графа е асоциирано с един или повече маршрути. Когато входният URL достигне крайно състояние, знаем кой маршрут е съвпаднал. Ако множество маршрути съвпадат, се използва приоритет (обикновено по-специфичният маршрут има предимство).
+
+Времевата сложност на алгоритъма е следната: предобработката (изграждане на графа) изисква време $O(\sum \text{regex\_length})$, пропорционално на общата дължина на всички шаблони. Търсенето (съпоставяне на URL) изисква време $O(N)$, където $n$ е дължината на входния URL. Забележете, че времето за търсене не зависи от броя на маршрутите -- това е ключовото подобрение спрямо наивния подход.
+
+\subsubsection{Приложение в Coroute}
+
+В контекста на Coroute, URL шаблоните се преобразуват в регулярни изрази. Например, шаблонът \texttt{/users/\{id\}} се преобразува в регулярен израз, който съвпада с \texttt{/users/} последвано от произволна последователност от символи (параметъра \texttt{id}).
+
+При стартиране на сървъра, всички регистрирани маршрути се компилират в един DFA. При всяка входяща заявка, URL-ът се обработва от DFA с една линейна обиколка. Резултатът е или съвпадение с конкретен маршрут (заедно с извлечените параметри), или липса на съвпадение (404 Not Found).
+
+\subsubsection{Benchmark резултати}
+
+Според експерименталните резултати от „Matching Text from Start to Finish Against Multiple Regular Expressions" \cite{stankov2024regex}, предложеният алгоритъм показва значително подобрение в производителността спрямо традиционните подходи. При тестове със 100 различни регулярни израза, алгоритъмът е до \textbf{62.25 пъти по-бърз} от последователното съпоставяне с \texttt{std::regex}.
+
+Това подобрение е особено значимо за уеб приложения с голям брой маршрути. При REST API с ресурси, версии и вложени пътища, броят на маршрутите лесно може да достигне стотици. С DFA-базирано маршрутизиране, времето за намиране на правилния handler остава константно, независимо от броя на маршрутите.
+
+Фигура \ref{fig:dfa-example} илюстрира пример за DFA, който разпознава URL шаблоните \texttt{/users}, \texttt{/users/\{id\}} и \texttt{/posts}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    state/.style={circle, draw, thick, minimum size=0.9cm, font=\small},
+    accept/.style={circle, draw, thick, double, minimum size=0.9cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % States
+    \node[state] (q0) at (0, 0) {$q_0$};
+    \node[state] (q1) at (2.5, 1.5) {$q_1$};
+    \node[state] (q2) at (5, 1.5) {$q_2$};
+    \node[state] (q3) at (7.5, 1.5) {$q_3$};
+    \node[state] (q4) at (10, 1.5) {$q_4$};
+    \node[accept, fill=green!20] (q5) at (12.5, 1.5) {$q_5$};
+    \node[state] (q6) at (10, 0) {$q_6$};
+    \node[accept, fill=blue!20] (q7) at (12.5, 0) {$q_7$};
+    \node[state] (q8) at (2.5, -1.5) {$q_8$};
+    \node[state] (q9) at (5, -1.5) {$q_9$};
+    \node[state] (q10) at (7.5, -1.5) {$q_{10}$};
+    \node[state] (q11) at (10, -1.5) {$q_{11}$};
+    \node[accept, fill=orange!20] (q12) at (12.5, -1.5) {$q_{12}$};
+    
+    % Transitions for /users
+    \draw[arrow] (-1.5, 0) -- (q0);
+    \draw[arrow] (q0) -- node[above, font=\tiny] {/} (q1);
+    \draw[arrow] (q1) -- node[above, font=\tiny] {u} (q2);
+    \draw[arrow] (q2) -- node[above, font=\tiny] {s} (q3);
+    \draw[arrow] (q3) -- node[above, font=\tiny] {e} (q4);
+    \draw[arrow] (q4) -- node[above, font=\tiny] {r} (q5);
+    \node[font=\tiny, green!60!black] at (12.5, 2.2) {/users};
+    
+    % Transitions for /users/{id}
+    \draw[arrow] (q5) -- node[right, font=\tiny] {/} (q6);
+    \draw[arrow] (q6) -- node[above, font=\tiny] {[0-9]+} (q7);
+    \node[font=\tiny, blue] at (12.5, -0.7) {/users/\{id\}};
+    
+    % Transitions for /posts
+    \draw[arrow] (q1) -- node[left, font=\tiny] {p} (q8);
+    \draw[arrow] (q8) -- node[above, font=\tiny] {o} (q9);
+    \draw[arrow] (q9) -- node[above, font=\tiny] {s} (q10);
+    \draw[arrow] (q10) -- node[above, font=\tiny] {t} (q11);
+    \draw[arrow] (q11) -- node[above, font=\tiny] {s} (q12);
+    \node[font=\tiny, orange] at (12.5, -2.2) {/posts};
+    
+    % Legend
+    \node[font=\tiny, align=left] at (6, -3.5) {
+        Двоен кръг = крайно състояние (маршрут съвпада)
+    };
+\end{tikzpicture}
+\caption{Пример за DFA за URL маршрутизиране с три шаблона}
+\label{fig:dfa-example}
+\end{figure}

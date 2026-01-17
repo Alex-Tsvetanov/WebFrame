@@ -1,0 +1,13 @@
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
+
+native_binary(
+    name = "zstd",
+    src = select(
+        {
+            "@bazel_tools//src/conditions:darwin": "bin/macos/zstd",
+            "@bazel_tools//src/conditions:linux_x86_64": "bin/linux/zstd",
+        },
+    ),
+    out = "zstd",
+    visibility = ["//visibility:public"],
+)

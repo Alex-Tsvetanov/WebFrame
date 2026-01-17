@@ -1,0 +1,12 @@
+output_target: release
+
+bazel_build_file_generation_disabled: true
+
+dependencies:
+  - coreutils
+  - valdi_core
+
+exclude_patterns:
+  - .*\/web\/.*
+exclude_globs:
+  - "**/web/**"

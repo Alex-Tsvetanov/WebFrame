@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    // Main settings
+    "rootDirs": ["./src", "./test"],
+    "outDir": "./dist",
+
+    // Modules
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Type Checking
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": true,
+    "strict": true,
+
+    // Emit
+    "importHelpers": true,
+    "noEmitHelpers": true,
+    "noEmitOnError": true,
+    "removeComments": true,
+
+    // Interop Constraints
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+
+    // Language and Environment
+    "experimentalDecorators": true,
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "useDefineForClassFields": true
+  },
+  "include": ["./src/**/*.ts", "./test/**/*.ts"]
+}
