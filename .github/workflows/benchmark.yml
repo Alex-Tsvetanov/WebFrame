@@ -1,0 +1,164 @@
+name: Benchmark & Performance
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libssl-dev \
+          zlib1g-dev \
+          liburing-dev \
+          g++-12 \
+          wrk \
+          apache2-utils
+    
+    - name: Configure CMake (Release with optimizations)
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER=gcc-12 \
+          -DCMAKE_CXX_COMPILER=g++-12 \
+          -DCMAKE_CXX_FLAGS="-O3 -march=native -flto" \
+          -DCOROUTE_BUILD_EXAMPLES=ON \
+          -DCOROUTE_BUILD_TESTS=OFF \
+          -DCOROUTE_ENABLE_TLS=ON \
+          -DCOROUTE_ENABLE_HTTP2=ON \
+          -DCOROUTE_ENABLE_SIMDJSON=ON
+    
+    - name: Build
+      run: cmake --build build --parallel
+    
+    - name: Run Benchmark Server
+      run: |
+        # Start the benchmark server in the background
+        if [ -f build/examples/Samples/benchmark_server/benchmark_server ]; then
+          ./build/examples/Samples/benchmark_server/benchmark_server &
+          BENCH_PID=$!
+          echo "BENCH_PID=$BENCH_PID" >> $GITHUB_ENV
+          sleep 3
+        else
+          echo "Benchmark server not found, using hello_world"
+          ./build/examples/Samples/hello_world/hello_world &
+          BENCH_PID=$!
+          echo "BENCH_PID=$BENCH_PID" >> $GITHUB_ENV
+          sleep 3
+        fi
+    
+    - name: Wait for server to start
+      run: |
+        for i in {1..10}; do
+          if curl -s http://localhost:8080/ > /dev/null; then
+            echo "Server is ready"
+            break
+          fi
+          echo "Waiting for server... ($i/10)"
+          sleep 1
+        done
+    
+    - name: Run wrk benchmark
+      run: |
+        mkdir -p benchmark-results
+        
+        echo "=== Simple GET Benchmark ===" | tee benchmark-results/results.txt
+        wrk -t4 -c100 -d30s http://localhost:8080/ | tee -a benchmark-results/results.txt
+        
+        echo -e "\n=== Keep-Alive Benchmark ===" | tee -a benchmark-results/results.txt
+        wrk -t4 -c100 -d30s -H "Connection: keep-alive" http://localhost:8080/ | tee -a benchmark-results/results.txt
+        
+        echo -e "\n=== Apache Bench Results ===" | tee -a benchmark-results/results.txt
+        ab -n 10000 -c 100 -k http://localhost:8080/ | tee -a benchmark-results/results.txt
+    
+    - name: Stop benchmark server
+      if: always()
+      run: |
+        if [ ! -z "$BENCH_PID" ]; then
+          kill $BENCH_PID || true
+        fi
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark-results/
+    
+    - name: Performance Summary
+      run: |
+        echo "### Performance Benchmark Results :rocket:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        cat benchmark-results/results.txt >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+  
+  deploy-benchmark:
+    name: Deploy Benchmark Results
+    needs: benchmark
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download benchmark results
+      uses: actions/download-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark-results/
+    
+    - name: Generate HTML report
+      run: |
+        mkdir -p benchmark-html
+        cat > benchmark-html/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Coroute Performance Benchmarks</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; }
+            pre { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
+            .timestamp { color: #666; font-size: 0.9em; }
+          </style>
+        </head>
+        <body>
+          <h1>Coroute v2 Performance Benchmarks</h1>
+          <p class="timestamp">Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>
+          <p>Commit: <code>${GITHUB_SHA:0:7}</code></p>
+          <pre>
+        EOF
+        cat benchmark-results/results.txt >> benchmark-html/index.html
+        cat >> benchmark-html/index.html << 'EOF'
+          </pre>
+        </body>
+        </html>
+        EOF
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./benchmark-html
+        destination_dir: benchmark
+        commit_message: "Update benchmark results for ${{ github.sha }}"

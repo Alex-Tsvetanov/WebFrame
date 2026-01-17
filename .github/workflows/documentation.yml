@@ -1,0 +1,83 @@
+name: Build & Deploy Documentation
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-docs:
+    name: Build Doxygen Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    
+    - name: Install Doxygen and Graphviz
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+    
+    - name: Generate Doxygen Documentation
+      run: |
+        doxygen Doxyfile
+    
+    - name: Check if documentation changed
+      id: check-changes
+      run: |
+        # Check if gh-pages branch exists
+        if git ls-remote --heads origin gh-pages | grep gh-pages; then
+          git fetch origin gh-pages:gh-pages
+          
+          # Compare new docs with existing
+          if diff -r reports/docs/ <(git show gh-pages:docs/ 2>/dev/null) > /dev/null 2>&1; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Documentation has not changed"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Documentation has changed"
+          fi
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "gh-pages branch does not exist, will create it"
+        fi
+    
+    - name: Deploy to GitHub Pages
+      if: steps.check-changes.outputs.changed == 'true'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./reports/docs
+        destination_dir: docs
+        commit_message: "Update documentation for ${{ github.sha }}"
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+    
+    - name: Upload documentation artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: reports/docs/
+        retention-days: 30
+    
+    - name: Documentation Summary
+      run: |
+        echo "### Documentation Build Summary :books:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ steps.check-changes.outputs.changed }}" == "true" ]; then
+          echo "✅ Documentation generated and deployed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📚 View at: https://${{ github.repository_owner }}.github.io/WebFrame/docs/" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "ℹ️ Documentation unchanged - no deployment needed" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Generated files:**" >> $GITHUB_STEP_SUMMARY
+        echo "- HTML files: $(find reports/docs -name '*.html' | wc -l)" >> $GITHUB_STEP_SUMMARY
+        echo "- Total size: $(du -sh reports/docs | cut -f1)" >> $GITHUB_STEP_SUMMARY

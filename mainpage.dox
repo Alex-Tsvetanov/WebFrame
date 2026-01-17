@@ -1,9 +1,11 @@
-/*! @mainpage WebFrame++ v3
+/*! @mainpage Coroute v2.0.0
 @htmlonly
 <link rel="stylesheet" href="./Doxygen-css/custom.css">
 <link rel="stylesheet" href="./Doxygen-css/custom_dark_theme.css">
 
-<h3 id="makeyourwebapplicationfasternow">Make your web application faster now!</h3>
+<h3 id="moderncoroutinebasedwebframework">Modern C++20 Coroutine-based Web Framework</h3>
+
+<p>Coroute is a high-performance web framework built on C++20 coroutines, providing HTTP/1.1, HTTP/2, TLS, and WebSocket support with platform-optimized async I/O.</p>
 
 <hr>
 
@@ -12,9 +14,22 @@
 <p>
   <table class="fieldtable">
     <tr><th class="fieldname">Compiler version</th><th class="fieldname">Minimum C++ standard required</th></tr>
-    <tr><td class="fieldname">GCC, Clang, MinGW, MSVC   </td><td class="fieldname">-std=c++2a <i>-std=c++20</i></td></tr>
+    <tr><td class="fieldname">GCC 11+, Clang 14+, MSVC 2022+   </td><td class="fieldname">C++20 with coroutine support</td></tr>
   </table>
 </p>
+
+<h4 id="features">Key Features</h4>
+
+<ul>
+<li>🚀 <strong>C++20 Coroutines</strong> - Natural async/await syntax</li>
+<li>⚡ <strong>High Performance</strong> - io_uring (Linux), kqueue (macOS), IOCP (Windows)</li>
+<li>🔒 <strong>TLS/SSL</strong> - Secure HTTPS support via OpenSSL</li>
+<li>📡 <strong>HTTP/2</strong> - Modern protocol with multiplexing</li>
+<li>🔌 <strong>WebSocket</strong> - Full bidirectional communication</li>
+<li>📝 <strong>Template Engine</strong> - Inja (Jinja2-style) integration</li>
+<li>🗜️ <strong>Compression</strong> - gzip, deflate, and optional Brotli</li>
+<li>📊 <strong>Metrics & Logging</strong> - Built-in performance tracking</li>
+</ul>
 
 <h1 id="testing">Testing</h1>
 
@@ -39,219 +54,173 @@
 <ol>
 <li><p>Make sure to include the library</p>
 
-<pre><code class="cpp language-cpp">#include &lt;core/webframe.hpp&gt;
+<pre><code class="cpp language-cpp">#include &lt;coroute/coroute.hpp&gt;
 </code></pre></li>
 
-<li><p>Initiate your Web application</p>
+<li><p>Create your application instance</p>
 
-<pre><code class="cpp language-cpp">webframe::core::application app;
+<pre><code class="cpp language-cpp">using namespace coroute;
+App app;
 </code></pre>
 
 <p></p></li>
 
-<li><p>Set directories for your static files</p>
+<li><p>Configure templates (optional)</p>
 
-<pre><code class="cpp language-cpp">app.set_static(relative or absolute path/directory to the static files, web alias); 
+<pre><code class="cpp language-cpp">app.set_templates("./templates");
 </code></pre>
 
-<p>Ex. the files are in <code>./example/Sample/static</code> and the route for them is <code>/static</code>:</p>
+<p><em><strong>NOTE:</strong> Template engine uses Inja (Jinja2-style syntax)</em></p></li>
 
-<pre><code class="cpp language-cpp">app.set_static("./example/Sample/static", "/static"); 
-</code></pre>
-
-<p><em><strong>NOTE:</strong> You can list multiple static folders</em></p>
-
-<p><em><strong>NOTE:</strong> Relative paths depend on where you execute the executable from and not on where the source file is located.</em></p></li>
-
-<li><p>Set Inja template folder</p>
-
-<pre><code class="cpp language-cpp">app.set_templates(relative or absolute path/directory to the INJA templates); 
-</code></pre>
-
-<p>Ex. the Inja template files are in <code>./example/Sample/static/templates</code>:</p>
-
-<pre><code class="cpp language-cpp">app.set_templates("./example/Sample/static/templates");
-</code></pre>
-
-<p><em><strong>NOTE:</strong> You can list multiple template folders</em></p>
-
-<p><em><strong>NOTE:</strong> Relative paths depend on where you execute the executable from and not on where the source file is located.</em></p></li>
-
-<li><p>Set up error handling</p>
+<li><p>Define routes with coroutine handlers</p>
 
 <ul>
-<li><p>Set the code of the error</p></li>
+<li><p>Simple GET route</p>
 
-<li><p>Implement the responding function using lambda that takes 1 string as parameter</p>
-
-<pre><code class="cpp language-cpp">app.handle("404", [](const std::string&amp; path) {
-    return "Error 404: " + path + " was not found.";
+<pre><code class="cpp language-cpp">app.get("/", [](Request&amp;) -&gt; Task&lt;Response&gt; {
+    co_return Response::ok("&lt;h1&gt;Hello, World!&lt;/h1&gt;");
 });
-app.handle("500", [](const std::string&amp; reason) {
-    return "Error 500: Internal server error: " + reason + ".";
+</code></pre></li>
+
+<li><p>Route with typed path parameters (automatic extraction)</p>
+
+<pre><code class="cpp language-cpp">app.get&lt;std::string&gt;("/user/{name}", [](std::string name, Request&amp;) -&gt; Task&lt;Response&gt; {
+    co_return Response::ok("Hello, " + name + "!");
+});
+</code></pre></li>
+
+<li><p>Route with multiple parameters</p>
+
+<pre><code class="cpp language-cpp">app.get&lt;size_t, size_t&gt;("/user/{uid}/post/{pid}", 
+    [](size_t uid, size_t pid, Request&amp;) -&gt; Task&lt;Response&gt; {
+    nlohmann::json j = {{"user_id", uid}, {"post_id", pid}};
+    co_return Response::json(j.dump());
+});
+</code></pre></li>
+
+<li><p>POST route with body access</p>
+
+<pre><code class="cpp language-cpp">app.post("/echo", [](Request&amp; req) -&gt; Task&lt;Response&gt; {
+    co_return Response::ok(std::string(req.body()));
+});
+</code></pre></li>
+
+<li><p>Template rendering</p>
+
+<pre><code class="cpp language-cpp">app.get("/profile", [&amp;app](Request&amp;) -&gt; Task&lt;Response&gt; {
+    nlohmann::json data = {{"name", "Alice"}, {"logged_in", true}};
+    co_return app.render_html("profile.html", data);
 });
 </code></pre></li></ul></li>
 
-<li><p>Set up your routes</p>
+<li><p>Configure thread pool and run the server</p>
 
-<ul>
-<li><p>Set up headers and status code yourself</p>
-
-<pre><code class="cpp language-cpp">app.route ("/", []() {
-    return webframe::core::response (webframe::core::status_line ("1.1", "200"), {{"Content-Type", "text/html; charset=utf-8"}}, "&lt;h1&gt;Hello, World!&lt;/h1&gt;");
-});
-</code></pre></li>
-
-<li><p>or let WebFrame do it for you</p>
-
-<pre><code class="cpp language-cpp">app.route ("/", []() {
-    return "&lt;h1&gt;Hello, World!&lt;/h1&gt;";
-});
-</code></pre></li>
-
-<li><p>To render your Jinja templates use <code>app.render(filename/file path, json with variables)</code></p></li>
-
-<li><p>You can also use path/route variables </p>
-
-<ul>
-<li><p>using predefined regex</p>
-
-<pre><code class="cpp language-cpp">app.route("/{text}", [&amp;app](const std::string&amp; user) {
-    return app.render("template.html", {{"username", user}});
-});
-</code></pre>
-
-<p>
-<table class="fieldtable">
-<tr><th class="fieldname">Predefined </th><th class="fieldname">Raw regex equivalent </th></tr>
-<tr><td class="fieldname">string     </td><td class="fieldname">[A-Za-z_%0-9.-]+  </td></tr>
-<tr><td class="fieldname">text       </td><td class="fieldname">[A-Za-z_%0-9.-]+ </td></tr>
-<tr><td class="fieldname">char       </td><td class="fieldname">[A-Za-z_%0-9.-]   </td></tr>
-<tr><td class="fieldname">symbol     </td><td class="fieldname">[A-Za-z_%0-9.-]  </td></tr>
-<tr><td class="fieldname">digit      </td><td class="fieldname">[0-9]                </td></tr>
-<tr><td class="fieldname">number     </td><td class="fieldname">[0-9.]+              </td></tr>
-<tr><td class="fieldname">path       </td><td class="fieldname">[A-Za-z_%0-9.-\/]+   </td></tr>
-</table>
-</p></li>
-
-<li><p>or using your own regex</p>
-<pre><code class="cpp language-cpp">app.route("/{[a-z]+}", [&amp;app](const std::string&amp; user) {
-    return app.render("template.html", {{"username", user}});
-});
-</code></pre></li></ul></li></ul></li>
-
-<li><p>Make sure to run your app (async run)</p>
-
-<pre><code class="cpp language-cpp">app.run(port, cores);
+<pre><code class="cpp language-cpp">app.threads(std::thread::hardware_concurrency());
+app.run(8080);
 </code></pre></li>
 </ol>
 
-<h2 id="advancedusage">Advanced usage</h2>
+<h2 id="advancedusage">Advanced Features</h2>
 
 <ol>
-<li><p>Stack multiple setups</p>
+<li><p>Middleware Support</p>
 
-<p>You can list different app setups consequently:</p>
+<p>Add global middleware for logging, authentication, compression, etc:</p>
 
-<pre><code class="cpp language-cpp">app.set_static("./example/Sample/static", "/static")
-    .set_templates("./example/Sample/static/templates")
-    .handle("404", [](const std::string&amp; path) {
-        return "Error 404: " + path + " was not found.";
-    })
-    .handle("500", [](const std::string&amp; reason) {
-        return "Error 500: Internal server error: " + reason + ".";
-    })
-    .route ("/", []() {
-        return webframe::core::response (webframe::core::status_line ("1.1", "200"), {{"Content-Type", "text/html; charset=utf-8"}}, "&lt;h1&gt;Hello, World!&lt;/h1&gt;");
-    });
+<pre><code class="cpp language-cpp">// Compression middleware
+app.use(compression({.min_size = 256, .level = 6}));
+
+// Custom logging middleware
+app.use([](Request&amp; req, Next next) -&gt; Task&lt;Response&gt; {
+    std::cout &lt;&lt; req.method() &lt;&lt; " " &lt;&lt; req.path() &lt;&lt; std::endl;
+    auto resp = co_await next(req);
+    std::cout &lt;&lt; "Status: " &lt;&lt; resp.status() &lt;&lt; std::endl;
+    co_return resp;
+});
 </code></pre></li>
 
-<li><p>Multithreading</p>
+<li><p>TLS/HTTPS Support</p>
 
-<ul>
-<li><p>Wait until the server starts accepting requests: (sync function)</p>
-
-<pre><code class="cpp language-cpp">app.wait_start(port);
-</code></pre>
-
-<p>or</p>
-
-<pre><code class="cpp language-cpp">app.run(port, cores).wait_start(port);
+<pre><code class="cpp language-cpp">AppTlsConfig tls_config{
+    .cert_file = "server.crt",
+    .key_file = "server.key",
+    .alpn_protocols = {"h2", "http/1.1"}
+};
+app.enable_tls(tls_config);
+app.run(443);
 </code></pre></li>
 
-<li><p>Wait until the server stops accepting requests: (sync function)</p>
+<li><p>HTTP/2 Support</p>
 
-<pre><code class="cpp language-cpp">app.wait_end(port);
-</code></pre>
-
-<p>or</p>
-
-<pre><code class="cpp language-cpp">app.run(port, cores).wait_end(port);
-</code></pre></li></ul></li>
-
-<li><p>Set up custom loggers</p>
-
-<ul>
-<li><p>logger is the stream for standard logs from the server</p></li>
-
-<li><p>error_logger is the stream for error messages</p></li>
-
-<li><p>perfomancer is the stream for performance logs</p>
-
-<pre><code class="cpp language-cpp">app.set_logger(ostream&amp;)
-    .set_error_logger(ostream&amp;)
-    .set_performancer(ostream&amp;);        
-</code></pre></li></ul></li>
-
-<li><p>Force server stop</p>
-
-<pre><code class="cpp language-cpp">app.request_stop(port);
-</code></pre>
-
-<p><strong>Note:</strong> <em>port should be <code>const char*</code></em></p></li>
-
-<li><p>Organize projects</p>
-
-<ul>
-<li><p>Create set of routes</p>
-
-<pre><code class="cpp language-cpp">init_routes(home)
-    .route("/home", []() {
-        return "This is my home page";
-    });
-</code></pre>
-
-<p>or if you need to use <code>webframe::core::application</code> functions</p>
-
-<pre><code class="cpp language-cpp">webframe::core::application app;
-...
-init_routes(home)
-    .route("/home", [&amp;app]() {
-        return app.render("template.html", {{"username", user}});
-    });
+<pre><code class="cpp language-cpp">app.enable_http2(true);  // Enabled by default when TLS is configured
 </code></pre></li>
 
-<li><p>Import the set of routes to your app</p>
+<li><p>WebSocket Support</p>
 
-<pre><code class="cpp language-cpp">init_routes(home)
-...
-app.extend_with(home);
-</code></pre>
+<pre><code class="cpp language-cpp">app.ws("/chat", [](WebSocketConnection&amp; ws) -&gt; Task&lt;void&gt; {
+    while (auto msg = co_await ws.receive()) {
+        co_await ws.send("Echo: " + *msg);
+    }
+});
+</code></pre></li>
 
-<p>or if you want to add prefix to the set of routes</p>
+<li><p>Query Parameters</p>
 
-<pre><code class="cpp language-cpp">init_routes(home)
-...
-app.extend_with(home, "/prefix");
-</code></pre></li></ul></li>
+<pre><code class="cpp language-cpp">app.get("/search", [](Request&amp; req) -&gt; Task&lt;Response&gt; {
+    auto query = req.query&lt;std::string&gt;("q");
+    auto page = req.query_opt&lt;int&gt;("page").value_or(1);
+    
+    if (!query) {
+        co_return Response::bad_request("Missing 'q' parameter");
+    }
+    
+    nlohmann::json result = {{"query", *query}, {"page", page}};
+    co_return Response::json(result.dump());
+});
+</code></pre></li>
+
+<li><p>Response Builders</p>
+
+<pre><code class="cpp language-cpp">app.get("/custom", [](Request&amp;) -&gt; Task&lt;Response&gt; {
+    co_return ResponseBuilder()
+        .status(200)
+        .header("X-Custom", "value")
+        .content_type("text/html")
+        .body("&lt;h1&gt;Custom Response&lt;/h1&gt;")
+        .build();
+});
+</code></pre></li>
+
+<li><p>Graceful Shutdown</p>
+
+<pre><code class="cpp language-cpp">ShutdownOptions opts{
+    .drain_timeout = std::chrono::seconds(30),
+    .force_close_after_timeout = true
+};
+app.shutdown(opts);
+</code></pre></li>
 </ol>
 
-<p>Check <a href="https://github.com/WebFrame/Core/blob/master/example">example/</a> for more information.</p>
+<p>Check <a href="https://github.com/cpp-for-everything/WebFrame/tree/master/examples">examples/</a> for complete working examples.</p>
 
-<h1 id="additionalinfo">Additional info</h1>
+<h1 id="additionalinfo">Additional Information</h1>
 
 <ul>
-<li>Currently working on setting up <img src="https://img.shields.io/badge/CMake-%23008FBA.svg?&amp;logo=cmake&amp;logoColor=while" alt="CMake" /></li>
+<li><strong>Build System:</strong> CMake 3.20+</li>
+<li><strong>Platforms:</strong> Linux (io_uring), macOS (kqueue), Windows (IOCP)</li>
+<li><strong>Dependencies:</strong> OpenSSL (TLS), nghttp2 (HTTP/2), inja (templates), simdjson (JSON parsing)</li>
+<li><strong>License:</strong> See LICENSE.md</li>
+</ul>
+
+<h2 id="buildoptions">CMake Build Options</h2>
+
+<ul>
+<li><code>COROUTE_BUILD_EXAMPLES</code> - Build example applications (default: ON)</li>
+<li><code>COROUTE_BUILD_TESTS</code> - Build unit tests (default: ON)</li>
+<li><code>COROUTE_ENABLE_TLS</code> - Enable TLS/SSL support (default: ON)</li>
+<li><code>COROUTE_ENABLE_HTTP2</code> - Enable HTTP/2 support (default: ON)</li>
+<li><code>COROUTE_ENABLE_SIMDJSON</code> - Enable fast JSON parsing (default: ON)</li>
+<li><code>COROUTE_ENABLE_BROTLI</code> - Enable Brotli compression (default: OFF)</li>
 </ul>
 
 <h1 id="socials">Socials</h1>

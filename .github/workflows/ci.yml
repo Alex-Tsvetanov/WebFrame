@@ -1,0 +1,221 @@
+name: CI Build & Test
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build-linux:
+    name: Build on Linux (GCC & Clang)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler:
+          - { cc: gcc-12, cxx: g++-12 }
+          - { cc: clang-15, cxx: clang++-15 }
+        build_type: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libssl-dev \
+          zlib1g-dev \
+          liburing-dev \
+          ${{ matrix.compiler.cc }} \
+          ${{ matrix.compiler.cxx }}
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_C_COMPILER=${{ matrix.compiler.cc }} \
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cxx }} \
+          -DCOROUTE_BUILD_EXAMPLES=ON \
+          -DCOROUTE_BUILD_TESTS=ON \
+          -DCOROUTE_ENABLE_TLS=ON \
+          -DCOROUTE_ENABLE_HTTP2=ON \
+          -DCOROUTE_ENABLE_SIMDJSON=ON
+    
+    - name: Build
+      run: cmake --build build --parallel
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        brew install cmake ninja openssl zlib
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCOROUTE_BUILD_EXAMPLES=ON \
+          -DCOROUTE_BUILD_TESTS=ON \
+          -DCOROUTE_ENABLE_TLS=ON \
+          -DCOROUTE_ENABLE_HTTP2=ON \
+          -DCOROUTE_ENABLE_SIMDJSON=ON \
+          -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl
+    
+    - name: Build
+      run: cmake --build build --parallel
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v1.1
+    
+    - name: Install dependencies
+      run: |
+        choco install cmake ninja openssl zlib
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+          -DCOROUTE_BUILD_EXAMPLES=ON `
+          -DCOROUTE_BUILD_TESTS=ON `
+          -DCOROUTE_ENABLE_TLS=ON `
+          -DCOROUTE_ENABLE_HTTP2=ON `
+          -DCOROUTE_ENABLE_SIMDJSON=ON
+    
+    - name: Build
+      run: cmake --build build --parallel
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+
+  sanitizers:
+    name: Sanitizer Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [address, thread, undefined]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libssl-dev \
+          zlib1g-dev \
+          liburing-dev \
+          clang-15 \
+          llvm-15
+    
+    - name: Configure CMake with Sanitizer
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_C_COMPILER=clang-15 \
+          -DCMAKE_CXX_COMPILER=clang++-15 \
+          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
+          -DCOROUTE_BUILD_EXAMPLES=OFF \
+          -DCOROUTE_BUILD_TESTS=ON \
+          -DCOROUTE_ENABLE_TLS=ON \
+          -DCOROUTE_ENABLE_HTTP2=ON
+    
+    - name: Build
+      run: cmake --build build --parallel
+    
+    - name: Run Tests with Sanitizer
+      run: |
+        cd build
+        ctest --output-on-failure
+      env:
+        ASAN_OPTIONS: detect_leaks=1:symbolize=1
+        UBSAN_OPTIONS: print_stacktrace=1
+
+  static-analysis:
+    name: Static Analysis (cppcheck)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install cppcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cppcheck
+    
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --inconclusive --std=c++20 \
+          --suppress=missingIncludeSystem \
+          --suppress=unusedFunction \
+          -I include/ \
+          src/ include/ \
+          --error-exitcode=1 \
+          --xml --xml-version=2 2> cppcheck-report.xml || true
+    
+    - name: Upload cppcheck report
+      uses: actions/upload-artifact@v3
+      with:
+        name: cppcheck-report
+        path: cppcheck-report.xml
+
+  format-check:
+    name: Code Formatting Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install clang-format
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-format-15
+    
+    - name: Check formatting
+      run: |
+        find include/ src/ examples/ tests/ -name "*.hpp" -o -name "*.cpp" | \
+        xargs clang-format-15 --dry-run --Werror

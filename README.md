@@ -1,225 +1,348 @@
-# <span style="font-size: 2.25em;"> WebFrame++ ![C++](https://img.shields.io/badge/c++-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![Mocha](https://img.shields.io/badge/-mocha-%238D6748?logo=mocha&logoColor=white)<br>[![Compile & Build](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yaml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/compilation.yaml) [![Benchmark & Deploy](https://github.com/cpp-for-everything/WebFrame/actions/workflows/benchmark-and-deploy.yaml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/benchmark-and-deploy.yaml) [![Code Quality](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql-analysis.yml)<br>[![Issues](https://img.shields.io/github/issues/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![Forks](https://img.shields.io/github/forks/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![Stars](https://img.shields.io/github/stars/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![License](https://img.shields.io/github/license/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame)</span>
-### Make your web application faster now!
-<hr>
+# Coroute v2 - Modern C++20 Web Framework
 
-#### Requirements
-| Compiler version  | Minimum C++ standard required |
-|:-----------------:|:-----------------------------:|
-| GCC, Clang, MSVC  | -std=c++2a _or_ -std=c++20    |
-# Testing
-## Cppcheck - static code analysis
-Check the static code analysis of the project [here](https://cpp-for-everything.github.io/WebFrame/codeql_report/).
-## Performance
-Check the performance check of the project [here](https://cpp-for-everything.github.io/WebFrame/benchmark/).
-## Code documentation
-Check the Doxygen documentation of the library [here](https://cpp-for-everything.github.io/WebFrame/docs/).
-# How to use
+![C++](https://img.shields.io/badge/c++20-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=white)
 
-1. Make sure to include the library
+[![CI Build](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml) [![Documentation](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml) [![CodeQL](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml)
 
-    ```cpp
-    #include <core/core.hpp>
-    ```
+[![Issues](https://img.shields.io/github/issues/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame/issues) [![Stars](https://img.shields.io/github/stars/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![License](https://img.shields.io/github/license/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame/blob/master/LICENSE.md)
 
-2. Initiate your Web application
+**High-performance web framework built on C++20 coroutines with HTTP/2, TLS, and WebSocket support**
+## ✨ Features
 
-    ```cpp
-    webframe::core::application app;
-    ``` 
+- 🚀 **C++20 Coroutines** - Natural async/await syntax with `co_await` and `Task<T>`
+- ⚡ **Platform-Optimized I/O** - io_uring (Linux), kqueue (macOS), IOCP (Windows)
+- 🔒 **TLS/SSL Support** - Secure HTTPS via OpenSSL with ALPN
+- 📡 **HTTP/2** - Full HTTP/2 support with server push and stream multiplexing
+- 🔌 **WebSocket** - Bidirectional real-time communication
+- 📝 **Template Engine** - Inja (Jinja2-style) for dynamic HTML rendering
+- 🗜️ **Compression** - Built-in gzip, deflate, and optional Brotli
+- 🎯 **Type-Safe Routing** - Automatic parameter extraction with compile-time type checking
+- 🔧 **Middleware System** - Composable request/response pipeline
+- 📊 **Metrics & Logging** - Built-in performance tracking and structured logging
 
-3. Set directories for your static files
+## 📋 Requirements
 
-    ```cpp
-    app.set_static(relative or absolute path/directory to the static files, web alias); 
-    ```
+| Component | Version |
+|-----------|----------|
+| **Compiler** | GCC 11+, Clang 14+, or MSVC 2022+ |
+| **C++ Standard** | C++20 with coroutine support |
+| **CMake** | 3.20 or higher |
+| **OpenSSL** | 1.1.1+ or 3.0+ (for TLS) |
+| **Platform** | Linux (kernel 5.1+ for io_uring), macOS 10.13+, Windows 10+ |
+## 📚 Documentation & Resources
 
-    Ex. the files are in ``./example/Sample/static`` and the route for them is ``/static``:
+- 📖 **[API Documentation](https://cpp-for-everything.github.io/WebFrame/docs/)** - Full Doxygen documentation
+- 🔍 **[CodeQL Analysis](https://cpp-for-everything.github.io/WebFrame/codeql_report/)** - Security and code quality reports
+- 📊 **[Performance Benchmarks](https://cpp-for-everything.github.io/WebFrame/benchmark/)** - Latest benchmark results
+- 💡 **[Examples](./examples/)** - Complete working examples
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/cpp-for-everything/WebFrame.git
+cd WebFrame
+
+# Build with CMake
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+
+# Run examples
+./build/examples/Samples/hello_world/hello_world
+```
+
+### Hello World Example
+
+```cpp
+#include <coroute/coroute.hpp>
+
+using namespace coroute;
+
+int main() {
+    App app;
     
-    ```cpp
-    app.set_static("./example/Sample/static", "/static"); 
-    ```
+    // Simple GET route
+    app.get("/", [](Request&) -> Task<Response> {
+        co_return Response::ok("<h1>Hello, World!</h1>");
+    });
     
-    _**NOTE:** You can list multiple static folders_
+    // Route with path parameter (automatic type extraction)
+    app.get<std::string>("/user/{name}", [](std::string name, Request&) -> Task<Response> {
+        co_return Response::ok("Hello, " + name + "!");
+    });
+    
+    // Run server on port 8080
+    app.threads(std::thread::hardware_concurrency());
+    app.run(8080);
+    
+    return 0;
+}
+```
 
-    _**NOTE:** Relative paths depend on where you execute the executable from and not on where the source file is located._
+## 📖 Usage Guide
 
-4. Set Inja template folder
-    
-    ```cpp
-    app.set_templates(relative or absolute path/directory to the INJA templates); 
-    ```
-    
-    Ex. the Inja template files are in ``./example/Sample/static/templates``:
-    
-    ```cpp
-    app.set_templates("./example/Sample/static/templates");
-    ```
-    
-    _**NOTE:** You can list multiple template folders_
+### Basic Routing
 
-    _**NOTE:** Relative paths depend on where you execute the executable from and not on where the source file is located._
+```cpp
+App app;
 
-5. Set up error handling
-    - Set the code of the error
-    - Implement the responding function using lambda that takes 1 string as parameter
+// GET request
+app.get("/", [](Request&) -> Task<Response> {
+    co_return Response::html("<h1>Home</h1>");
+});
+
+// POST request
+app.post("/submit", [](Request& req) -> Task<Response> {
+    std::string body = std::string(req.body());
+    co_return Response::ok("Received: " + body);
+});
+
+// Multiple HTTP methods
+app.put("/update/{id}", [](Request& req) -> Task<Response> {
+    size_t id = req.param<size_t>(0).value_or(0);
+    co_return Response::json(R"({"updated": )" + std::to_string(id) + "}");
+});
+```
+
+### Path Parameters with Type Safety
+
+```cpp
+// Single parameter
+app.get<size_t>("/user/{id}", [](size_t id, Request&) -> Task<Response> {
+    co_return Response::ok("User ID: " + std::to_string(id));
+});
+
+// Multiple parameters
+app.get<size_t, size_t>("/user/{uid}/post/{pid}", 
+    [](size_t uid, size_t pid, Request&) -> Task<Response> {
+    nlohmann::json j = {{"user_id", uid}, {"post_id", pid}};
+    co_return Response::json(j.dump());
+});
+
+// String parameters
+app.get<std::string, std::string>("/blog/{category}/{slug}",
+    [](std::string category, std::string slug, Request&) -> Task<Response> {
+    co_return Response::ok("Category: " + category + ", Slug: " + slug);
+});
+```
+
+### Query Parameters
+
+```cpp
+app.get("/search", [](Request& req) -> Task<Response> {
+    // Required parameter
+    auto query = req.query<std::string>("q");
+    if (!query) {
+        co_return Response::bad_request("Missing 'q' parameter");
+    }
     
-        ```cpp
-        app.handle("404", [](const std::string& path) {
-            return "Error 404: " + path + " was not found.";
-        });
-        app.handle("500", [](const std::string& reason) {
-            return "Error 500: Internal server error: " + reason + ".";
-        });
-        ```
+    // Optional parameter with default
+    auto page = req.query_opt<int>("page").value_or(1);
+    auto limit = req.query_opt<int>("limit").value_or(10);
     
-6. Set up your routes
-    * Set up headers and status code yourself
+    nlohmann::json result = {
+        {"query", *query},
+        {"page", page},
+        {"limit", limit}
+    };
     
-        ```cpp
-        app.route ("/", []() {
-            return webframe::core::response (webframe::core::status_line ("1.1", "200"), {{"Content-Type", "text/html; charset=utf-8"}}, "<h1>Hello, World!</h1>");
-        });
-        ```
-    * or let WebFrame do it for you
+    co_return Response::json(result.dump());
+});
+```
+
+### Template Rendering (Inja)
+
+```cpp
+App app;
+
+// Configure template directory
+app.set_templates("./templates");
+
+// Render template with data
+app.get("/profile", [&app](Request&) -> Task<Response> {
+    nlohmann::json data = {
+        {"name", "Alice"},
+        {"email", "alice@example.com"},
+        {"logged_in", true}
+    };
     
-        ```cpp
-        app.route ("/", []() {
-            return "<h1>Hello, World!</h1>";
-        });
-        ```
-    * To render your Jinja templates use ```app.render(filename/file path, json with variables)```
-    * You can also use path/route variables 
-        * using predefined regex
-            ```cpp
-            app.route("/{text}", [&app](const std::string& user) {
-                return app.render("template.html", {{"username", user}});
-            });
-            ```
-            | Predefined | Raw regex equivalent |
-            |:----------:|:--------------------:|
-            | string     | [A-Za-z_%0-9.-]+     |
-            | text       | [A-Za-z_%0-9.-]+     |
-            | char       | [A-Za-z_%0-9.-]      |
-            | symbol     | [A-Za-z_%0-9.-]      |
-            | digit      | [0-9]                |
-            | number     | [0-9.]+              |
-            | path       | [A-Za-z_%0-9.-\/]+   |
+    co_return app.render_html("profile.html", data);
+});
+
+// Add custom template function
+app.add_template_callback("upper", 1, [](inja::Arguments& args) {
+    std::string s = args.at(0)->get<std::string>();
+    for (char& c : s) c = std::toupper(c);
+    return s;
+});
+```
+
+## 🔧 Advanced Features
+
+### Middleware
+
+```cpp
+// Compression middleware
+app.use(compression({.min_size = 256, .level = 6}));
+
+// Custom logging middleware
+app.use([](Request& req, Next next) -> Task<Response> {
+    auto start = std::chrono::steady_clock::now();
+    std::cout << "[REQUEST] " << method_to_string(req.method()) 
+              << " " << req.path() << std::endl;
     
-        * or using your own regex
-            ```cpp
-            app.route("/{[a-z]+}", [&app](const std::string& user) {
-                return app.render("template.html", {{"username", user}});
-            });
-            ```
-7. Make sure to run your app (async run)
+    auto resp = co_await next(req);
     
-    ```cpp
-    app.run(port, cores);
-    ```
-
-## Advanced usage
-1. Stack multiple setups
-
-    You can list different app setups consequently:
+    auto duration = std::chrono::steady_clock::now() - start;
+    std::cout << "[RESPONSE] " << resp.status() << " (" 
+              << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count()
+              << "ms)" << std::endl;
     
-    ```cpp
-    app.set_static("./example/Sample/static", "/static")
-        .set_templates("./example/Sample/static/templates")
-        .handle("404", [](const std::string& path) {
-            return "Error 404: " + path + " was not found.";
-        })
-        .handle("500", [](const std::string& reason) {
-            return "Error 500: Internal server error: " + reason + ".";
-        })
-        .route ("/", []() {
-            return webframe::core::response (webframe::core::status_line ("1.1", "200"), {{"Content-Type", "text/html; charset=utf-8"}}, "<h1>Hello, World!</h1>");
-        });
-    ```
+    co_return resp;
+});
 
-2. Multithreading
-    - Wait until the server starts accepting requests: (sync function)
+// Authentication middleware
+app.use([](Request& req, Next next) -> Task<Response> {
+    auto auth = req.header("Authorization");
+    if (!auth || !validate_token(*auth)) {
+        co_return Response(401, {{"WWW-Authenticate", "Bearer"}}, "Unauthorized");
+    }
+    co_return co_await next(req);
+});
+```
+
+### TLS/HTTPS
+
+```cpp
+AppTlsConfig tls_config{
+    .cert_file = "server.crt",
+    .key_file = "server.key",
+    .alpn_protocols = {"h2", "http/1.1"}  // Enable HTTP/2 negotiation
+};
+
+app.enable_tls(tls_config);
+app.run(443);
+```
+
+### WebSocket
+
+```cpp
+app.ws("/chat", [](WebSocketConnection& ws) -> Task<void> {
+    std::cout << "New WebSocket connection" << std::endl;
     
-        ```cpp
-        app.wait_start(port);
-        ```
+    while (auto msg = co_await ws.receive()) {
+        std::cout << "Received: " << *msg << std::endl;
+        co_await ws.send("Echo: " + *msg);
+    }
     
-        or
-    
-        ```cpp
-        app.run(port, cores).wait_start(port);
-        ```
-    
-    - Wait until the server stops accepting requests: (sync function)
-    
-        ```cpp
-        app.wait_end(port);
-        ```
-    
-        or
-    
-        ```cpp
-        app.run(port, cores).wait_end(port);
-        ```
-    
-3. Set up custom loggers
-    - logger is the stream for standard logs from the server
-    - error_logger is the stream for error messages
-    - perfomancer is the stream for performance logs
+    std::cout << "WebSocket closed" << std::endl;
+});
+```
 
-        ```cpp
-        app.set_logger(ostream&)
-            .set_error_logger(ostream&)
-            .set_performancer(ostream&);		
-        ```
+### HTTP/2
 
-4. Force server stop
+```cpp
+// HTTP/2 is automatically enabled when TLS with ALPN is configured
+app.enable_tls(tls_config);
+app.enable_http2(true);  // Enabled by default with TLS
+app.run(443);
+```
 
-    ```cpp
-    app.request_stop(port);
-    ```
+### Response Builders
 
-    **Note:** _port should be ``const char*``_
+```cpp
+app.get("/custom", [](Request&) -> Task<Response> {
+    co_return ResponseBuilder()
+        .status(200)
+        .header("X-Custom-Header", "value")
+        .header("X-Request-ID", generate_uuid())
+        .content_type("application/json")
+        .body(R"({"status":"ok"})"
+        .build();
+});
+```
 
-5. Organize projects
-    - Create set of routes
+### Graceful Shutdown
 
-        ```cpp
-        init_routes(home)
-            .route("/home", []() {
-                return "This is my home page";
-            });
-        ```
+```cpp
+ShutdownOptions opts{
+    .drain_timeout = std::chrono::seconds(30),
+    .force_close_after_timeout = true
+};
 
-        or if you need to use ``webframe::core::application`` functions
+app.shutdown(opts);
+```
 
-        ```cpp
-        webframe::core::application app;
-        ...
-        init_routes(home)
-            .route("/home", [&app]() {
-                return app.render("template.html", {{"username", user}});
-            });
-        ```
-    
-    - Import the set of routes to your app
+## 🏗️ Building from Source
 
-        ```cpp
-        init_routes(home)
-        ...
-        app.extend_with(home);
-        ```
+### CMake Options
 
-        or if you want to add prefix to the set of routes
+```bash
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCOROUTE_BUILD_EXAMPLES=ON \
+  -DCOROUTE_BUILD_TESTS=ON \
+  -DCOROUTE_ENABLE_TLS=ON \
+  -DCOROUTE_ENABLE_HTTP2=ON \
+  -DCOROUTE_ENABLE_SIMDJSON=ON \
+  -DCOROUTE_ENABLE_BROTLI=OFF
 
-        ```cpp
-        init_routes(home)
-        ...
-        app.extend_with(home, "/prefix");
-        ```
+cmake --build build --parallel
+```
 
-Check [example/](https://github.com/cpp-for-everything/WebFrame/blob/master/example) for more information.
-# Additional info
-- Currently working on setting up ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=while)
+| Option | Default | Description |
+|--------|---------|-------------|
+| `COROUTE_BUILD_EXAMPLES` | ON | Build example applications |
+| `COROUTE_BUILD_TESTS` | ON | Build unit tests |
+| `COROUTE_ENABLE_TLS` | ON | Enable TLS/SSL support |
+| `COROUTE_ENABLE_HTTP2` | ON | Enable HTTP/2 support |
+| `COROUTE_ENABLE_SIMDJSON` | ON | Fast JSON parsing |
+| `COROUTE_ENABLE_BROTLI` | OFF | Brotli compression |
 
-# Socials
+### Running Tests
+
+```bash
+cd build
+ctest --output-on-failure
+```
+
+## 📊 Performance
+
+Coroute achieves high performance through:
+- **Zero-copy I/O** where possible
+- **Platform-native async I/O** (io_uring, kqueue, IOCP)
+- **Efficient coroutine scheduling**
+- **Object pooling** for reduced allocations
+- **HTTP/2 multiplexing** for concurrent requests
+
+See [benchmark results](https://cpp-for-everything.github.io/WebFrame/benchmark/) for detailed performance metrics.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see our contributing guidelines and code of conduct.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📜 License
+
+This project is licensed under the terms specified in [LICENSE.md](LICENSE.md).
+
+## 🔗 Links
+
+- **Documentation**: https://cpp-for-everything.github.io/WebFrame/docs/
+- **Examples**: [./examples/](./examples/)
+- **Issue Tracker**: https://github.com/cpp-for-everything/WebFrame/issues
+## 👤 Author
+
+**Alex Tsvetanov**
+
 [![LinkedIn](https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/alex-tsvetanov/)
+
+---
+
+**Made with ❤️ using C++20 Coroutines**
