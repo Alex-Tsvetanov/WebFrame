@@ -131,6 +131,10 @@ FetchContent_Declare(
     GIT_TAG v3.4.0
     GIT_SHALLOW TRUE
 )
+set(INJA_USE_EMBEDDED_JSON ON CACHE BOOL "" FORCE)
+set(INJA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(INJA_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(inja)
 target_link_libraries(coroute PUBLIC inja)
 target_compile_definitions(coroute PUBLIC COROUTE_HAS_TEMPLATES)
