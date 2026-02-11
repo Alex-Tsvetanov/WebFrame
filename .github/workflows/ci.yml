@@ -13,8 +13,8 @@ jobs:
     strategy:
       matrix:
         compiler:
-          - { cc: gcc-12, cxx: g++-12 }
-          - { cc: clang-15, cxx: clang++-15 }
+          - { cc: gcc-14, cxx: g++-14 }
+          - { cc: clang-18, cxx: clang++-18 }
         build_type: [Debug, Release]
     
     steps:
@@ -147,15 +147,15 @@ jobs:
           libssl-dev \
           zlib1g-dev \
           liburing-dev \
-          clang-15 \
-          llvm-15
+          clang-18 \
+          llvm-18
     
     - name: Configure CMake with Sanitizer
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Debug \
-          -DCMAKE_C_COMPILER=clang-15 \
-          -DCMAKE_CXX_COMPILER=clang++-15 \
+          -DCMAKE_C_COMPILER=clang-18 \
+          -DCMAKE_CXX_COMPILER=clang++-18 \
           -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
           -DCOROUTE_BUILD_EXAMPLES=OFF \
           -DCOROUTE_BUILD_TESTS=ON \
@@ -213,9 +213,9 @@ jobs:
     - name: Install clang-format
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang-format-15
+        sudo apt-get install -y clang-format-18
     
     - name: Check formatting
       run: |
         find include/ src/ examples/ tests/ -name "*.hpp" -o -name "*.cpp" | \
-        xargs clang-format-15 --dry-run --Werror
+        xargs clang-format-18 --dry-run --Werror
