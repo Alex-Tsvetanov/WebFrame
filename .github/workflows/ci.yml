@@ -101,13 +101,12 @@ jobs:
       with:
         submodules: recursive
     
-    - name: Setup MSVC
-      uses: microsoft/setup-msbuild@v1.1
+    - name: Setup Dev Shell
+      uses: ilammy/msvc-dev-cmd@v1
     
     - name: Install dependencies
       run: |
-        choco install openssl
-        vcpkg install zlib:x64-windows
+        vcpkg install zlib:x64-windows openssl:x64-windows
     
     - name: Configure CMake
       run: |
