@@ -106,12 +106,14 @@ jobs:
     
     - name: Install dependencies
       run: |
-        choco install cmake ninja openssl zlib
+        choco install openssl
+        vcpkg install zlib:x64-windows
     
     - name: Configure CMake
       run: |
         cmake -B build -G Ninja `
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
           -DCOROUTE_BUILD_EXAMPLES=ON `
           -DCOROUTE_BUILD_TESTS=ON `
           -DCOROUTE_ENABLE_TLS=ON `
