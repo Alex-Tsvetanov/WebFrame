@@ -15,7 +15,7 @@ namespace coroute {
 	// ============================================================================
 
 	namespace {
-
+#ifndef WIN32
 		std::ostream& operator<<(std::ostream& dest, __int128_t value) {
 			std::ostream::sentry s(dest);
 			if (s) {
@@ -40,6 +40,7 @@ namespace coroute {
 			}
 			return dest;
 		}
+#endif
 
 		// Default MIME types table
 		const std::unordered_map<std::string, std::string_view> default_mime_types = {
