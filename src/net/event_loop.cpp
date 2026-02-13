@@ -2,15 +2,15 @@
 
 // Platform-specific includes
 #if defined(COROUTE_PLATFORM_WINDOWS)
-    // IOCP implementation in iocp/iocp_context.cpp
+// IOCP implementation in iocp/iocp_context.cpp
 #elif defined(COROUTE_PLATFORM_LINUX)
-    // io_uring implementation in io_uring/uring_context.cpp
+// io_uring implementation in io_uring/uring_context.cpp
 #elif defined(COROUTE_PLATFORM_MACOS)
-    // kqueue implementation in kqueue/kqueue_context.cpp
+// kqueue implementation in kqueue/kqueue_context.cpp
 #endif
 
 namespace coroute::net {
 
-// Factory implementations are in platform-specific files
+	// Factory implementations are in platform-specific files
 
-} // namespace coroute::net
+}  // namespace coroute::net

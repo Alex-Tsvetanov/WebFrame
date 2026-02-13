@@ -18,6 +18,8 @@
 #include <memory>
 #include <cstring>
 #include <unordered_map>
+#include <stdexcept>
+#include <string>
 
 namespace coroute::net {
 

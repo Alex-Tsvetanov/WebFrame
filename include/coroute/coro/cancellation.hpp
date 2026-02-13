@@ -8,176 +8,154 @@
 
 namespace coroute {
 
-// Forward declarations
-class CancellationToken;
-class CancellationSource;
+	// Forward declarations
+	class CancellationToken;
+	class CancellationSource;
 
-// ============================================================================
-// CancellationState - Shared state between source and tokens
-// ============================================================================
+	// ============================================================================
+	// CancellationState - Shared state between source and tokens
+	// ============================================================================
 
-namespace detail {
+	namespace detail {
 
-class CancellationState {
-    std::atomic<bool> cancelled_{false};
-    std::mutex mutex_;
-    std::vector<std::function<void()>> callbacks_;
+		class CancellationState {
+			std::atomic<bool> cancelled_{false};
+			std::mutex mutex_;
+			std::vector<std::function<void()>> callbacks_;
 
-public:
-    bool is_cancelled() const noexcept {
-        return cancelled_.load(std::memory_order_acquire);
-    }
+		public:
+			bool is_cancelled() const noexcept { return cancelled_.load(std::memory_order_acquire); }
 
-    bool cancel() noexcept {
-        bool expected = false;
-        if (cancelled_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-            // Successfully cancelled, invoke callbacks
-            std::vector<std::function<void()>> cbs;
-            {
-                std::lock_guard lock(mutex_);
-                cbs = std::move(callbacks_);
-            }
-            for (auto& cb : cbs) {
-                if (cb) cb();
-            }
-            return true;
-        }
-        return false; // Already cancelled
-    }
+			bool cancel() noexcept {
+				bool expected = false;
+				if (cancelled_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+					// Successfully cancelled, invoke callbacks
+					std::vector<std::function<void()>> cbs;
+					{
+						std::lock_guard lock(mutex_);
+						cbs = std::move(callbacks_);
+					}
+					for (auto& cb : cbs) {
+						if (cb) cb();
+					}
+					return true;
+				}
+				return false;  // Already cancelled
+			}
 
-    // Register a callback to be invoked on cancellation
-    // Returns true if registered, false if already cancelled (callback invoked immediately)
-    bool register_callback(std::function<void()> cb) {
-        if (is_cancelled()) {
-            if (cb) cb();
-            return false;
-        }
-        
-        std::lock_guard lock(mutex_);
-        if (cancelled_.load(std::memory_order_acquire)) {
-            if (cb) cb();
-            return false;
-        }
-        callbacks_.push_back(std::move(cb));
-        return true;
-    }
-};
+			// Register a callback to be invoked on cancellation
+			// Returns true if registered, false if already cancelled (callback invoked immediately)
+			bool register_callback(std::function<void()> cb) {
+				if (is_cancelled()) {
+					if (cb) cb();
+					return false;
+				}
 
-} // namespace detail
+				std::lock_guard lock(mutex_);
+				if (cancelled_.load(std::memory_order_acquire)) {
+					if (cb) cb();
+					return false;
+				}
+				callbacks_.push_back(std::move(cb));
+				return true;
+			}
+		};
 
-// ============================================================================
-// CancellationToken - Read-only view of cancellation state
-// ============================================================================
+	}  // namespace detail
 
-class CancellationToken {
-    std::shared_ptr<detail::CancellationState> state_;
+	// ============================================================================
+	// CancellationToken - Read-only view of cancellation state
+	// ============================================================================
 
-    friend class CancellationSource;
-    
-    explicit CancellationToken(std::shared_ptr<detail::CancellationState> state)
-        : state_(std::move(state)) {}
+	class CancellationToken {
+		std::shared_ptr<detail::CancellationState> state_;
 
-public:
-    CancellationToken() = default;
-    CancellationToken(const CancellationToken&) = default;
-    CancellationToken(CancellationToken&&) = default;
-    CancellationToken& operator=(const CancellationToken&) = default;
-    CancellationToken& operator=(CancellationToken&&) = default;
+		friend class CancellationSource;
 
-    // Check if cancellation has been requested
-    bool is_cancelled() const noexcept {
-        return state_ && state_->is_cancelled();
-    }
+		explicit CancellationToken(std::shared_ptr<detail::CancellationState> state) : state_(std::move(state)) {}
 
-    // Implicit conversion to bool (true if NOT cancelled, for easy checks)
-    explicit operator bool() const noexcept {
-        return !is_cancelled();
-    }
+	public:
+		CancellationToken() = default;
+		CancellationToken(const CancellationToken&) = default;
+		CancellationToken(CancellationToken&&) = default;
+		CancellationToken& operator=(const CancellationToken&) = default;
+		CancellationToken& operator=(CancellationToken&&) = default;
 
-    // Check if this token is valid (has associated state)
-    bool valid() const noexcept {
-        return state_ != nullptr;
-    }
+		// Check if cancellation has been requested
+		bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
 
-    // Register a callback to be invoked when cancelled
-    // Callback is invoked immediately if already cancelled
-    void on_cancel(std::function<void()> callback) const {
-        if (state_) {
-            state_->register_callback(std::move(callback));
-        }
-    }
+		// Implicit conversion to bool (true if NOT cancelled, for easy checks)
+		explicit operator bool() const noexcept { return !is_cancelled(); }
 
-    // Create a token that is never cancelled (for operations that don't support cancellation)
-    static CancellationToken none() {
-        return CancellationToken{};
-    }
-};
+		// Check if this token is valid (has associated state)
+		bool valid() const noexcept { return state_ != nullptr; }
 
-// ============================================================================
-// CancellationSource - Controls cancellation
-// ============================================================================
+		// Register a callback to be invoked when cancelled
+		// Callback is invoked immediately if already cancelled
+		void on_cancel(std::function<void()> callback) const {
+			if (state_) {
+				state_->register_callback(std::move(callback));
+			}
+		}
 
-class CancellationSource {
-    std::shared_ptr<detail::CancellationState> state_;
+		// Create a token that is never cancelled (for operations that don't support cancellation)
+		static CancellationToken none() { return CancellationToken{}; }
+	};
 
-public:
-    CancellationSource()
-        : state_(std::make_shared<detail::CancellationState>()) {}
+	// ============================================================================
+	// CancellationSource - Controls cancellation
+	// ============================================================================
 
-    CancellationSource(const CancellationSource&) = default;
-    CancellationSource(CancellationSource&&) = default;
-    CancellationSource& operator=(const CancellationSource&) = default;
-    CancellationSource& operator=(CancellationSource&&) = default;
+	class CancellationSource {
+		std::shared_ptr<detail::CancellationState> state_;
 
-    // Get a token that can be passed to operations
-    CancellationToken token() const {
-        return CancellationToken{state_};
-    }
+	public:
+		CancellationSource() : state_(std::make_shared<detail::CancellationState>()) {}
 
-    // Request cancellation
-    bool cancel() noexcept {
-        return state_ && state_->cancel();
-    }
+		CancellationSource(const CancellationSource&) = default;
+		CancellationSource(CancellationSource&&) = default;
+		CancellationSource& operator=(const CancellationSource&) = default;
+		CancellationSource& operator=(CancellationSource&&) = default;
 
-    // Check if cancellation has been requested
-    bool is_cancelled() const noexcept {
-        return state_ && state_->is_cancelled();
-    }
-};
+		// Get a token that can be passed to operations
+		CancellationToken token() const { return CancellationToken{state_}; }
 
-// ============================================================================
-// RAII guard for automatic cancellation
-// ============================================================================
+		// Request cancellation
+		bool cancel() noexcept { return state_ && state_->cancel(); }
 
-class CancellationGuard {
-    CancellationSource* source_;
+		// Check if cancellation has been requested
+		bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
+	};
 
-public:
-    explicit CancellationGuard(CancellationSource& source) : source_(&source) {}
-    
-    CancellationGuard(const CancellationGuard&) = delete;
-    CancellationGuard& operator=(const CancellationGuard&) = delete;
-    
-    CancellationGuard(CancellationGuard&& other) noexcept : source_(other.source_) {
-        other.source_ = nullptr;
-    }
-    
-    CancellationGuard& operator=(CancellationGuard&& other) noexcept {
-        if (this != &other) {
-            if (source_) source_->cancel();
-            source_ = other.source_;
-            other.source_ = nullptr;
-        }
-        return *this;
-    }
-    
-    ~CancellationGuard() {
-        if (source_) source_->cancel();
-    }
-    
-    void release() noexcept {
-        source_ = nullptr;
-    }
-};
+	// ============================================================================
+	// RAII guard for automatic cancellation
+	// ============================================================================
 
-} // namespace coroute
+	class CancellationGuard {
+		CancellationSource* source_;
+
+	public:
+		explicit CancellationGuard(CancellationSource& source) : source_(&source) {}
+
+		CancellationGuard(const CancellationGuard&) = delete;
+		CancellationGuard& operator=(const CancellationGuard&) = delete;
+
+		CancellationGuard(CancellationGuard&& other) noexcept : source_(other.source_) { other.source_ = nullptr; }
+
+		CancellationGuard& operator=(CancellationGuard&& other) noexcept {
+			if (this != &other) {
+				if (source_) source_->cancel();
+				source_ = other.source_;
+				other.source_ = nullptr;
+			}
+			return *this;
+		}
+
+		~CancellationGuard() {
+			if (source_) source_->cancel();
+		}
+
+		void release() noexcept { source_ = nullptr; }
+	};
+
+}  // namespace coroute

@@ -100,7 +100,7 @@ if(COROUTE_IO_BACKEND STREQUAL "iocp")
     target_sources(coroute PRIVATE src/net/iocp/iocp_context.cpp)
     target_link_libraries(coroute PRIVATE ws2_32 mswsock)
     # Prevent Windows.h from defining min/max macros
-    target_compile_definitions(coroute PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(coroute PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 elseif(COROUTE_IO_BACKEND STREQUAL "io_uring")
     target_sources(coroute PRIVATE src/net/io_uring/uring_context.cpp)
     find_package(PkgConfig REQUIRED)
