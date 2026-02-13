@@ -2,6 +2,7 @@
 % Глава 3: Теоретична основа
 % ============================================================================
 \section{Теоретична основа}
+\label{sec:theoretical_background}
 
 Преди да пристъпим към описание на архитектурата и имплементацията на Coroute, е необходимо да представим теоретичните концепции, върху които е изградена библиотеката. Тази глава обхваща HTTP протоколите, WebSocket, TLS криптирането, C++20 корутините, асинхронния I/O и DFA-базираното маршрутизиране.
 
@@ -70,20 +71,20 @@ HTTP/2 използва фреймове като основна единица 
     
     % Sequential requests
     \fill[blue!60] (0.3, 3.5) rectangle (4.7, 4.3);
-    \node[white, font=\small] at (2.5, 3.9) {Заявка 1};
+    \node[black, font=\small] at (2.5, 3.9) {Заявка 1};
     
     \fill[green!60] (0.3, 2.3) rectangle (4.7, 3.1);
-    \node[white, font=\small] at (2.5, 2.7) {Заявка 2};
+    \node[black, font=\small] at (2.5, 2.7) {Заявка 2};
     
     \fill[orange!60] (0.3, 1.1) rectangle (4.7, 1.9);
-    \node[white, font=\small] at (2.5, 1.5) {Заявка 3};
+    \node[black, font=\small] at (2.5, 1.5) {Заявка 3};
     
     % Arrows showing blocking
-    \draw[->, thick, red] (4.9, 3.9) -- (5.3, 3.9) -- (5.3, 2.75) -- (4.9, 2.75);
+    \draw[<-, thick, red] (4.7, 3.9) -- (5.3, 3.9) -- (5.3, 2.8) -- (4.7, 2.8);
     \node[red, font=\tiny, right] at (5.3, 3.3) {чака};
     
-    \draw[->, thick, red] (4.9, 2.65) -- (5.6, 2.65) -- (5.6, 1.5) -- (4.9, 1.5);
-    \node[red, font=\tiny, right] at (5.6, 2.1) {чака};
+    \draw[<-, thick, red] (4.7, 2.6) -- (5.3, 2.6) -- (5.3, 1.5) -- (4.7, 1.5);
+    \node[red, font=\tiny, right] at (5.3, 2.1) {чака};
     
     % Time arrow
     \draw[->, thick] (0, -0.5) -- (5, -0.5);
@@ -93,7 +94,7 @@ HTTP/2 използва фреймове като основна единица 
     \node[font=\bfseries] at (10.5, 5.5) {HTTP/2};
     
     % Single connection with multiplexing
-    \draw[thick] (7.5, 0) rectangle (13.5, 5);
+    \draw[thick] (6.5, 0) rectangle (14.5, 5);
     \node[font=\small] at (10.5, 4.7) {TCP връзка (мултиплексиране)};
     
     % Interleaved streams
@@ -171,7 +172,7 @@ WebSocket съобщенията се предават като фреймове
     
     % HTTP Upgrade Request
     \draw[->, thick, blue] (0.2, -1.5) -- (9.8, -2.5);
-    \node[font=\small, align=left, fill=white] at (5, -1.5) {
+    \node[font=\small, align=left, fill=white, opacity=0.95, text opacity=1] at (5, -1.5) {
         \begin{tabular}{l}
         GET /chat HTTP/1.1 \\
         Upgrade: websocket \\
@@ -185,7 +186,7 @@ WebSocket съобщенията се предават като фреймове
     
     % HTTP 101 Response
     \draw[->, thick, green!60!black] (9.8, -4.5) -- (0.2, -5.5);
-    \node[font=\small, align=left, fill=white] at (5, -4.5) {
+    \node[font=\small, align=left, fill=white, opacity=0.95, text opacity=1] at (5, -4.5) {
         \begin{tabular}{l}
         HTTP/1.1 101 Switching Protocols \\
         Upgrade: websocket \\
@@ -248,7 +249,7 @@ ALPN е критичен за HTTP/2, тъй като позволява на к
     
     % ClientHello
     \draw[->, thick, blue] (0.2, -1) -- (11.8, -1.8);
-    \node[font=\footnotesize, fill=yellow!20, draw, rounded corners] at (6, -0.8) {
+    \node[font=\footnotesize, fill=blue!20, draw, rounded corners] at (6, -1.25) {
         \begin{tabular}{c}
         ClientHello \\
         \tiny{+ key\_share + ALPN: [h2, http/1.1]}
@@ -257,7 +258,7 @@ ALPN е критичен за HTTP/2, тъй като позволява на к
     
     % ServerHello + Certificate + Finished
     \draw[->, thick, green!60!black] (11.8, -3) -- (0.2, -4.5);
-    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -3.2) {
+    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -3.45) {
         \begin{tabular}{c}
         ServerHello + key\_share \\
         \tiny{+ ALPN: h2}
@@ -265,7 +266,7 @@ ALPN е критичен за HTTP/2, тъй като позволява на к
     };
     
     \draw[->, thick, green!60!black] (11.8, -5) -- (0.2, -5.8);
-    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -5) {
+    \node[font=\footnotesize, fill=green!10, draw, rounded corners] at (6, -5.5) {
         \begin{tabular}{c}
         EncryptedExtensions \\
         Certificate, CertificateVerify, Finished
@@ -274,7 +275,7 @@ ALPN е критичен за HTTP/2, тъй като позволява на к
     
     % Client Finished
     \draw[->, thick, blue] (0.2, -7) -- (11.8, -7.5);
-    \node[font=\footnotesize, fill=blue!10, draw, rounded corners] at (6, -7) {Finished};
+    \node[font=\footnotesize, fill=blue!10, draw, rounded corners] at (6, -7.25) {Finished};
     
     % Encrypted Application Data
     \draw[<->, thick, purple] (0.2, -9) -- (11.8, -9);
@@ -415,6 +416,8 @@ I/O Completion Ports (IOCP) \cite{windowsiocp} е механизмът на Wind
 
 Едно от ключовите предимства на IOCP е неговата мащабируемост. Малък брой нишки (обикновено равен на броя на CPU ядрата) може да обслужва десетки хиляди едновременни връзки. Това е възможно, защото нишките не блокират при отделни I/O операции, а само при чакане за завършени операции.
 
+В Coroute, имплементацията на IOCP използва няколко ключови техники за максимална производителност. За трансфер на файлове се използва нейтив функцията \texttt{TransmitFile}, която позволява директен zero-copy трансфер от файловата система към мрежовия сокет. Използва се и механизма на \texttt{OVERLAPPED} структурите за ефективно проследяване на състоянията на асинхронните операции, което премахва нуждата от сложна синхронизация при обработка на завършените събития.
+
 \subsubsection{io\_uring (Linux)}
 
 io\_uring \cite{iouring2019} е модерен Linux интерфейс за асинхронен I/O, въведен в ядро версия 5.1 (2019). Той е проектиран да замени по-старите интерфейси като epoll и aio, предоставяйки по-висока производителност и по-богата функционалност.
@@ -425,6 +428,8 @@ io\_uring \cite{iouring2019} е модерен Linux интерфейс за а�
 
 io\_uring поддържа и zero-copy операции, при които данните се прехвърлят директно между мрежовия буфер и файловата система, без копиране в потребителското пространство. Това е особено полезно за файлови сървъри и CDN приложения.
 
+Имплементацията на io\_uring в Coroute е проектирана за изключителна производителност чрез архитектура с \textbf{per-thread rings}. Всяка нишка разполага със собствен io\_uring инстанс, което елиминира конкуренцията за заключвания (lock contention) между нишките. При работа като сървър се използва \texttt{SO\_REUSEPORT} за балансиране на входящите връзки директно от ядрото между отделните нишки (\textbf{multi-accept}). Обработката на завършените операции се извършва на партиди (\textbf{batching}), като се използва нейтив функцията \texttt{sendfile} за zero-copy производителност при работа с файлове.
+
 \subsubsection{kqueue (macOS/BSD)}
 
 kqueue \cite{kqueue} е механизъм за event notification, наличен в macOS и BSD операционните системи. Въведен първоначално във FreeBSD 4.1 (2000), kqueue предоставя унифициран интерфейс за наблюдение на различни типове събития.
@@ -433,29 +438,33 @@ kqueue \cite{kqueue} е механизъм за event notification, наличе
 
 Едно от предимствата на kqueue е неговата гъвкавост. За разлика от epoll, който работи само с файлови дескриптори, kqueue може да наблюдава разнообразни типове събития. Това опростява архитектурата на приложения, които трябва да реагират на множество видове асинхронни събития.
 
-kqueue също поддържа edge-triggered и level-triggered режими, подобно на epoll. В edge-triggered режим, събитие се докладва само когато състоянието се промени. В level-triggered режим, събитие се докладва докато условието е изпълнено. Edge-triggered режимът е по-ефективен, но изисква по-внимателно програмиране.
+kqueue също поддържа edge-triggered и level-triggered режими, подобно на epoll. В edge-triggered режим, събитие се докладва само когато състоянието се промени. В level-triggered режим, събитие се докладва докато условието е изпълнено.
 
-Фигура \ref{fig:io-comparison} сравнява архитектурите на IOCP и io\_uring.
+В Coroute, имплементацията на kqueue е оптимизирана за максимална производителност чрез няколко ключови техники. Първо, използва се \textbf{syscall batching}, при който множество регистрации на събития се натрупват в thread-local буфер и се подават на ядрото заедно с извикването за изчакване на нови събития. Това елиминира излишните системни извиквания за всяка асинхронна операция. Второ, използван е \textbf{lock-free} подход за проследяване на чакащите операции чрез \texttt{udata} полето на \texttt{kevent} структурите, което премахва нуждата от глобални заключвания при обработка на събития. Трето, за пренос на файлове се използва нейтив функцията \texttt{sendfile}, която осигурява zero-copy трансфер на данни директно от файловата система към мрежовия сокет.
+
+Фигура \ref{fig:io-comparison} сравнява архитектурите на IOCP, kqueue и io\_uring.
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.75]
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\begin{tikzpicture}[scale=0.55]
     % IOCP Side
-    \node[font=\bfseries] at (3, 6) {IOCP (Windows)};
+    \node[font=\bfseries] at (2.5, 8.5) {IOCP (Windows)};
     
     % Application
-    \node[draw, thick, fill=blue!20, minimum width=5cm, minimum height=0.8cm] (app1) at (3, 5) {Приложение};
+    \node[draw, thick, fill=blue!20, minimum width=4cm, minimum height=0.7cm] (app1) at (2.5, 6.5) {Приложение};
     
     % Worker threads
-    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t1) at (1, 3.5) {Thread 1};
-    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t2) at (3, 3.5) {Thread 2};
-    \node[draw, fill=green!20, minimum width=1cm, minimum height=0.6cm, font=\tiny] (t3) at (5, 3.5) {Thread N};
+    \node[draw, fill=green!20, minimum width=0.8cm, minimum height=0.5cm, font=\tiny] (t1) at (0, 4.5) {Thread 1};
+    \node[draw, fill=green!20, minimum width=0.8cm, minimum height=0.5cm, font=\tiny] (t2) at (2.5, 4.5) {Thread 2};
+    \node[draw, fill=green!20, minimum width=0.8cm, minimum height=0.5cm, font=\tiny] (t3) at (5, 4.5) {Thread N};
     
     % Completion Port
-    \node[draw, thick, fill=orange!30, minimum width=4cm, minimum height=1cm] (cp) at (3, 2) {Completion Port};
+    \node[draw, thick, fill=orange!30, minimum width=3.5cm, minimum height=0.8cm] (cp) at (2.5, 2.5) {Completion Port};
     
     % Kernel
-    \node[draw, thick, fill=gray!20, minimum width=5cm, minimum height=1.2cm] (kernel1) at (3, 0) {Windows Kernel};
+    \node[draw, thick, fill=gray!20, minimum width=4cm, minimum height=1cm] (kernel1) at (2.5, 0) {Windows Kernel};
     
     % Arrows
     \draw[->, thick] (app1) -- (t1);
@@ -465,43 +474,69 @@ kqueue също поддържа edge-triggered и level-triggered режими,
     \draw[<->, thick] (t2) -- (cp);
     \draw[<->, thick] (t3) -- (cp);
     \draw[<->, thick] (cp) -- (kernel1);
-    
-    \node[font=\tiny, gray] at (3, 1) {GetQueuedCompletionStatus()};
-    
-    % io_uring Side
-    \node[font=\bfseries] at (11, 6) {io\_uring (Linux)};
+\end{tikzpicture}
+\caption{IOCP: Completion-based}
+\label{fig:io-iocp}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\begin{tikzpicture}[scale=0.55]
+    % kqueue Side
+    \node[font=\bfseries] at (2.5, 8.5) {kqueue (macOS/BSD)};
     
     % Application
-    \node[draw, thick, fill=blue!20, minimum width=5cm, minimum height=0.8cm] (app2) at (11, 5) {Приложение};
+    \node[draw, thick, fill=blue!20, minimum width=4cm, minimum height=0.7cm] (app3) at (2.5, 6.5) {Приложение};
+    
+    % Buffer
+    \node[draw, fill=yellow!20, minimum width=3.5cm, minimum height=0.5cm, font=\tiny] (buf) at (2.5, 4.5) {Batch Buffer};
+    
+    % kevent
+    \node[draw, thick, fill=orange!30, minimum width=3.5cm, minimum height=0.8cm] (kq) at (2.5, 2.5) {kevent() Queue};
+    
+    % Kernel
+    \node[draw, thick, fill=gray!20, minimum width=4cm, minimum height=1cm] (kernel3) at (2.5, 0) {macOS Kernel};
+    
+    % Arrows
+    \draw[->, thick] (app3) -- (buf);
+    \draw[->, thick] (buf) -- (kq);
+    \draw[->, thick] (kq) -- (kernel3);
+    \draw[->, thick] (kernel3) -- (kq);
+    \draw[->, thick] (kq.west) -- ++(-1, 0) |- (app3.west);
+\end{tikzpicture}
+\caption{kqueue: Event-based}
+\label{fig:io-kqueue}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\begin{tikzpicture}[scale=0.55]
+    % io_uring Side
+    \node[font=\bfseries] at (2.5, 8.5) {io\_uring (Linux)};
+    
+    % Application
+    \node[draw, thick, fill=blue!20, minimum width=4cm, minimum height=0.7cm] (app2) at (2.5, 6.5) {Приложение};
     
     % Ring buffers
-    \node[draw, fill=yellow!30, minimum width=2cm, minimum height=0.8cm, font=\tiny] (sq) at (9.5, 3) {SQ};
-    \node[draw, fill=purple!30, minimum width=2cm, minimum height=0.8cm, font=\tiny] (cq) at (12.5, 3) {CQ};
+    \node[draw, fill=yellow!30, minimum width=1.5cm, minimum height=0.7cm, font=\tiny] (sq) at (0.25, 3.5) {SQ};
+    \node[draw, fill=purple!30, minimum width=1.5cm, minimum height=0.7cm, font=\tiny] (cq) at (4.75, 3.5) {CQ};
     
     % Shared memory indicator
     \draw[<->, dashed, thick, red] (sq) -- (cq);
-    \node[font=\tiny, red] at (11, 3.25) {Споделена памет};
     
     % Kernel
-    \node[draw, thick, fill=gray!20, minimum width=5cm, minimum height=1.2cm] (kernel2) at (11, 0) {Linux Kernel};
+    \node[draw, thick, fill=gray!20, minimum width=4cm, minimum height=1cm] (kernel2) at (2.5, 0) {Linux Kernel};
     
     % Arrows
-    \draw[->, thick, blue] (app2) -- node[left, font=\tiny] {submit} (sq);
-    \draw[->, thick, green!60!black] (cq) -- node[right, font=\tiny] {poll} (app2);
+    \draw[->, thick, blue] (app2) -- (sq);
+    \draw[->, thick, green!60!black] (cq) -- (app2);
     \draw[->, thick] (sq) -- (kernel2);
     \draw[->, thick] (kernel2) -- (cq);
-    
-    \node[font=\tiny, gray] at (11, 1.5) {io\_uring\_enter()};
-    
-    % Legend
-    \node[font=\tiny, align=left] at (3, -1.5) {
-        \textbf{IOCP:} Нишки чакат на completion port
-    };
-    \node[font=\tiny, align=left] at (11, -1.5) {
-        \textbf{io\_uring:} Zero-copy ring buffers, batching
-    };
 \end{tikzpicture}
-\caption{Сравнение на архитектурите на IOCP (Windows) и io\_uring (Linux)}
+\caption{io\_uring: Ring buffers}
+\label{fig:io-iouring}
+\end{subfigure}
+\caption{Сравнение на архитектурите на асинхронния I/O при различните платформи}
 \label{fig:io-comparison}
 \end{figure}
 

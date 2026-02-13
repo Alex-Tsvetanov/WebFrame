@@ -17,7 +17,6 @@
 #include <atomic>
 #include <memory>
 #include <cstring>
-#include <unordered_map>
 #include <stdexcept>
 #include <string>
 
@@ -71,11 +70,8 @@ namespace coroute::net {
 		std::mutex callback_mutex_;
 		std::queue<std::function<void()>> callbacks_;
 
-		// Track pending operations by file descriptor
-		std::mutex ops_mutex_;
-		std::unordered_map<int, KqueueOperation*> read_ops_;
-		std::unordered_map<int, KqueueOperation*> write_ops_;
-		std::unordered_map<int, KqueueOperation*> accept_ops_;
+		// Thread-local buffer for batching kqueue registrations
+		static thread_local std::vector<struct kevent> pending_changes_;
 
 	public:
 		explicit KqueueContext(size_t thread_count) : thread_count_(thread_count) {
@@ -101,35 +97,23 @@ namespace coroute::net {
 
 		int kq() const noexcept { return kq_; }
 
-		// Register operation for a file descriptor
+		// Register operation for a file descriptor using thread-local batching
 		void register_read_op(int fd, KqueueOperation* op) {
-			std::lock_guard lock(ops_mutex_);
-			read_ops_[fd] = op;
-
-			// Add kqueue filter for read events
 			struct kevent ev;
-			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, nullptr);
-			kevent(kq_, &ev, 1, nullptr, 0, nullptr);
+			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, op);
+			pending_changes_.push_back(ev);
 		}
 
 		void register_write_op(int fd, KqueueOperation* op) {
-			std::lock_guard lock(ops_mutex_);
-			write_ops_[fd] = op;
-
-			// Add kqueue filter for write events
 			struct kevent ev;
-			EV_SET(&ev, fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, nullptr);
-			kevent(kq_, &ev, 1, nullptr, 0, nullptr);
+			EV_SET(&ev, fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, op);
+			pending_changes_.push_back(ev);
 		}
 
 		void register_accept_op(int fd, KqueueOperation* op) {
-			std::lock_guard lock(ops_mutex_);
-			accept_ops_[fd] = op;
-
-			// Add kqueue filter for read events (accept uses read)
 			struct kevent ev;
-			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, nullptr);
-			kevent(kq_, &ev, 1, nullptr, 0, nullptr);
+			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, op);
+			pending_changes_.push_back(ev);
 		}
 
 		void run() override {
@@ -176,7 +160,10 @@ namespace coroute::net {
 			struct kevent events[64];
 			struct timespec ts = {0, 100000000};  // 100ms
 
-			int n = kevent(kq_, nullptr, 0, events, 64, &ts);
+			// Submit pending changes and wait for events in a single syscall (Overlap)
+			int n = kevent(kq_, pending_changes_.data(), static_cast<int>(pending_changes_.size()), events, 64, &ts);
+			pending_changes_.clear();
+
 			if (n < 0) {
 				return;
 			}
@@ -184,19 +171,12 @@ namespace coroute::net {
 			for (int i = 0; i < n; ++i) {
 				auto& ev = events[i];
 				int fd = static_cast<int>(ev.ident);
+				KqueueOperation* op = static_cast<KqueueOperation*>(ev.udata);
 
-				KqueueOperation* op = nullptr;
+				if (!op) continue;
 
-				// Check if it's a read/accept event
 				if (ev.filter == EVFILT_READ) {
-					std::lock_guard lock(ops_mutex_);
-
-					// Check accept ops first
-					auto accept_it = accept_ops_.find(fd);
-					if (accept_it != accept_ops_.end()) {
-						op = accept_it->second;
-						accept_ops_.erase(accept_it);
-
+					if (op->type == KqueueOpType::Accept) {
 						// Perform accept
 						op->accept_fd = accept(fd, reinterpret_cast<sockaddr*>(&op->client_addr), &op->client_addr_len);
 						if (op->accept_fd < 0) {
@@ -209,32 +189,7 @@ namespace coroute::net {
 						}
 					} else {
 						// Regular read operation
-						auto read_it = read_ops_.find(fd);
-						if (read_it != read_ops_.end()) {
-							op = read_it->second;
-							read_ops_.erase(read_it);
-
-							// Perform read
-							ssize_t bytes = recv(fd, op->buffer, op->length, 0);
-							if (bytes < 0) {
-								op->error = Error::system(std::error_code(errno, std::system_category()));
-								op->result = -1;
-							} else {
-								op->result = static_cast<int>(bytes);
-							}
-						}
-					}
-				}
-				// Check if it's a write event
-				else if (ev.filter == EVFILT_WRITE) {
-					std::lock_guard lock(ops_mutex_);
-					auto write_it = write_ops_.find(fd);
-					if (write_it != write_ops_.end()) {
-						op = write_it->second;
-						write_ops_.erase(write_it);
-
-						// Perform write
-						ssize_t bytes = send(fd, op->buffer, op->length, 0);
+						ssize_t bytes = recv(fd, op->buffer, op->length, 0);
 						if (bytes < 0) {
 							op->error = Error::system(std::error_code(errno, std::system_category()));
 							op->result = -1;
@@ -242,10 +197,19 @@ namespace coroute::net {
 							op->result = static_cast<int>(bytes);
 						}
 					}
+				} else if (ev.filter == EVFILT_WRITE) {
+					// Perform write
+					ssize_t bytes = send(fd, op->buffer, op->length, 0);
+					if (bytes < 0) {
+						op->error = Error::system(std::error_code(errno, std::system_category()));
+						op->result = -1;
+					} else {
+						op->result = static_cast<int>(bytes);
+					}
 				}
 
 				// Resume the coroutine
-				if (op && op->continuation) {
+				if (op->continuation) {
 					op->continuation.resume();
 				}
 			}
@@ -516,45 +480,36 @@ namespace coroute::net {
 			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
 		}
 
-		if (cancel_token_.is_cancelled()) {
-			co_return unexpected(Error::cancelled());
-		}
-
-		// macOS sendfile has different signature than Linux
-		// Use a simple read/write loop for now
-		// A production implementation could use sendfile with proper offset handling
-
 		size_t total_sent = 0;
-		off_t off = static_cast<off_t>(offset);
-
-		// Set file position
-		if (lseek(file, off, SEEK_SET) < 0) {
-			co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
-		}
-
-		// Read and write in chunks
-		char buf[8192];
 		while (total_sent < length) {
-			size_t to_read = std::min(sizeof(buf), length - total_sent);
-			ssize_t bytes_read = read(file, buf, to_read);
+			if (cancel_token_.is_cancelled()) {
+				co_return unexpected(Error::cancelled());
+			}
 
-			if (bytes_read < 0) {
+			// Use macOS native sendfile for zero-copy transmission
+			off_t len = static_cast<off_t>(length - total_sent);
+			if (sendfile(file, fd_, static_cast<off_t>(offset + total_sent), &len, nullptr, 0) < 0) {
+				if (errno == EAGAIN || errno == EINTR) {
+					// If would block or interrupted, wait for the socket to become writable
+					KqueueOperation op{KqueueOpType::Write};
+					ctx_.register_write_op(fd_, &op);
+					co_await KqueueAwaiter{op};
+					continue;
+				}
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 			}
-			if (bytes_read == 0) {
+
+			if (len == 0) {
 				break;  // EOF
 			}
-
-			auto write_result = co_await async_write_all(buf, bytes_read);
-			if (!write_result) {
-				co_return unexpected(write_result.error());
-			}
-
-			total_sent += bytes_read;
+			total_sent += static_cast<size_t>(len);
 		}
 
 		co_return total_sent;
 	}
+
+	// Definition of thread_local member
+	thread_local std::vector<struct kevent> KqueueContext::pending_changes_;
 
 	// ============================================================================
 	// Factory Functions

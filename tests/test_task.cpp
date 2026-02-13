@@ -207,7 +207,9 @@ TEST_CASE("check_cancellation throws Error::cancelled()", "[task]") {
 
 static Task<Result<int>> return_result_ok() { co_return 42; }
 
-static Task<Result<int>> return_result_error() { co_return unexpected(Error::http(HttpError::NotFound, "not found")); }
+static Task<Result<int>> return_result_error() {
+	co_return coroute::unexpected(Error::http(HttpError::NotFound, "not found"));
+}
 
 TEST_CASE("TaskResult with successful value", "[task]") {
 	auto t = return_result_ok();

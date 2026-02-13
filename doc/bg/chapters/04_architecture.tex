@@ -2,6 +2,7 @@
 % Глава 4: Архитектура на Coroute
 % ============================================================================
 \section{Архитектура на Coroute}
+\label{sec:architecture}
 
 След като разгледахме теоретичните основи в предходната глава, сега ще представим конкретната архитектура на библиотеката Coroute. Тази глава описва модулната структура на библиотеката, жизнения цикъл на HTTP заявките, корутинния модел на изпълнение, middleware системата и платформено-независимия I/O слой.
 
@@ -24,7 +25,7 @@ Coroute е организиран в йерархия от модули, все�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-    box/.style={rectangle, draw, minimum width=3cm, minimum height=1cm, align=center},
+    box/.style={rectangle, draw, minimum width=3.5cm, minimum height=1cm, align=center},
     arrow/.style={->, thick}
 ]
     % Application layer
@@ -81,7 +82,7 @@ Coroute е организиран в йерархия от модули, все�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-    box/.style={draw, thick, rounded corners, minimum width=2cm, minimum height=0.7cm, font=\small},
+    box/.style={draw, thick, rounded corners, minimum width=2.2cm, minimum height=0.7cm, font=\small},
     arrow/.style={->, thick, >=stealth},
     scale=0.85
 ]
