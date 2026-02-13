@@ -4,7 +4,7 @@
 
 namespace project::middleware {
 
-// Creates a middleware that logs all requests
-coroute::Middleware request_logger();
+	// Creates a middleware that logs all requests
+	coroute::Middleware request_logger();
 
-} // namespace project::middleware
+}  // namespace project::middleware
