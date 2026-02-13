@@ -80,6 +80,9 @@ namespace coroute::http2 {
 		explicit Http2Connection(std::unique_ptr<net::Connection> conn);
 		~Http2Connection();
 
+		friend Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(
+		    std::unique_ptr<net::Connection> conn, const Request& upgrade_request);
+
 		// Non-copyable, non-movable
 		Http2Connection(const Http2Connection&) = delete;
 		Http2Connection& operator=(const Http2Connection&) = delete;

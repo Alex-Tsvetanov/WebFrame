@@ -63,13 +63,19 @@ namespace coroute::net {
 		}
 
 		// SNI callback wrapper
-		int sni_callback(SSL* ssl, int* al, void* arg) {
+		int sni_callback_wrapper(SSL* ssl, int* al, void* arg) {
 			auto* ctx = static_cast<TlsContext*>(arg);
 			const char* servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
 			if (servername && ctx) {
-				// TODO: Implement SNI callback dispatch
-				// For now, just accept any hostname
+				const auto& cb = ctx->sni_callback();
+				if (cb) {
+					TlsContext* new_ctx = cb(servername);
+					if (new_ctx && new_ctx->native_handle()) {
+						SSL_set_SSL_CTX(ssl, new_ctx->native_handle());
+						return SSL_TLSEXT_ERR_OK;
+					}
+				}
 			}
 
 			return SSL_TLSEXT_ERR_OK;
@@ -191,7 +197,7 @@ namespace coroute::net {
 		}
 
 		// Enable SNI
-		SSL_CTX_set_tlsext_servername_callback(result.ctx_, sni_callback);
+		SSL_CTX_set_tlsext_servername_callback(result.ctx_, sni_callback_wrapper);
 		SSL_CTX_set_tlsext_servername_arg(result.ctx_, &result);
 
 		return result;

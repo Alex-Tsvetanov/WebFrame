@@ -7,6 +7,42 @@
 namespace coroute::http2 {
 
 	// ============================================================================
+	// Helpers
+	// ============================================================================
+
+	namespace {
+		std::vector<uint8_t> base64url_decode(std::string_view input) {
+			std::vector<uint8_t> out;
+			out.reserve(input.length() * 3 / 4);
+
+			int val = 0;
+			int valb = -8;
+
+			for (unsigned char c : input) {
+				if (c >= 'A' && c <= 'Z')
+					val = (val << 6) | (c - 'A');
+				else if (c >= 'a' && c <= 'z')
+					val = (val << 6) | (c - 'a' + 26);
+				else if (c >= '0' && c <= '9')
+					val = (val << 6) | (c - '0' + 52);
+				else if (c == '-' || c == '+')
+					val = (val << 6) | 62;
+				else if (c == '_' || c == '/')
+					val = (val << 6) | 63;
+				else
+					continue;  // Skip invalid characters (like padding '=')
+
+				valb += 6;
+				if (valb >= 0) {
+					out.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+					valb -= 8;
+				}
+			}
+			return out;
+		}
+	}  // namespace
+
+	// ============================================================================
 	// Connection Settings
 	// ============================================================================
 
@@ -307,11 +343,114 @@ namespace coroute::http2 {
 
 		header_block = payload.subspan(offset, payload.size() - offset - pad_length);
 
-		// TODO: Handle CONTINUATION frames if END_HEADERS is not set
+		// Handle CONTINUATION frames if END_HEADERS is not set
 		if (!header.has_end_headers()) {
-			// For now, we don't support fragmented headers
-			co_await send_goaway(ErrorCode::InternalError, "CONTINUATION not yet supported");
-			co_return unexpected(Error::io(IoError::Unknown, "CONTINUATION not supported"));
+			std::vector<uint8_t> accumulated_headers;
+			accumulated_headers.reserve(header_block.size() + 1024);
+			accumulated_headers.insert(accumulated_headers.end(), header_block.begin(), header_block.end());
+
+			bool end_headers = false;
+			while (!end_headers) {
+				// Read next frame header
+				while (read_buffer_.size() < Constants::FrameHeaderSize) {
+					auto read_result = co_await read_more();
+					if (!read_result || *read_result == 0) {
+						co_await send_goaway(ErrorCode::ProtocolError, "Connection closed pending CONTINUATION");
+						co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+					}
+				}
+
+				auto cont_header_res = FrameHeader::parse(read_buffer_);
+				if (!cont_header_res) {
+					co_await send_goaway(ErrorCode::ProtocolError, "Invalid frame header during CONTINUATION");
+					co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid frame header"));
+				}
+				const auto& cont_header = *cont_header_res;
+
+				// Must be CONTINUATION
+				if (cont_header.type != FrameType::Continuation) {
+					co_await send_goaway(ErrorCode::ProtocolError, "Expected CONTINUATION frame");
+					co_return unexpected(Error::io(IoError::InvalidArgument, "Expected CONTINUATION"));
+				}
+
+				// Must be same stream
+				if (cont_header.stream_id != header.stream_id) {
+					co_await send_goaway(ErrorCode::ProtocolError, "CONTINUATION frame stream ID mismatch");
+					co_return unexpected(Error::io(IoError::InvalidArgument, "CONTINUATION stream mismatch"));
+				}
+
+				// Check size limit
+				if (accumulated_headers.size() + cont_header.length > local_settings_.max_header_list_size) {
+					co_await send_goaway(ErrorCode::ProtocolError, "Header list too large");
+					co_return unexpected(Error::io(IoError::InvalidArgument, "Header list too large"));
+				}
+
+				// Ensure we have the payload
+				size_t frame_size = Constants::FrameHeaderSize + cont_header.length;
+				while (read_buffer_.size() < frame_size) {
+					auto read_result = co_await read_more();
+					if (!read_result || *read_result == 0) {
+						co_await send_goaway(ErrorCode::ProtocolError,
+						                     "Connection closed reading CONTINUATION payload");
+						co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+					}
+				}
+
+				// Append payload
+				const auto* payload_ptr = read_buffer_.data() + Constants::FrameHeaderSize;
+				accumulated_headers.insert(accumulated_headers.end(), payload_ptr, payload_ptr + cont_header.length);
+
+				end_headers = cont_header.has_end_headers();
+
+				// Remove processed frame
+				read_buffer_.erase(read_buffer_.begin(), read_buffer_.begin() + frame_size);
+			}
+
+			// Perform decoding on the accumulated block
+			// We need to use a new span pointing to the vector data
+			auto headers_result = decoder_.decode(accumulated_headers);
+			if (!headers_result) {
+				co_await send_goaway(ErrorCode::CompressionError, "HPACK decode failed");
+				co_return unexpected(headers_result.error());
+			}
+
+			// Validate headers
+			if (!validate_request_headers(*headers_result)) {
+				auto rst = serialize_rst_stream_frame(header.stream_id, ErrorCode::ProtocolError);
+				co_await send_frame(rst);
+				co_return expected<void, Error>{};
+			}
+
+			// Rest of processing (same as non-fragmented case)
+			// ... duplicate code ...
+			// Instead of duplicating, we can use a lambda or shared pointer to headers
+			// But since the original code flows linearly, we can just update header_block
+			// However header_block is a span, and accumulated_headers is a vector that will go out of scope.
+			// So we need to restructure this function slightly.
+
+			// Let's recurse or use a helper? No, coroutine recursion is tricky.
+			// Let's just copy the success path here.
+
+			// Create or get stream
+			auto* stream = get_stream(header.stream_id);
+			if (!stream) {
+				if (header.stream_id <= last_stream_id_) {
+					co_await send_goaway(ErrorCode::ProtocolError, "Stream ID not increasing");
+					co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid stream ID"));
+				}
+				if (active_streams_.load() >= local_settings_.max_concurrent_streams) {
+					auto rst = serialize_rst_stream_frame(header.stream_id, ErrorCode::RefusedStream);
+					co_await send_frame(rst);
+					co_return expected<void, Error>{};
+				}
+				stream = create_stream(header.stream_id);
+				last_stream_id_ = header.stream_id;
+			}
+			stream->receive_headers(std::move(*headers_result), header.has_end_stream());
+			if (stream->is_request_complete() && handler_) {
+				handle_stream_request(header.stream_id).start_detached();
+			}
+			co_return expected<void, Error>{};
 		}
 
 		// Decode headers
@@ -516,6 +655,14 @@ namespace coroute::http2 {
 				co_await send_goaway(ErrorCode::FlowControlError, "Window overflow");
 				co_return unexpected(Error::io(IoError::InvalidArgument, "Window overflow"));
 			}
+
+			// Notify all streams that connection window has increased
+			{
+				std::lock_guard lock(streams_mutex_);
+				for (auto& [id, stream] : streams_) {
+					stream->notify_window_update();
+				}
+			}
 		} else {
 			// Stream-level window update
 			auto* stream = get_stream(header.stream_id);
@@ -664,7 +811,7 @@ namespace coroute::http2 {
 	}
 
 	Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(std::unique_ptr<net::Connection> conn,
-	                                                                         const Request& /*upgrade_request*/) {
+	                                                                         const Request& req) {
 		// Send 101 Switching Protocols response
 		std::string response =
 		    "HTTP/1.1 101 Switching Protocols\r\n"
@@ -680,8 +827,24 @@ namespace coroute::http2 {
 		// Create HTTP/2 connection
 		auto h2_conn = std::make_shared<Http2Connection>(std::move(conn));
 
-		// TODO: Process the HTTP2-Settings header from upgrade request
-		// For now, we use default settings
+		// Process the HTTP2-Settings header from upgrade request
+		if (auto settings_str = req.header("HTTP2-Settings")) {
+			auto settings_data = base64url_decode(*settings_str);
+
+			// Process settings similar to SETTINGS frame
+			for (size_t i = 0; i + 6 <= settings_data.size(); i += 6) {
+				uint16_t id = (static_cast<uint16_t>(settings_data[i]) << 8) | settings_data[i + 1];
+				uint32_t value = (static_cast<uint32_t>(settings_data[i + 2]) << 24) |
+				                 (static_cast<uint32_t>(settings_data[i + 3]) << 16) |
+				                 (static_cast<uint32_t>(settings_data[i + 4]) << 8) |
+				                 static_cast<uint32_t>(settings_data[i + 5]);
+
+				h2_conn->remote_settings_.apply(static_cast<SettingsId>(id), value);
+			}
+
+			// Update encoder if table size changed
+			h2_conn->encoder_.set_max_table_size(h2_conn->remote_settings_.header_table_size);
+		}
 
 		co_return h2_conn;
 	}

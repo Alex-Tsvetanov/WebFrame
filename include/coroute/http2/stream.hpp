@@ -92,12 +92,33 @@ namespace coroute::http2 {
 		// Reset stream with error
 		void reset(ErrorCode error);
 
+		// Notify stream of window update
+		void notify_window_update();
+
 	private:
 		// Send headers frame
 		Task<expected<void, Error>> send_headers(std::span<const Header> headers, bool end_stream);
 
 		// Send data frames (handles flow control and fragmentation)
 		Task<expected<void, Error>> send_data(std::span<const uint8_t> data, bool end_stream);
+
+		struct WindowWaiter {
+			int32_t needed;
+			std::coroutine_handle<> handle;
+		};
+		std::vector<WindowWaiter> window_waiters_;
+
+		struct WindowAwaiter {
+			Stream* stream;
+			int32_t needed;
+			bool await_ready() const noexcept;
+			void await_suspend(std::coroutine_handle<> h) noexcept;
+			void await_resume() const noexcept {}
+		};
+
+		WindowAwaiter wait_for_window(int32_t needed);
+
+	private:
 	};
 
 	// ============================================================================

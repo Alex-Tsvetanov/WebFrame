@@ -26,6 +26,7 @@ add_executable(unit_tests
     http2_tests.cpp
     test_view.cpp
     test_task.cpp
+    test_http2_advanced.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE coroute Catch2::Catch2WithMain)

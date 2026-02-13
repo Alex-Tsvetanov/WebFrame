@@ -85,6 +85,8 @@ namespace coroute::net {
 		// Set SNI callback for virtual hosting
 		void set_sni_callback(SniCallback callback);
 
+		const SniCallback& sni_callback() const { return sni_callback_; }
+
 	private:
 		TlsContext() = default;
 		SSL_CTX* ctx_ = nullptr;

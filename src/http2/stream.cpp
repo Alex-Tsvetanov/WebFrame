@@ -13,7 +13,10 @@ namespace coroute::http2 {
 
 	void Stream::update_local_window(int32_t delta) { local_window_size_ += delta; }
 
-	void Stream::update_remote_window(int32_t delta) { remote_window_size_ += delta; }
+	void Stream::update_remote_window(int32_t delta) {
+		remote_window_size_ += delta;
+		if (delta > 0) notify_window_update();
+	}
 
 	void Stream::receive_headers(std::vector<Header> headers, bool end_stream) {
 		request_headers_ = std::move(headers);
@@ -213,12 +216,30 @@ namespace coroute::http2 {
 			size_t chunk_size = std::min(remaining, static_cast<size_t>(max_frame_size));
 
 			// TODO: Check flow control window and wait if necessary
-			// For now, assume we have enough window
+			// Check flow control window and wait if necessary
+			int32_t needed = static_cast<int32_t>(chunk_size);
+			while (remote_window_size_ < needed || connection_->connection_window_size() < needed) {
+				int32_t available = std::min(remote_window_size_, connection_->connection_window_size());
+				if (available > 0) {
+					// We have some window, send what we can
+					chunk_size = std::min(chunk_size, static_cast<size_t>(available));
+					break;
+				}
+
+				co_await wait_for_window(1);  // Wait for at least 1 byte
+
+				// Re-calculate needed and check if we can proceed
+				needed = static_cast<int32_t>(chunk_size);
+			}
 
 			bool is_last = (offset + chunk_size >= data.size());
 			bool frame_end_stream = end_stream && is_last;
 
 			auto frame = serialize_data_frame(id_, data.subspan(offset, chunk_size), frame_end_stream);
+
+			// Update windows BEFORE sending (decrement)
+			remote_window_size_ -= static_cast<int32_t>(chunk_size);
+			connection_->update_connection_window(-static_cast<int32_t>(chunk_size));
 
 			auto result = co_await connection_->send_frame(frame);
 			if (!result) {
@@ -229,6 +250,32 @@ namespace coroute::http2 {
 		}
 
 		co_return expected<void, Error>{};
+	}
+
+	bool Stream::WindowAwaiter::await_ready() const noexcept {
+		return stream->remote_window_size_ >= needed && stream->connection_->connection_window_size() >= needed;
+	}
+
+	void Stream::WindowAwaiter::await_suspend(std::coroutine_handle<> h) noexcept {
+		stream->window_waiters_.push_back({needed, h});
+	}
+
+	Stream::WindowAwaiter Stream::wait_for_window(int32_t needed) { return WindowAwaiter{this, needed}; }
+
+	void Stream::notify_window_update() {
+		std::vector<WindowWaiter> remaining;
+		remaining.reserve(window_waiters_.size());
+
+		for (auto& waiter : window_waiters_) {
+			// Resume if we have enough window for this waiter, OR if we have ANY window
+			// (because waiters might be waiting for 1 byte just to wake up and check)
+			if (remote_window_size_ >= waiter.needed && connection_->connection_window_size() >= waiter.needed) {
+				waiter.handle.resume();
+			} else {
+				remaining.push_back(waiter);
+			}
+		}
+		window_waiters_ = std::move(remaining);
 	}
 
 }  // namespace coroute::http2
