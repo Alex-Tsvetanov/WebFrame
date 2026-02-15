@@ -27,7 +27,7 @@ public:
 
 	Task<ReadResult> async_read_until(void* buffer, size_t len, char delimiter) override
 	{
-		co_return unexpected(Error::io(IoError::Unknown, "Not implemented"));
+		co_return coroute::unexpected(Error::io(IoError::Unknown, "Not implemented"));
 	}
 
 	Task<WriteResult> async_write(const void* buffer, size_t len) override
@@ -41,7 +41,7 @@ public:
 
 	Task<TransmitResult> async_transmit_file(FileHandle file, size_t offset, size_t length) override
 	{
-		co_return unexpected(Error::io(IoError::Unknown, "Not implemented"));
+		co_return coroute::unexpected(Error::io(IoError::Unknown, "Not implemented"));
 	}
 
 	void close() override { open = false; }
