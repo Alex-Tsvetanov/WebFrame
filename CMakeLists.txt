@@ -29,6 +29,9 @@ elseif(APPLE)
     add_compile_definitions(COROUTE_PLATFORM_MACOS)
 endif()
 
+# Load CorouteApp utility
+include(cmake/CorouteApp.cmake)
+
 message(STATUS "Coroute v${PROJECT_VERSION}")
 message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "I/O Backend: ${COROUTE_IO_BACKEND}")
@@ -270,3 +273,4 @@ if(COROUTE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+

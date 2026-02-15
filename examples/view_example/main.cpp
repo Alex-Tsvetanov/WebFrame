@@ -18,6 +18,7 @@ using namespace coroute;
 
 #include "viewmodels/listing_vm.hpp"
 #include "viewmodels/user_vm.hpp"
+#include "viewmodels/login_vm.hpp"
 
 // ============================================================================
 // HTTP MIDDLEWARE (Transport Layer)
@@ -82,7 +83,7 @@ int main()
 
 		// Configure template engine
 		std::cout << "Setting templates dir..." << std::endl;
-		app.set_templates(source_dir() / "templates");
+		app.set_templates(source_dir() / "templates/web");
 
 		// ========================================================================
 		// HTTP Middleware Registration (runs for ALL routes)
@@ -111,7 +112,7 @@ int main()
 					 std::cout << "Login attempt for user: " << username << std::endl;
 					 for (auto& user : user_db)
 					 {
-						 std::cout << user.first << ": " << user.second.name << std::endl;
+						 std::cout << "DB User: " << user.first << std::endl;
 					 }
 
 					 if (user_db.count(username))
@@ -119,6 +120,7 @@ int main()
 						 // Create session
 						 std::string token = "token_" + username;  // In real app, use secure random
 						 server_sessions[token] = username;
+						 std::cout << "Session created: " << token << " -> " << username << std::endl;
 
 						 // Return success with Set-Cookie
 						 Response resp = Response::json(R"({"status":"ok"})");
@@ -126,6 +128,7 @@ int main()
 						 co_return resp;
 					 }
 
+					 std::cout << "Login failed: Unknown user" << std::endl;
 					 co_return Response::json(R"({"status":"error","message":"Unknown user"})");
 				 });
 
@@ -133,21 +136,46 @@ int main()
 		app.get("/api/user",
 		        [](Request& req) -> Task<Response>
 		        {
-					// Check auth via cookie
-					auto cookie = req.header("Cookie");
-					if (cookie)
+					// Check auth via cookie (case-insensitive)
+					std::string cookie_val;
+					std::cout << "[API] Request Headers:" << std::endl;
+					for (const auto& h : req.headers())
 					{
+						std::cout << "  - " << h.first << ": " << h.second << std::endl;
+						// Simple case-insensitive check
+						std::string k = h.first;
+						std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+						if (k == "cookie")
+						{
+							cookie_val = h.second;
+						}
+					}
+
+					if (!cookie_val.empty())
+					{
+						std::cout << "[API] Found Cookie header: '" << cookie_val << "'" << std::endl;
 						// Parse auth cookie (simplified)
-						auto pos = cookie->find("auth=");
+						auto pos = cookie_val.find("auth=");
 						if (pos != std::string::npos)
 						{
-							std::string token = std::string(cookie->substr(pos + 5));
+							std::string token = std::string(cookie_val.substr(pos + 5));
 							auto semi = token.find(';');
 							if (semi != std::string::npos) token = token.substr(0, semi);
+
+							// Trim whitespace just in case
+							token.erase(token.find_last_not_of(" \n\r\t") + 1);
+
+							std::cout << "[API] Parsed token: '" << token << "'" << std::endl;
+							std::cout << "[API] Active sessions: " << server_sessions.size() << std::endl;
+							for (const auto& s : server_sessions)
+							{
+								std::cout << "  - " << s.first << " -> " << s.second << std::endl;
+							}
 
 							if (server_sessions.count(token))
 							{
 								std::string username = server_sessions[token];
+								std::cout << "[API] Found session for user: " << username << std::endl;
 								if (user_db.count(username))
 								{
 									auto& user = user_db[username];
@@ -181,6 +209,14 @@ int main()
 		// View Routes (Orchestrate data via fetch)
 		// ========================================================================
 
+		// Login View
+		app.view<LoginVm>("/login",
+		                  [](Request&) -> View<LoginVm>
+		                  {
+							  co_return ViewResult<LoginVm>{.templates = ViewTemplates("login.html", "LoginScreen"),
+			                                                .model = LoginVm{}};
+						  });
+
 		// Home view - fetches items from API
 		app.view<ListingVm>("/",
 		                    [&app](Request&) -> View<ListingVm>
@@ -196,8 +232,10 @@ int main()
 								}
 
 								ListingVm vm{.title = "Items from API", .items = std::move(items)};
-								co_return ViewResult<ListingVm>{.templates = ViewTemplates{"listing"},
-			                                                    .model = std::move(vm)};
+								// Web uses "listing.html", Mobile uses "ListingScreen"
+								co_return ViewResult<ListingVm>{
+									.templates = ViewTemplates("listing.html", "ListingScreen"),
+									.model = std::move(vm)};
 							});
 
 		// Profile view - shows current user info
@@ -216,35 +254,49 @@ int main()
 								 vm.greeting = "Welcome back";
 								 vm.logged_in = true;
 							 }
-							 else
+							 else if (resp.status() == 401)
 							 {
 								 vm.name = "Guest";
 								 vm.greeting = "Please log in";
 								 vm.logged_in = false;
 							 }
+							 else
+							 {
+								 // Handle other errors or empty body
+								 vm.name = "Guest (Error)";
+								 vm.greeting = "Error loading profile";
+								 vm.logged_in = false;
+							 }
 
-							 co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
+							 // Web uses "user.html", Mobile uses "UserScreen"
+							 co_return ViewResult<UserVm>{.templates = ViewTemplates("user.html", "UserScreen"),
+			                                              .model = std::move(vm)};
 						 });
 
 		// User detail view with route parameter
 		app.view<UserVm>("/user/{name}",
-		                 [](Request& req, ViewExecutionContext& ctx) -> View<UserVm>
+		                 [](Request& req, ViewExecutionContext& /*ctx*/) -> View<UserVm>
 		                 {
-							 std::string name = req.param<std::string>(0).value_or("Unknown");
+							 expected<std::string, Error> name_param = req.param<std::string>(0);
 
-							 UserVm vm{.name = name, .greeting = "Hello", .logged_in = false};
+							 UserVm vm;
+							 if (!name_param)
+							 {
+								 vm.name = "Unknown";
+								 vm.greeting = "Hello";
+								 vm.logged_in = false;
+								 co_return ViewResult<UserVm>{.templates = ViewTemplates("user.html", "UserScreen"),
+				                                              .model = std::move(vm)};
+							 }
+							 else
+							 {
+								 vm.name = name_param.value();
+								 vm.greeting = "Hello";
+								 vm.logged_in = false;
 
-							 // Debug output
-							 std::cout << "[DEBUG] UserVm created: name=" << vm.name << ", greeting=" << vm.greeting
-									   << ", logged_in=" << vm.logged_in << std::endl;
-
-							 nlohmann::json debug_j;
-							 to_json(debug_j, vm);
-							 std::cout << "[DEBUG] UserVm as JSON: " << debug_j.dump() << std::endl;
-
-							 // Could fetch additional data via app.fetch() here
-
-							 co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
+								 co_return ViewResult<UserVm>{.templates = ViewTemplates("user.html", "UserScreen"),
+				                                              .model = std::move(vm)};
+							 }
 						 });
 
 		// ========================================================================
@@ -259,10 +311,14 @@ int main()
 		std::cout << "  http://localhost:8080/           (home, fetches /api/items)\n";
 		std::cout << "  http://localhost:8080/profile    (profile, fetches /api/user)\n";
 		std::cout << "  http://localhost:8080/user/Bob   (user detail)\n";
-		std::cout << "  curl -X POST 'http://localhost:8080/api/login?user=alice'\n";
 		std::cout << "  http://localhost:8080/api/items  (API endpoint)\n\n";
 
-		app.run(8080);
+#ifdef COROUTE_CLIENT_MODE
+		app.run(RunOptions{.port = 8080, .api_domain = "http://localhost:8080"});
+#else
+		// Server mode - no api_domain
+		app.run(RunOptions{.port = 8080});
+#endif
 	}
 	catch (const std::exception& e)
 	{

@@ -1,13 +1,5 @@
 #pragma once
 
-#include <any>
-#include <atomic>
-#include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <memory>
-#include <mutex>
-#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +12,7 @@
 #include "coroute/net/io_context.hpp"
 #include "coroute/net/websocket.hpp"
 #include "coroute/util/object_pool.hpp"
+#include "coroute/core/fetch_transport.hpp"
 
 #ifdef COROUTE_HAS_TLS
 #include "coroute/net/tls.hpp"
@@ -60,6 +53,16 @@ namespace coroute
 		bool force_close_after_timeout = true;   // Force close remaining connections after timeout
 	};
 
+	// Application run options (unified for server/client)
+	struct RunOptions
+	{
+		// Server mode options
+		uint16_t port = 8080;
+
+		// Client mode options
+		std::string api_domain;  // e.g., "https://api.example.com"
+	};
+
 	// Pre-compiled middleware chain - built once, executed many times
 	class CompiledMiddlewareChain
 	{
@@ -73,8 +76,8 @@ namespace coroute
 			compiled_ = false;
 		}
 
-		bool empty() const noexcept { return middleware_.empty(); }
-		size_t size() const noexcept { return middleware_.size(); }
+		[[nodiscard]] bool empty() const noexcept { return middleware_.empty(); }
+		[[nodiscard]] size_t size() const noexcept { return middleware_.size(); }
 
 		// Execute the chain with a final handler
 		Task<Response> execute(Request& req, const Handler& handler) const
@@ -182,11 +185,9 @@ namespace coroute
 		// Authentication state (for fetch API)
 		std::unique_ptr<AuthState> auth_state_;
 
-#ifdef COROUTE_CLIENT_MODE
 		// Transport for client-mode fetch (HTTP requests to remote server)
 		std::unique_ptr<FetchTransport> fetch_transport_;
 		std::string fetch_base_url_;
-#endif
 
 		// Template engine
 #ifdef COROUTE_HAS_TEMPLATES
@@ -201,8 +202,26 @@ namespace coroute
 #endif
 
 	public:
-		App() = default;
-		~App() = default;
+		App()
+		{
+			if (!instance_)
+			{
+				instance_ = this;
+			}
+		}
+		~App()
+		{
+			if (instance_ == this)
+			{
+				instance_ = nullptr;
+			}
+		}
+
+		// Access the global app instance (for FFI bridge)
+		static App* instance() noexcept { return instance_; }
+
+		// Access IO context (for FFI bridge task dispatch)
+		net::IoContext* io_context() noexcept { return io_ctx_.get(); }
 
 		// Non-copyable, non-movable (due to atomics)
 		App(const App&) = delete;
@@ -306,7 +325,6 @@ namespace coroute
 		AuthState* auth_state() noexcept { return auth_state_.get(); }
 		const AuthState* auth_state() const noexcept { return auth_state_.get(); }
 
-#ifdef COROUTE_CLIENT_MODE
 		/// Set the fetch transport for client mode.
 		/// Required for desktop/mobile builds to make HTTP requests.
 		App& set_fetch_transport(std::unique_ptr<FetchTransport> transport, std::string base_url = "")
@@ -318,7 +336,6 @@ namespace coroute
 
 		/// Get the base URL for fetch requests.
 		const std::string& fetch_base_url() const noexcept { return fetch_base_url_; }
-#endif
 
 		/// Fetch from an internal route with automatic auth propagation.
 		///
@@ -346,22 +363,62 @@ namespace coroute
 				auth_state_->apply(req);
 			}
 
-#ifdef COROUTE_CLIENT_MODE
 			// Client mode: dispatch via HTTP transport to remote server
-			if (!fetch_transport_)
+			// 1. Check View routes (Local UI) - Always prioritize local views
+			Response resp;
+#ifdef COROUTE_HAS_TEMPLATES
+			if (method == HttpMethod::GET)
 			{
-				throw std::runtime_error("fetch() called in client mode without transport configured");
+				auto view_match = router_.match_view(req.path());  // Use path from req to be safe? Or route arg.
+				if (view_match.handler)
+				{
+					req.set_route_params(std::move(view_match.params));
+
+					// Execute view handler
+					try
+					{
+						ViewResultAny view_result = co_await (*view_match.handler)(req);
+
+						// Construct generic view response
+						nlohmann::json json_response;
+						json_response["templates"] = view_result.templates;
+						json_response["model"] = view_result.to_json();
+
+						resp = Response::json(json_response.dump());
+					}
+					catch (const std::exception& e)
+					{
+						resp = Response::internal_error(std::string("View execution error: ") + e.what());
+					}
+
+					if (auth_state_)
+					{
+						auth_state_->observe(resp);
+					}
+					co_return resp;
+				}
 			}
-			Response resp = co_await fetch_transport_->dispatch(req);
-#else
-			// Web/server mode: dispatch in-process through middleware chain
+#endif
+
+			// 2. Client mode: dispatch via HTTP transport to remote server
+			if (fetch_transport_)
+			{
+				resp = co_await fetch_transport_->dispatch(req);
+				// Observe response for auth state updates
+				if (auth_state_)
+				{
+					auth_state_->observe(resp);
+				}
+				co_return resp;
+			}
+
+			// 3. Web/Server mode fallback: Internal Routes
 			auto match = router_.match(method, route);
 			if (match)
 			{
 				req.set_route_params(std::move(match.params));
 			}
-			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
-#endif
+			resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
 
 			// Observe response for auth state updates
 			if (auth_state_)
@@ -422,20 +479,45 @@ namespace coroute
 				auth_state_->apply(req);
 			}
 
-#ifdef COROUTE_CLIENT_MODE
-			if (!fetch_transport_)
+			Response resp;
+			bool handled = false;
+
+			// 1. Client mode: dispatch via HTTP transport to remote server
+			// We prioritize this for API calls in client mode (unified app)
+			if (fetch_transport_)
 			{
-				throw std::runtime_error("fetch() called in client mode without transport configured");
+				resp = co_await fetch_transport_->dispatch(req);
+				handled = true;
 			}
-			Response resp = co_await fetch_transport_->dispatch(req);
-#else
-			auto match = router_.match(method, route);
-			if (match)
+
+			// 2. Try internal routing if not handled (Server mode or no transport)
+			if (!handled && req.path().starts_with("/"))
 			{
-				req.set_route_params(std::move(match.params));
+				auto match = router_.match(req.method(), req.path());
+				if (match)
+				{
+					if (match.params.size() > 0)
+					{
+						req.set_route_params(std::move(match.params));
+					}
+					try
+					{
+						resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
+						handled = true;
+					}
+					catch (const std::exception& e)
+					{
+						resp = Response::internal_error(e.what());
+						handled = true;
+					}
+				}
 			}
-			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
-#endif
+
+			// 3. Fallback: Not Found
+			if (!handled)
+			{
+				resp = Response(404, {}, "Not Found (Internal)");
+			}
 
 			if (auth_state_)
 			{
@@ -556,8 +638,13 @@ namespace coroute
 			return *this;
 		}
 
-		// Run the server (blocking)
-		void run(uint16_t port);
+		// Run the application (blocking)
+		// Server mode: listens on port
+		// Client mode: initializes and waits for shutdown
+		void run(RunOptions options);
+
+		// Convenience for functionality equivalent to server mode
+		void run(uint16_t port) { run(RunOptions{.port = port}); }
 
 		// Run the server (async)
 		Task<void> run_async(uint16_t port);
@@ -684,7 +771,7 @@ namespace coroute
 		}
 
 	public:
-#endif  // coroute_HAS_TEMPLATES
+#endif  // COROUTE_HAS_TEMPLATES
 
 		// Stop the server (immediate)
 		void stop();
@@ -708,18 +795,22 @@ namespace coroute
 		// Parse HTTP request from connection
 		Task<expected<Request, Error>> parse_request(net::Connection& conn);
 
-		// Check if request is a WebSocket upgrade and handle it
-		// Returns true if handled as WebSocket, false if should continue as HTTP
+#ifdef COROUTE_HAS_HTTP2
+		// Handle an HTTP/2 connection
+		Task<void> handle_http2_connection(std::shared_ptr<http2::Http2Connection> conn);
+
+		// Try to upgrade to HTTP/2
+		Task<bool> try_http2_upgrade(std::unique_ptr<net::Connection>& conn, Request& req);
+#endif
+
+		// Try to upgrade to WebSocket
 		Task<bool> try_websocket_upgrade(std::unique_ptr<net::Connection>& conn, Request& req);
 
-		// Check if request is an HTTP/2 upgrade (h2c) and handle it
-		// Returns true if handled as HTTP/2, false if should continue as HTTP/1.1
-#ifdef COROUTE_HAS_HTTP2
-		Task<bool> try_http2_upgrade(std::unique_ptr<net::Connection>& conn, Request& req);
+		// Initialize default transport
+		void ensure_transport();
 
-		// Handle HTTP/2 connection
-		Task<void> handle_http2_connection(std::shared_ptr<http2::Http2Connection> h2_conn);
-#endif
+		// Global singleton instance
+		static App* instance_;
 	};
 
 }  // namespace coroute

@@ -30,6 +30,15 @@ namespace coroute
 			: web(std::move(w)), mobile(std::move(m)), desktop(std::move(d))
 		{
 		}
+
+		/// Construct with Web and Flutter (Mobile/Desktop) templates
+		ViewTemplates(std::string w, std::string flutter)
+			: web(std::move(w)), mobile(std::move(flutter)), desktop(std::move(flutter))
+		{
+		}
+
+		/// Serialization
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE(ViewTemplates, web, mobile, desktop)
 	};
 
 	// ============================================================================

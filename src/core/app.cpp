@@ -9,86 +9,46 @@
 namespace coroute
 {
 
-	void App::run(uint16_t port)
+	// Initialize static instance
+	App* App::instance_ = nullptr;
+
+	void App::run(RunOptions options)
 	{
 		io_ctx_ = net::IoContext::create(thread_count_);
 
-#ifdef COROUTE_HAS_TLS
-		if (tls_enabled_ && tls_ctx_)
+		// Check if we are running in client mode (api_domain is set)
+		if (!options.api_domain.empty())
 		{
-			// TLS mode - use single listener
-			listener_ = net::Listener::create(*io_ctx_);
-			auto result = listener_->listen(port);
-			if (!result)
-			{
-				throw std::runtime_error("Failed to listen: " + result.error().to_string());
-			}
+			// Client mode: Setup fetch transport and wait for shutdown
+			std::cout << "Starting app in CLIENT mode..." << std::endl;
+			fetch_base_url_ = options.api_domain;
+			std::cout << "API Domain: " << fetch_base_url_ << std::endl;
 
-			std::cout << "Server listening on port " << listener_->local_port() << " (HTTPS)" << std::endl;
-			tls_listener_ = std::make_unique<net::TlsListener>(std::move(listener_), *tls_ctx_);
-
-			// TLS accept loop - use start_detached to keep it alive
-			[this]() -> Task<void>
+			// RUN LOOP for Client
+			while (!cancel_source_.is_cancelled() && !shutting_down_.load(std::memory_order_relaxed))
 			{
-				while (!cancel_source_.is_cancelled())
+				// Run the event loop
+				try
 				{
-					auto conn_result = co_await tls_listener_->accept();
-					if (!conn_result)
-					{
-						if (cancel_source_.is_cancelled()) break;
-						std::cerr << "TLS Accept error: " << conn_result.error().to_string() << std::endl;
-						continue;
-					}
-
-#ifdef COROUTE_HAS_HTTP2
-					// Check ALPN negotiated protocol
-					if (http2_enabled_)
-					{
-						auto* tls_conn = dynamic_cast<net::TlsConnection*>(conn_result->get());
-						if (tls_conn)
-						{
-							auto proto = tls_conn->negotiated_protocol();
-							if (proto && *proto == "h2")
-							{
-								// HTTP/2 over TLS - create HTTP/2 connection
-								auto h2_conn = std::make_shared<http2::Http2Connection>(std::move(*conn_result));
-								h2_conn->set_handler(
-									[this](Request& r) -> Task<Response>
-									{
-										auto match = router_.match(r.method(), r.path());
-										if (match)
-										{
-											r.set_route_params(std::move(match.params));
-										}
-										co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
-									});
-								handle_http2_connection(h2_conn).start_detached();
-								continue;
-							}
-						}
-					}
-#endif
-
-					handle_connection(std::move(*conn_result)).start_detached();
+					io_ctx_->run_one();
 				}
-			}()
-							.start_detached();
+				catch (...)
+				{
+				}
+
+				// Sleep briefly to avoid busy wait
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
 		}
 		else
-#endif
 		{
-			// Try to enable multi-accept (SO_REUSEPORT) for better scalability
-			// This must be done BEFORE creating a regular listener
-			bool multi_accept = io_ctx_->enable_multi_accept(port, [this](std::unique_ptr<net::Connection> conn)
-			                                                 { handle_connection(std::move(conn)).start_detached(); });
+			// Server mode
+			uint16_t port = options.port;
 
-			if (multi_accept)
+#ifdef COROUTE_HAS_TLS
+			if (tls_enabled_ && tls_ctx_)
 			{
-				std::cout << "Server listening on port " << port << " (multi-accept enabled)" << std::endl;
-			}
-			else
-			{
-				// Fall back to single-listener accept loop
+				// TLS mode - use single listener
 				listener_ = net::Listener::create(*io_ctx_);
 				auto result = listener_->listen(port);
 				if (!result)
@@ -96,30 +56,121 @@ namespace coroute
 					throw std::runtime_error("Failed to listen: " + result.error().to_string());
 				}
 
-				std::cout << "Server listening on port " << listener_->local_port() << std::endl;
+				std::cout << "Server listening on port " << listener_->local_port() << " (HTTPS)" << std::endl;
+				tls_listener_ = std::make_unique<net::TlsListener>(std::move(listener_), *tls_ctx_);
 
-				// Plain HTTP accept loop - use start_detached to keep it alive
+				// TLS accept loop - use start_detached to keep it alive
 				[this]() -> Task<void>
 				{
 					while (!cancel_source_.is_cancelled())
 					{
-						auto conn_result = co_await listener_->async_accept();
+						auto conn_result = co_await tls_listener_->accept();
 						if (!conn_result)
 						{
-							if (cancel_source_.is_cancelled()) break;
-							std::cerr << "Accept error: " << conn_result.error().to_string() << std::endl;
+							if (cancel_source_.is_cancelled())
+							{
+								break;
+							}
+							std::cerr << "TLS Accept error: " << conn_result.error().to_string() << std::endl;
 							continue;
 						}
+
+#ifdef COROUTE_HAS_HTTP2
+						// Check ALPN negotiated protocol
+						if (http2_enabled_)
+						{
+							auto* tls_conn = dynamic_cast<net::TlsConnection*>(conn_result->get());
+							if (tls_conn)
+							{
+								auto proto = tls_conn->negotiated_protocol();
+								if (proto && *proto == "h2")
+								{
+									// HTTP/2 over TLS - create HTTP/2 connection
+									auto h2_conn = std::make_shared<http2::Http2Connection>(std::move(*conn_result));
+									h2_conn->set_handler(
+										[this](Request& r) -> Task<Response>
+										{
+											auto match = router_.match(r.method(), r.path());
+											if (match)
+											{
+												r.set_route_params(std::move(match.params));
+											}
+											co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
+										});
+									handle_http2_connection(h2_conn).start_detached();
+									continue;
+								}
+							}
+						}
+#endif
 
 						handle_connection(std::move(*conn_result)).start_detached();
 					}
 				}()
 								.start_detached();
 			}
-		}
+			else
+#endif
+			{
+				// Try to enable multi-accept (SO_REUSEPORT) for better scalability
+				// This must be done BEFORE creating a regular listener
+				bool multi_accept =
+					io_ctx_->enable_multi_accept(port, [this](std::unique_ptr<net::Connection> conn)
+				                                 { handle_connection(std::move(conn)).start_detached(); });
 
-		// Run the event loop
-		io_ctx_->run();
+				if (multi_accept)
+				{
+					std::cout << "Server listening on port " << port << " (multi-accept enabled)" << std::endl;
+				}
+				else
+				{
+					// Fallback to single-listener accept loop
+					listener_ = net::Listener::create(*io_ctx_);
+					auto result = listener_->listen(port);
+					if (!result)
+					{
+						throw std::runtime_error("Failed to listen: " + result.error().to_string());
+					}
+
+					std::cout << "Server listening on port " << listener_->local_port() << std::endl;
+
+					// Plain HTTP accept loop - use start_detached to keep it alive
+					[this]() -> Task<void>
+					{
+						while (!cancel_source_.is_cancelled())
+						{
+							auto conn_result = co_await listener_->async_accept();
+							if (!conn_result)
+							{
+								if (cancel_source_.is_cancelled())
+								{
+									break;
+								}
+								std::cerr << "Accept error: " << conn_result.error().to_string() << std::endl;
+								continue;
+							}
+
+							handle_connection(std::move(*conn_result)).start_detached();
+						}
+					}()
+									.start_detached();
+				}
+			}
+
+			// Flush initial accept registration (created on main thread)
+			// This is necessary because KqueueContext uses thread-local pending changes,
+			// and the initial async_accept runs on main thread, while io_ctx->run() spawns workers.
+			try
+			{
+				io_ctx_->run_one();
+			}
+			catch (...)
+			{
+			}
+
+			// Run the event loop
+			io_ctx_->run();
+		}
 	}
 
 	Task<void> App::run_async(uint16_t port)

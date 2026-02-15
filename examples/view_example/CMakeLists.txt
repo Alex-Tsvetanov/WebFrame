@@ -1,2 +1,4 @@
-add_executable(view_example main.cpp)
-target_link_libraries(view_example PRIVATE coroute)
+add_coroute_app(view_example 
+    SOURCES main.cpp
+    PLATFORMS Mobile Desktop Web
+)

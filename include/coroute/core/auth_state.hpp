@@ -188,18 +188,4 @@ namespace coroute
 		std::optional<std::string> bearer_token_;
 	};
 
-	// ============================================================================
-	// FetchTransport - Interface for fetch transport
-	// ============================================================================
-
-	class FetchTransport
-	{
-	public:
-		virtual ~FetchTransport() = default;
-
-		/// Dispatch a request and return a response.
-		/// Implementations may route in-process or over HTTP.
-		virtual Task<Response> dispatch(Request& req) = 0;
-	};
-
 }  // namespace coroute

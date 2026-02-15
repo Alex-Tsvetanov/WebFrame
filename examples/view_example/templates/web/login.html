@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Login - Coroute</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <!-- Assuming style.css exists, or inline styles -->
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+        }
+
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 300px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+        <div id="error-msg" class="error"></div>
+        <form id="login-form">
+            <input type="text" id="username" name="user" placeholder="Username (e.g. alice)" required>
+            <button type="submit">Sign In</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            // Ensure URLSearchParams handles space/special chars encoding
+            const params = new URLSearchParams({ user: username });
+
+            try {
+                const response = await fetch('/api/login?' + params.toString(), {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    window.location.href = '/profile';
+                } else {
+                    const err = document.getElementById('error-msg');
+                    err.textContent = data.message || 'Login failed';
+                    err.style.display = 'block';
+                }
+            } catch (ex) {
+                console.error(ex);
+            }
+        });
+    </script>
+</body>
+
+</html>
