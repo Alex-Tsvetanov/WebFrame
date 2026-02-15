@@ -3,9 +3,11 @@
 #include <chrono>
 #include <algorithm>
 
-namespace project::services {
+namespace project::services
+{
 
-	TaskService::TaskService(handlers::websocket::TaskHub& hub) : hub_(hub) {
+	TaskService::TaskService(handlers::websocket::TaskHub& hub) : hub_(hub)
+	{
 		// Create some demo tasks
 		models::CreateTaskRequest demo1{.title = "Welcome to Task Dashboard", .description = "This is a demo task"};
 		models::CreateTaskRequest demo2{.title = "Try creating a new task", .description = "Click the + button"};
@@ -16,7 +18,8 @@ namespace project::services {
 		create(demo3, 1);
 	}
 
-	models::Task TaskService::create(const models::CreateTaskRequest& req, int64_t created_by) {
+	models::Task TaskService::create(const models::CreateTaskRequest& req, int64_t created_by)
+	{
 		models::Task task;
 		{
 			std::lock_guard lock(mutex_);
@@ -41,23 +44,27 @@ namespace project::services {
 		return task;
 	}
 
-	std::optional<models::Task> TaskService::find(int64_t id) {
+	std::optional<models::Task> TaskService::find(int64_t id)
+	{
 		std::lock_guard lock(mutex_);
 
 		auto it = tasks_.find(id);
-		if (it == tasks_.end()) {
+		if (it == tasks_.end())
+		{
 			return std::nullopt;
 		}
 		return it->second;
 	}
 
-	std::vector<models::Task> TaskService::list(const models::TaskFilter& filter) {
+	std::vector<models::Task> TaskService::list(const models::TaskFilter& filter)
+	{
 		std::lock_guard lock(mutex_);
 
 		std::vector<models::Task> result;
 		result.reserve(tasks_.size());
 
-		for (const auto& [id, task] : tasks_) {
+		for (const auto& [id, task] : tasks_)
+		{
 			// Apply filters
 			if (filter.status && task.status != *filter.status) continue;
 			if (filter.user_id && task.user_id != *filter.user_id) continue;
@@ -71,23 +78,27 @@ namespace project::services {
 		          [](const auto& a, const auto& b) { return a.created_at > b.created_at; });
 
 		// Apply pagination
-		if (filter.offset > 0 && static_cast<size_t>(filter.offset) < result.size()) {
+		if (filter.offset > 0 && static_cast<size_t>(filter.offset) < result.size())
+		{
 			result.erase(result.begin(), result.begin() + filter.offset);
 		}
-		if (filter.limit > 0 && static_cast<size_t>(filter.limit) < result.size()) {
+		if (filter.limit > 0 && static_cast<size_t>(filter.limit) < result.size())
+		{
 			result.resize(filter.limit);
 		}
 
 		return result;
 	}
 
-	std::optional<models::Task> TaskService::update(int64_t id, const models::UpdateTaskRequest& req) {
+	std::optional<models::Task> TaskService::update(int64_t id, const models::UpdateTaskRequest& req)
+	{
 		models::Task task_copy;
 		{
 			std::lock_guard lock(mutex_);
 
 			auto it = tasks_.find(id);
-			if (it == tasks_.end()) {
+			if (it == tasks_.end())
+			{
 				return std::nullopt;
 			}
 
@@ -109,12 +120,14 @@ namespace project::services {
 		return task_copy;
 	}
 
-	bool TaskService::remove(int64_t id) {
+	bool TaskService::remove(int64_t id)
+	{
 		{
 			std::lock_guard lock(mutex_);
 
 			auto it = tasks_.find(id);
-			if (it == tasks_.end()) {
+			if (it == tasks_.end())
+			{
 				return false;
 			}
 
@@ -126,14 +139,17 @@ namespace project::services {
 		return true;
 	}
 
-	TaskService::Stats TaskService::get_stats() {
+	TaskService::Stats TaskService::get_stats()
+	{
 		std::lock_guard lock(mutex_);
 
 		Stats stats;
 		stats.total = static_cast<int>(tasks_.size());
 
-		for (const auto& [id, task] : tasks_) {
-			switch (task.status) {
+		for (const auto& [id, task] : tasks_)
+		{
+			switch (task.status)
+			{
 				case models::TaskStatus::Pending:
 					stats.pending++;
 					break;
@@ -149,7 +165,8 @@ namespace project::services {
 		return stats;
 	}
 
-	void TaskService::broadcast_created(const models::Task& task) {
+	void TaskService::broadcast_created(const models::Task& task)
+	{
 		nlohmann::json msg;
 		msg["type"] = "task_created";
 		msg["data"] = task.to_json();
@@ -158,7 +175,8 @@ namespace project::services {
 		hub_.broadcast(json_str);
 	}
 
-	void TaskService::broadcast_updated(const models::Task& task) {
+	void TaskService::broadcast_updated(const models::Task& task)
+	{
 		nlohmann::json msg;
 		msg["type"] = "task_updated";
 		msg["data"] = task.to_json();
@@ -167,7 +185,8 @@ namespace project::services {
 		hub_.broadcast(json_str);
 	}
 
-	void TaskService::broadcast_deleted(int64_t id) {
+	void TaskService::broadcast_deleted(int64_t id)
+	{
 		nlohmann::json msg;
 		msg["type"] = "task_deleted";
 		msg["data"]["id"] = id;

@@ -20,13 +20,13 @@ TEST_CASE("Response factory methods", "[response]")
 		// Check Content-Type header
 		bool found_content_type = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "Content-Type" && v == "application/json")
 			{
-				if (k == "Content-Type" && v == "application/json")
-					{
-						found_content_type = true;
-						break;
-					}
+				found_content_type = true;
+				break;
 			}
+		}
 		REQUIRE(found_content_type);
 	}
 
@@ -56,13 +56,13 @@ TEST_CASE("Response factory methods", "[response]")
 
 		bool found_location = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "Location" && v == "/new-location")
 			{
-				if (k == "Location" && v == "/new-location")
-					{
-						found_location = true;
-						break;
-					}
+				found_location = true;
+				break;
 			}
+		}
 		REQUIRE(found_location);
 	}
 }
@@ -92,13 +92,13 @@ TEST_CASE("ResponseBuilder", "[response]")
 
 		bool found_custom = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "X-Custom" && v == "value")
 			{
-				if (k == "X-Custom" && v == "value")
-					{
-						found_custom = true;
-						break;
-					}
+				found_custom = true;
+				break;
 			}
+		}
 		REQUIRE(found_custom);
 	}
 
@@ -108,13 +108,13 @@ TEST_CASE("ResponseBuilder", "[response]")
 
 		bool found_ct = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "Content-Type" && v == "text/html")
 			{
-				if (k == "Content-Type" && v == "text/html")
-					{
-						found_ct = true;
-						break;
-					}
+				found_ct = true;
+				break;
 			}
+		}
 		REQUIRE(found_ct);
 	}
 
@@ -124,13 +124,13 @@ TEST_CASE("ResponseBuilder", "[response]")
 
 		bool found_json_ct = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "Content-Type" && v == "application/json")
 			{
-				if (k == "Content-Type" && v == "application/json")
-					{
-						found_json_ct = true;
-						break;
-					}
+				found_json_ct = true;
+				break;
 			}
+		}
 		REQUIRE(found_json_ct);
 	}
 
@@ -140,13 +140,13 @@ TEST_CASE("ResponseBuilder", "[response]")
 
 		bool found_cl = false;
 		for (const auto& [k, v] : resp.headers())
+		{
+			if (k == "Content-Length" && v == "5")
 			{
-				if (k == "Content-Length" && v == "5")
-					{
-						found_cl = true;
-						break;
-					}
+				found_cl = true;
+				break;
 			}
+		}
 		REQUIRE(found_cl);
 	}
 }

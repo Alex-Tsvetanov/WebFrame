@@ -83,17 +83,17 @@ namespace coroute::net
 		~WorkerRing()
 		{
 			if (listen_fd >= 0)
-				{
-					::close(listen_fd);
-				}
+			{
+				::close(listen_fd);
+			}
 			if (initialized)
+			{
+				if (eventfd >= 0)
 				{
-					if (eventfd >= 0)
-						{
-							::close(eventfd);
-						}
-					io_uring_queue_exit(&ring);
+					::close(eventfd);
 				}
+				io_uring_queue_exit(&ring);
+			}
 		}
 
 		// Non-copyable, non-movable
@@ -107,16 +107,16 @@ namespace coroute::net
 			// SQPOLL can hurt performance for this workload, use regular mode
 			int ret = io_uring_queue_init_params(8192, &ring, &params);
 			if (ret < 0)
-				{
-					return false;
-				}
+			{
+				return false;
+			}
 
 			eventfd = ::eventfd(0, EFD_NONBLOCK);
 			if (eventfd < 0)
-				{
-					io_uring_queue_exit(&ring);
-					return false;
-				}
+			{
+				io_uring_queue_exit(&ring);
+				return false;
+			}
 
 			initialized = true;
 			return true;
@@ -138,18 +138,18 @@ namespace coroute::net
 			addr.sin_port = htons(port);
 
 			if (bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
-				{
-					::close(listen_fd);
-					listen_fd = -1;
-					return false;
-				}
+			{
+				::close(listen_fd);
+				listen_fd = -1;
+				return false;
+			}
 
 			if (::listen(listen_fd, backlog) < 0)
-				{
-					::close(listen_fd);
-					listen_fd = -1;
-					return false;
-				}
+			{
+				::close(listen_fd);
+				listen_fd = -1;
+				return false;
+			}
 
 			return true;
 		}
@@ -157,10 +157,10 @@ namespace coroute::net
 		void wake()
 		{
 			if (eventfd >= 0)
-				{
-					uint64_t val = 1;
-					::write(eventfd, &val, sizeof(val));
-				}
+			{
+				uint64_t val = 1;
+				::write(eventfd, &val, sizeof(val));
+			}
 		}
 	};
 
@@ -197,14 +197,14 @@ namespace coroute::net
 			// Create per-thread rings
 			rings_.reserve(thread_count_);
 			for (size_t i = 0; i < thread_count_; ++i)
+			{
+				auto ring = std::make_unique<WorkerRing>();
+				if (!ring->init())
 				{
-					auto ring = std::make_unique<WorkerRing>();
-					if (!ring->init())
-						{
-							throw std::runtime_error("Failed to initialize io_uring ring " + std::to_string(i));
-						}
-					rings_.push_back(std::move(ring));
+					throw std::runtime_error("Failed to initialize io_uring ring " + std::to_string(i));
 				}
+				rings_.push_back(std::move(ring));
+			}
 		}
 
 		~UringContext() override
@@ -212,12 +212,12 @@ namespace coroute::net
 			stop();
 
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 		}
 
 		size_t ring_count() const noexcept { return rings_.size(); }
@@ -235,21 +235,21 @@ namespace coroute::net
 		{
 			// Create SO_REUSEPORT listeners on all rings
 			for (auto& ring : rings_)
+			{
+				if (!ring->create_listener(port, backlog))
 				{
-					if (!ring->create_listener(port, backlog))
+					// Clean up on failure
+					for (auto& r : rings_)
+					{
+						if (r->listen_fd >= 0)
 						{
-							// Clean up on failure
-							for (auto& r : rings_)
-								{
-									if (r->listen_fd >= 0)
-										{
-											::close(r->listen_fd);
-											r->listen_fd = -1;
-										}
-								}
-							return false;
+							::close(r->listen_fd);
+							r->listen_fd = -1;
 						}
+					}
+					return false;
 				}
+			}
 
 			connection_handler_ = std::move(handler);
 			listen_port_ = port;
@@ -267,9 +267,9 @@ namespace coroute::net
 			auto* worker_ring = rings_[ring_index % rings_.size()].get();
 			io_uring_sqe* sqe = io_uring_get_sqe(&worker_ring->ring);
 			if (!sqe)
-				{
-					return false;
-				}
+			{
+				return false;
+			}
 			prep_func(sqe);
 			io_uring_sqe_set_data(sqe, op);
 			op->ring_index = ring_index;
@@ -290,18 +290,18 @@ namespace coroute::net
 
 			// Start one worker thread per ring
 			for (size_t i = 0; i < thread_count_; ++i)
-				{
-					workers_.emplace_back([this, i] { worker_loop(i); });
-				}
+			{
+				workers_.emplace_back([this, i] { worker_loop(i); });
+			}
 
 			// Wait for all workers
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 		}
 
 		void run_one() override { poll_and_resume(0); }
@@ -312,9 +312,9 @@ namespace coroute::net
 
 			// Wake up all worker threads
 			for (auto& ring : rings_)
-				{
-					ring->wake();
-				}
+			{
+				ring->wake();
+			}
 		}
 
 		bool stopped() const noexcept override { return stopped_; }
@@ -328,19 +328,19 @@ namespace coroute::net
 
 			// Wake up ring 0 to process callbacks
 			if (!rings_.empty())
-				{
-					rings_[0]->wake();
-				}
+			{
+				rings_[0]->wake();
+			}
 		}
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
 		{
 			std::thread(
 				[this, delay, cb = std::move(callback)]() mutable
-					{
-						std::this_thread::sleep_for(delay);
-						post(std::move(cb));
-					})
+				{
+					std::this_thread::sleep_for(delay);
+					post(std::move(cb));
+				})
 				.detach();
 		}
 
@@ -352,20 +352,20 @@ namespace coroute::net
 		{
 			// Start accept loop if multi-accept is enabled
 			if (multi_accept_enabled_ && rings_[ring_index]->listen_fd >= 0)
-				{
-					accept_loop(ring_index).start_detached();
-				}
+			{
+				accept_loop(ring_index).start_detached();
+			}
 
 			while (!stopped_)
-				{
-					poll_and_resume(ring_index);
+			{
+				poll_and_resume(ring_index);
 
-					// Only ring 0 processes callbacks
-					if (ring_index == 0)
-						{
-							process_callbacks();
-						}
+				// Only ring 0 processes callbacks
+				if (ring_index == 0)
+				{
+					process_callbacks();
 				}
+			}
 		}
 
 		void poll_and_resume(size_t ring_index)
@@ -380,9 +380,9 @@ namespace coroute::net
 
 			int ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
 			if (ret == -ETIME || ret < 0)
-				{
-					return;
-				}
+			{
+				return;
+			}
 
 			// Process all available completions in batch
 			unsigned head;
@@ -391,19 +391,19 @@ namespace coroute::net
 			{
 				auto* op = static_cast<UringOperation*>(io_uring_cqe_get_data(cqe));
 				if (op)
+				{
+					op->result = cqe->res;
+					if (cqe->res < 0)
 					{
-						op->result = cqe->res;
-						if (cqe->res < 0)
-							{
-								op->error = Error::system(std::error_code(-cqe->res, std::system_category()));
-							}
-
-						// Resume coroutine inline
-						if (op->continuation)
-							{
-								op->continuation.resume();
-							}
+						op->error = Error::system(std::error_code(-cqe->res, std::system_category()));
 					}
+
+					// Resume coroutine inline
+					if (op->continuation)
+					{
+						op->continuation.resume();
+					}
+				}
 				processed++;
 				if (processed >= 512) break;  // Limit batch size
 			}
@@ -413,19 +413,19 @@ namespace coroute::net
 		void process_callbacks()
 		{
 			for (int i = 0; i < 32; ++i)
+			{
+				std::function<void()> callback;
 				{
-					std::function<void()> callback;
-					{
-						std::lock_guard lock(callback_mutex_);
-						if (callbacks_.empty()) return;
-						callback = std::move(callbacks_.front());
-						callbacks_.pop();
-					}
-					if (callback)
-						{
-							callback();
-						}
+					std::lock_guard lock(callback_mutex_);
+					if (callbacks_.empty()) return;
+					callback = std::move(callbacks_.front());
+					callbacks_.pop();
 				}
+				if (callback)
+				{
+					callback();
+				}
+			}
 		}
 	};
 
@@ -448,9 +448,9 @@ namespace coroute::net
 		{
 			listen_fd_ = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
 			if (listen_fd_ < 0)
-				{
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			// Set SO_REUSEADDR
 			int opt = 1;
@@ -463,19 +463,19 @@ namespace coroute::net
 			addr.sin_port = htons(port);
 
 			if (bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			// Listen
 			if (::listen(listen_fd_, backlog) < 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			// Get actual port
 			sockaddr_in bound_addr{};
@@ -494,10 +494,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (listen_fd_ >= 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+			}
 		}
 
 		bool is_listening() const noexcept override { return listen_fd_ >= 0; }
@@ -542,10 +542,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (fd_ >= 0)
-				{
-					::close(fd_);
-					fd_ = -1;
-				}
+			{
+				::close(fd_);
+				fd_ = -1;
+			}
 		}
 
 		bool is_open() const noexcept override { return fd_ >= 0; }
@@ -568,38 +568,35 @@ namespace coroute::net
 	Task<AcceptResult> UringListener::async_accept()
 	{
 		if (!is_listening())
-			{
-				co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
+		}
 
 		UringOperation op{UringOpType::Accept};
 		int fd = listen_fd_;
 
 		// Submit accept to ring 0
 		bool submitted = ctx_.submit_sqe(
-			0, &op,
-			[fd, &op](io_uring_sqe* sqe)
-				{
-					io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr), &op.client_addr_len, 0);
-				});
+			0, &op, [fd, &op](io_uring_sqe* sqe)
+			{ io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr), &op.client_addr_len, 0); });
 
 		if (!submitted)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+		}
 
 		// Suspend and wait for completion
 		co_await UringAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.result < 0)
-			{
-				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
-			}
+		{
+			co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+		}
 
 		// Connection on ring 0
 		co_return AcceptResult(std::make_unique<UringConnection>(ctx_, op.result, op.client_addr, 0));
@@ -608,14 +605,14 @@ namespace coroute::net
 	Task<ReadResult> UringConnection::async_read(void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		UringOperation op{UringOpType::Read};
 		int fd = fd_;
@@ -624,26 +621,26 @@ namespace coroute::net
 			ring_index_, &op, [fd, buffer, len](io_uring_sqe* sqe) { io_uring_prep_recv(sqe, fd, buffer, len, 0); });
 
 		if (!submitted)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+		}
 
 		co_await UringAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.result == 0)
-			{
-				co_return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
+		}
 
 		if (op.result < 0)
-			{
-				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
-			}
+		{
+			co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+		}
 
 		co_return static_cast<size_t>(op.result);
 	}
@@ -654,19 +651,19 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_read(buf + total, 1);
+			if (!result)
 			{
-				auto result = co_await async_read(buf + total, 1);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-
-				total += *result;
-				if (buf[total - 1] == delimiter)
-					{
-						break;
-					}
+				co_return unexpected(result.error());
 			}
+
+			total += *result;
+			if (buf[total - 1] == delimiter)
+			{
+				break;
+			}
+		}
 
 		co_return total;
 	}
@@ -674,14 +671,14 @@ namespace coroute::net
 	Task<WriteResult> UringConnection::async_write(const void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		UringOperation op{UringOpType::Write};
 		int fd = fd_;
@@ -690,21 +687,21 @@ namespace coroute::net
 			ring_index_, &op, [fd, buffer, len](io_uring_sqe* sqe) { io_uring_prep_send(sqe, fd, buffer, len, 0); });
 
 		if (!submitted)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+		}
 
 		co_await UringAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.result < 0)
-			{
-				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
-			}
+		{
+			co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+		}
 
 		co_return static_cast<size_t>(op.result);
 	}
@@ -715,14 +712,14 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_write(buf + total, len - total);
+			if (!result)
 			{
-				auto result = co_await async_write(buf + total, len - total);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-				total += *result;
+				co_return unexpected(result.error());
 			}
+			total += *result;
+		}
 
 		co_return total;
 	}
@@ -730,14 +727,14 @@ namespace coroute::net
 	Task<TransmitResult> UringConnection::async_transmit_file(FileHandle file, size_t offset, size_t length)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		// Use sendfile for zero-copy file transfer
 		// Note: sendfile is blocking, but for large files we could use io_uring's splice
@@ -746,37 +743,36 @@ namespace coroute::net
 		off_t off = static_cast<off_t>(offset);
 
 		while (total_sent < length)
+		{
+			ssize_t sent = sendfile(fd_, file, &off, length - total_sent);
+			if (sent < 0)
 			{
-				ssize_t sent = sendfile(fd_, file, &off, length - total_sent);
-				if (sent < 0)
+				if (errno == EAGAIN || errno == EWOULDBLOCK)
+				{
+					// Socket buffer full, need to wait for writability
+					UringOperation wait_op{UringOpType::Write};
+					int fd = fd_;
+					bool submitted = ctx_.submit_sqe(ring_index_, &wait_op,
+					                                 [fd](io_uring_sqe* sqe)
+					                                 {
+														 // Use a zero-length send to wait for socket writability
+														 io_uring_prep_send(sqe, fd, nullptr, 0, MSG_NOSIGNAL);
+													 });
+					if (!submitted)
 					{
-						if (errno == EAGAIN || errno == EWOULDBLOCK)
-							{
-								// Socket buffer full, need to wait for writability
-								UringOperation wait_op{UringOpType::Write};
-								int fd = fd_;
-								bool submitted =
-									ctx_.submit_sqe(ring_index_, &wait_op,
-								                    [fd](io_uring_sqe* sqe)
-								                        {
-															// Use a zero-length send to wait for socket writability
-															io_uring_prep_send(sqe, fd, nullptr, 0, MSG_NOSIGNAL);
-														});
-								if (!submitted)
-									{
-										co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
-									}
-								co_await UringAwaiter{wait_op};
-								continue;
-							}
-						co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
+						co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
 					}
-				if (sent == 0)
-					{
-						break;  // EOF on source file
-					}
-				total_sent += static_cast<size_t>(sent);
+					co_await UringAwaiter{wait_op};
+					continue;
+				}
+				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 			}
+			if (sent == 0)
+			{
+				break;  // EOF on source file
+			}
+			total_sent += static_cast<size_t>(sent);
+		}
 
 		co_return total_sent;
 	}
@@ -803,49 +799,47 @@ namespace coroute::net
 		auto* worker_ring = rings_[ring_index].get();
 
 		while (!stopped_ && worker_ring->listen_fd >= 0)
+		{
+			UringOperation op{UringOpType::Accept};
+			int fd = worker_ring->listen_fd;
+
+			bool submitted = submit_sqe(ring_index, &op,
+			                            [fd, &op](io_uring_sqe* sqe) {
+											io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr),
+				                                                 &op.client_addr_len, SOCK_NONBLOCK);
+										});
+
+			if (!submitted)
 			{
-				UringOperation op{UringOpType::Accept};
-				int fd = worker_ring->listen_fd;
-
-				bool submitted =
-					submit_sqe(ring_index, &op,
-				               [fd, &op](io_uring_sqe* sqe)
-				                   {
-									   io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr),
-					                                        &op.client_addr_len, SOCK_NONBLOCK);
-								   });
-
-				if (!submitted)
-					{
-						continue;
-					}
-
-				co_await UringAwaiter{op};
-
-				if (stopped_) break;
-
-				if (op.result < 0)
-					{
-						// Accept error - continue unless stopped
-						continue;
-					}
-
-				// Set TCP optimizations
-				set_tcp_opts(op.result);
-
-				// Create connection on this ring
-				auto conn = std::make_unique<UringConnection>(*this, op.result, op.client_addr, ring_index);
-
-				// Call the connection handler
-				if (connection_handler_)
-					{
-						connection_handler_(std::move(conn));
-					}
-				else
-					{
-						conn->close();
-					}
+				continue;
 			}
+
+			co_await UringAwaiter{op};
+
+			if (stopped_) break;
+
+			if (op.result < 0)
+			{
+				// Accept error - continue unless stopped
+				continue;
+			}
+
+			// Set TCP optimizations
+			set_tcp_opts(op.result);
+
+			// Create connection on this ring
+			auto conn = std::make_unique<UringConnection>(*this, op.result, op.client_addr, ring_index);
+
+			// Call the connection handler
+			if (connection_handler_)
+			{
+				connection_handler_(std::move(conn));
+			}
+			else
+			{
+				conn->close();
+			}
+		}
 	}
 
 	// ============================================================================

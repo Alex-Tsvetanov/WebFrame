@@ -165,10 +165,10 @@ TEST_CASE("start_detached runs fire-and-forget", "[task]")
 {
 	bool executed = false;
 	auto make_task = [&]() -> Task<void>
-		{
-			executed = true;
-			co_return;
-		};
+	{
+		executed = true;
+		co_return;
+	};
 	auto t = make_task();
 	t.start_detached();
 	// After start_detached, we no longer own the handle
@@ -219,14 +219,14 @@ TEST_CASE("check_cancellation throws Error::cancelled()", "[task]")
 	t.set_cancellation_token(source.token());
 
 	try
-		{
-			t.sync_wait();
-			FAIL("Expected Error to be thrown");
-		}
+	{
+		t.sync_wait();
+		FAIL("Expected Error to be thrown");
+	}
 	catch (const Error& e)
-		{
-			REQUIRE(e.is_cancelled());
-		}
+	{
+		REQUIRE(e.is_cancelled());
+	}
 }
 
 // ============================================================================

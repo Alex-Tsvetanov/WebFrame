@@ -9,10 +9,12 @@
 #include <queue>
 #include <optional>
 
-namespace project::handlers::websocket {
+namespace project::handlers::websocket
+{
 
 	// Manages WebSocket connections for real-time task updates
-	class TaskHub {
+	class TaskHub
+	{
 	public:
 		TaskHub() = default;
 

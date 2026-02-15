@@ -64,10 +64,10 @@ namespace coroute
 			  model(std::move(result.model)),
 			  to_json_fn(
 				  [](const std::any& m) -> nlohmann::json
-					  {
-						  // Use nlohmann's automatic conversion which handles ADL properly
-						  return nlohmann::json(std::any_cast<const VM&>(m));
-					  })
+				  {
+					  // Use nlohmann's automatic conversion which handles ADL properly
+					  return nlohmann::json(std::any_cast<const VM&>(m));
+				  })
 		{
 		}
 

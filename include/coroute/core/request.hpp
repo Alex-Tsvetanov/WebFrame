@@ -95,10 +95,10 @@ namespace coroute
 		expected<T, Error> param(size_t index) const
 		{
 			if (index >= route_params_.size())
-				{
-					return unexpected(Error::http(HttpError::BadRequest,
-					                              "Route parameter index out of range: " + std::to_string(index)));
-				}
+			{
+				return unexpected(
+					Error::http(HttpError::BadRequest, "Route parameter index out of range: " + std::to_string(index)));
+			}
 			return from_string<T>(route_params_[index]);
 		}
 
@@ -108,9 +108,9 @@ namespace coroute
 			// Case-insensitive lookup would be better, but keeping simple for now
 			auto it = headers_.find(std::string(key));
 			if (it != headers_.end())
-				{
-					return it->second;
-				}
+			{
+				return it->second;
+			}
 			return std::nullopt;
 		}
 
@@ -120,10 +120,9 @@ namespace coroute
 		{
 			auto it = query_params_.find(std::string(key));
 			if (it == query_params_.end())
-				{
-					return unexpected(
-						Error::http(HttpError::BadRequest, "Missing query parameter: " + std::string(key)));
-				}
+			{
+				return unexpected(Error::http(HttpError::BadRequest, "Missing query parameter: " + std::string(key)));
+			}
 			return from_string<T>(it->second);
 		}
 
@@ -133,14 +132,14 @@ namespace coroute
 		{
 			auto it = query_params_.find(std::string(key));
 			if (it == query_params_.end())
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 			auto result = from_string<T>(it->second);
 			if (result)
-				{
-					return std::move(*result);
-				}
+			{
+				return std::move(*result);
+			}
 			return std::nullopt;
 		}
 
@@ -149,11 +148,11 @@ namespace coroute
 		{
 			auto conn = header("Connection");
 			if (conn)
-				{
-					// Case-insensitive comparison would be better
-					if (*conn == "close") return false;
-					if (*conn == "keep-alive") return true;
-				}
+			{
+				// Case-insensitive comparison would be better
+				if (*conn == "close") return false;
+				if (*conn == "keep-alive") return true;
+			}
 			// HTTP/1.1 defaults to keep-alive
 			return http_version_ == "HTTP/1.1";
 		}
@@ -163,10 +162,10 @@ namespace coroute
 		{
 			auto cl = header("Content-Length");
 			if (cl)
-				{
-					auto result = from_string<size_t>(*cl);
-					if (result) return *result;
-				}
+			{
+				auto result = from_string<size_t>(*cl);
+				if (result) return *result;
+			}
 			return std::nullopt;
 		}
 
@@ -186,13 +185,13 @@ namespace coroute
 			auto it = context_.find(key);
 			if (it == context_.end()) return std::nullopt;
 			try
-				{
-					return std::any_cast<T>(it->second);
-				}
+			{
+				return std::any_cast<T>(it->second);
+			}
 			catch (const std::bad_any_cast&)
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 		}
 
 		bool has_context(const std::string& key) const { return context_.count(key) > 0; }

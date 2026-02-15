@@ -12,36 +12,43 @@
 using namespace coroute;
 
 // Simple chat room - tracks connected clients
-class ChatRoom {
+class ChatRoom
+{
 	std::mutex mutex_;
 	std::set<WebSocketConnection*> clients_;
 
 public:
-	void join(WebSocketConnection* client) {
+	void join(WebSocketConnection* client)
+	{
 		std::lock_guard lock(mutex_);
 		clients_.insert(client);
 		std::cout << "Client joined. Total: " << clients_.size() << std::endl;
 	}
 
-	void leave(WebSocketConnection* client) {
+	void leave(WebSocketConnection* client)
+	{
 		std::lock_guard lock(mutex_);
 		clients_.erase(client);
 		std::cout << "Client left. Total: " << clients_.size() << std::endl;
 	}
 
 	// Broadcast message to all clients except sender
-	Task<void> broadcast(WebSocketConnection* sender, std::string_view message) {
+	Task<void> broadcast(WebSocketConnection* sender, std::string_view message)
+	{
 		std::vector<WebSocketConnection*> targets;
 		{
 			std::lock_guard lock(mutex_);
-			for (auto* client : clients_) {
-				if (client != sender && client->is_open()) {
+			for (auto* client : clients_)
+			{
+				if (client != sender && client->is_open())
+				{
 					targets.push_back(client);
 				}
 			}
 		}
 
-		for (auto* client : targets) {
+		for (auto* client : targets)
+		{
 			co_await client->send_text(message);
 		}
 	}
@@ -50,14 +57,17 @@ public:
 // Global chat room
 ChatRoom chat_room;
 
-int main() {
+int main()
+{
 	App app;
 
 	app.threads(4);
 
 	// Serve a simple HTML page for testing
-	app.get("/", [](Request&) -> Task<Response> {
-		co_return Response::html(R"html(
+	app.get("/",
+	        [](Request&) -> Task<Response>
+	        {
+				co_return Response::html(R"html(
 <!DOCTYPE html>
 <html>
 <head>
@@ -127,64 +137,80 @@ int main() {
 </body>
 </html>
 )html");
-	});
+			});
 
 	// Echo WebSocket endpoint - echoes back any message received
-	app.ws("/echo", [](std::unique_ptr<WebSocketConnection> ws) -> Task<void> {
-		std::cout << "Echo client connected from " << ws->remote_address() << std::endl;
+	app.ws("/echo",
+	       [](std::unique_ptr<WebSocketConnection> ws) -> Task<void>
+	       {
+			   std::cout << "Echo client connected from " << ws->remote_address() << std::endl;
 
-		while (ws->is_open()) {
-			auto msg = co_await ws->receive();
-			if (!msg) {
-				std::cout << "Echo client disconnected: " << msg.error().to_string() << std::endl;
-				break;
-			}
+			   while (ws->is_open())
+			   {
+				   auto msg = co_await ws->receive();
+				   if (!msg)
+				   {
+					   std::cout << "Echo client disconnected: " << msg.error().to_string() << std::endl;
+					   break;
+				   }
 
-			if (msg->is_text()) {
-				std::cout << "Echo: " << msg->text() << std::endl;
-				co_await ws->send_text(msg->text());
-			} else if (msg->is_binary()) {
-				co_await ws->send_binary(msg->data);
-			} else if (msg->is_close()) {
-				std::cout << "Echo client sent close" << std::endl;
-				break;
-			}
-		}
-	});
+				   if (msg->is_text())
+				   {
+					   std::cout << "Echo: " << msg->text() << std::endl;
+					   co_await ws->send_text(msg->text());
+				   }
+				   else if (msg->is_binary())
+				   {
+					   co_await ws->send_binary(msg->data);
+				   }
+				   else if (msg->is_close())
+				   {
+					   std::cout << "Echo client sent close" << std::endl;
+					   break;
+				   }
+			   }
+		   });
 
 	// Chat WebSocket endpoint - broadcasts messages to all connected clients
-	app.ws("/chat", [](std::unique_ptr<WebSocketConnection> ws) -> Task<void> {
-		std::cout << "Chat client connected from " << ws->remote_address() << std::endl;
+	app.ws("/chat",
+	       [](std::unique_ptr<WebSocketConnection> ws) -> Task<void>
+	       {
+			   std::cout << "Chat client connected from " << ws->remote_address() << std::endl;
 
-		auto* ws_ptr = ws.get();
-		chat_room.join(ws_ptr);
+			   auto* ws_ptr = ws.get();
+			   chat_room.join(ws_ptr);
 
-		// Send welcome message
-		co_await ws->send_text("Welcome to the chat room!");
+			   // Send welcome message
+			   co_await ws->send_text("Welcome to the chat room!");
 
-		while (ws->is_open()) {
-			auto msg = co_await ws->receive();
-			if (!msg) {
-				break;
-			}
+			   while (ws->is_open())
+			   {
+				   auto msg = co_await ws->receive();
+				   if (!msg)
+				   {
+					   break;
+				   }
 
-			if (msg->is_text()) {
-				std::string text(msg->text());
-				std::cout << "Chat message: " << text << std::endl;
+				   if (msg->is_text())
+				   {
+					   std::string text(msg->text());
+					   std::cout << "Chat message: " << text << std::endl;
 
-				// Broadcast to all other clients
-				co_await chat_room.broadcast(ws_ptr, text);
+					   // Broadcast to all other clients
+					   co_await chat_room.broadcast(ws_ptr, text);
 
-				// Echo back to sender with confirmation
-				co_await ws->send_text("You said: " + text);
-			} else if (msg->is_close()) {
-				break;
-			}
-		}
+					   // Echo back to sender with confirmation
+					   co_await ws->send_text("You said: " + text);
+				   }
+				   else if (msg->is_close())
+				   {
+					   break;
+				   }
+			   }
 
-		chat_room.leave(ws_ptr);
-		std::cout << "Chat client disconnected" << std::endl;
-	});
+			   chat_room.leave(ws_ptr);
+			   std::cout << "Chat client disconnected" << std::endl;
+		   });
 
 	std::cout << "WebSocket Server starting on port 8080..." << std::endl;
 	std::cout << "Open http://localhost:8080/ in your browser" << std::endl;

@@ -343,9 +343,9 @@ TEST_CASE("ViewResultAny - large vector in ViewModel", "[view][edge]")
 {
 	std::vector<std::string> large_items;
 	for (int i = 0; i < 1000; ++i)
-		{
-			large_items.push_back("item_" + std::to_string(i));
-		}
+	{
+		large_items.push_back("item_" + std::to_string(i));
+	}
 
 	ComplexVm vm{.title = "Large Collection", .items = std::move(large_items), .active = true};
 	ViewResult<ComplexVm> typed{.templates = ViewTemplates{"large"}, .model = std::move(vm)};
@@ -392,14 +392,14 @@ TEST_CASE("Router - add and match view routes", "[view][router]")
 	bool handler_called = false;
 
 	// Add a view route
-	router.add_view("/test",
-	                [&](Request&) -> Task<ViewResultAny>
-	                    {
-							handler_called = true;
-							SimpleVm vm{.name = "test", .value = 42};
-							co_return ViewResultAny(
-								ViewResult<SimpleVm>{.templates = ViewTemplates{"test"}, .model = std::move(vm)});
-						});
+	router.add_view(
+		"/test",
+		[&](Request&) -> Task<ViewResultAny>
+		{
+			handler_called = true;
+			SimpleVm vm{.name = "test", .value = 42};
+			co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"test"}, .model = std::move(vm)});
+		});
 
 	// Match should find the route
 	auto match = router.match_view("/test");
@@ -410,13 +410,13 @@ TEST_CASE("Router - view routes with parameters", "[view][router]")
 {
 	coroute::Router router;
 
-	router.add_view("/user/{id}",
-	                [](Request&) -> Task<ViewResultAny>
-	                    {
-							SimpleVm vm{.name = "user", .value = 0};
-							co_return ViewResultAny(
-								ViewResult<SimpleVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)});
-						});
+	router.add_view(
+		"/user/{id}",
+		[](Request&) -> Task<ViewResultAny>
+		{
+			SimpleVm vm{.name = "user", .value = 0};
+			co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)});
+		});
 
 	auto match = router.match_view("/user/123");
 	CHECK(match.handler != nullptr);
@@ -431,10 +431,10 @@ TEST_CASE("Router - view route not found", "[view][router]")
 	router.add_view(
 		"/existing",
 		[](Request&) -> Task<ViewResultAny>
-			{
-				SimpleVm vm{.name = "", .value = 0};
-				co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"t"}, .model = std::move(vm)});
-			});
+		{
+			SimpleVm vm{.name = "", .value = 0};
+			co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"t"}, .model = std::move(vm)});
+		});
 
 	auto match = router.match_view("/nonexistent");
 	CHECK(match.handler == nullptr);
@@ -448,13 +448,13 @@ TEST_CASE("Router - view routes independent from regular routes", "[view][router
 	router.add(HttpMethod::GET, "/api", [](Request&) -> Task<Response> { co_return Response::ok("API"); });
 
 	// Add view route with same path
-	router.add_view("/api",
-	                [](Request&) -> Task<ViewResultAny>
-	                    {
-							SimpleVm vm{.name = "view", .value = 1};
-							co_return ViewResultAny(
-								ViewResult<SimpleVm>{.templates = ViewTemplates{"api"}, .model = std::move(vm)});
-						});
+	router.add_view(
+		"/api",
+		[](Request&) -> Task<ViewResultAny>
+		{
+			SimpleVm vm{.name = "view", .value = 1};
+			co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"api"}, .model = std::move(vm)});
+		});
 
 	// Both should be findable independently
 	auto regular_match = router.match(HttpMethod::GET, "/api");

@@ -26,13 +26,13 @@ namespace coroute
 			T value;
 			std::istringstream iss{std::string(s)};
 			if (iss >> value)
+			{
+				// Check that we consumed the entire string
+				if (iss.eof() || (iss >> std::ws).eof())
 				{
-					// Check that we consumed the entire string
-					if (iss.eof() || (iss >> std::ws).eof())
-						{
-							return value;
-						}
+					return value;
 				}
+			}
 			return unexpected(Error::http(HttpError::BadRequest, "Failed to parse parameter: " + std::string(s)));
 		}
 	};
@@ -47,22 +47,22 @@ namespace coroute
 		static expected<T, Error> parse(std::string_view s)
 		{
 			if (s.empty())
-				{
-					return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
-				}
+			{
+				return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
+			}
 
 			T value;
 			auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
 
 			if (ec == std::errc{} && ptr == s.data() + s.size())
-				{
-					return value;
-				}
+			{
+				return value;
+			}
 
 			if (ec == std::errc::result_out_of_range)
-				{
-					return unexpected(Error::http(HttpError::BadRequest, "Parameter out of range: " + std::string(s)));
-				}
+			{
+				return unexpected(Error::http(HttpError::BadRequest, "Parameter out of range: " + std::string(s)));
+			}
 
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid integer: " + std::string(s)));
 		}
@@ -78,9 +78,9 @@ namespace coroute
 		static expected<T, Error> parse(std::string_view s)
 		{
 			if (s.empty())
-				{
-					return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
-				}
+			{
+				return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
+			}
 
 			// std::from_chars for floating point may not be available on all compilers
 			// Fall back to stringstream for portability
@@ -89,9 +89,9 @@ namespace coroute
 			iss >> value;
 
 			if (!iss.fail() && (iss.eof() || (iss >> std::ws).eof()))
-				{
-					return value;
-				}
+			{
+				return value;
+			}
 
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid number: " + std::string(s)));
 		}
@@ -107,13 +107,13 @@ namespace coroute
 		static expected<bool, Error> parse(std::string_view s)
 		{
 			if (s == "true" || s == "1" || s == "yes" || s == "on")
-				{
-					return true;
-				}
+			{
+				return true;
+			}
 			if (s == "false" || s == "0" || s == "no" || s == "off")
-				{
-					return false;
-				}
+			{
+				return false;
+			}
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid boolean: " + std::string(s)));
 		}
 	};
@@ -148,14 +148,14 @@ namespace coroute
 		static expected<std::optional<T>, Error> parse(std::string_view s)
 		{
 			if (s.empty())
-				{
-					return std::optional<T>{std::nullopt};
-				}
+			{
+				return std::optional<T>{std::nullopt};
+			}
 			auto result = FromString<T>::parse(s);
 			if (result)
-				{
-					return std::optional<T>{std::move(*result)};
-				}
+			{
+				return std::optional<T>{std::move(*result)};
+			}
 			return unexpected(result.error());
 		}
 	};

@@ -22,30 +22,30 @@ namespace coroute
 		{
 			std::ostream::sentry s(dest);
 			if (s)
+			{
+				__uint128_t tmp = value < 0 ? -value : value;
+				char buffer[128];
+				char* d = std::end(buffer);
+				do
 				{
-					__uint128_t tmp = value < 0 ? -value : value;
-					char buffer[128];
-					char* d = std::end(buffer);
-					do
-						{
-							--d;
-							*d = "0123456789"[tmp % 10];
-							tmp /= 10;
-						}
-					while (tmp != 0);
-
-					if (value < 0)
-						{
-							--d;
-							*d = '-';
-						}
-
-					int len = std::end(buffer) - d;
-					if (dest.rdbuf()->sputn(d, len) != len)
-						{
-							dest.setstate(std::ios_base::badbit);
-						}
+					--d;
+					*d = "0123456789"[tmp % 10];
+					tmp /= 10;
 				}
+				while (tmp != 0);
+
+				if (value < 0)
+				{
+					--d;
+					*d = '-';
+				}
+
+				int len = std::end(buffer) - d;
+				if (dest.rdbuf()->sputn(d, len) != len)
+				{
+					dest.setstate(std::ios_base::badbit);
+				}
+			}
 			return dest;
 		}
 #endif
@@ -144,16 +144,16 @@ namespace coroute
 		auto& custom = custom_types();
 		auto it = custom.find(ext);
 		if (it != custom.end())
-			{
-				return it->second;
-			}
+		{
+			return it->second;
+		}
 
 		// Check default types
 		auto dit = default_mime_types.find(ext);
 		if (dit != default_mime_types.end())
-			{
-				return dit->second;
-			}
+		{
+			return dit->second;
+		}
 
 		return "application/octet-stream";
 	}
@@ -162,9 +162,9 @@ namespace coroute
 	{
 		auto dot_pos = path.rfind('.');
 		if (dot_pos == std::string_view::npos || dot_pos == path.size() - 1)
-			{
-				return "application/octet-stream";
-			}
+		{
+			return "application/octet-stream";
+		}
 		return get(path.substr(dot_pos + 1));
 	}
 
@@ -181,55 +181,55 @@ namespace coroute
 	{
 		// Normalize root path
 		if (!options_.root.empty())
-			{
-				options_.root = std::filesystem::absolute(options_.root);
-			}
+		{
+			options_.root = std::filesystem::absolute(options_.root);
+		}
 
 		// Normalize URL prefix (ensure it starts with / and doesn't end with /)
 		if (!options_.url_prefix.empty())
+		{
+			if (options_.url_prefix.front() != '/')
 			{
-				if (options_.url_prefix.front() != '/')
-					{
-						options_.url_prefix = "/" + options_.url_prefix;
-					}
-				while (options_.url_prefix.size() > 1 && options_.url_prefix.back() == '/')
-					{
-						options_.url_prefix.pop_back();
-					}
+				options_.url_prefix = "/" + options_.url_prefix;
 			}
+			while (options_.url_prefix.size() > 1 && options_.url_prefix.back() == '/')
+			{
+				options_.url_prefix.pop_back();
+			}
+		}
 	}
 
 	bool StaticFileServer::is_extension_allowed(std::string_view ext) const
 	{
 		std::string lower_ext = to_lower(ext);
 		if (lower_ext.empty() || lower_ext[0] != '.')
-			{
-				lower_ext = "." + lower_ext;
-			}
+		{
+			lower_ext = "." + lower_ext;
+		}
 
 		// Check denied list first
 		for (const auto& denied : options_.denied_extensions)
+		{
+			if (to_lower(denied) == lower_ext)
 			{
-				if (to_lower(denied) == lower_ext)
-					{
-						return false;
-					}
+				return false;
 			}
+		}
 
 		// If allowed list is empty, allow all (except denied)
 		if (options_.allowed_extensions.empty())
-			{
-				return true;
-			}
+		{
+			return true;
+		}
 
 		// Check allowed list
 		for (const auto& allowed : options_.allowed_extensions)
+		{
+			if (to_lower(allowed) == lower_ext)
 			{
-				if (to_lower(allowed) == lower_ext)
-					{
-						return true;
-					}
+				return true;
 			}
+		}
 
 		return false;
 	}
@@ -240,15 +240,15 @@ namespace coroute
 		std::error_code ec;
 		auto canonical = std::filesystem::weakly_canonical(path, ec);
 		if (ec)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		auto root_canonical = std::filesystem::weakly_canonical(options_.root, ec);
 		if (ec)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Check that the path is within root (prevent directory traversal)
 		auto [root_end, path_end] =
@@ -256,9 +256,9 @@ namespace coroute
 
 		// Path must start with root
 		if (root_end != root_canonical.end())
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		return true;
 	}
@@ -287,33 +287,33 @@ namespace coroute
 	{
 		// ETag
 		if (options_.etag)
-			{
-				resp.set_header("ETag", generate_etag(path, size, mtime));
-			}
+		{
+			resp.set_header("ETag", generate_etag(path, size, mtime));
+		}
 
 		// Last-Modified
 		if (options_.last_modified)
-			{
-				// Convert file_time_type to system_clock for formatting
-				auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-					mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-				auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
+		{
+			// Convert file_time_type to system_clock for formatting
+			auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+				mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+			auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
 
-				std::ostringstream oss;
-				oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
-				resp.set_header("Last-Modified", oss.str());
-			}
+			std::ostringstream oss;
+			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
+			resp.set_header("Last-Modified", oss.str());
+		}
 
 		// Cache-Control
 		if (options_.max_age_seconds > 0)
+		{
+			std::string cache_control = "max-age=" + std::to_string(options_.max_age_seconds);
+			if (options_.immutable)
 			{
-				std::string cache_control = "max-age=" + std::to_string(options_.max_age_seconds);
-				if (options_.immutable)
-					{
-						cache_control += ", immutable";
-					}
-				resp.set_header("Cache-Control", cache_control);
+				cache_control += ", immutable";
 			}
+			resp.set_header("Cache-Control", cache_control);
+		}
 	}
 
 	bool StaticFileServer::check_not_modified(const Request& req, const std::string& etag,
@@ -322,22 +322,22 @@ namespace coroute
 		// Check If-None-Match (ETag)
 		auto if_none_match = req.header("If-None-Match");
 		if (if_none_match && options_.etag)
+		{
+			// Simple comparison (doesn't handle weak ETags or multiple values)
+			if (*if_none_match == etag)
 			{
-				// Simple comparison (doesn't handle weak ETags or multiple values)
-				if (*if_none_match == etag)
-					{
-						return true;
-					}
+				return true;
 			}
+		}
 
 		// Check If-Modified-Since
 		auto if_modified_since = req.header("If-Modified-Since");
 		if (if_modified_since && options_.last_modified)
-			{
-				// Parse the date and compare
-				// For simplicity, we'll skip full parsing and just use ETag
-				// A production implementation would parse HTTP dates
-			}
+		{
+			// Parse the date and compare
+			// For simplicity, we'll skip full parsing and just use ETag
+			// A production implementation would parse HTTP dates
+		}
 
 		return false;
 	}
@@ -346,28 +346,28 @@ namespace coroute
 	{
 		std::ifstream file(path, std::ios::binary | std::ios::ate);
 		if (!file)
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		auto size = file.tellg();
 		if (size < 0)
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		// Check file size limit
 		if (options_.max_file_size > 0 && static_cast<size_t>(size) > options_.max_file_size)
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		file.seekg(0);
 		std::string content(static_cast<size_t>(size), '\0');
 		if (!file.read(content.data(), size))
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		return content;
 	}
@@ -396,55 +396,54 @@ namespace coroute
 
 		// Parent directory link
 		if (url_path != "/" && !url_path.empty())
-			{
-				html << "<tr><td><a href=\"..\">..</a></td><td class=\"size\">-</td></tr>\n";
-			}
+		{
+			html << "<tr><td><a href=\"..\">..</a></td><td class=\"size\">-</td></tr>\n";
+		}
 
 		std::error_code ec;
 		for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+		{
+			if (ec) break;
+
+			auto name = entry.path().filename().string();
+			bool is_dir = entry.is_directory(ec);
+
+			html << "<tr><td>";
+			if (is_dir)
 			{
-				if (ec) break;
-
-				auto name = entry.path().filename().string();
-				bool is_dir = entry.is_directory(ec);
-
-				html << "<tr><td>";
-				if (is_dir)
-					{
-						html << "<span class=\"dir\"><a href=\"" << name << "/\">" << name << "/</a></span>";
-					}
-				else
-					{
-						html << "<a href=\"" << name << "\">" << name << "</a>";
-					}
-				html << "</td><td class=\"size\">";
-
-				if (is_dir)
-					{
-						html << "-";
-					}
-				else
-					{
-						auto size = entry.file_size(ec);
-						if (!ec)
-							{
-								if (size < 1024)
-									{
-										html << size << " B";
-									}
-								else if (size < 1024 * 1024)
-									{
-										html << std::fixed << std::setprecision(1) << (size / 1024.0) << " KB";
-									}
-								else
-									{
-										html << std::fixed << std::setprecision(1) << (size / (1024.0 * 1024.0))
-											 << " MB";
-									}
-							}
-					}
-				html << "</td></tr>\n";
+				html << "<span class=\"dir\"><a href=\"" << name << "/\">" << name << "/</a></span>";
 			}
+			else
+			{
+				html << "<a href=\"" << name << "\">" << name << "</a>";
+			}
+			html << "</td><td class=\"size\">";
+
+			if (is_dir)
+			{
+				html << "-";
+			}
+			else
+			{
+				auto size = entry.file_size(ec);
+				if (!ec)
+				{
+					if (size < 1024)
+					{
+						html << size << " B";
+					}
+					else if (size < 1024 * 1024)
+					{
+						html << std::fixed << std::setprecision(1) << (size / 1024.0) << " KB";
+					}
+					else
+					{
+						html << std::fixed << std::setprecision(1) << (size / (1024.0 * 1024.0)) << " MB";
+					}
+				}
+			}
+			html << "</td></tr>\n";
+		}
 
 		html << "</tbody></table></body></html>\n";
 		return html.str();
@@ -454,34 +453,34 @@ namespace coroute
 	{
 		// Only handle GET and HEAD
 		if (req.method() != HttpMethod::GET && req.method() != HttpMethod::HEAD)
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		std::string url_path(req.path());
 
 		// Check URL prefix
 		if (!options_.url_prefix.empty())
+		{
+			if (url_path.find(options_.url_prefix) != 0)
 			{
-				if (url_path.find(options_.url_prefix) != 0)
-					{
-						co_return std::nullopt;
-					}
-				url_path = url_path.substr(options_.url_prefix.size());
-				if (url_path.empty())
-					{
-						url_path = "/";
-					}
+				co_return std::nullopt;
 			}
+			url_path = url_path.substr(options_.url_prefix.size());
+			if (url_path.empty())
+			{
+				url_path = "/";
+			}
+		}
 
 		// Decode URL (basic - handle %XX)
 		// Note: The request parser should have already decoded this
 
 		// Remove leading slash and build file path
 		if (!url_path.empty() && url_path[0] == '/')
-			{
-				url_path = url_path.substr(1);
-			}
+		{
+			url_path = url_path.substr(1);
+		}
 
 		auto file_path = options_.root / url_path;
 
@@ -493,124 +492,124 @@ namespace coroute
 	{
 		// Security check
 		if (!is_path_allowed(file_path))
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		std::error_code ec;
 		auto status = std::filesystem::status(file_path, ec);
 
 		if (ec || !std::filesystem::exists(status))
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		// Handle directory
 		if (std::filesystem::is_directory(status))
+		{
+			// Try index file
+			auto index_path = file_path / options_.index_file;
+			if (std::filesystem::exists(index_path, ec))
 			{
-				// Try index file
-				auto index_path = file_path / options_.index_file;
-				if (std::filesystem::exists(index_path, ec))
-					{
-						co_return co_await serve_file(index_path, req);
-					}
-
-				// Directory listing
-				if (options_.directory_listing)
-					{
-						auto listing = generate_directory_listing(file_path, req.path());
-						Response resp = Response::html(std::move(listing));
-
-						// Add custom headers
-						for (const auto& [key, value] : options_.custom_headers)
-							{
-								resp.set_header(key, value);
-							}
-
-						co_return resp;
-					}
-
-				co_return std::nullopt;
+				co_return co_await serve_file(index_path, req);
 			}
+
+			// Directory listing
+			if (options_.directory_listing)
+			{
+				auto listing = generate_directory_listing(file_path, req.path());
+				Response resp = Response::html(std::move(listing));
+
+				// Add custom headers
+				for (const auto& [key, value] : options_.custom_headers)
+				{
+					resp.set_header(key, value);
+				}
+
+				co_return resp;
+			}
+
+			co_return std::nullopt;
+		}
 
 		// Check extension
 		auto ext = file_path.extension().string();
 		if (!is_extension_allowed(ext))
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		// Get file info
 		auto size = std::filesystem::file_size(file_path, ec);
 		if (ec)
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		auto mtime = std::filesystem::last_write_time(file_path, ec);
 		if (ec)
-			{
-				co_return std::nullopt;
-			}
+		{
+			co_return std::nullopt;
+		}
 
 		// Check conditional request
 		std::string etag;
 		if (options_.etag)
-			{
-				etag = generate_etag(file_path, size, mtime);
-			}
+		{
+			etag = generate_etag(file_path, size, mtime);
+		}
 
 		// Generate Last-Modified string
 		std::string last_modified_str;
 		if (options_.last_modified)
-			{
-				auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-					mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-				auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
-				std::ostringstream oss;
-				oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
-				last_modified_str = oss.str();
-			}
+		{
+			auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+				mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+			auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
+			std::ostringstream oss;
+			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
+			last_modified_str = oss.str();
+		}
 
 		if (check_not_modified(req, etag, mtime))
+		{
+			Response resp;
+			resp.set_status(304);
+			if (!etag.empty())
 			{
-				Response resp;
-				resp.set_status(304);
-				if (!etag.empty())
-					{
-						resp.set_header("ETag", etag);
-					}
-				co_return resp;
+				resp.set_header("ETag", etag);
 			}
+			co_return resp;
+		}
 
 		std::string content_type = std::string(MimeTypes::from_path(file_path.string()));
 
 		// Check for Range request
 		if (options_.range_requests && range::has_range_header(req))
+		{
+			// Use RangeResponseBuilder for range requests
+			RangeResponseBuilder builder;
+			builder.file(file_path.string(), content_type);
+
+			if (!etag.empty())
 			{
-				// Use RangeResponseBuilder for range requests
-				RangeResponseBuilder builder;
-				builder.file(file_path.string(), content_type);
-
-				if (!etag.empty())
-					{
-						builder.etag(etag);
-					}
-				if (!last_modified_str.empty())
-					{
-						builder.last_modified(last_modified_str);
-					}
-
-				Response resp = builder.build(req);
-
-				// Add custom headers
-				for (const auto& [key, value] : options_.custom_headers)
-					{
-						resp.set_header(key, value);
-					}
-
-				co_return resp;
+				builder.etag(etag);
 			}
+			if (!last_modified_str.empty())
+			{
+				builder.last_modified(last_modified_str);
+			}
+
+			Response resp = builder.build(req);
+
+			// Add custom headers
+			for (const auto& [key, value] : options_.custom_headers)
+			{
+				resp.set_header(key, value);
+			}
+
+			co_return resp;
+		}
 
 		// Build response - use zero-copy file response for large files
 		Response resp;
@@ -620,25 +619,25 @@ namespace coroute
 
 		// Indicate range support
 		if (options_.range_requests)
-			{
-				resp.set_header("Accept-Ranges", "bytes");
-			}
+		{
+			resp.set_header("Accept-Ranges", "bytes");
+		}
 
 		// Add cache headers
 		add_cache_headers(resp, file_path, size, mtime);
 
 		// Add custom headers
 		for (const auto& [key, value] : options_.custom_headers)
-			{
-				resp.set_header(key, value);
-			}
+		{
+			resp.set_header(key, value);
+		}
 
 		// Use zero-copy for files (App will handle via TransmitFile)
 		// For HEAD requests, don't set file - headers only
 		if (req.method() != HttpMethod::HEAD)
-			{
-				resp.set_file(file_path, 0, size);
-			}
+		{
+			resp.set_file(file_path, 0, size);
+		}
 
 		co_return resp;
 	}
@@ -652,15 +651,15 @@ namespace coroute
 		auto server = std::make_shared<StaticFileServer>(std::move(options));
 
 		return [server](Request& req, Next next) -> Task<Response>
-		           {
-					   auto result = co_await server->serve(req);
-					   if (result)
-						   {
-							   co_return std::move(*result);
-						   }
-					   // Fall through to next handler
-					   co_return co_await next(req);
-				   };
+		{
+			auto result = co_await server->serve(req);
+			if (result)
+			{
+				co_return std::move(*result);
+			}
+			// Fall through to next handler
+			co_return co_await next(req);
+		};
 	}
 
 	Middleware static_files(const std::filesystem::path& root, std::string url_prefix)

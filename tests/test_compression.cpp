@@ -154,27 +154,27 @@ TEST_CASE("Brotli availability", "[compression]")
 	bool available = compress::brotli_available();
 
 	if (available)
+	{
+		SECTION("Brotli compress and decompress")
 		{
-			SECTION("Brotli compress and decompress")
-			{
-				std::string original = "Hello, World! This is a test string for Brotli compression.";
+			std::string original = "Hello, World! This is a test string for Brotli compression.";
 
-				auto compressed = compress::brotli(original);
-				REQUIRE(compressed.has_value());
+			auto compressed = compress::brotli(original);
+			REQUIRE(compressed.has_value());
 
-				auto decompressed = compress::brotli_decompress(*compressed);
-				REQUIRE(decompressed.has_value());
-				CHECK(*decompressed == original);
-			}
+			auto decompressed = compress::brotli_decompress(*compressed);
+			REQUIRE(decompressed.has_value());
+			CHECK(*decompressed == original);
 		}
+	}
 	else
+	{
+		SECTION("Brotli returns nullopt when not available")
 		{
-			SECTION("Brotli returns nullopt when not available")
-			{
-				auto result = compress::brotli("test");
-				CHECK_FALSE(result.has_value());
-			}
+			auto result = compress::brotli("test");
+			CHECK_FALSE(result.has_value());
 		}
+	}
 }
 
 TEST_CASE("CompressionOptions defaults", "[compression]")

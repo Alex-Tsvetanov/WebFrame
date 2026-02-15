@@ -39,34 +39,34 @@ namespace coroute::net
 		{
 			auto* config_protocols = static_cast<std::vector<std::string>*>(arg);
 			if (!config_protocols || config_protocols->empty())
-				{
-					return SSL_TLSEXT_ERR_NOACK;
-				}
+			{
+				return SSL_TLSEXT_ERR_NOACK;
+			}
 
 			// Parse client protocols
 			const unsigned char* client = in;
 			const unsigned char* client_end = in + inlen;
 
 			while (client < client_end)
+			{
+				unsigned char len = *client++;
+				if (client + len > client_end) break;
+
+				std::string_view client_proto(reinterpret_cast<const char*>(client), len);
+
+				// Check if we support this protocol
+				for (const auto& server_proto : *config_protocols)
 				{
-					unsigned char len = *client++;
-					if (client + len > client_end) break;
-
-					std::string_view client_proto(reinterpret_cast<const char*>(client), len);
-
-					// Check if we support this protocol
-					for (const auto& server_proto : *config_protocols)
-						{
-							if (client_proto == server_proto)
-								{
-									*out = client;
-									*outlen = len;
-									return SSL_TLSEXT_ERR_OK;
-								}
-						}
-
-					client += len;
+					if (client_proto == server_proto)
+					{
+						*out = client;
+						*outlen = len;
+						return SSL_TLSEXT_ERR_OK;
+					}
 				}
+
+				client += len;
+			}
 
 			return SSL_TLSEXT_ERR_NOACK;
 		}
@@ -78,18 +78,18 @@ namespace coroute::net
 			const char* servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
 			if (servername && ctx)
+			{
+				const auto& cb = ctx->sni_callback();
+				if (cb)
 				{
-					const auto& cb = ctx->sni_callback();
-					if (cb)
-						{
-							TlsContext* new_ctx = cb(servername);
-							if (new_ctx && new_ctx->native_handle())
-								{
-									SSL_set_SSL_CTX(ssl, new_ctx->native_handle());
-									return SSL_TLSEXT_ERR_OK;
-								}
-						}
+					TlsContext* new_ctx = cb(servername);
+					if (new_ctx && new_ctx->native_handle())
+					{
+						SSL_set_SSL_CTX(ssl, new_ctx->native_handle());
+						return SSL_TLSEXT_ERR_OK;
+					}
 				}
+			}
 
 			return SSL_TLSEXT_ERR_OK;
 		}
@@ -103,9 +103,9 @@ namespace coroute::net
 	TlsContext::~TlsContext()
 	{
 		if (ctx_)
-			{
-				SSL_CTX_free(ctx_);
-			}
+		{
+			SSL_CTX_free(ctx_);
+		}
 	}
 
 	TlsContext::TlsContext(TlsContext&& other) noexcept
@@ -117,12 +117,12 @@ namespace coroute::net
 	TlsContext& TlsContext::operator=(TlsContext&& other) noexcept
 	{
 		if (this != &other)
-			{
-				if (ctx_) SSL_CTX_free(ctx_);
-				ctx_ = other.ctx_;
-				sni_callback_ = std::move(other.sni_callback_);
-				other.ctx_ = nullptr;
-			}
+		{
+			if (ctx_) SSL_CTX_free(ctx_);
+			ctx_ = other.ctx_;
+			sni_callback_ = std::move(other.sni_callback_);
+			other.ctx_ = nullptr;
+		}
 		return *this;
 	}
 
@@ -130,12 +130,12 @@ namespace coroute::net
 	{
 		// Initialize OpenSSL (safe to call multiple times)
 		static bool initialized = []()
-			{
-				SSL_library_init();
-				SSL_load_error_strings();
-				OpenSSL_add_all_algorithms();
-				return true;
-			}();
+		{
+			SSL_library_init();
+			SSL_load_error_strings();
+			OpenSSL_add_all_algorithms();
+			return true;
+		}();
 		(void)initialized;
 
 		TlsContext result;
@@ -144,9 +144,9 @@ namespace coroute::net
 		const SSL_METHOD* method = TLS_server_method();
 		result.ctx_ = SSL_CTX_new(method);
 		if (!result.ctx_)
-			{
-				return unexpected(make_tls_error("Failed to create SSL context"));
-			}
+		{
+			return unexpected(make_tls_error("Failed to create SSL context"));
+		}
 
 		// Set minimum TLS version
 		int min_version = (config.min_version == TlsConfig::MinVersion::TLS_1_3) ? TLS1_3_VERSION : TLS1_2_VERSION;
@@ -154,85 +154,85 @@ namespace coroute::net
 
 		// Load certificate
 		if (!config.cert_file.empty())
+		{
+			if (SSL_CTX_use_certificate_file(result.ctx_, config.cert_file.string().c_str(), SSL_FILETYPE_PEM) != 1)
 			{
-				if (SSL_CTX_use_certificate_file(result.ctx_, config.cert_file.string().c_str(), SSL_FILETYPE_PEM) != 1)
-					{
-						return unexpected(make_tls_error("Failed to load certificate"));
-					}
+				return unexpected(make_tls_error("Failed to load certificate"));
 			}
+		}
 
 		// Load certificate chain
 		if (!config.chain_file.empty())
+		{
+			if (SSL_CTX_use_certificate_chain_file(result.ctx_, config.chain_file.string().c_str()) != 1)
 			{
-				if (SSL_CTX_use_certificate_chain_file(result.ctx_, config.chain_file.string().c_str()) != 1)
-					{
-						return unexpected(make_tls_error("Failed to load certificate chain"));
-					}
+				return unexpected(make_tls_error("Failed to load certificate chain"));
 			}
+		}
 
 		// Load private key
 		if (!config.key_file.empty())
+		{
+			if (SSL_CTX_use_PrivateKey_file(result.ctx_, config.key_file.string().c_str(), SSL_FILETYPE_PEM) != 1)
 			{
-				if (SSL_CTX_use_PrivateKey_file(result.ctx_, config.key_file.string().c_str(), SSL_FILETYPE_PEM) != 1)
-					{
-						return unexpected(make_tls_error("Failed to load private key"));
-					}
-
-				// Verify key matches certificate
-				if (SSL_CTX_check_private_key(result.ctx_) != 1)
-					{
-						return unexpected(make_tls_error("Private key does not match certificate"));
-					}
+				return unexpected(make_tls_error("Failed to load private key"));
 			}
+
+			// Verify key matches certificate
+			if (SSL_CTX_check_private_key(result.ctx_) != 1)
+			{
+				return unexpected(make_tls_error("Private key does not match certificate"));
+			}
+		}
 
 		// Load CA certificate for client verification
 		if (!config.ca_file.empty())
+		{
+			if (SSL_CTX_load_verify_locations(result.ctx_, config.ca_file.string().c_str(), nullptr) != 1)
 			{
-				if (SSL_CTX_load_verify_locations(result.ctx_, config.ca_file.string().c_str(), nullptr) != 1)
-					{
-						return unexpected(make_tls_error("Failed to load CA certificate"));
-					}
+				return unexpected(make_tls_error("Failed to load CA certificate"));
 			}
+		}
 
 		// Configure client verification
 		if (config.verify_client)
-			{
-				SSL_CTX_set_verify(result.ctx_, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
-			}
+		{
+			SSL_CTX_set_verify(result.ctx_, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nullptr);
+		}
 
 		// Set cipher suites
 		if (!config.ciphers.empty())
+		{
+			if (SSL_CTX_set_cipher_list(result.ctx_, config.ciphers.c_str()) != 1)
 			{
-				if (SSL_CTX_set_cipher_list(result.ctx_, config.ciphers.c_str()) != 1)
-					{
-						return unexpected(make_tls_error("Failed to set cipher list"));
-					}
+				return unexpected(make_tls_error("Failed to set cipher list"));
 			}
+		}
 
 		// Configure session tickets
 		if (!config.session_tickets)
-			{
-				SSL_CTX_set_options(result.ctx_, SSL_OP_NO_TICKET);
-			}
+		{
+			SSL_CTX_set_options(result.ctx_, SSL_OP_NO_TICKET);
+		}
 
 		// Configure session cache
 		if (config.session_cache_size > 0)
-			{
-				SSL_CTX_set_session_cache_mode(result.ctx_, SSL_SESS_CACHE_SERVER);
-				SSL_CTX_sess_set_cache_size(result.ctx_, config.session_cache_size);
-			}
+		{
+			SSL_CTX_set_session_cache_mode(result.ctx_, SSL_SESS_CACHE_SERVER);
+			SSL_CTX_sess_set_cache_size(result.ctx_, config.session_cache_size);
+		}
 		else
-			{
-				SSL_CTX_set_session_cache_mode(result.ctx_, SSL_SESS_CACHE_OFF);
-			}
+		{
+			SSL_CTX_set_session_cache_mode(result.ctx_, SSL_SESS_CACHE_OFF);
+		}
 
 		// Set ALPN protocols
 		if (!config.alpn_protocols.empty())
-			{
-				// Store protocols in context for callback
-				auto* protocols = new std::vector<std::string>(config.alpn_protocols);
-				SSL_CTX_set_alpn_select_cb(result.ctx_, alpn_select_callback, protocols);
-			}
+		{
+			// Store protocols in context for callback
+			auto* protocols = new std::vector<std::string>(config.alpn_protocols);
+			SSL_CTX_set_alpn_select_cb(result.ctx_, alpn_select_callback, protocols);
+		}
 
 		// Enable SNI
 		SSL_CTX_set_tlsext_servername_callback(result.ctx_, sni_callback_wrapper);
@@ -247,9 +247,9 @@ namespace coroute::net
 		unsigned int len = 0;
 		SSL_get0_alpn_selected(ssl, &data, &len);
 		if (data && len > 0)
-			{
-				return std::string_view(reinterpret_cast<const char*>(data), len);
-			}
+		{
+			return std::string_view(reinterpret_cast<const char*>(data), len);
+		}
 		return std::nullopt;
 	}
 
@@ -262,9 +262,9 @@ namespace coroute::net
 	TlsConnection::~TlsConnection()
 	{
 		if (ssl_)
-			{
-				SSL_free(ssl_);  // This also frees the BIOs
-			}
+		{
+			SSL_free(ssl_);  // This also frees the BIOs
+		}
 	}
 
 	expected<std::unique_ptr<TlsConnection>, Error> TlsConnection::create(std::unique_ptr<Connection> inner,
@@ -277,9 +277,9 @@ namespace coroute::net
 		// Create SSL object
 		conn->ssl_ = SSL_new(ctx.native_handle());
 		if (!conn->ssl_)
-			{
-				return unexpected(make_tls_error("Failed to create SSL object"));
-			}
+		{
+			return unexpected(make_tls_error("Failed to create SSL object"));
+		}
 
 		// Create BIO pair for async I/O
 		// rbio: we write network data into it, SSL reads from it
@@ -290,22 +290,22 @@ namespace coroute::net
 		conn->wbio_ = wbio;
 
 		if (!rbio || !wbio)
-			{
-				return unexpected(make_tls_error("Failed to create BIO pair"));
-			}
+		{
+			return unexpected(make_tls_error("Failed to create BIO pair"));
+		}
 
 		// Set BIOs (SSL takes ownership)
 		SSL_set_bio(conn->ssl_, rbio, wbio);
 
 		// Set server/client mode
 		if (is_server)
-			{
-				SSL_set_accept_state(conn->ssl_);
-			}
+		{
+			SSL_set_accept_state(conn->ssl_);
+		}
 		else
-			{
-				SSL_set_connect_state(conn->ssl_);
-			}
+		{
+			SSL_set_connect_state(conn->ssl_);
+		}
 
 		return conn;
 	}
@@ -315,72 +315,71 @@ namespace coroute::net
 		int iteration = 0;
 
 		while (true)
+		{
+			iteration++;
+			int result = SSL_do_handshake(ssl_);
+
+			if (result == 1)
 			{
-				iteration++;
-				int result = SSL_do_handshake(ssl_);
-
-				if (result == 1)
-					{
-						co_return expected<void, Error>{};
-					}
-
-				int err = SSL_get_error(ssl_, result);
-
-				if (err == SSL_ERROR_WANT_READ)
-					{
-						auto flush_result = co_await flush_write_bio();
-						if (!flush_result) co_return unexpected(flush_result.error());
-
-						auto fill_result = co_await fill_read_bio();
-						if (!fill_result) co_return unexpected(fill_result.error());
-					}
-				else if (err == SSL_ERROR_WANT_WRITE)
-					{
-						auto flush_result = co_await flush_write_bio();
-						if (!flush_result) co_return unexpected(flush_result.error());
-					}
-				else
-					{
-						co_return unexpected(
-							Error::io(IoError::Unknown, "TLS handshake failed: " + get_openssl_error()));
-					}
-
-				if (iteration > 100)
-					{
-						co_return unexpected(Error::io(IoError::Unknown, "TLS handshake timeout"));
-					}
+				co_return expected<void, Error>{};
 			}
+
+			int err = SSL_get_error(ssl_, result);
+
+			if (err == SSL_ERROR_WANT_READ)
+			{
+				auto flush_result = co_await flush_write_bio();
+				if (!flush_result) co_return unexpected(flush_result.error());
+
+				auto fill_result = co_await fill_read_bio();
+				if (!fill_result) co_return unexpected(fill_result.error());
+			}
+			else if (err == SSL_ERROR_WANT_WRITE)
+			{
+				auto flush_result = co_await flush_write_bio();
+				if (!flush_result) co_return unexpected(flush_result.error());
+			}
+			else
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "TLS handshake failed: " + get_openssl_error()));
+			}
+
+			if (iteration > 100)
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "TLS handshake timeout"));
+			}
+		}
 	}
 
 	Task<ReadResult> TlsConnection::async_read(void* buffer, size_t len)
 	{
 		while (true)
+		{
+			int result = SSL_read(ssl_, buffer, static_cast<int>(len));
+
+			if (result > 0)
 			{
-				int result = SSL_read(ssl_, buffer, static_cast<int>(len));
-
-				if (result > 0)
-					{
-						co_return static_cast<size_t>(result);
-					}
-
-				int err = SSL_get_error(ssl_, result);
-
-				if (err == SSL_ERROR_WANT_READ)
-					{
-						// Need more data from network
-						auto fill_result = co_await fill_read_bio();
-						if (!fill_result) co_return unexpected(fill_result.error());
-					}
-				else if (err == SSL_ERROR_ZERO_RETURN)
-					{
-						// Clean shutdown
-						co_return 0;
-					}
-				else
-					{
-						co_return unexpected(Error::io(IoError::Unknown, "TLS read error"));
-					}
+				co_return static_cast<size_t>(result);
 			}
+
+			int err = SSL_get_error(ssl_, result);
+
+			if (err == SSL_ERROR_WANT_READ)
+			{
+				// Need more data from network
+				auto fill_result = co_await fill_read_bio();
+				if (!fill_result) co_return unexpected(fill_result.error());
+			}
+			else if (err == SSL_ERROR_ZERO_RETURN)
+			{
+				// Clean shutdown
+				co_return 0;
+			}
+			else
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "TLS read error"));
+			}
+		}
 	}
 
 	Task<ReadResult> TlsConnection::async_read_until(void* buffer, size_t len, char delimiter)
@@ -390,13 +389,13 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
-			{
-				auto result = co_await async_read(buf + total, 1);
-				if (!result) co_return unexpected(result.error());
-				if (*result == 0) break;
-				total += *result;
-				if (buf[total - 1] == delimiter) break;
-			}
+		{
+			auto result = co_await async_read(buf + total, 1);
+			if (!result) co_return unexpected(result.error());
+			if (*result == 0) break;
+			total += *result;
+			if (buf[total - 1] == delimiter) break;
+		}
 
 		co_return total;
 	}
@@ -406,21 +405,21 @@ namespace coroute::net
 		int result = SSL_write(ssl_, data, static_cast<int>(len));
 
 		if (result > 0)
-			{
-				// Flush encrypted data to network
-				auto flush_result = co_await flush_write_bio();
-				if (!flush_result) co_return unexpected(flush_result.error());
-				co_return static_cast<size_t>(result);
-			}
+		{
+			// Flush encrypted data to network
+			auto flush_result = co_await flush_write_bio();
+			if (!flush_result) co_return unexpected(flush_result.error());
+			co_return static_cast<size_t>(result);
+		}
 
 		int err = SSL_get_error(ssl_, result);
 		if (err == SSL_ERROR_WANT_WRITE)
-			{
-				auto flush_result = co_await flush_write_bio();
-				if (!flush_result) co_return unexpected(flush_result.error());
-				// Retry
-				co_return co_await async_write(data, len);
-			}
+		{
+			auto flush_result = co_await flush_write_bio();
+			if (!flush_result) co_return unexpected(flush_result.error());
+			// Retry
+			co_return co_await async_write(data, len);
+		}
 
 		co_return unexpected(Error::io(IoError::Unknown, "TLS write error"));
 	}
@@ -432,15 +431,15 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (remaining > 0)
-			{
-				auto result = co_await async_write(ptr, remaining);
-				if (!result) co_return unexpected(result.error());
-				if (*result == 0) co_return unexpected(Error::io(IoError::Unknown, "Connection closed during write"));
+		{
+			auto result = co_await async_write(ptr, remaining);
+			if (!result) co_return unexpected(result.error());
+			if (*result == 0) co_return unexpected(Error::io(IoError::Unknown, "Connection closed during write"));
 
-				ptr += *result;
-				remaining -= *result;
-				total += *result;
-			}
+			ptr += *result;
+			remaining -= *result;
+			total += *result;
+		}
 
 		co_return total;
 	}
@@ -462,14 +461,14 @@ namespace coroute::net
 	void TlsConnection::close()
 	{
 		if (ssl_ && is_open())
-			{
-				// Attempt clean shutdown (non-blocking)
-				SSL_shutdown(ssl_);
-			}
+		{
+			// Attempt clean shutdown (non-blocking)
+			SSL_shutdown(ssl_);
+		}
 		if (inner_)
-			{
-				inner_->close();
-			}
+		{
+			inner_->close();
+		}
 	}
 
 	bool TlsConnection::is_open() const noexcept
@@ -487,35 +486,35 @@ namespace coroute::net
 		// Get subject
 		char* subject = X509_NAME_oneline(X509_get_subject_name(cert), nullptr, 0);
 		if (subject)
-			{
-				info.subject = subject;
-				OPENSSL_free(subject);
-			}
+		{
+			info.subject = subject;
+			OPENSSL_free(subject);
+		}
 
 		// Get issuer
 		char* issuer = X509_NAME_oneline(X509_get_issuer_name(cert), nullptr, 0);
 		if (issuer)
-			{
-				info.issuer = issuer;
-				OPENSSL_free(issuer);
-			}
+		{
+			info.issuer = issuer;
+			OPENSSL_free(issuer);
+		}
 
 		// Get serial
 		ASN1_INTEGER* serial = X509_get_serialNumber(cert);
 		if (serial)
+		{
+			BIGNUM* bn = ASN1_INTEGER_to_BN(serial, nullptr);
+			if (bn)
 			{
-				BIGNUM* bn = ASN1_INTEGER_to_BN(serial, nullptr);
-				if (bn)
-					{
-						char* hex = BN_bn2hex(bn);
-						if (hex)
-							{
-								info.serial = hex;
-								OPENSSL_free(hex);
-							}
-						BN_free(bn);
-					}
+				char* hex = BN_bn2hex(bn);
+				if (hex)
+				{
+					info.serial = hex;
+					OPENSSL_free(hex);
+				}
+				BN_free(bn);
 			}
+		}
 
 		X509_free(cert);
 		return info;
@@ -546,16 +545,16 @@ namespace coroute::net
 		BIO* wbio = static_cast<BIO*>(wbio_);
 
 		while ((pending = BIO_pending(wbio)) > 0)
-			{
-				int to_read = std::min(pending, static_cast<int>(sizeof(buf)));
-				int read = BIO_read(wbio, buf, to_read);
+		{
+			int to_read = std::min(pending, static_cast<int>(sizeof(buf)));
+			int read = BIO_read(wbio, buf, to_read);
 
-				if (read > 0)
-					{
-						auto result = co_await inner_->async_write_all(buf, read);
-						if (!result) co_return unexpected(result.error());
-					}
+			if (read > 0)
+			{
+				auto result = co_await inner_->async_write_all(buf, read);
+				if (!result) co_return unexpected(result.error());
 			}
+		}
 
 		co_return expected<void, Error>{};
 	}
@@ -608,9 +607,9 @@ namespace coroute::net
 	void TlsListener::close()
 	{
 		if (inner_)
-			{
-				inner_->close();
-			}
+		{
+			inner_->close();
+		}
 	}
 
 }  // namespace coroute::net

@@ -10,10 +10,10 @@ TEST_CASE("Router basic matching", "[router]")
 	bool handler_called = false;
 	router.get("/hello",
 	           [&handler_called](Request& req) -> Task<Response>
-	               {
-					   handler_called = true;
-					   co_return Response::ok("Hello");
-				   });
+	           {
+				   handler_called = true;
+				   co_return Response::ok("Hello");
+			   });
 
 	SECTION("exact match")
 	{

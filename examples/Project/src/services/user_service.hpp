@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <mutex>
 
-namespace project::services {
+namespace project::services
+{
 
-	class UserService {
+	class UserService
+	{
 	public:
 		UserService();
 

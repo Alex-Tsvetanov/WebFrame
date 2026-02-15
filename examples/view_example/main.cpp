@@ -26,7 +26,8 @@ using namespace coroute;
 // - IS web-specific
 // ============================================================================
 
-Task<Response> logging_middleware(Request& req, Next next) {
+Task<Response> logging_middleware(Request& req, Next next)
+{
 	std::cout << "[HTTP MW] " << method_to_string(req.method()) << " " << req.path() << std::endl;
 	auto resp = co_await next(req);
 	std::cout << "[HTTP MW] Response: " << resp.status() << std::endl;
@@ -41,15 +42,16 @@ Task<Response> logging_middleware(Request& req, Next next) {
 // ============================================================================
 
 // Simulated user database
-struct UserData {
+struct UserData
+{
 	std::string name;
 	std::string email;
 	bool is_admin;
 };
 
 std::unordered_map<std::string, UserData> user_db = {
-    {"alice", {"Alice", "alice@example.com", true}},
-    {"bob", {"Bob", "bob@example.com", false}},
+	{"alice", {"Alice", "alice@example.com", true}},
+	{  "bob",    {"Bob", "bob@example.com", false}},
 };
 
 // Simulated session storage
@@ -62,7 +64,8 @@ std::unordered_map<std::string, std::string> server_sessions;  // token -> usern
 // - For access gating, ViewModel enrichment, etc.
 // ============================================================================
 
-Task<void> log_view_access(ViewExecutionContext& ctx) {
+Task<void> log_view_access(ViewExecutionContext& ctx)
+{
 	std::cout << "[VIEW MW] Rendering view for route: " << ctx.route << std::endl;
 	co_return;
 }
@@ -70,8 +73,10 @@ Task<void> log_view_access(ViewExecutionContext& ctx) {
 // Get the directory containing this source file at compile time
 static std::filesystem::path source_dir() { return std::filesystem::path(__FILE__).parent_path(); }
 
-int main() {
-	try {
+int main()
+{
+	try
+	{
 		std::cout << "Starting view_example..." << std::endl;
 		App app;
 
@@ -94,122 +99,153 @@ int main() {
 		// ========================================================================
 
 		// Login endpoint - returns auth token
-		app.post("/api/login", [](Request& req) -> Task<Response> {
-			// In real app, would parse JSON body
-			for (auto& header : req.query_params()) {
-				std::cout << header.first << ": " << header.second << std::endl;
-			}
-			std::string username = req.query_opt<std::string>("user").value_or("guest");
-			std::cout << "Login attempt for user: " << username << std::endl;
-			for (auto& user : user_db) {
-				std::cout << user.first << ": " << user.second.name << std::endl;
-			}
+		app.post("/api/login",
+		         [](Request& req) -> Task<Response>
+		         {
+					 // In real app, would parse JSON body
+					 for (auto& header : req.query_params())
+					 {
+						 std::cout << header.first << ": " << header.second << std::endl;
+					 }
+					 std::string username = req.query_opt<std::string>("user").value_or("guest");
+					 std::cout << "Login attempt for user: " << username << std::endl;
+					 for (auto& user : user_db)
+					 {
+						 std::cout << user.first << ": " << user.second.name << std::endl;
+					 }
 
-			if (user_db.count(username)) {
-				// Create session
-				std::string token = "token_" + username;  // In real app, use secure random
-				server_sessions[token] = username;
+					 if (user_db.count(username))
+					 {
+						 // Create session
+						 std::string token = "token_" + username;  // In real app, use secure random
+						 server_sessions[token] = username;
 
-				// Return success with Set-Cookie
-				Response resp = Response::json(R"({"status":"ok"})");
-				resp.add_header("Set-Cookie", "auth=" + token + "; HttpOnly; Path=/");
-				co_return resp;
-			}
+						 // Return success with Set-Cookie
+						 Response resp = Response::json(R"({"status":"ok"})");
+						 resp.add_header("Set-Cookie", "auth=" + token + "; HttpOnly; Path=/");
+						 co_return resp;
+					 }
 
-			co_return Response::json(R"({"status":"error","message":"Unknown user"})");
-		});
+					 co_return Response::json(R"({"status":"error","message":"Unknown user"})");
+				 });
 
 		// Get current user (requires auth)
-		app.get("/api/user", [](Request& req) -> Task<Response> {
-			// Check auth via cookie
-			auto cookie = req.header("Cookie");
-			if (cookie) {
-				// Parse auth cookie (simplified)
-				auto pos = cookie->find("auth=");
-				if (pos != std::string::npos) {
-					std::string token = std::string(cookie->substr(pos + 5));
-					auto semi = token.find(';');
-					if (semi != std::string::npos) token = token.substr(0, semi);
+		app.get("/api/user",
+		        [](Request& req) -> Task<Response>
+		        {
+					// Check auth via cookie
+					auto cookie = req.header("Cookie");
+					if (cookie)
+					{
+						// Parse auth cookie (simplified)
+						auto pos = cookie->find("auth=");
+						if (pos != std::string::npos)
+						{
+							std::string token = std::string(cookie->substr(pos + 5));
+							auto semi = token.find(';');
+							if (semi != std::string::npos) token = token.substr(0, semi);
 
-					if (server_sessions.count(token)) {
-						std::string username = server_sessions[token];
-						if (user_db.count(username)) {
-							auto& user = user_db[username];
-							nlohmann::json j = {
-							    {"name", user.name}, {"email", user.email}, {"is_admin", user.is_admin}};
-							co_return Response::json(j.dump());
+							if (server_sessions.count(token))
+							{
+								std::string username = server_sessions[token];
+								if (user_db.count(username))
+								{
+									auto& user = user_db[username];
+									nlohmann::json j = {
+										{    "name",     user.name},
+                                        {   "email",    user.email},
+                                        {"is_admin", user.is_admin}
+                                    };
+									co_return Response::json(j.dump());
+								}
+							}
 						}
 					}
-				}
-			}
 
-			co_return Response(401, {{"Content-Type", "application/json"}}, R"({"error":"not_authenticated"})");
-		});
+					co_return Response(401,
+			                           {
+										   {"Content-Type", "application/json"}
+                    },
+			                           R"({"error":"not_authenticated"})");
+				});
 
 		// List items (public API)
-		app.get("/api/items", [](Request&) -> Task<Response> {
-			nlohmann::json items = {"Apple", "Banana", "Cherry", "Date"};
-			co_return Response::json(items.dump());
-		});
+		app.get("/api/items",
+		        [](Request&) -> Task<Response>
+		        {
+					nlohmann::json items = {"Apple", "Banana", "Cherry", "Date"};
+					co_return Response::json(items.dump());
+				});
 
 		// ========================================================================
 		// View Routes (Orchestrate data via fetch)
 		// ========================================================================
 
 		// Home view - fetches items from API
-		app.view<ListingVm>("/", [&app](Request&) -> View<ListingVm> {
-			// Fetch data from API route (business logic lives there)
-			Response resp = co_await app.fetch_get("/api/items");
+		app.view<ListingVm>("/",
+		                    [&app](Request&) -> View<ListingVm>
+		                    {
+								// Fetch data from API route (business logic lives there)
+								Response resp = co_await app.fetch_get("/api/items");
 
-			std::vector<std::string> items;
-			if (resp.status() == 200) {
-				nlohmann::json j = nlohmann::json::parse(resp.body());
-				items = j.get<std::vector<std::string>>();
-			}
+								std::vector<std::string> items;
+								if (resp.status() == 200)
+								{
+									nlohmann::json j = nlohmann::json::parse(resp.body());
+									items = j.get<std::vector<std::string>>();
+								}
 
-			ListingVm vm{.title = "Items from API", .items = std::move(items)};
-			co_return ViewResult<ListingVm>{.templates = ViewTemplates{"listing"}, .model = std::move(vm)};
-		});
+								ListingVm vm{.title = "Items from API", .items = std::move(items)};
+								co_return ViewResult<ListingVm>{.templates = ViewTemplates{"listing"},
+			                                                    .model = std::move(vm)};
+							});
 
 		// Profile view - shows current user info
-		app.view<UserVm>("/profile", [&app](Request& req, ViewExecutionContext&) -> View<UserVm> {
-			// Fetch current user from API
-			// Pass original request to forward browser cookies
-			Response resp = co_await app.fetch_get(req, "/api/user");
+		app.view<UserVm>("/profile",
+		                 [&app](Request& req, ViewExecutionContext&) -> View<UserVm>
+		                 {
+							 // Fetch current user from API
+			                 // Pass original request to forward browser cookies
+							 Response resp = co_await app.fetch_get(req, "/api/user");
 
-			UserVm vm;
-			if (resp.status() == 200) {
-				nlohmann::json j = nlohmann::json::parse(resp.body());
-				vm.name = j["name"].get<std::string>();
-				vm.greeting = "Welcome back";
-				vm.logged_in = true;
-			} else {
-				vm.name = "Guest";
-				vm.greeting = "Please log in";
-				vm.logged_in = false;
-			}
+							 UserVm vm;
+							 if (resp.status() == 200)
+							 {
+								 nlohmann::json j = nlohmann::json::parse(resp.body());
+								 vm.name = j["name"].get<std::string>();
+								 vm.greeting = "Welcome back";
+								 vm.logged_in = true;
+							 }
+							 else
+							 {
+								 vm.name = "Guest";
+								 vm.greeting = "Please log in";
+								 vm.logged_in = false;
+							 }
 
-			co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
-		});
+							 co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
+						 });
 
 		// User detail view with route parameter
-		app.view<UserVm>("/user/{name}", [](Request& req, ViewExecutionContext& ctx) -> View<UserVm> {
-			std::string name = req.param<std::string>(0).value_or("Unknown");
+		app.view<UserVm>("/user/{name}",
+		                 [](Request& req, ViewExecutionContext& ctx) -> View<UserVm>
+		                 {
+							 std::string name = req.param<std::string>(0).value_or("Unknown");
 
-			UserVm vm{.name = name, .greeting = "Hello", .logged_in = false};
+							 UserVm vm{.name = name, .greeting = "Hello", .logged_in = false};
 
-			// Debug output
-			std::cout << "[DEBUG] UserVm created: name=" << vm.name << ", greeting=" << vm.greeting
-			          << ", logged_in=" << vm.logged_in << std::endl;
+							 // Debug output
+							 std::cout << "[DEBUG] UserVm created: name=" << vm.name << ", greeting=" << vm.greeting
+									   << ", logged_in=" << vm.logged_in << std::endl;
 
-			nlohmann::json debug_j;
-			to_json(debug_j, vm);
-			std::cout << "[DEBUG] UserVm as JSON: " << debug_j.dump() << std::endl;
+							 nlohmann::json debug_j;
+							 to_json(debug_j, vm);
+							 std::cout << "[DEBUG] UserVm as JSON: " << debug_j.dump() << std::endl;
 
-			// Could fetch additional data via app.fetch() here
+							 // Could fetch additional data via app.fetch() here
 
-			co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
-		});
+							 co_return ViewResult<UserVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)};
+						 });
 
 		// ========================================================================
 		// Startup
@@ -227,10 +263,14 @@ int main() {
 		std::cout << "  http://localhost:8080/api/items  (API endpoint)\n\n";
 
 		app.run(8080);
-	} catch (const std::exception& e) {
+	}
+	catch (const std::exception& e)
+	{
 		std::cerr << "Fatal error: " << e.what() << std::endl;
 		return 1;
-	} catch (...) {
+	}
+	catch (...)
+	{
 		std::cerr << "Unknown fatal error" << std::endl;
 		return 1;
 	}

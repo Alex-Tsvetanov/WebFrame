@@ -60,9 +60,9 @@ namespace coroute::net
 			total_acquired_.fetch_add(1, std::memory_order_relaxed);
 
 			if (pool_.empty())
-				{
-					return nullptr;
-				}
+			{
+				return nullptr;
+			}
 
 			total_reused_.fetch_add(1, std::memory_order_relaxed);
 			auto conn = std::move(pool_.back());
@@ -75,23 +75,23 @@ namespace coroute::net
 		void release(std::unique_ptr<Connection> conn)
 		{
 			if (!conn || !config_.enable_reuse)
-				{
-					return;
-				}
+			{
+				return;
+			}
 
 			active_count_.fetch_sub(1, std::memory_order_relaxed);
 
 			// Reset connection state if resetter is set
 			if (resetter_)
-				{
-					resetter_(*conn);
-				}
+			{
+				resetter_(*conn);
+			}
 
 			std::lock_guard<std::mutex> lock(mutex_);
 			if (pool_.size() < config_.max_size)
-				{
-					pool_.push_back(std::move(conn));
-				}
+			{
+				pool_.push_back(std::move(conn));
+			}
 			// If pool is full, connection is destroyed
 		}
 
@@ -100,12 +100,12 @@ namespace coroute::net
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			for (size_t i = 0; i < count && pool_.size() < config_.max_size; ++i)
+			{
+				if (auto conn = factory())
 				{
-					if (auto conn = factory())
-						{
-							pool_.push_back(std::move(conn));
-						}
+					pool_.push_back(std::move(conn));
 				}
+			}
 		}
 
 		// Statistics
@@ -157,9 +157,9 @@ namespace coroute::net
 		~PooledConnection()
 		{
 			if (conn_ && pool_)
-				{
-					pool_->release(std::move(conn_));
-				}
+			{
+				pool_->release(std::move(conn_));
+			}
 		}
 
 		// Move only
@@ -174,15 +174,15 @@ namespace coroute::net
 		PooledConnection& operator=(PooledConnection&& other) noexcept
 		{
 			if (this != &other)
+			{
+				if (conn_ && pool_)
 				{
-					if (conn_ && pool_)
-						{
-							pool_->release(std::move(conn_));
-						}
-					conn_ = std::move(other.conn_);
-					pool_ = other.pool_;
-					other.pool_ = nullptr;
+					pool_->release(std::move(conn_));
 				}
+				conn_ = std::move(other.conn_);
+				pool_ = other.pool_;
+				other.pool_ = nullptr;
+			}
 			return *this;
 		}
 
@@ -236,9 +236,9 @@ namespace coroute::net
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			if (available_.empty())
-				{
-					return -1;
-				}
+			{
+				return -1;
+			}
 			int idx = static_cast<int>(available_.front());
 			available_.pop();
 			sockets_[idx].pending = true;
@@ -250,10 +250,10 @@ namespace coroute::net
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			if (idx < sockets_.size())
-				{
-					sockets_[idx].pending = false;
-					available_.push(idx);
-				}
+			{
+				sockets_[idx].pending = false;
+				available_.push(idx);
+			}
 		}
 
 		// Add a new pre-allocated socket

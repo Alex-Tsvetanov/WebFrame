@@ -33,19 +33,19 @@ namespace coroute
 			{
 				bool expected = false;
 				if (cancelled_.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+				{
+					// Successfully cancelled, invoke callbacks
+					std::vector<std::function<void()>> cbs;
 					{
-						// Successfully cancelled, invoke callbacks
-						std::vector<std::function<void()>> cbs;
-						{
-							std::lock_guard lock(mutex_);
-							cbs = std::move(callbacks_);
-						}
-						for (auto& cb : cbs)
-							{
-								if (cb) cb();
-							}
-						return true;
+						std::lock_guard lock(mutex_);
+						cbs = std::move(callbacks_);
 					}
+					for (auto& cb : cbs)
+					{
+						if (cb) cb();
+					}
+					return true;
+				}
 				return false;  // Already cancelled
 			}
 
@@ -54,17 +54,17 @@ namespace coroute
 			bool register_callback(std::function<void()> cb)
 			{
 				if (is_cancelled())
-					{
-						if (cb) cb();
-						return false;
-					}
+				{
+					if (cb) cb();
+					return false;
+				}
 
 				std::lock_guard lock(mutex_);
 				if (cancelled_.load(std::memory_order_acquire))
-					{
-						if (cb) cb();
-						return false;
-					}
+				{
+					if (cb) cb();
+					return false;
+				}
 				callbacks_.push_back(std::move(cb));
 				return true;
 			}
@@ -105,9 +105,9 @@ namespace coroute
 		void on_cancel(std::function<void()> callback) const
 		{
 			if (state_)
-				{
-					state_->register_callback(std::move(callback));
-				}
+			{
+				state_->register_callback(std::move(callback));
+			}
 		}
 
 		// Create a token that is never cancelled (for operations that don't support cancellation)
@@ -159,11 +159,11 @@ namespace coroute
 		CancellationGuard& operator=(CancellationGuard&& other) noexcept
 		{
 			if (this != &other)
-				{
-					if (source_) source_->cancel();
-					source_ = other.source_;
-					other.source_ = nullptr;
-				}
+			{
+				if (source_) source_->cancel();
+				source_ = other.source_;
+				other.source_ = nullptr;
+			}
 			return *this;
 		}
 

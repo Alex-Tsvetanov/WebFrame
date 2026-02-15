@@ -116,11 +116,11 @@ TEST_CASE("StaticFileOptions extension configuration", "[static_files]")
 		// Check some expected defaults
 		bool has_exe = false, has_dll = false, has_sh = false;
 		for (const auto& ext : options.denied_extensions)
-			{
-				if (ext == ".exe") has_exe = true;
-				if (ext == ".dll") has_dll = true;
-				if (ext == ".sh") has_sh = true;
-			}
+		{
+			if (ext == ".exe") has_exe = true;
+			if (ext == ".dll") has_dll = true;
+			if (ext == ".sh") has_sh = true;
+		}
 		CHECK(has_exe);
 		CHECK(has_dll);
 		CHECK(has_sh);

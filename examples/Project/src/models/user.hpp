@@ -5,9 +5,11 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 
-namespace project::models {
+namespace project::models
+{
 
-	struct User {
+	struct User
+	{
 		int64_t id = 0;
 		std::string username;
 		std::string email;
@@ -23,7 +25,8 @@ namespace project::models {
 	};
 
 	// Request/Response DTOs
-	struct LoginRequest {
+	struct LoginRequest
+	{
 		std::string username;
 		std::string password;
 
@@ -31,7 +34,8 @@ namespace project::models {
 		static std::optional<std::string> validate(const nlohmann::json& j);
 	};
 
-	struct RegisterRequest {
+	struct RegisterRequest
+	{
 		std::string username;
 		std::string email;
 		std::string password;

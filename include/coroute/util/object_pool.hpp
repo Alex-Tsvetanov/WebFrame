@@ -37,9 +37,9 @@ namespace coroute
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			while (pool_.size() < count && pool_.size() < max_size_)
-				{
-					pool_.push_back(std::make_unique<T>());
-				}
+			{
+				pool_.push_back(std::make_unique<T>());
+			}
 		}
 
 		// Acquire an object from the pool (or create new)
@@ -47,9 +47,9 @@ namespace coroute
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			if (pool_.empty())
-				{
-					return std::make_unique<T>();
-				}
+			{
+				return std::make_unique<T>();
+			}
 			auto obj = std::move(pool_.back());
 			pool_.pop_back();
 			return obj;
@@ -62,15 +62,15 @@ namespace coroute
 
 			// Reset object state
 			if (reset_func_)
-				{
-					reset_func_(*obj);
-				}
+			{
+				reset_func_(*obj);
+			}
 
 			std::lock_guard<std::mutex> lock(mutex_);
 			if (pool_.size() < max_size_)
-				{
-					pool_.push_back(std::move(obj));
-				}
+			{
+				pool_.push_back(std::move(obj));
+			}
 			// If pool is full, object is destroyed
 		}
 
@@ -110,9 +110,9 @@ namespace coroute
 		~PooledObject()
 		{
 			if (obj_ && pool_)
-				{
-					pool_->release(std::move(obj_));
-				}
+			{
+				pool_->release(std::move(obj_));
+			}
 		}
 
 		// Move only
@@ -127,15 +127,15 @@ namespace coroute
 		PooledObject& operator=(PooledObject&& other) noexcept
 		{
 			if (this != &other)
+			{
+				if (obj_ && pool_)
 				{
-					if (obj_ && pool_)
-						{
-							pool_->release(std::move(obj_));
-						}
-					obj_ = std::move(other.obj_);
-					pool_ = other.pool_;
-					other.pool_ = nullptr;
+					pool_->release(std::move(obj_));
 				}
+				obj_ = std::move(other.obj_);
+				pool_ = other.pool_;
+				other.pool_ = nullptr;
+			}
 			return *this;
 		}
 
@@ -182,9 +182,9 @@ namespace coroute
 		static std::unique_ptr<T> acquire()
 		{
 			if (local_.pool.empty())
-				{
-					return std::make_unique<T>();
-				}
+			{
+				return std::make_unique<T>();
+			}
 			auto obj = std::move(local_.pool.back());
 			local_.pool.pop_back();
 			return obj;
@@ -194,9 +194,9 @@ namespace coroute
 		{
 			if (!obj) return;
 			if (local_.pool.size() < local_.max_size)
-				{
-					local_.pool.push_back(std::move(obj));
-				}
+			{
+				local_.pool.push_back(std::move(obj));
+			}
 		}
 
 		static size_t size() { return local_.pool.size(); }
@@ -228,9 +228,9 @@ namespace coroute
 		{
 			auto buf = pool_.acquire();
 			if (buf->capacity() < default_buffer_size_)
-				{
-					buf->reserve(default_buffer_size_);
-				}
+			{
+				buf->reserve(default_buffer_size_);
+			}
 			return buf;
 		}
 
@@ -238,9 +238,9 @@ namespace coroute
 		{
 			auto buf = pool_.acquire();
 			if (buf->capacity() < min_size)
-				{
-					buf->reserve(min_size);
-				}
+			{
+				buf->reserve(min_size);
+			}
 			return buf;
 		}
 

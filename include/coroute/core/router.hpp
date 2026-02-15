@@ -196,31 +196,31 @@ namespace coroute
 		static Handler make_handler(F&& f)
 		{
 			return [func = std::forward<F>(f)](Request& req) mutable -> Task<Response>
-			           { return invoke_with_params<Args...>(func, req, std::index_sequence_for<Args...>{}); };
+			{ return invoke_with_params<Args...>(func, req, std::index_sequence_for<Args...>{}); };
 		}
 
 		template <typename... Args, typename F, size_t... Is>
 		static Task<Response> invoke_with_params(F& func, Request& req, std::index_sequence<Is...>)
 		{
 			if constexpr (sizeof...(Args) == 0)
-				{
-					// No parameters to extract
-					co_return co_await func(req);
-				}
+			{
+				// No parameters to extract
+				co_return co_await func(req);
+			}
 			else
+			{
+				// Extract each parameter from route_params
+				auto params = std::make_tuple(extract_param<Args>(req, Is)...);
+
+				// Check if any extraction failed
+				if (!all_valid(std::get<Is>(params)...))
 				{
-					// Extract each parameter from route_params
-					auto params = std::make_tuple(extract_param<Args>(req, Is)...);
-
-					// Check if any extraction failed
-					if (!all_valid(std::get<Is>(params)...))
-						{
-							co_return Response::bad_request("Invalid route parameters");
-						}
-
-					// Call the handler with extracted values
-					co_return co_await func(*std::get<Is>(params)..., req);
+					co_return Response::bad_request("Invalid route parameters");
 				}
+
+				// Call the handler with extracted values
+				co_return co_await func(*std::get<Is>(params)..., req);
+			}
 		}
 
 		template <typename T>

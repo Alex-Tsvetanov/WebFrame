@@ -9,12 +9,14 @@
 
 using namespace coroute;
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
 	App app;
 
 	// Configure thread count
 	size_t threads = 12;
-	if (argc > 1) {
+	if (argc > 1)
+	{
 		threads = std::stoul(argv[1]);
 	}
 	app.threads(threads);
@@ -23,7 +25,8 @@ int main(int argc, char** argv) {
 	app.get("/", [](Request&) -> Task<Response> { co_return Response::ok("Hello, World!"); });
 
 	uint16_t port = 8080;
-	if (argc > 2) {
+	if (argc > 2)
+	{
 		port = static_cast<uint16_t>(std::stoul(argv[2]));
 	}
 

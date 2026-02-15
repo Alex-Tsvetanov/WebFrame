@@ -18,9 +18,9 @@ namespace coroute
 		std::string encode_chunk(std::string_view data)
 		{
 			if (data.empty())
-				{
-					return "";  // Don't send empty chunks (use encode_final_chunk for termination)
-				}
+			{
+				return "";  // Don't send empty chunks (use encode_final_chunk for termination)
+			}
 
 			std::ostringstream oss;
 			oss << std::hex << data.size() << "\r\n";
@@ -37,9 +37,9 @@ namespace coroute
 			oss << "0\r\n";
 
 			for (const auto& [key, value] : trailers)
-				{
-					oss << key << ": " << value << "\r\n";
-				}
+			{
+				oss << key << ": " << value << "\r\n";
+			}
 
 			oss << "\r\n";
 			return oss.str();
@@ -49,47 +49,47 @@ namespace coroute
 		{
 			// Trim whitespace
 			while (!hex_size.empty() && std::isspace(static_cast<unsigned char>(hex_size.front())))
-				{
-					hex_size.remove_prefix(1);
-				}
+			{
+				hex_size.remove_prefix(1);
+			}
 			while (!hex_size.empty() && std::isspace(static_cast<unsigned char>(hex_size.back())))
-				{
-					hex_size.remove_suffix(1);
-				}
+			{
+				hex_size.remove_suffix(1);
+			}
 
 			// Handle chunk extensions (ignore everything after semicolon)
 			auto semicolon = hex_size.find(';');
 			if (semicolon != std::string_view::npos)
-				{
-					hex_size = hex_size.substr(0, semicolon);
-				}
+			{
+				hex_size = hex_size.substr(0, semicolon);
+			}
 
 			if (hex_size.empty())
-				{
-					return -1;
-				}
+			{
+				return -1;
+			}
 
 			int64_t result = 0;
 			for (char c : hex_size)
+			{
+				result *= 16;
+				if (c >= '0' && c <= '9')
 				{
-					result *= 16;
-					if (c >= '0' && c <= '9')
-						{
-							result += c - '0';
-						}
-					else if (c >= 'a' && c <= 'f')
-						{
-							result += c - 'a' + 10;
-						}
-					else if (c >= 'A' && c <= 'F')
-						{
-							result += c - 'A' + 10;
-						}
-					else
-						{
-							return -1;  // Invalid character
-						}
+					result += c - '0';
 				}
+				else if (c >= 'a' && c <= 'f')
+				{
+					result += c - 'a' + 10;
+				}
+				else if (c >= 'A' && c <= 'F')
+				{
+					result += c - 'A' + 10;
+				}
+				else
+				{
+					return -1;  // Invalid character
+				}
+			}
 
 			return result;
 		}
@@ -103,35 +103,35 @@ namespace coroute
 	std::string_view ChunkedResponse::status_text(int status) noexcept
 	{
 		switch (status)
-			{
-				case 200:
-					return "OK";
-				case 201:
-					return "Created";
-				case 204:
-					return "No Content";
-				case 400:
-					return "Bad Request";
-				case 404:
-					return "Not Found";
-				case 500:
-					return "Internal Server Error";
-				default:
-					return "Unknown";
-			}
+		{
+			case 200:
+				return "OK";
+			case 201:
+				return "Created";
+			case 204:
+				return "No Content";
+			case 400:
+				return "Bad Request";
+			case 404:
+				return "Not Found";
+			case 500:
+				return "Internal Server Error";
+			default:
+				return "Unknown";
+		}
 	}
 
 	Task<expected<void, Error>> ChunkedResponse::send_headers()
 	{
 		if (!conn_)
-			{
-				co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
+		}
 
 		if (headers_sent_)
-			{
-				co_return expected<void, Error>{};  // Already sent
-			}
+		{
+			co_return expected<void, Error>{};  // Already sent
+		}
 
 		std::ostringstream oss;
 
@@ -143,25 +143,25 @@ namespace coroute
 
 		// Add Trailer header if we have trailers
 		if (!trailers_.empty())
+		{
+			oss << "Trailer: ";
+			for (size_t i = 0; i < trailers_.size(); ++i)
 			{
-				oss << "Trailer: ";
-				for (size_t i = 0; i < trailers_.size(); ++i)
-					{
-						if (i > 0) oss << ", ";
-						oss << trailers_[i].first;
-					}
-				oss << "\r\n";
+				if (i > 0) oss << ", ";
+				oss << trailers_[i].first;
 			}
+			oss << "\r\n";
+		}
 
 		// User headers
 		for (const auto& [key, value] : headers_)
-			{
-				// Skip Content-Length (incompatible with chunked)
-				if (key == "Content-Length") continue;
-				// Skip Transfer-Encoding (we set it)
-				if (key == "Transfer-Encoding") continue;
-				oss << key << ": " << value << "\r\n";
-			}
+		{
+			// Skip Content-Length (incompatible with chunked)
+			if (key == "Content-Length") continue;
+			// Skip Transfer-Encoding (we set it)
+			if (key == "Transfer-Encoding") continue;
+			oss << key << ": " << value << "\r\n";
+		}
 
 		// End of headers
 		oss << "\r\n";
@@ -170,9 +170,9 @@ namespace coroute
 		auto result = co_await conn_->async_write_all(header_data.data(), header_data.size());
 
 		if (!result)
-			{
-				co_return unexpected(result.error());
-			}
+		{
+			co_return unexpected(result.error());
+		}
 
 		headers_sent_ = true;
 		co_return expected<void, Error>{};
@@ -181,39 +181,39 @@ namespace coroute
 	Task<expected<void, Error>> ChunkedResponse::write(std::string_view data)
 	{
 		if (!conn_)
-			{
-				co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
+		}
 
 		if (finished_)
-			{
-				co_return unexpected(Error::http(HttpError::Internal, "Response already finished"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::Internal, "Response already finished"));
+		}
 
 		// Send headers on first write
 		if (!headers_sent_)
+		{
+			auto result = co_await send_headers();
+			if (!result)
 			{
-				auto result = co_await send_headers();
-				if (!result)
-					{
-						co_return result;
-					}
+				co_return result;
 			}
+		}
 
 		// Don't send empty chunks
 		if (data.empty())
-			{
-				co_return expected<void, Error>{};
-			}
+		{
+			co_return expected<void, Error>{};
+		}
 
 		// Encode and send chunk
 		std::string chunk = chunked::encode_chunk(data);
 		auto result = co_await conn_->async_write_all(chunk.data(), chunk.size());
 
 		if (!result)
-			{
-				co_return unexpected(result.error());
-			}
+		{
+			co_return unexpected(result.error());
+		}
 
 		co_return expected<void, Error>{};
 	}
@@ -221,42 +221,42 @@ namespace coroute
 	Task<expected<void, Error>> ChunkedResponse::finish()
 	{
 		if (!conn_)
-			{
-				co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::Internal, "No connection set"));
+		}
 
 		if (finished_)
-			{
-				co_return expected<void, Error>{};  // Already finished
-			}
+		{
+			co_return expected<void, Error>{};  // Already finished
+		}
 
 		// Send headers if not sent yet (empty response)
 		if (!headers_sent_)
+		{
+			auto result = co_await send_headers();
+			if (!result)
 			{
-				auto result = co_await send_headers();
-				if (!result)
-					{
-						co_return result;
-					}
+				co_return result;
 			}
+		}
 
 		// Send final chunk with trailers
 		std::string final_chunk;
 		if (trailers_.empty())
-			{
-				final_chunk = chunked::encode_final_chunk();
-			}
+		{
+			final_chunk = chunked::encode_final_chunk();
+		}
 		else
-			{
-				final_chunk = chunked::encode_final_chunk(trailers_);
-			}
+		{
+			final_chunk = chunked::encode_final_chunk(trailers_);
+		}
 
 		auto result = co_await conn_->async_write_all(final_chunk.data(), final_chunk.size());
 
 		if (!result)
-			{
-				co_return unexpected(result.error());
-			}
+		{
+			co_return unexpected(result.error());
+		}
 
 		finished_ = true;
 		co_return expected<void, Error>{};
@@ -273,45 +273,44 @@ namespace coroute
 		// First check buffer for existing data
 		auto crlf_pos = buffer_.find("\r\n");
 		if (crlf_pos != std::string::npos)
+		{
+			line = buffer_.substr(0, crlf_pos);
+			buffer_.erase(0, crlf_pos + 2);
+			co_return line;
+		}
+
+		// Read more data
+		char buf[1024];
+		while (true)
+		{
+			auto result = co_await conn_->async_read(buf, sizeof(buf));
+			if (!result)
+			{
+				co_return unexpected(result.error());
+			}
+
+			if (*result == 0)
+			{
+				// Connection closed
+				co_return unexpected(Error::http(HttpError::BadRequest, "Connection closed while reading chunk"));
+			}
+
+			buffer_.append(buf, *result);
+
+			crlf_pos = buffer_.find("\r\n");
+			if (crlf_pos != std::string::npos)
 			{
 				line = buffer_.substr(0, crlf_pos);
 				buffer_.erase(0, crlf_pos + 2);
 				co_return line;
 			}
 
-		// Read more data
-		char buf[1024];
-		while (true)
+			// Prevent buffer from growing too large
+			if (buffer_.size() > 8192)
 			{
-				auto result = co_await conn_->async_read(buf, sizeof(buf));
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-
-				if (*result == 0)
-					{
-						// Connection closed
-						co_return unexpected(
-							Error::http(HttpError::BadRequest, "Connection closed while reading chunk"));
-					}
-
-				buffer_.append(buf, *result);
-
-				crlf_pos = buffer_.find("\r\n");
-				if (crlf_pos != std::string::npos)
-					{
-						line = buffer_.substr(0, crlf_pos);
-						buffer_.erase(0, crlf_pos + 2);
-						co_return line;
-					}
-
-				// Prevent buffer from growing too large
-				if (buffer_.size() > 8192)
-					{
-						co_return unexpected(Error::http(HttpError::BadRequest, "Chunk size line too long"));
-					}
+				co_return unexpected(Error::http(HttpError::BadRequest, "Chunk size line too long"));
 			}
+		}
 	}
 
 	Task<expected<std::string, Error>> ChunkedBodyReader::read_bytes(size_t n)
@@ -321,32 +320,31 @@ namespace coroute
 
 		// Use buffered data first
 		if (!buffer_.empty())
-			{
-				size_t to_use = std::min(buffer_.size(), n);
-				result.append(buffer_, 0, to_use);
-				buffer_.erase(0, to_use);
-			}
+		{
+			size_t to_use = std::min(buffer_.size(), n);
+			result.append(buffer_, 0, to_use);
+			buffer_.erase(0, to_use);
+		}
 
 		// Read remaining
 		while (result.size() < n)
+		{
+			char buf[4096];
+			size_t to_read = std::min(sizeof(buf), n - result.size());
+
+			auto read_result = co_await conn_->async_read(buf, to_read);
+			if (!read_result)
 			{
-				char buf[4096];
-				size_t to_read = std::min(sizeof(buf), n - result.size());
-
-				auto read_result = co_await conn_->async_read(buf, to_read);
-				if (!read_result)
-					{
-						co_return unexpected(read_result.error());
-					}
-
-				if (*read_result == 0)
-					{
-						co_return unexpected(
-							Error::http(HttpError::BadRequest, "Connection closed while reading chunk data"));
-					}
-
-				result.append(buf, *read_result);
+				co_return unexpected(read_result.error());
 			}
+
+			if (*read_result == 0)
+			{
+				co_return unexpected(Error::http(HttpError::BadRequest, "Connection closed while reading chunk data"));
+			}
+
+			result.append(buf, *read_result);
+		}
 
 		co_return result;
 	}
@@ -354,77 +352,77 @@ namespace coroute
 	Task<expected<std::string, Error>> ChunkedBodyReader::read_chunk()
 	{
 		if (finished_)
-			{
-				co_return std::string{};
-			}
+		{
+			co_return std::string{};
+		}
 
 		// Read chunk size line
 		auto size_line = co_await read_line();
 		if (!size_line)
-			{
-				co_return unexpected(size_line.error());
-			}
+		{
+			co_return unexpected(size_line.error());
+		}
 
 		int64_t chunk_size = chunked::parse_chunk_size(*size_line);
 		if (chunk_size < 0)
-			{
-				co_return unexpected(Error::http(HttpError::BadRequest, "Invalid chunk size"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::BadRequest, "Invalid chunk size"));
+		}
 
 		// Final chunk
 		if (chunk_size == 0)
+		{
+			// Read trailers (if any) until empty line
+			while (true)
 			{
-				// Read trailers (if any) until empty line
-				while (true)
+				auto trailer_line = co_await read_line();
+				if (!trailer_line)
+				{
+					co_return unexpected(trailer_line.error());
+				}
+
+				if (trailer_line->empty())
+				{
+					break;  // End of trailers
+				}
+
+				// Parse trailer
+				auto colon = trailer_line->find(':');
+				if (colon != std::string::npos)
+				{
+					std::string key = trailer_line->substr(0, colon);
+					std::string value = trailer_line->substr(colon + 1);
+					// Trim leading whitespace from value
+					while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
 					{
-						auto trailer_line = co_await read_line();
-						if (!trailer_line)
-							{
-								co_return unexpected(trailer_line.error());
-							}
-
-						if (trailer_line->empty())
-							{
-								break;  // End of trailers
-							}
-
-						// Parse trailer
-						auto colon = trailer_line->find(':');
-						if (colon != std::string::npos)
-							{
-								std::string key = trailer_line->substr(0, colon);
-								std::string value = trailer_line->substr(colon + 1);
-								// Trim leading whitespace from value
-								while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
-									{
-										value.erase(0, 1);
-									}
-								trailers_.emplace_back(std::move(key), std::move(value));
-							}
+						value.erase(0, 1);
 					}
-
-				finished_ = true;
-				co_return std::string{};
+					trailers_.emplace_back(std::move(key), std::move(value));
+				}
 			}
+
+			finished_ = true;
+			co_return std::string{};
+		}
 
 		// Read chunk data
 		auto chunk_data = co_await read_bytes(static_cast<size_t>(chunk_size));
 		if (!chunk_data)
-			{
-				co_return unexpected(chunk_data.error());
-			}
+		{
+			co_return unexpected(chunk_data.error());
+		}
 
 		// Read trailing CRLF
 		auto crlf = co_await read_bytes(2);
 		if (!crlf)
-			{
-				co_return unexpected(crlf.error());
-			}
+		{
+			co_return unexpected(crlf.error());
+		}
 
 		if (*crlf != "\r\n")
-			{
-				co_return unexpected(Error::http(HttpError::BadRequest, "Missing CRLF after chunk data"));
-			}
+		{
+			co_return unexpected(Error::http(HttpError::BadRequest, "Missing CRLF after chunk data"));
+		}
 
 		co_return std::move(*chunk_data);
 	}
@@ -434,25 +432,25 @@ namespace coroute
 		std::string result;
 
 		while (!finished_)
+		{
+			auto chunk = co_await read_chunk();
+			if (!chunk)
 			{
-				auto chunk = co_await read_chunk();
-				if (!chunk)
-					{
-						co_return unexpected(chunk.error());
-					}
-
-				if (chunk->empty())
-					{
-						break;  // Final chunk
-					}
-
-				if (result.size() + chunk->size() > max_size)
-					{
-						co_return unexpected(Error::http(HttpError::PayloadTooLarge, "Chunked body too large"));
-					}
-
-				result.append(*chunk);
+				co_return unexpected(chunk.error());
 			}
+
+			if (chunk->empty())
+			{
+				break;  // Final chunk
+			}
+
+			if (result.size() + chunk->size() > max_size)
+			{
+				co_return unexpected(Error::http(HttpError::PayloadTooLarge, "Chunked body too large"));
+			}
+
+			result.append(*chunk);
+		}
 
 		co_return result;
 	}
@@ -469,17 +467,17 @@ namespace coroute
 		// Call the callback to generate chunks
 		bool continue_streaming = true;
 		while (continue_streaming)
-			{
-				continue_streaming = co_await callback(resp);
-			}
+		{
+			continue_streaming = co_await callback(resp);
+		}
 
 		// Finish the response
 		auto result = co_await resp.finish();
 		if (!result)
-			{
-				// Return an error response (though headers may already be sent)
-				co_return Response::internal_error("Streaming error");
-			}
+		{
+			// Return an error response (though headers may already be sent)
+			co_return Response::internal_error("Streaming error");
+		}
 
 		// Return empty response since we already wrote directly
 		// The caller should not serialize this

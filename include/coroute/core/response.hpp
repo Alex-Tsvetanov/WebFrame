@@ -61,13 +61,13 @@ namespace coroute
 		{
 			// Check if header already exists, update if so
 			for (auto& [k, v] : headers_)
+			{
+				if (k == key)
 				{
-					if (k == key)
-						{
-							v = std::move(value);
-							return;
-						}
+					v = std::move(value);
+					return;
 				}
+			}
 			headers_.emplace_back(std::move(key), std::move(value));
 		}
 
@@ -96,10 +96,10 @@ namespace coroute
 			r.status_text_ = "OK";
 			r.body_ = std::move(body);
 			if (!r.body_.empty())
-				{
-					r.headers_.emplace_back("Content-Type", std::move(content_type));
-					r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
-				}
+			{
+				r.headers_.emplace_back("Content-Type", std::move(content_type));
+				r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+			}
 			return r;
 		}
 
@@ -239,17 +239,17 @@ namespace coroute
 			// Add Content-Length if body is set and not already present
 			bool has_content_length = false;
 			for (const auto& [k, v] : headers_)
+			{
+				if (k == "Content-Length")
 				{
-					if (k == "Content-Length")
-						{
-							has_content_length = true;
-							break;
-						}
+					has_content_length = true;
+					break;
 				}
+			}
 			if (!has_content_length && !body_.empty())
-				{
-					headers_.emplace_back("Content-Length", std::to_string(body_.size()));
-				}
+			{
+				headers_.emplace_back("Content-Length", std::to_string(body_.size()));
+			}
 
 			return Response(status_, std::move(headers_), std::move(body_));
 		}

@@ -1,15 +1,19 @@
 #include "auth.hpp"
 #include "coroute/core/cookie.hpp"
 
-namespace project::middleware {
+namespace project::middleware
+{
 
-	coroute::Middleware require_auth() {
-		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response> {
+	coroute::Middleware require_auth()
+	{
+		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response>
+		{
 			// Check if user is authenticated via cookie
 			auto cookies = coroute::CookieJar::from_request(req);
 			auto user_id_cookie = cookies.get("user_id");
 
-			if (!user_id_cookie) {
+			if (!user_id_cookie)
+			{
 				// Not authenticated - return 401
 				nlohmann::json error;
 				error["error"]["code"] = 401;
@@ -26,23 +30,31 @@ namespace project::middleware {
 		};
 	}
 
-	coroute::Middleware load_user() {
-		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response> {
+	coroute::Middleware load_user()
+	{
+		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response>
+		{
 			// Load user info from cookies into request context
 			auto cookies = coroute::CookieJar::from_request(req);
 			auto user_id_cookie = cookies.get("user_id");
 			auto username_cookie = cookies.get("username");
 
-			if (user_id_cookie) {
-				try {
+			if (user_id_cookie)
+			{
+				try
+				{
 					int64_t user_id = std::stoll(std::string(*user_id_cookie));
 					req.set_context("user_id", user_id);
 					req.set_context("username", username_cookie ? std::string(*username_cookie) : "");
 					req.set_context("authenticated", true);
-				} catch (...) {
+				}
+				catch (...)
+				{
 					req.set_context("authenticated", false);
 				}
-			} else {
+			}
+			else
+			{
 				req.set_context("authenticated", false);
 			}
 

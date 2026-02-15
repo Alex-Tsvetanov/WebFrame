@@ -3,10 +3,13 @@
 #include <chrono>
 #include <iomanip>
 
-namespace project::middleware {
+namespace project::middleware
+{
 
-	coroute::Middleware request_logger() {
-		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response> {
+	coroute::Middleware request_logger()
+	{
+		return [](coroute::Request& req, coroute::Next next) -> coroute::Task<coroute::Response>
+		{
 			auto start = std::chrono::steady_clock::now();
 
 			// Call next middleware/handler
@@ -21,8 +24,8 @@ namespace project::middleware {
 
 			// Log the request
 			std::cout << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S") << " | " << std::setw(3)
-			          << response.status() << " | " << std::setw(6) << duration.count() << "ms"
-			          << " | " << coroute::method_to_string(req.method()) << " " << req.path() << "\n";
+					  << response.status() << " | " << std::setw(6) << duration.count() << "ms"
+					  << " | " << coroute::method_to_string(req.method()) << " " << req.path() << "\n";
 
 			co_return response;
 		};

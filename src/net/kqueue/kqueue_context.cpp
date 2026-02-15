@@ -88,9 +88,9 @@ namespace coroute::net
 		{
 			kq_ = kqueue();
 			if (kq_ < 0)
-				{
-					throw std::runtime_error("kqueue() failed");
-				}
+			{
+				throw std::runtime_error("kqueue() failed");
+			}
 		}
 
 		~KqueueContext() override
@@ -98,17 +98,17 @@ namespace coroute::net
 			stop();
 
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 
 			if (kq_ >= 0)
-				{
-					close(kq_);
-				}
+			{
+				close(kq_);
+			}
 		}
 
 		int kq() const noexcept { return kq_; }
@@ -140,17 +140,17 @@ namespace coroute::net
 			stopped_ = false;
 
 			for (size_t i = 0; i < thread_count_; ++i)
-				{
-					workers_.emplace_back([this] { worker_thread(); });
-				}
+			{
+				workers_.emplace_back([this] { worker_thread(); });
+			}
 
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 		}
 
 		void run_one() override
@@ -173,10 +173,10 @@ namespace coroute::net
 		{
 			std::thread(
 				[this, delay, cb = std::move(callback)]() mutable
-					{
-						std::this_thread::sleep_for(delay);
-						post(std::move(cb));
-					})
+				{
+					std::this_thread::sleep_for(delay);
+					post(std::move(cb));
+				})
 				.detach();
 		}
 
@@ -184,10 +184,10 @@ namespace coroute::net
 		void worker_thread()
 		{
 			while (!stopped_)
-				{
-					process_events();
-					process_callbacks();
-				}
+			{
+				process_events();
+				process_callbacks();
+			}
 		}
 
 		void process_events()
@@ -200,73 +200,72 @@ namespace coroute::net
 			pending_changes_.clear();
 
 			if (n < 0)
-				{
-					return;
-				}
+			{
+				return;
+			}
 
 			for (int i = 0; i < n; ++i)
+			{
+				auto& ev = events[i];
+				int fd = static_cast<int>(ev.ident);
+				KqueueOperation* op = static_cast<KqueueOperation*>(ev.udata);
+
+				if (!op) continue;
+
+				if (ev.filter == EVFILT_READ)
 				{
-					auto& ev = events[i];
-					int fd = static_cast<int>(ev.ident);
-					KqueueOperation* op = static_cast<KqueueOperation*>(ev.udata);
-
-					if (!op) continue;
-
-					if (ev.filter == EVFILT_READ)
+					if (op->type == KqueueOpType::Accept)
+					{
+						// Perform accept
+						op->accept_fd = accept(fd, reinterpret_cast<sockaddr*>(&op->client_addr), &op->client_addr_len);
+						if (op->accept_fd < 0)
 						{
-							if (op->type == KqueueOpType::Accept)
-								{
-									// Perform accept
-									op->accept_fd =
-										accept(fd, reinterpret_cast<sockaddr*>(&op->client_addr), &op->client_addr_len);
-									if (op->accept_fd < 0)
-										{
-											op->error = Error::system(std::error_code(errno, std::system_category()));
-										}
-									else
-										{
-											// Set non-blocking
-											int flags = fcntl(op->accept_fd, F_GETFL, 0);
-											fcntl(op->accept_fd, F_SETFL, flags | O_NONBLOCK);
-											op->result = op->accept_fd;
-										}
-								}
-							else
-								{
-									// Regular read operation
-									ssize_t bytes = recv(fd, op->buffer, op->length, 0);
-									if (bytes < 0)
-										{
-											op->error = Error::system(std::error_code(errno, std::system_category()));
-											op->result = -1;
-										}
-									else
-										{
-											op->result = static_cast<int>(bytes);
-										}
-								}
+							op->error = Error::system(std::error_code(errno, std::system_category()));
 						}
-					else if (ev.filter == EVFILT_WRITE)
+						else
 						{
-							// Perform write
-							ssize_t bytes = send(fd, op->buffer, op->length, 0);
-							if (bytes < 0)
-								{
-									op->error = Error::system(std::error_code(errno, std::system_category()));
-									op->result = -1;
-								}
-							else
-								{
-									op->result = static_cast<int>(bytes);
-								}
+							// Set non-blocking
+							int flags = fcntl(op->accept_fd, F_GETFL, 0);
+							fcntl(op->accept_fd, F_SETFL, flags | O_NONBLOCK);
+							op->result = op->accept_fd;
 						}
-
-					// Resume the coroutine
-					if (op->continuation)
+					}
+					else
+					{
+						// Regular read operation
+						ssize_t bytes = recv(fd, op->buffer, op->length, 0);
+						if (bytes < 0)
 						{
-							op->continuation.resume();
+							op->error = Error::system(std::error_code(errno, std::system_category()));
+							op->result = -1;
 						}
+						else
+						{
+							op->result = static_cast<int>(bytes);
+						}
+					}
 				}
+				else if (ev.filter == EVFILT_WRITE)
+				{
+					// Perform write
+					ssize_t bytes = send(fd, op->buffer, op->length, 0);
+					if (bytes < 0)
+					{
+						op->error = Error::system(std::error_code(errno, std::system_category()));
+						op->result = -1;
+					}
+					else
+					{
+						op->result = static_cast<int>(bytes);
+					}
+				}
+
+				// Resume the coroutine
+				if (op->continuation)
+				{
+					op->continuation.resume();
+				}
+			}
 		}
 
 		void process_callbacks()
@@ -279,9 +278,9 @@ namespace coroute::net
 				callbacks_.pop();
 			}
 			if (callback)
-				{
-					callback();
-				}
+			{
+				callback();
+			}
 		}
 	};
 
@@ -304,9 +303,9 @@ namespace coroute::net
 		{
 			listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
 			if (listen_fd_ < 0)
-				{
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			// Set non-blocking
 			int flags = fcntl(listen_fd_, F_GETFL, 0);
@@ -321,18 +320,18 @@ namespace coroute::net
 			addr.sin_port = htons(port);
 
 			if (bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			if (::listen(listen_fd_, backlog) < 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-					return unexpected(Error::system(std::error_code(errno, std::system_category())));
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
 
 			sockaddr_in bound_addr{};
 			socklen_t addr_len = sizeof(bound_addr);
@@ -347,10 +346,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (listen_fd_ >= 0)
-				{
-					::close(listen_fd_);
-					listen_fd_ = -1;
-				}
+			{
+				::close(listen_fd_);
+				listen_fd_ = -1;
+			}
 		}
 
 		bool is_listening() const noexcept override { return listen_fd_ >= 0; }
@@ -394,10 +393,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (fd_ >= 0)
-				{
-					::close(fd_);
-					fd_ = -1;
-				}
+			{
+				::close(fd_);
+				fd_ = -1;
+			}
 		}
 
 		bool is_open() const noexcept override { return fd_ >= 0; }
@@ -420,9 +419,9 @@ namespace coroute::net
 	Task<AcceptResult> KqueueListener::async_accept()
 	{
 		if (!is_listening())
-			{
-				co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
+		}
 
 		KqueueOperation op{KqueueOpType::Accept};
 		int fd = listen_fd_;
@@ -434,14 +433,14 @@ namespace coroute::net
 		co_await KqueueAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.accept_fd < 0)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Accept failed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Accept failed"));
+		}
 
 		co_return AcceptResult(std::make_unique<KqueueConnection>(ctx_, op.accept_fd, op.client_addr));
 	}
@@ -449,14 +448,14 @@ namespace coroute::net
 	Task<ReadResult> KqueueConnection::async_read(void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		KqueueOperation op{KqueueOpType::Read};
 		op.buffer = buffer;
@@ -470,19 +469,19 @@ namespace coroute::net
 		co_await KqueueAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.result == 0)
-			{
-				co_return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
+		}
 
 		if (op.result < 0)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Read failed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Read failed"));
+		}
 
 		co_return static_cast<size_t>(op.result);
 	}
@@ -493,19 +492,19 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_read(buf + total, 1);
+			if (!result)
 			{
-				auto result = co_await async_read(buf + total, 1);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-
-				total += *result;
-				if (buf[total - 1] == delimiter)
-					{
-						break;
-					}
+				co_return unexpected(result.error());
 			}
+
+			total += *result;
+			if (buf[total - 1] == delimiter)
+			{
+				break;
+			}
+		}
 
 		co_return total;
 	}
@@ -513,14 +512,14 @@ namespace coroute::net
 	Task<WriteResult> KqueueConnection::async_write(const void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		KqueueOperation op{KqueueOpType::Write};
 		op.buffer = const_cast<void*>(buffer);
@@ -534,14 +533,14 @@ namespace coroute::net
 		co_await KqueueAwaiter{op};
 
 		if (op.error)
-			{
-				co_return unexpected(op.error);
-			}
+		{
+			co_return unexpected(op.error);
+		}
 
 		if (op.result < 0)
-			{
-				co_return unexpected(Error::io(IoError::Unknown, "Write failed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::Unknown, "Write failed"));
+		}
 
 		co_return static_cast<size_t>(op.result);
 	}
@@ -552,14 +551,14 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_write(buf + total, len - total);
+			if (!result)
 			{
-				auto result = co_await async_write(buf + total, len - total);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-				total += *result;
+				co_return unexpected(result.error());
 			}
+			total += *result;
+		}
 
 		co_return total;
 	}
@@ -567,39 +566,39 @@ namespace coroute::net
 	Task<TransmitResult> KqueueConnection::async_transmit_file(FileHandle file, size_t offset, size_t length)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		size_t total_sent = 0;
 		while (total_sent < length)
+		{
+			if (cancel_token_.is_cancelled())
 			{
-				if (cancel_token_.is_cancelled())
-					{
-						co_return unexpected(Error::cancelled());
-					}
-
-				// Use macOS native sendfile for zero-copy transmission
-				off_t len = static_cast<off_t>(length - total_sent);
-				if (sendfile(file, fd_, static_cast<off_t>(offset + total_sent), &len, nullptr, 0) < 0)
-					{
-						if (errno == EAGAIN || errno == EINTR)
-							{
-								// If would block or interrupted, wait for the socket to become writable
-								KqueueOperation op{KqueueOpType::Write};
-								ctx_.register_write_op(fd_, &op);
-								co_await KqueueAwaiter{op};
-								continue;
-							}
-						co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
-					}
-
-				if (len == 0)
-					{
-						break;  // EOF
-					}
-				total_sent += static_cast<size_t>(len);
+				co_return unexpected(Error::cancelled());
 			}
+
+			// Use macOS native sendfile for zero-copy transmission
+			off_t len = static_cast<off_t>(length - total_sent);
+			if (sendfile(file, fd_, static_cast<off_t>(offset + total_sent), &len, nullptr, 0) < 0)
+			{
+				if (errno == EAGAIN || errno == EINTR)
+				{
+					// If would block or interrupted, wait for the socket to become writable
+					KqueueOperation op{KqueueOpType::Write};
+					ctx_.register_write_op(fd_, &op);
+					co_await KqueueAwaiter{op};
+					continue;
+				}
+				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			if (len == 0)
+			{
+				break;  // EOF
+			}
+			total_sent += static_cast<size_t>(len);
+		}
 
 		co_return total_sent;
 	}

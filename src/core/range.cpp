@@ -17,72 +17,72 @@ namespace coroute
 	bool ByteRange::normalize(int64_t total_size)
 	{
 		if (total_size <= 0)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Suffix range: "-500" means last 500 bytes
 		if (!start.has_value() && end.has_value())
-			{
-				int64_t suffix_length = end.value();
-				if (suffix_length <= 0)
-					{
-						return false;
-					}
-				if (suffix_length >= total_size)
-					{
-						// Entire file
-						start = 0;
-						end = total_size - 1;
-					}
-				else
-					{
-						start = total_size - suffix_length;
-						end = total_size - 1;
-					}
-				return true;
-			}
-
-		// Must have start at this point
-		if (!start.has_value())
+		{
+			int64_t suffix_length = end.value();
+			if (suffix_length <= 0)
 			{
 				return false;
 			}
+			if (suffix_length >= total_size)
+			{
+				// Entire file
+				start = 0;
+				end = total_size - 1;
+			}
+			else
+			{
+				start = total_size - suffix_length;
+				end = total_size - 1;
+			}
+			return true;
+		}
+
+		// Must have start at this point
+		if (!start.has_value())
+		{
+			return false;
+		}
 
 		int64_t s = start.value();
 
 		// Start beyond file size
 		if (s >= total_size)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Negative start is invalid
 		if (s < 0)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Open-ended range: "500-" means from 500 to end
 		if (!end.has_value())
-			{
-				end = total_size - 1;
-				return true;
-			}
+		{
+			end = total_size - 1;
+			return true;
+		}
 
 		int64_t e = end.value();
 
 		// End before start
 		if (e < s)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Clamp end to file size
 		if (e >= total_size)
-			{
-				end = total_size - 1;
-			}
+		{
+			end = total_size - 1;
+		}
 
 		return true;
 	}
@@ -105,13 +105,13 @@ namespace coroute
 		std::string_view trim(std::string_view s)
 		{
 			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-				{
-					s.remove_prefix(1);
-				}
+			{
+				s.remove_prefix(1);
+			}
 			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-				{
-					s.remove_suffix(1);
-				}
+			{
+				s.remove_suffix(1);
+			}
 			return s;
 		}
 
@@ -120,51 +120,51 @@ namespace coroute
 		{
 			spec = trim(spec);
 			if (spec.empty())
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			auto dash = spec.find('-');
 			if (dash == std::string_view::npos)
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			ByteRange range;
 
 			// Parse start (before dash)
 			auto start_str = trim(spec.substr(0, dash));
 			if (!start_str.empty())
+			{
+				try
 				{
-					try
-						{
-							range.start = std::stoll(std::string(start_str));
-						}
-					catch (...)
-						{
-							return std::nullopt;
-						}
+					range.start = std::stoll(std::string(start_str));
 				}
+				catch (...)
+				{
+					return std::nullopt;
+				}
+			}
 
 			// Parse end (after dash)
 			auto end_str = trim(spec.substr(dash + 1));
 			if (!end_str.empty())
+			{
+				try
 				{
-					try
-						{
-							range.end = std::stoll(std::string(end_str));
-						}
-					catch (...)
-						{
-							return std::nullopt;
-						}
+					range.end = std::stoll(std::string(end_str));
 				}
-
-			// Must have at least start or end
-			if (!range.start.has_value() && !range.end.has_value())
+				catch (...)
 				{
 					return std::nullopt;
 				}
+			}
+
+			// Must have at least start or end
+			if (!range.start.has_value() && !range.end.has_value())
+			{
+				return std::nullopt;
+			}
 
 			return range;
 		}
@@ -178,53 +178,53 @@ namespace coroute
 		{
 			header = trim(header);
 			if (header.empty())
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			// Find "bytes="
 			auto eq = header.find('=');
 			if (eq == std::string_view::npos)
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			RangeHeader result;
 			result.unit = std::string(trim(header.substr(0, eq)));
 
 			// Only support bytes
 			if (result.unit != "bytes")
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			// Parse range specs (comma-separated)
 			auto specs = header.substr(eq + 1);
 			size_t start = 0;
 
 			while (start < specs.size())
+			{
+				auto comma = specs.find(',', start);
+				auto spec =
+					(comma == std::string_view::npos) ? specs.substr(start) : specs.substr(start, comma - start);
+
+				auto range = parse_range_spec(spec);
+				if (range)
 				{
-					auto comma = specs.find(',', start);
-					auto spec =
-						(comma == std::string_view::npos) ? specs.substr(start) : specs.substr(start, comma - start);
-
-					auto range = parse_range_spec(spec);
-					if (range)
-						{
-							result.ranges.push_back(*range);
-						}
-
-					if (comma == std::string_view::npos)
-						{
-							break;
-						}
-					start = comma + 1;
+					result.ranges.push_back(*range);
 				}
+
+				if (comma == std::string_view::npos)
+				{
+					break;
+				}
+				start = comma + 1;
+			}
 
 			if (result.ranges.empty())
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 
 			return result;
 		}
@@ -235,9 +235,9 @@ namespace coroute
 		{
 			auto header = req.header("Range");
 			if (!header)
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 			return parse(*header);
 		}
 
@@ -245,19 +245,19 @@ namespace coroute
 		{
 			auto if_range = req.header("If-Range");
 			if (!if_range)
-				{
-					// No If-Range header means always serve range
-					return true;
-				}
+			{
+				// No If-Range header means always serve range
+				return true;
+			}
 
 			std::string_view value = *if_range;
 
 			// If it looks like an ETag (starts with " or W/)
 			if (value.starts_with('"') || value.starts_with("W/"))
-				{
-					// Compare ETags
-					return !etag.empty() && value == etag;
-				}
+			{
+				// Compare ETags
+				return !etag.empty() && value == etag;
+			}
 
 			// Otherwise treat as date - compare with Last-Modified
 			// For simplicity, just do string comparison
@@ -303,22 +303,22 @@ namespace coroute
 	{
 		std::ifstream file(file_path_, std::ios::binary);
 		if (!file)
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		file.seekg(start);
 		if (!file)
-			{
-				return std::nullopt;
-			}
+		{
+			return std::nullopt;
+		}
 
 		std::string data(static_cast<size_t>(length), '\0');
 		if (!file.read(data.data(), length))
-			{
-				// Partial read is okay at end of file
-				data.resize(static_cast<size_t>(file.gcount()));
-			}
+		{
+			// Partial read is okay at end of file
+			data.resize(static_cast<size_t>(file.gcount()));
+		}
 
 		return data;
 	}
@@ -332,9 +332,9 @@ namespace coroute
 
 		std::string boundary = "----corouteBoundary";
 		for (int i = 0; i < 16; i++)
-			{
-				boundary += chars[dis(gen)];
-			}
+		{
+			boundary += chars[dis(gen)];
+		}
 		return boundary;
 	}
 
@@ -346,30 +346,30 @@ namespace coroute
 		resp.set_header("Accept-Ranges", "bytes");
 
 		if (!etag_.empty())
-			{
-				resp.set_header("ETag", etag_);
-			}
+		{
+			resp.set_header("ETag", etag_);
+		}
 		if (!last_modified_.empty())
-			{
-				resp.set_header("Last-Modified", last_modified_);
-			}
+		{
+			resp.set_header("Last-Modified", last_modified_);
+		}
 
 		if (use_file_)
+		{
+			std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
+			if (file)
 			{
-				std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
-				if (file)
-					{
-						auto size = file.tellg();
-						file.seekg(0);
-						std::string data(static_cast<size_t>(size), '\0');
-						file.read(data.data(), size);
-						resp.set_body(std::move(data));
-					}
+				auto size = file.tellg();
+				file.seekg(0);
+				std::string data(static_cast<size_t>(size), '\0');
+				file.read(data.data(), size);
+				resp.set_body(std::move(data));
 			}
+		}
 		else
-			{
-				resp.set_body(content_);
-			}
+		{
+			resp.set_body(content_);
+		}
 
 		resp.set_header("Content-Length", std::to_string(resp.body().size()));
 		return resp;
@@ -384,28 +384,28 @@ namespace coroute
 		resp.set_header("Content-Range", range.to_content_range(total_size));
 
 		if (!etag_.empty())
-			{
-				resp.set_header("ETag", etag_);
-			}
+		{
+			resp.set_header("ETag", etag_);
+		}
 		if (!last_modified_.empty())
-			{
-				resp.set_header("Last-Modified", last_modified_);
-			}
+		{
+			resp.set_header("Last-Modified", last_modified_);
+		}
 
 		// Extract the range data
 		std::string data;
 		if (use_file_)
+		{
+			auto file_data = read_file_range(range.get_start(), range.length());
+			if (file_data)
 			{
-				auto file_data = read_file_range(range.get_start(), range.length());
-				if (file_data)
-					{
-						data = std::move(*file_data);
-					}
+				data = std::move(*file_data);
 			}
+		}
 		else
-			{
-				data = content_.substr(static_cast<size_t>(range.get_start()), static_cast<size_t>(range.length()));
-			}
+		{
+			data = content_.substr(static_cast<size_t>(range.get_start()), static_cast<size_t>(range.length()));
+		}
 
 		resp.set_header("Content-Length", std::to_string(data.size()));
 		resp.set_body(std::move(data));
@@ -422,39 +422,38 @@ namespace coroute
 		resp.set_header("Accept-Ranges", "bytes");
 
 		if (!etag_.empty())
-			{
-				resp.set_header("ETag", etag_);
-			}
+		{
+			resp.set_header("ETag", etag_);
+		}
 		if (!last_modified_.empty())
-			{
-				resp.set_header("Last-Modified", last_modified_);
-			}
+		{
+			resp.set_header("Last-Modified", last_modified_);
+		}
 
 		std::ostringstream body;
 
 		for (const auto& range : ranges)
-			{
-				body << "--" << boundary << "\r\n";
-				body << "Content-Type: " << content_type_ << "\r\n";
-				body << "Content-Range: " << range.to_content_range(total_size) << "\r\n";
-				body << "\r\n";
+		{
+			body << "--" << boundary << "\r\n";
+			body << "Content-Type: " << content_type_ << "\r\n";
+			body << "Content-Range: " << range.to_content_range(total_size) << "\r\n";
+			body << "\r\n";
 
-				// Extract range data
-				if (use_file_)
-					{
-						auto file_data = read_file_range(range.get_start(), range.length());
-						if (file_data)
-							{
-								body << *file_data;
-							}
-					}
-				else
-					{
-						body << content_.substr(static_cast<size_t>(range.get_start()),
-						                        static_cast<size_t>(range.length()));
-					}
-				body << "\r\n";
+			// Extract range data
+			if (use_file_)
+			{
+				auto file_data = read_file_range(range.get_start(), range.length());
+				if (file_data)
+				{
+					body << *file_data;
+				}
 			}
+			else
+			{
+				body << content_.substr(static_cast<size_t>(range.get_start()), static_cast<size_t>(range.length()));
+			}
+			body << "\r\n";
+		}
 
 		body << "--" << boundary << "--\r\n";
 
@@ -469,83 +468,83 @@ namespace coroute
 		// Get total size
 		int64_t total_size;
 		if (use_file_)
+		{
+			std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
+			if (!file)
 			{
-				std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
-				if (!file)
-					{
-						return Response::not_found();
-					}
-				total_size = file.tellg();
+				return Response::not_found();
 			}
+			total_size = file.tellg();
+		}
 		else
-			{
-				total_size = static_cast<int64_t>(content_.size());
-			}
+		{
+			total_size = static_cast<int64_t>(content_.size());
+		}
 
 		// Check for Range header
 		auto range_header = range::get_range(req);
 		if (!range_header || !range_header->is_valid())
-			{
-				return build_full();
-			}
+		{
+			return build_full();
+		}
 
 		// Check If-Range
 		if (!range::check_if_range(req, etag_, last_modified_))
-			{
-				return build_full();
-			}
+		{
+			return build_full();
+		}
 
 		// Normalize and validate ranges
 		std::vector<ByteRange> valid_ranges;
 		for (auto range : range_header->ranges)
+		{
+			if (range.normalize(total_size))
 			{
-				if (range.normalize(total_size))
-					{
-						valid_ranges.push_back(range);
-					}
+				valid_ranges.push_back(range);
 			}
+		}
 
 		if (valid_ranges.empty())
-			{
-				return range_not_satisfiable(total_size);
-			}
+		{
+			return range_not_satisfiable(total_size);
+		}
 
 		// Single range vs multipart
 		if (valid_ranges.size() == 1)
-			{
-				return build_single_range(valid_ranges[0], total_size);
-			}
+		{
+			return build_single_range(valid_ranges[0], total_size);
+		}
 		else
-			{
-				return build_multipart_range(valid_ranges, total_size);
-			}
+		{
+			return build_multipart_range(valid_ranges, total_size);
+		}
 	}
 
 	Response RangeResponseBuilder::build_range(int64_t start, int64_t end)
 	{
 		int64_t total_size;
 		if (use_file_)
+		{
+			std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
+			if (!file)
 			{
-				std::ifstream file(file_path_, std::ios::binary | std::ios::ate);
-				if (!file)
-					{
-						return Response::not_found();
-					}
-				total_size = file.tellg();
+				return Response::not_found();
 			}
+			total_size = file.tellg();
+		}
 		else
-			{
-				total_size = static_cast<int64_t>(content_.size());
-			}
+		{
+			total_size = static_cast<int64_t>(content_.size());
+		}
 
 		ByteRange range;
 		range.start = start;
 		range.end = end;
 
 		if (!range.normalize(total_size))
-			{
-				return range_not_satisfiable(total_size);
-			}
+		{
+			return range_not_satisfiable(total_size);
+		}
 
 		return build_single_range(range, total_size);
 	}
@@ -583,9 +582,9 @@ namespace coroute
 	bool should_use_range(const Request& req, std::string_view etag, std::string_view last_modified)
 	{
 		if (!range::has_range_header(req))
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		return range::check_if_range(req, etag, last_modified);
 	}

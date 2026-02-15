@@ -216,13 +216,13 @@ TEST_CASE("RangeResponseBuilder with content", "[range]")
 		// Check Content-Range header
 		bool found_content_range = false;
 		for (const auto& [key, value] : resp.headers())
+		{
+			if (key == "Content-Range")
 			{
-				if (key == "Content-Range")
-					{
-						CHECK(value == "bytes 0-4/10");
-						found_content_range = true;
-					}
+				CHECK(value == "bytes 0-4/10");
+				found_content_range = true;
 			}
+		}
 		CHECK(found_content_range);
 	}
 
@@ -309,13 +309,13 @@ TEST_CASE("Convenience functions", "[range]")
 
 		bool found = false;
 		for (const auto& [key, value] : resp.headers())
+		{
+			if (key == "Content-Range")
 			{
-				if (key == "Content-Range")
-					{
-						CHECK(value == "bytes 0-4/10");
-						found = true;
-					}
+				CHECK(value == "bytes 0-4/10");
+				found = true;
 			}
+		}
 		CHECK(found);
 	}
 
@@ -326,13 +326,13 @@ TEST_CASE("Convenience functions", "[range]")
 
 		bool found = false;
 		for (const auto& [key, value] : resp.headers())
+		{
+			if (key == "Content-Range")
 			{
-				if (key == "Content-Range")
-					{
-						CHECK(value == "bytes */1000");
-						found = true;
-					}
+				CHECK(value == "bytes */1000");
+				found = true;
 			}
+		}
 		CHECK(found);
 	}
 }

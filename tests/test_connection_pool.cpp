@@ -205,10 +205,10 @@ TEST_CASE("ConnectionPool populate", "[connection_pool]")
 
 	// Acquire all
 	for (int i = 0; i < 5; ++i)
-		{
-			auto conn = pool.acquire();
-			CHECK(conn != nullptr);
-		}
+	{
+		auto conn = pool.acquire();
+		CHECK(conn != nullptr);
+	}
 
 	CHECK(pool.pool_size() == 0);
 }

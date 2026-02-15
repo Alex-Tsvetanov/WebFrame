@@ -23,9 +23,9 @@ namespace coroute::http2
 	HpackEncoder::~HpackEncoder()
 	{
 		if (deflater_)
-			{
-				nghttp2_hd_deflate_del(deflater_);
-			}
+		{
+			nghttp2_hd_deflate_del(deflater_);
+		}
 	}
 
 	HpackEncoder::HpackEncoder(HpackEncoder&& other) noexcept : deflater_(other.deflater_)
@@ -36,38 +36,38 @@ namespace coroute::http2
 	HpackEncoder& HpackEncoder::operator=(HpackEncoder&& other) noexcept
 	{
 		if (this != &other)
+		{
+			if (deflater_)
 			{
-				if (deflater_)
-					{
-						nghttp2_hd_deflate_del(deflater_);
-					}
-				deflater_ = other.deflater_;
-				other.deflater_ = nullptr;
+				nghttp2_hd_deflate_del(deflater_);
 			}
+			deflater_ = other.deflater_;
+			other.deflater_ = nullptr;
+		}
 		return *this;
 	}
 
 	expected<std::vector<uint8_t>, Error> HpackEncoder::encode(std::span<const Header> headers)
 	{
 		if (!deflater_)
-			{
-				return unexpected(Error::io(IoError::Unknown, "HPACK encoder not initialized"));
-			}
+		{
+			return unexpected(Error::io(IoError::Unknown, "HPACK encoder not initialized"));
+		}
 
 		// Convert to nghttp2 format
 		std::vector<nghttp2_nv> nvs;
 		nvs.reserve(headers.size());
 
 		for (const auto& h : headers)
-			{
-				nghttp2_nv nv;
-				nv.name = reinterpret_cast<uint8_t*>(const_cast<char*>(h.name.data()));
-				nv.namelen = h.name.size();
-				nv.value = reinterpret_cast<uint8_t*>(const_cast<char*>(h.value.data()));
-				nv.valuelen = h.value.size();
-				nv.flags = NGHTTP2_NV_FLAG_NONE;
-				nvs.push_back(nv);
-			}
+		{
+			nghttp2_nv nv;
+			nv.name = reinterpret_cast<uint8_t*>(const_cast<char*>(h.name.data()));
+			nv.namelen = h.name.size();
+			nv.value = reinterpret_cast<uint8_t*>(const_cast<char*>(h.value.data()));
+			nv.valuelen = h.value.size();
+			nv.flags = NGHTTP2_NV_FLAG_NONE;
+			nvs.push_back(nv);
+		}
 
 		// Calculate upper bound for encoded size
 		size_t buflen = nghttp2_hd_deflate_bound(deflater_, nvs.data(), nvs.size());
@@ -78,10 +78,10 @@ namespace coroute::http2
 		ssize_t rv = nghttp2_hd_deflate_hd(deflater_, result.data(), result.size(), nvs.data(), nvs.size());
 
 		if (rv < 0)
-			{
-				return unexpected(Error::io(
-					IoError::Unknown, std::string("HPACK encode error: ") + nghttp2_strerror(static_cast<int>(rv))));
-			}
+		{
+			return unexpected(Error::io(IoError::Unknown,
+			                            std::string("HPACK encode error: ") + nghttp2_strerror(static_cast<int>(rv))));
+		}
 
 		result.resize(static_cast<size_t>(rv));
 		return result;
@@ -90,17 +90,17 @@ namespace coroute::http2
 	void HpackEncoder::set_max_table_size(size_t size)
 	{
 		if (deflater_)
-			{
-				nghttp2_hd_deflate_change_table_size(deflater_, size);
-			}
+		{
+			nghttp2_hd_deflate_change_table_size(deflater_, size);
+		}
 	}
 
 	size_t HpackEncoder::table_size() const
 	{
 		if (deflater_)
-			{
-				return nghttp2_hd_deflate_get_dynamic_table_size(deflater_);
-			}
+		{
+			return nghttp2_hd_deflate_get_dynamic_table_size(deflater_);
+		}
 		return 0;
 	}
 
@@ -113,9 +113,9 @@ namespace coroute::http2
 	HpackDecoder::~HpackDecoder()
 	{
 		if (inflater_)
-			{
-				nghttp2_hd_inflate_del(inflater_);
-			}
+		{
+			nghttp2_hd_inflate_del(inflater_);
+		}
 	}
 
 	HpackDecoder::HpackDecoder(HpackDecoder&& other) noexcept : inflater_(other.inflater_)
@@ -126,23 +126,23 @@ namespace coroute::http2
 	HpackDecoder& HpackDecoder::operator=(HpackDecoder&& other) noexcept
 	{
 		if (this != &other)
+		{
+			if (inflater_)
 			{
-				if (inflater_)
-					{
-						nghttp2_hd_inflate_del(inflater_);
-					}
-				inflater_ = other.inflater_;
-				other.inflater_ = nullptr;
+				nghttp2_hd_inflate_del(inflater_);
 			}
+			inflater_ = other.inflater_;
+			other.inflater_ = nullptr;
+		}
 		return *this;
 	}
 
 	expected<std::vector<Header>, Error> HpackDecoder::decode(std::span<const uint8_t> data)
 	{
 		if (!inflater_)
-			{
-				return unexpected(Error::io(IoError::Unknown, "HPACK decoder not initialized"));
-			}
+		{
+			return unexpected(Error::io(IoError::Unknown, "HPACK decoder not initialized"));
+		}
 
 		std::vector<Header> result;
 
@@ -150,34 +150,34 @@ namespace coroute::http2
 		size_t inlen = data.size();
 
 		while (inlen > 0)
+		{
+			nghttp2_nv nv;
+			int inflate_flags = 0;
+
+			ssize_t rv = nghttp2_hd_inflate_hd2(inflater_, &nv, &inflate_flags, in, inlen,
+			                                    1  // in_final - we're processing complete header block
+			);
+
+			if (rv < 0)
 			{
-				nghttp2_nv nv;
-				int inflate_flags = 0;
-
-				ssize_t rv = nghttp2_hd_inflate_hd2(inflater_, &nv, &inflate_flags, in, inlen,
-				                                    1  // in_final - we're processing complete header block
-				);
-
-				if (rv < 0)
-					{
-						return unexpected(Error::io(IoError::Unknown, std::string("HPACK decode error: ") +
-						                                                  nghttp2_strerror(static_cast<int>(rv))));
-					}
-
-				in += rv;
-				inlen -= static_cast<size_t>(rv);
-
-				if (inflate_flags & NGHTTP2_HD_INFLATE_EMIT)
-					{
-						result.push_back({std::string(reinterpret_cast<const char*>(nv.name), nv.namelen),
-						                  std::string(reinterpret_cast<const char*>(nv.value), nv.valuelen)});
-					}
-
-				if (inflate_flags & NGHTTP2_HD_INFLATE_FINAL)
-					{
-						break;
-					}
+				return unexpected(Error::io(
+					IoError::Unknown, std::string("HPACK decode error: ") + nghttp2_strerror(static_cast<int>(rv))));
 			}
+
+			in += rv;
+			inlen -= static_cast<size_t>(rv);
+
+			if (inflate_flags & NGHTTP2_HD_INFLATE_EMIT)
+			{
+				result.push_back({std::string(reinterpret_cast<const char*>(nv.name), nv.namelen),
+				                  std::string(reinterpret_cast<const char*>(nv.value), nv.valuelen)});
+			}
+
+			if (inflate_flags & NGHTTP2_HD_INFLATE_FINAL)
+			{
+				break;
+			}
+		}
 
 		// End header block
 		nghttp2_hd_inflate_end_headers(inflater_);
@@ -188,17 +188,17 @@ namespace coroute::http2
 	void HpackDecoder::set_max_table_size(size_t size)
 	{
 		if (inflater_)
-			{
-				nghttp2_hd_inflate_change_table_size(inflater_, size);
-			}
+		{
+			nghttp2_hd_inflate_change_table_size(inflater_, size);
+		}
 	}
 
 	size_t HpackDecoder::table_size() const
 	{
 		if (inflater_)
-			{
-				return nghttp2_hd_inflate_get_dynamic_table_size(inflater_);
-			}
+		{
+			return nghttp2_hd_inflate_get_dynamic_table_size(inflater_);
+		}
 		return 0;
 	}
 
@@ -209,30 +209,30 @@ namespace coroute::http2
 	const Header* find_header(std::span<const Header> headers, std::string_view name)
 	{
 		for (const auto& h : headers)
+		{
+			// Pseudo-headers are case-sensitive, regular headers are case-insensitive
+			if (name[0] == ':')
 			{
-				// Pseudo-headers are case-sensitive, regular headers are case-insensitive
-				if (name[0] == ':')
-					{
-						if (h.name == name) return &h;
-					}
-				else
-					{
-						if (h.name.size() == name.size())
-							{
-								bool match = true;
-								for (size_t i = 0; i < name.size(); ++i)
-									{
-										if (std::tolower(static_cast<unsigned char>(h.name[i])) !=
-										    std::tolower(static_cast<unsigned char>(name[i])))
-											{
-												match = false;
-												break;
-											}
-									}
-								if (match) return &h;
-							}
-					}
+				if (h.name == name) return &h;
 			}
+			else
+			{
+				if (h.name.size() == name.size())
+				{
+					bool match = true;
+					for (size_t i = 0; i < name.size(); ++i)
+					{
+						if (std::tolower(static_cast<unsigned char>(h.name[i])) !=
+						    std::tolower(static_cast<unsigned char>(name[i])))
+						{
+							match = false;
+							break;
+						}
+					}
+					if (match) return &h;
+				}
+			}
+		}
 		return nullptr;
 	}
 
@@ -276,42 +276,42 @@ namespace coroute::http2
 		bool pseudo_ended = false;
 
 		for (const auto& h : headers)
+		{
+			if (h.is_pseudo())
 			{
-				if (h.is_pseudo())
-					{
-						if (pseudo_ended)
-							{
-								// Pseudo-headers must come before regular headers
-								return false;
-							}
-						if (h.name == ":method")
-							has_method = true;
-						else if (h.name == ":scheme")
-							has_scheme = true;
-						else if (h.name == ":path")
-							has_path = true;
-						else if (h.name == ":authority")
-							{ /* optional */
-							}
-						else if (h.name == ":status")
-							{
-								// :status is for responses only
-								return false;
-							}
-					}
-				else
-					{
-						pseudo_ended = true;
-						// Header names must be lowercase
-						for (char c : h.name)
-							{
-								if (std::isupper(static_cast<unsigned char>(c)))
-									{
-										return false;
-									}
-							}
-					}
+				if (pseudo_ended)
+				{
+					// Pseudo-headers must come before regular headers
+					return false;
+				}
+				if (h.name == ":method")
+					has_method = true;
+				else if (h.name == ":scheme")
+					has_scheme = true;
+				else if (h.name == ":path")
+					has_path = true;
+				else if (h.name == ":authority")
+				{ /* optional */
+				}
+				else if (h.name == ":status")
+				{
+					// :status is for responses only
+					return false;
+				}
 			}
+			else
+			{
+				pseudo_ended = true;
+				// Header names must be lowercase
+				for (char c : h.name)
+				{
+					if (std::isupper(static_cast<unsigned char>(c)))
+					{
+						return false;
+					}
+				}
+			}
+		}
 
 		return has_method && has_scheme && has_path;
 	}
@@ -323,33 +323,33 @@ namespace coroute::http2
 		bool pseudo_ended = false;
 
 		for (const auto& h : headers)
+		{
+			if (h.is_pseudo())
 			{
-				if (h.is_pseudo())
-					{
-						if (pseudo_ended)
-							{
-								return false;
-							}
-						if (h.name == ":status")
-							has_status = true;
-						else
-							{
-								// Only :status is allowed in responses
-								return false;
-							}
-					}
+				if (pseudo_ended)
+				{
+					return false;
+				}
+				if (h.name == ":status")
+					has_status = true;
 				else
-					{
-						pseudo_ended = true;
-						for (char c : h.name)
-							{
-								if (std::isupper(static_cast<unsigned char>(c)))
-									{
-										return false;
-									}
-							}
-					}
+				{
+					// Only :status is allowed in responses
+					return false;
+				}
 			}
+			else
+			{
+				pseudo_ended = true;
+				for (char c : h.name)
+				{
+					if (std::isupper(static_cast<unsigned char>(c)))
+					{
+						return false;
+					}
+				}
+			}
+		}
 
 		return has_status;
 	}

@@ -23,9 +23,9 @@ namespace coroute
 		bucket_count_size_ = buckets_.size();
 		bucket_counts_ = std::make_unique<std::atomic<uint64_t>[]>(bucket_count_size_);
 		for (size_t i = 0; i < bucket_count_size_; ++i)
-			{
-				bucket_counts_[i].store(0, std::memory_order_relaxed);
-			}
+		{
+			bucket_counts_[i].store(0, std::memory_order_relaxed);
+		}
 	}
 
 	void Histogram::observe(double value)
@@ -38,13 +38,13 @@ namespace coroute
 
 		// Find bucket and increment
 		for (size_t i = 0; i < buckets_.size(); ++i)
+		{
+			if (value <= buckets_[i])
 			{
-				if (value <= buckets_[i])
-					{
-						bucket_counts_[i].fetch_add(1, std::memory_order_relaxed);
-						break;
-					}
+				bucket_counts_[i].fetch_add(1, std::memory_order_relaxed);
+				break;
 			}
+		}
 	}
 
 	uint64_t Histogram::bucket_count(size_t idx) const
@@ -67,9 +67,9 @@ namespace coroute
 		std::lock_guard<std::mutex> lock(mutex_);
 		auto it = counters_.find(name);
 		if (it != counters_.end())
-			{
-				return it->second;
-			}
+		{
+			return it->second;
+		}
 		auto counter = std::make_shared<Counter>(name, help);
 		counters_[name] = counter;
 		return counter;
@@ -80,9 +80,9 @@ namespace coroute
 		std::lock_guard<std::mutex> lock(mutex_);
 		auto it = gauges_.find(name);
 		if (it != gauges_.end())
-			{
-				return it->second;
-			}
+		{
+			return it->second;
+		}
 		auto gauge = std::make_shared<Gauge>(name, help);
 		gauges_[name] = gauge;
 		return gauge;
@@ -94,9 +94,9 @@ namespace coroute
 		std::lock_guard<std::mutex> lock(mutex_);
 		auto it = histograms_.find(name);
 		if (it != histograms_.end())
-			{
-				return it->second;
-			}
+		{
+			return it->second;
+		}
 		auto histogram = std::make_shared<Histogram>(name, buckets, help);
 		histograms_[name] = histogram;
 		return histogram;
@@ -109,67 +109,67 @@ namespace coroute
 
 		// Export counters
 		for (const auto& [name, counter] : counters_)
+		{
+			if (!counter->help().empty())
 			{
-				if (!counter->help().empty())
-					{
-						out << "# HELP " << name << " " << counter->help() << "\n";
-					}
-				out << "# TYPE " << name << " counter\n";
-				out << name;
-				if (!counter->labels().empty())
-					{
-						out << "{";
-						bool first = true;
-						for (const auto& [k, v] : counter->labels())
-							{
-								if (!first) out << ",";
-								out << k << "=\"" << v << "\"";
-								first = false;
-							}
-						out << "}";
-					}
-				out << " " << counter->value() << "\n";
+				out << "# HELP " << name << " " << counter->help() << "\n";
 			}
+			out << "# TYPE " << name << " counter\n";
+			out << name;
+			if (!counter->labels().empty())
+			{
+				out << "{";
+				bool first = true;
+				for (const auto& [k, v] : counter->labels())
+				{
+					if (!first) out << ",";
+					out << k << "=\"" << v << "\"";
+					first = false;
+				}
+				out << "}";
+			}
+			out << " " << counter->value() << "\n";
+		}
 
 		// Export gauges
 		for (const auto& [name, gauge] : gauges_)
+		{
+			if (!gauge->help().empty())
 			{
-				if (!gauge->help().empty())
-					{
-						out << "# HELP " << name << " " << gauge->help() << "\n";
-					}
-				out << "# TYPE " << name << " gauge\n";
-				out << name << " " << std::fixed << std::setprecision(6) << gauge->value() << "\n";
+				out << "# HELP " << name << " " << gauge->help() << "\n";
 			}
+			out << "# TYPE " << name << " gauge\n";
+			out << name << " " << std::fixed << std::setprecision(6) << gauge->value() << "\n";
+		}
 
 		// Export histograms
 		for (const auto& [name, hist] : histograms_)
+		{
+			if (!hist->help().empty())
 			{
-				if (!hist->help().empty())
-					{
-						out << "# HELP " << name << " " << hist->help() << "\n";
-					}
-				out << "# TYPE " << name << " histogram\n";
-
-				uint64_t cumulative = 0;
-				const auto& buckets = hist->buckets();
-				for (size_t i = 0; i < buckets.size(); ++i)
-					{
-						cumulative += hist->bucket_count(i);
-						out << name << "_bucket{le=\"";
-						if (std::isinf(buckets[i]))
-							{
-								out << "+Inf";
-							}
-						else
-							{
-								out << std::fixed << std::setprecision(3) << buckets[i];
-							}
-						out << "\"} " << cumulative << "\n";
-					}
-				out << name << "_sum " << std::fixed << std::setprecision(6) << hist->sum() << "\n";
-				out << name << "_count " << hist->count() << "\n";
+				out << "# HELP " << name << " " << hist->help() << "\n";
 			}
+			out << "# TYPE " << name << " histogram\n";
+
+			uint64_t cumulative = 0;
+			const auto& buckets = hist->buckets();
+			for (size_t i = 0; i < buckets.size(); ++i)
+			{
+				cumulative += hist->bucket_count(i);
+				out << name << "_bucket{le=\"";
+				if (std::isinf(buckets[i]))
+				{
+					out << "+Inf";
+				}
+				else
+				{
+					out << std::fixed << std::setprecision(3) << buckets[i];
+				}
+				out << "\"} " << cumulative << "\n";
+			}
+			out << name << "_sum " << std::fixed << std::setprecision(6) << hist->sum() << "\n";
+			out << name << "_count " << hist->count() << "\n";
+		}
 
 		return out.str();
 	}
@@ -222,34 +222,34 @@ namespace coroute
 		auto registry_ptr = &registry;
 
 		return [http_metrics, registry_ptr, options](Request& req, Next next) -> Task<Response>
-		           {
-					   // Check if this is a metrics endpoint request
-					   if (options.expose_endpoint && req.path() == options.path)
-						   {
-							   std::string body = registry_ptr->prometheus_export();
-							   Response resp = Response::ok(std::move(body), "text/plain; version=0.0.4");
-							   co_return resp;
-						   }
+		{
+			// Check if this is a metrics endpoint request
+			if (options.expose_endpoint && req.path() == options.path)
+			{
+				std::string body = registry_ptr->prometheus_export();
+				Response resp = Response::ok(std::move(body), "text/plain; version=0.0.4");
+				co_return resp;
+			}
 
-					   // Track request
-					   http_metrics->requests_total->inc();
-					   http_metrics->requests_in_flight->inc();
+			// Track request
+			http_metrics->requests_total->inc();
+			http_metrics->requests_in_flight->inc();
 
-					   auto start = std::chrono::steady_clock::now();
+			auto start = std::chrono::steady_clock::now();
 
-					   // Call next handler
-					   Response resp = co_await next(req);
+			// Call next handler
+			Response resp = co_await next(req);
 
-					   // Record duration
-					   auto end = std::chrono::steady_clock::now();
-					   auto duration = std::chrono::duration<double>(end - start).count();
-					   http_metrics->request_duration->observe(duration);
+			// Record duration
+			auto end = std::chrono::steady_clock::now();
+			auto duration = std::chrono::duration<double>(end - start).count();
+			http_metrics->request_duration->observe(duration);
 
-					   // Track by status (simplified - would need labeled counter for proper impl)
-					   http_metrics->requests_in_flight->dec();
+			// Track by status (simplified - would need labeled counter for proper impl)
+			http_metrics->requests_in_flight->dec();
 
-					   co_return resp;
-				   };
+			co_return resp;
+		};
 	}
 
 }  // namespace coroute

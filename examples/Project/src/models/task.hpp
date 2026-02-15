@@ -6,15 +6,22 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
-namespace project::models {
+namespace project::models
+{
 
-	enum class TaskStatus { Pending, InProgress, Completed };
+	enum class TaskStatus
+	{
+		Pending,
+		InProgress,
+		Completed
+	};
 
 	// Convert TaskStatus to/from string
 	std::string to_string(TaskStatus status);
 	TaskStatus status_from_string(const std::string& s);
 
-	struct Task {
+	struct Task
+	{
 		int64_t id = 0;
 		std::string title;
 		std::string description;
@@ -33,7 +40,8 @@ namespace project::models {
 	};
 
 	// Request DTOs
-	struct CreateTaskRequest {
+	struct CreateTaskRequest
+	{
 		std::string title;
 		std::string description;
 		int64_t user_id = 0;  // Optional: assign to user
@@ -42,7 +50,8 @@ namespace project::models {
 		static std::optional<std::string> validate(const nlohmann::json& j);
 	};
 
-	struct UpdateTaskRequest {
+	struct UpdateTaskRequest
+	{
 		std::optional<std::string> title;
 		std::optional<std::string> description;
 		std::optional<TaskStatus> status;
@@ -52,7 +61,8 @@ namespace project::models {
 	};
 
 	// Filter for listing tasks
-	struct TaskFilter {
+	struct TaskFilter
+	{
 		std::optional<TaskStatus> status;
 		std::optional<int64_t> user_id;
 		std::optional<int64_t> created_by;

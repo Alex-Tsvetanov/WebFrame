@@ -80,9 +80,9 @@ namespace coroute
 		Task<Response> execute(Request& req, Handler& handler) const
 		{
 			if (middleware_.empty())
-				{
-					co_return co_await handler(req);
-				}
+			{
+				co_return co_await handler(req);
+			}
 
 			// Build chain from innermost (handler) to outermost (first middleware)
 			// We capture by index to avoid lambda capture issues
@@ -93,13 +93,13 @@ namespace coroute
 		Task<Response> execute_or_not_found(Request& req, const Handler* handler) const
 		{
 			if (middleware_.empty())
+			{
+				if (handler)
 				{
-					if (handler)
-						{
-							co_return co_await (*handler)(req);
-						}
-					co_return Response::not_found();
+					co_return co_await (*handler)(req);
 				}
+				co_return Response::not_found();
+			}
 
 			co_return co_await execute_at_or_not_found(0, req, handler);
 		}
@@ -108,9 +108,9 @@ namespace coroute
 		Task<Response> execute_at(size_t idx, Request& req, const Handler& handler) const
 		{
 			if (idx >= middleware_.size())
-				{
-					co_return co_await handler(req);
-				}
+			{
+				co_return co_await handler(req);
+			}
 
 			// Create next function that continues the chain
 			Next next = [this, idx, &handler](Request& r) -> Task<Response> { return execute_at(idx + 1, r, handler); };
@@ -121,17 +121,17 @@ namespace coroute
 		Task<Response> execute_at_or_not_found(size_t idx, Request& req, const Handler* handler) const
 		{
 			if (idx >= middleware_.size())
+			{
+				if (handler)
 				{
-					if (handler)
-						{
-							co_return co_await (*handler)(req);
-						}
-					co_return Response::not_found();
+					co_return co_await (*handler)(req);
 				}
+				co_return Response::not_found();
+			}
 
 			// Create next function that continues the chain
 			Next next = [this, idx, handler](Request& r) -> Task<Response>
-				{ return execute_at_or_not_found(idx + 1, r, handler); };
+			{ return execute_at_or_not_found(idx + 1, r, handler); };
 
 			co_return co_await middleware_[idx](req, next);
 		}
@@ -342,32 +342,32 @@ namespace coroute
 
 			// Apply auth state (add cookies, tokens, etc.)
 			if (auth_state_)
-				{
-					auth_state_->apply(req);
-				}
+			{
+				auth_state_->apply(req);
+			}
 
 #ifdef COROUTE_CLIENT_MODE
 			// Client mode: dispatch via HTTP transport to remote server
 			if (!fetch_transport_)
-				{
-					throw std::runtime_error("fetch() called in client mode without transport configured");
-				}
+			{
+				throw std::runtime_error("fetch() called in client mode without transport configured");
+			}
 			Response resp = co_await fetch_transport_->dispatch(req);
 #else
 			// Web/server mode: dispatch in-process through middleware chain
 			auto match = router_.match(method, route);
 			if (match)
-				{
-					req.set_route_params(std::move(match.params));
-				}
+			{
+				req.set_route_params(std::move(match.params));
+			}
 			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
 #endif
 
 			// Observe response for auth state updates
 			if (auth_state_)
-				{
-					auth_state_->observe(resp);
-				}
+			{
+				auth_state_->observe(resp);
+			}
 
 			co_return resp;
 		}
@@ -405,42 +405,42 @@ namespace coroute
 			// Forward cookies from original request (web/server mode)
 			auto cookie = original.header("Cookie");
 			if (cookie)
-				{
-					req.add_header("Cookie", std::string(*cookie));
-				}
+			{
+				req.add_header("Cookie", std::string(*cookie));
+			}
 
 			// Forward authorization header if present
 			auto auth = original.header("Authorization");
 			if (auth)
-				{
-					req.add_header("Authorization", std::string(*auth));
-				}
+			{
+				req.add_header("Authorization", std::string(*auth));
+			}
 
 			// Apply auth state (may override with stored tokens for client mode)
 			if (auth_state_)
-				{
-					auth_state_->apply(req);
-				}
+			{
+				auth_state_->apply(req);
+			}
 
 #ifdef COROUTE_CLIENT_MODE
 			if (!fetch_transport_)
-				{
-					throw std::runtime_error("fetch() called in client mode without transport configured");
-				}
+			{
+				throw std::runtime_error("fetch() called in client mode without transport configured");
+			}
 			Response resp = co_await fetch_transport_->dispatch(req);
 #else
 			auto match = router_.match(method, route);
 			if (match)
-				{
-					req.set_route_params(std::move(match.params));
-				}
+			{
+				req.set_route_params(std::move(match.params));
+			}
 			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
 #endif
 
 			if (auth_state_)
-				{
-					auth_state_->observe(resp);
-				}
+			{
+				auth_state_->observe(resp);
+			}
 
 			co_return resp;
 		}
@@ -479,15 +479,15 @@ namespace coroute
 			std::string path_str(path);
 			auto wrapper = [this, path_str,
 			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
-				{
-					// Run global view middleware
-					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-					co_await global_view_middleware_.execute(ctx);
+			{
+				// Run global view middleware
+				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+				co_await global_view_middleware_.execute(ctx);
 
-					// Call handler
-					ViewResult<VM> result = co_await h(req);
-					co_return ViewResultAny(std::move(result));
-				};
+				// Call handler
+				ViewResult<VM> result = co_await h(req);
+				co_return ViewResultAny(std::move(result));
+			};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
@@ -503,15 +503,15 @@ namespace coroute
 			std::string path_str(path);
 			auto wrapper = [this, path_str,
 			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
-				{
-					// Run global view middleware
-					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-					co_await global_view_middleware_.execute(ctx);
+			{
+				// Run global view middleware
+				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+				co_await global_view_middleware_.execute(ctx);
 
-					// Call handler with context
-					ViewResult<VM> result = co_await h(req, ctx);
-					co_return ViewResultAny(std::move(result));
-				};
+				// Call handler with context
+				ViewResult<VM> result = co_await h(req, ctx);
+				co_return ViewResultAny(std::move(result));
+			};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
@@ -526,21 +526,21 @@ namespace coroute
 			std::string path_str(path);
 			auto wrapper = [this, path_str, per_mw = std::move(per_route_mw),
 			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
+			{
+				// Run global view middleware
+				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+				co_await global_view_middleware_.execute(ctx);
+
+				// Run per-route middleware
+				for (const auto& mw : per_mw)
 				{
-					// Run global view middleware
-					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-					co_await global_view_middleware_.execute(ctx);
+					co_await mw(ctx);
+				}
 
-					// Run per-route middleware
-					for (const auto& mw : per_mw)
-						{
-							co_await mw(ctx);
-						}
-
-					// Call handler with context
-					ViewResult<VM> result = co_await h(req, ctx);
-					co_return ViewResultAny(std::move(result));
-				};
+				// Call handler with context
+				ViewResult<VM> result = co_await h(req, ctx);
+				co_return ViewResultAny(std::move(result));
+			};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
@@ -587,9 +587,9 @@ namespace coroute
 		{
 			template_dir_ = dir;
 			if (!template_env_)
-				{
-					template_env_ = std::make_unique<inja::Environment>();
-				}
+			{
+				template_env_ = std::make_unique<inja::Environment>();
+			}
 			template_env_->set_search_included_templates_in_files(true);
 			return *this;
 		}
@@ -614,31 +614,31 @@ namespace coroute
 			ensure_template_env();
 
 			if (template_caching_)
+			{
+				std::lock_guard lock(template_mutex_);
+				auto it = template_cache_.find(filename);
+				if (it != template_cache_.end())
 				{
-					std::lock_guard lock(template_mutex_);
-					auto it = template_cache_.find(filename);
-					if (it != template_cache_.end())
-						{
-							return template_env_->render(it->second, data);
-						}
+					return template_env_->render(it->second, data);
 				}
+			}
 
 			auto path = template_dir_ / filename;
 			auto tmpl = template_env_->parse_template(path.string());
 			std::string result = template_env_->render(tmpl, data);
 
 			if (template_caching_)
+			{
+				std::lock_guard lock(template_mutex_);
+				// Cache the template content
+				std::ifstream file(path);
+				if (file)
 				{
-					std::lock_guard lock(template_mutex_);
-					// Cache the template content
-					std::ifstream file(path);
-					if (file)
-						{
-							std::ostringstream ss;
-							ss << file.rdbuf();
-							template_cache_[filename] = ss.str();
-						}
+					std::ostringstream ss;
+					ss << file.rdbuf();
+					template_cache_[filename] = ss.str();
 				}
+			}
 
 			return result;
 		}
@@ -678,9 +678,9 @@ namespace coroute
 		void ensure_template_env()
 		{
 			if (!template_env_)
-				{
-					template_env_ = std::make_unique<inja::Environment>();
-				}
+			{
+				template_env_ = std::make_unique<inja::Environment>();
+			}
 		}
 
 	public:

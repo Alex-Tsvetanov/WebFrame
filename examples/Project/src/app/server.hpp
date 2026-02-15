@@ -4,18 +4,22 @@
 #include "coroute/core/app.hpp"
 
 // Forward declarations
-namespace project::services {
+namespace project::services
+{
 	class TaskService;
 	class UserService;
 }  // namespace project::services
 
-namespace project::handlers::websocket {
+namespace project::handlers::websocket
+{
 	class TaskHub;
 }
 
-namespace project {
+namespace project
+{
 
-	class Server {
+	class Server
+	{
 	public:
 		explicit Server(const Config& config);
 		~Server();

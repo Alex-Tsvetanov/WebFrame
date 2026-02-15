@@ -49,21 +49,21 @@ namespace coroute
 
 					// Invoke completion callback if set
 					if (promise.on_complete_)
-						{
-							promise.on_complete_();
-						}
+					{
+						promise.on_complete_();
+					}
 
 					// If detached, destroy ourselves
 					if (promise.detached_)
-						{
-							h.destroy();
-							return std::noop_coroutine();
-						}
+					{
+						h.destroy();
+						return std::noop_coroutine();
+					}
 
 					if (promise.continuation_)
-						{
-							return promise.continuation_;
-						}
+					{
+						return promise.continuation_;
+					}
 					return std::noop_coroutine();
 				}
 
@@ -156,11 +156,11 @@ namespace coroute
 		Task& operator=(Task&& other) noexcept
 		{
 			if (this != &other)
-				{
-					if (handle_) handle_.destroy();
-					handle_ = other.handle_;
-					other.handle_ = nullptr;
-				}
+			{
+				if (handle_) handle_.destroy();
+				handle_ = other.handle_;
+				other.handle_ = nullptr;
+			}
 			return *this;
 		}
 
@@ -183,9 +183,9 @@ namespace coroute
 		void set_cancellation_token(CancellationToken token)
 		{
 			if (handle_)
-				{
-					handle_.promise().set_cancellation_token(std::move(token));
-				}
+			{
+				handle_.promise().set_cancellation_token(std::move(token));
+			}
 		}
 
 		// Awaiter for co_await
@@ -204,13 +204,13 @@ namespace coroute
 			T await_resume()
 			{
 				if constexpr (std::is_void_v<T>)
-					{
-						handle_.promise().result();
-					}
+				{
+					handle_.promise().result();
+				}
 				else
-					{
-						return std::move(handle_.promise()).result();
-					}
+				{
+					return std::move(handle_.promise()).result();
+				}
 			}
 		};
 
@@ -220,9 +220,9 @@ namespace coroute
 		void start()
 		{
 			if (handle_ && !handle_.done())
-				{
-					handle_.resume();
-				}
+			{
+				handle_.resume();
+			}
 		}
 
 		// Synchronously wait for the task to complete.
@@ -230,17 +230,17 @@ namespace coroute
 		T sync_wait()
 		{
 			if (done())
+			{
+				if constexpr (std::is_void_v<T>)
 				{
-					if constexpr (std::is_void_v<T>)
-						{
-							handle_.promise().result();
-							return;
-						}
-					else
-						{
-							return std::move(handle_.promise()).result();
-						}
+					handle_.promise().result();
+					return;
 				}
+				else
+				{
+					return std::move(handle_.promise()).result();
+				}
+			}
 
 			std::mutex mtx;
 			std::condition_variable cv;
@@ -248,13 +248,13 @@ namespace coroute
 
 			// Install a completion callback that signals the CV
 			handle_.promise().on_complete_ = [&]
+			{
 				{
-					{
-						std::lock_guard<std::mutex> lock(mtx);
-						finished = true;
-					}
-					cv.notify_one();
-				};
+					std::lock_guard<std::mutex> lock(mtx);
+					finished = true;
+				}
+				cv.notify_one();
+			};
 
 			// Kick off the task
 			handle_.resume();
@@ -269,13 +269,13 @@ namespace coroute
 			handle_.promise().on_complete_ = nullptr;
 
 			if constexpr (std::is_void_v<T>)
-				{
-					handle_.promise().result();
-				}
+			{
+				handle_.promise().result();
+			}
 			else
-				{
-					return std::move(handle_.promise()).result();
-				}
+			{
+				return std::move(handle_.promise()).result();
+			}
 		}
 
 		// Release ownership of the handle
@@ -291,21 +291,21 @@ namespace coroute
 		void detach()
 		{
 			if (handle_)
-				{
-					handle_.promise().detach();
-					handle_ = nullptr;  // We no longer own it
-				}
+			{
+				handle_.promise().detach();
+				handle_ = nullptr;  // We no longer own it
+			}
 		}
 
 		// Start and detach in one call
 		void start_detached()
 		{
 			if (handle_ && !handle_.done())
-				{
-					handle_.promise().detach();
-					handle_.resume();
-					handle_ = nullptr;  // We no longer own it
-				}
+			{
+				handle_.promise().detach();
+				handle_.resume();
+				handle_ = nullptr;  // We no longer own it
+			}
 		}
 	};
 
@@ -368,9 +368,9 @@ namespace coroute
 		void await_resume() const
 		{
 			if (cancelled_)
-				{
-					throw Error::cancelled();
-				}
+			{
+				throw Error::cancelled();
+			}
 		}
 	};
 

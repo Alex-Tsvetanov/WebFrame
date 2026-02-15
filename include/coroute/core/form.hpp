@@ -110,50 +110,50 @@ namespace coroute
 		if (!value) return std::nullopt;
 
 		if constexpr (std::is_same_v<T, std::string>)
-			{
-				return std::string(*value);
-			}
+		{
+			return std::string(*value);
+		}
 		else if constexpr (std::is_same_v<T, int>)
+		{
+			try
 			{
-				try
-					{
-						return std::stoi(std::string(*value));
-					}
-				catch (...)
-					{
-						return std::nullopt;
-					}
+				return std::stoi(std::string(*value));
 			}
+			catch (...)
+			{
+				return std::nullopt;
+			}
+		}
 		else if constexpr (std::is_same_v<T, int64_t>)
+		{
+			try
 			{
-				try
-					{
-						return std::stoll(std::string(*value));
-					}
-				catch (...)
-					{
-						return std::nullopt;
-					}
+				return std::stoll(std::string(*value));
 			}
+			catch (...)
+			{
+				return std::nullopt;
+			}
+		}
 		else if constexpr (std::is_same_v<T, double>)
+		{
+			try
 			{
-				try
-					{
-						return std::stod(std::string(*value));
-					}
-				catch (...)
-					{
-						return std::nullopt;
-					}
+				return std::stod(std::string(*value));
 			}
+			catch (...)
+			{
+				return std::nullopt;
+			}
+		}
 		else if constexpr (std::is_same_v<T, bool>)
-			{
-				return *value == "true" || *value == "1" || *value == "on";
-			}
+		{
+			return *value == "true" || *value == "1" || *value == "on";
+		}
 		else
-			{
-				static_assert(sizeof(T) == 0, "Unsupported type for get_as");
-			}
+		{
+			static_assert(sizeof(T) == 0, "Unsupported type for get_as");
+		}
 	}
 
 }  // namespace coroute

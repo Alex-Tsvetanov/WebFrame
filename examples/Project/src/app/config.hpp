@@ -4,9 +4,11 @@
 #include <string>
 #include <filesystem>
 
-namespace project {
+namespace project
+{
 
-	struct Config {
+	struct Config
+	{
 		// Server settings
 		uint16_t port = 8080;
 		std::string host = "0.0.0.0";

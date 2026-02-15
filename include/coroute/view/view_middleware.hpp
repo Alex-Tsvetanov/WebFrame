@@ -61,9 +61,9 @@ namespace coroute
 		Task<void> execute(ViewExecutionContext& ctx) const
 		{
 			for (const auto& mw : middleware_)
-				{
-					co_await mw(ctx);
-				}
+			{
+				co_await mw(ctx);
+			}
 		}
 
 	private:

@@ -2,7 +2,8 @@
 
 #include "coroute/core/app.hpp"
 
-namespace project::middleware {
+namespace project::middleware
+{
 
 	// Creates a middleware that requires authentication
 	// Checks for user_id in session, returns 401 if not present

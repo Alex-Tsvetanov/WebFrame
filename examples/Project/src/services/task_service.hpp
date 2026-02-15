@@ -7,13 +7,16 @@
 #include <mutex>
 
 // Forward declaration
-namespace project::handlers::websocket {
+namespace project::handlers::websocket
+{
 	class TaskHub;
 }
 
-namespace project::services {
+namespace project::services
+{
 
-	class TaskService {
+	class TaskService
+	{
 	public:
 		explicit TaskService(handlers::websocket::TaskHub& hub);
 
@@ -25,7 +28,8 @@ namespace project::services {
 		bool remove(int64_t id);
 
 		// Statistics
-		struct Stats {
+		struct Stats
+		{
 			int total = 0;
 			int pending = 0;
 			int in_progress = 0;

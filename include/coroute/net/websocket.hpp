@@ -80,9 +80,9 @@ namespace coroute::net
 		WebSocketCloseCode close_code() const
 		{
 			if (data.size() >= 2)
-				{
-					return static_cast<WebSocketCloseCode>((data[0] << 8) | data[1]);
-				}
+			{
+				return static_cast<WebSocketCloseCode>((data[0] << 8) | data[1]);
+			}
 			return WebSocketCloseCode::NoStatusReceived;
 		}
 
@@ -90,9 +90,9 @@ namespace coroute::net
 		std::string_view close_reason() const
 		{
 			if (data.size() > 2)
-				{
-					return std::string_view(reinterpret_cast<const char*>(data.data() + 2), data.size() - 2);
-				}
+			{
+				return std::string_view(reinterpret_cast<const char*>(data.data() + 2), data.size() - 2);
+			}
 			return {};
 		}
 	};

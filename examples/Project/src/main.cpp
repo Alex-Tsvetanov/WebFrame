@@ -7,21 +7,27 @@
 #include <iostream>
 #include <csignal>
 
-namespace {
+namespace
+{
 	project::Server* g_server = nullptr;
 
-	void signal_handler(int signal) {
-		if (signal == SIGINT || signal == SIGTERM) {
+	void signal_handler(int signal)
+	{
+		if (signal == SIGINT || signal == SIGTERM)
+		{
 			std::cout << "\nShutting down...\n";
-			if (g_server) {
+			if (g_server)
+			{
 				g_server->stop();
 			}
 		}
 	}
 }  // namespace
 
-int main() {
-	try {
+int main()
+{
+	try
+	{
 		// Load configuration from environment
 		auto config = project::Config::from_env();
 
@@ -36,7 +42,9 @@ int main() {
 		server.run();
 
 		return 0;
-	} catch (const std::exception& e) {
+	}
+	catch (const std::exception& e)
+	{
 		std::cerr << "Fatal error: " << e.what() << "\n";
 		return 1;
 	}

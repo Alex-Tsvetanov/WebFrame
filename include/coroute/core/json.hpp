@@ -106,9 +106,9 @@ namespace coroute
 		JsonValue& operator[](const std::string& key)
 		{
 			if (!is_object())
-				{
-					value_ = JsonObject{};
-				}
+			{
+				value_ = JsonObject{};
+			}
 			return std::get<JsonObject>(value_)[key];
 		}
 
@@ -142,9 +142,9 @@ namespace coroute
 		void push_back(JsonValue val)
 		{
 			if (!is_array())
-				{
-					value_ = JsonArray{};
-				}
+			{
+				value_ = JsonArray{};
+			}
 			std::get<JsonArray>(value_).push_back(std::move(val));
 		}
 

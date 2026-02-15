@@ -10,15 +10,18 @@
 
 using namespace coroute;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
 	// Default to current directory if no path provided
 	std::filesystem::path static_root = ".";
-	if (argc > 1) {
+	if (argc > 1)
+	{
 		static_root = argv[1];
 	}
 
 	// Verify the path exists
-	if (!std::filesystem::exists(static_root)) {
+	if (!std::filesystem::exists(static_root))
+	{
 		std::cerr << "Error: Directory does not exist: " << static_root << std::endl;
 		return 1;
 	}
@@ -36,20 +39,21 @@ int main(int argc, char* argv[]) {
 	options.max_age_seconds = 3600;    // Cache for 1 hour
 
 	// Add custom headers
-	options.custom_headers = {{"X-Powered-By", "Coroute v2"}, {"X-Content-Type-Options", "nosniff"}};
+	options.custom_headers = {
+		{		  "X-Powered-By", "Coroute v2"},
+        {"X-Content-Type-Options",    "nosniff"}
+    };
 
 	// Use static file middleware
 	app.use(static_files(options));
 
 	// API routes (these take precedence if static file not found)
-	app.get("/api/status", [](Request&) -> Task<Response> {
-		co_return Response::json(R"({"status": "ok", "server": "Coroute v2"})");
-	});
+	app.get("/api/status", [](Request&) -> Task<Response>
+	        { co_return Response::json(R"({"status": "ok", "server": "Coroute v2"})"); });
 
 	// Fallback for non-static, non-API routes
-	app.get("/{path:.*}", [](Request& req) -> Task<Response> {
-		co_return Response::not_found("File not found: " + std::string(req.path()));
-	});
+	app.get("/{path:.*}", [](Request& req) -> Task<Response>
+	        { co_return Response::not_found("File not found: " + std::string(req.path())); });
 
 	std::cout << "Static File Server" << std::endl;
 	std::cout << "==================" << std::endl;

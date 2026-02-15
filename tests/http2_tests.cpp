@@ -200,9 +200,9 @@ TEST_CASE("HTTP/2 PING Frame", "[http2][frame]")
 
 		// Check opaque data
 		for (int i = 0; i < 8; ++i)
-			{
-				REQUIRE(frame[9 + i] == opaque[i]);
-			}
+		{
+			REQUIRE(frame[9 + i] == opaque[i]);
+		}
 	}
 
 	SECTION("PING ACK")
@@ -358,10 +358,10 @@ TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]")
 		REQUIRE(decoded->size() == headers.size());
 
 		for (size_t i = 0; i < headers.size(); ++i)
-			{
-				REQUIRE((*decoded)[i].name == headers[i].name);
-				REQUIRE((*decoded)[i].value == headers[i].value);
-			}
+		{
+			REQUIRE((*decoded)[i].name == headers[i].name);
+			REQUIRE((*decoded)[i].value == headers[i].value);
+		}
 	}
 
 	SECTION("Encode response headers")
@@ -454,7 +454,7 @@ TEST_CASE("HTTP/2 Header Validation", "[http2][hpack]")
 	{
 		std::vector<Header> headers = {
 			{":method",   "GET"},
-			{":scheme", "https"},
+            {":scheme", "https"},
 			// Missing :path
 		};
 

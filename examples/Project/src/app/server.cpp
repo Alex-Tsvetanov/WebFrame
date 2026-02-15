@@ -14,12 +14,15 @@
 
 #include <iostream>
 
-namespace project {
+namespace project
+{
 
 	Server::Server(const Config& config)
-	    : config_(config), task_hub_(std::make_unique<handlers::websocket::TaskHub>()),
-	      user_service_(std::make_unique<services::UserService>()),
-	      task_service_(std::make_unique<services::TaskService>(*task_hub_)) {
+		: config_(config),
+		  task_hub_(std::make_unique<handlers::websocket::TaskHub>()),
+		  user_service_(std::make_unique<services::UserService>()),
+		  task_service_(std::make_unique<services::TaskService>(*task_hub_))
+	{
 		// Configure templates
 #ifdef COROUTE_HAS_TEMPLATES
 		app_.set_templates(config_.template_dir);
@@ -32,7 +35,8 @@ namespace project {
 
 	Server::~Server() = default;
 
-	void Server::setup_middleware() {
+	void Server::setup_middleware()
+	{
 		// Request logging (outermost - runs first)
 		app_.use(middleware::request_logger());
 
@@ -40,13 +44,15 @@ namespace project {
 		app_.use(coroute::compression());
 	}
 
-	void Server::setup_error_handlers() {
+	void Server::setup_error_handlers()
+	{
 		// Custom 404 handler
 		// Note: This would need framework support for custom error handlers
 		// For now, the default 404 response is used
 	}
 
-	void Server::setup_routes() {
+	void Server::setup_routes()
+	{
 		// Static files (CSS, JS, images)
 		coroute::StaticFileOptions static_opts;
 		static_opts.root = config_.static_dir;
@@ -66,7 +72,8 @@ namespace project {
 		handlers::websocket::register_routes(app_, *task_hub_);
 	}
 
-	void Server::run() {
+	void Server::run()
+	{
 		std::cout << "=================================\n";
 		std::cout << "  Task Dashboard Server\n";
 		std::cout << "=================================\n";

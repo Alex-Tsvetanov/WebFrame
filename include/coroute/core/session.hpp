@@ -60,13 +60,13 @@ namespace coroute
 			auto it = data_.find(key);
 			if (it == data_.end()) return std::nullopt;
 			try
-				{
-					return std::any_cast<T>(it->second);
-				}
+			{
+				return std::any_cast<T>(it->second);
+			}
 			catch (const std::bad_any_cast&)
-				{
-					return std::nullopt;
-				}
+			{
+				return std::nullopt;
+			}
 		}
 
 		// Get value with default

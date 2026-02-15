@@ -19,9 +19,9 @@ namespace coroute
 	void Session::remove(const std::string& key)
 	{
 		if (data_.erase(key) > 0)
-			{
-				modified_ = true;
-			}
+		{
+			modified_ = true;
+		}
 	}
 
 	bool Session::has(const std::string& key) const { return data_.count(key) > 0; }
@@ -29,10 +29,10 @@ namespace coroute
 	void Session::clear()
 	{
 		if (!data_.empty())
-			{
-				data_.clear();
-				modified_ = true;
-			}
+		{
+			data_.clear();
+			modified_ = true;
+		}
 	}
 
 	std::vector<std::string> Session::keys() const
@@ -40,9 +40,9 @@ namespace coroute
 		std::vector<std::string> result;
 		result.reserve(data_.size());
 		for (const auto& [key, _] : data_)
-			{
-				result.push_back(key);
-			}
+		{
+			result.push_back(key);
+		}
 		return result;
 	}
 
@@ -58,16 +58,16 @@ namespace coroute
 
 		auto it = sessions_.find(id);
 		if (it == sessions_.end())
-			{
-				return nullptr;
-			}
+		{
+			return nullptr;
+		}
 
 		// Check if expired
 		if (it->second.expires < std::chrono::system_clock::now())
-			{
-				sessions_.erase(it);
-				return nullptr;
-			}
+		{
+			sessions_.erase(it);
+			return nullptr;
+		}
 
 		it->second.session->touch();
 		return it->second.session;
@@ -79,9 +79,9 @@ namespace coroute
 
 		auto& stored = sessions_[session.id()];
 		if (!stored.session)
-			{
-				stored.session = std::make_shared<Session>(session.id());
-			}
+		{
+			stored.session = std::make_shared<Session>(session.id());
+		}
 
 		// Copy data (simplified - in real impl would serialize)
 		*stored.session = session;
@@ -103,16 +103,16 @@ namespace coroute
 		auto cutoff = now - max_age;
 
 		for (auto it = sessions_.begin(); it != sessions_.end();)
+		{
+			if (it->second.session->last_accessed_at() < cutoff)
 			{
-				if (it->second.session->last_accessed_at() < cutoff)
-					{
-						it = sessions_.erase(it);
-					}
-				else
-					{
-						++it;
-					}
+				it = sessions_.erase(it);
 			}
+			else
+			{
+				++it;
+			}
+		}
 	}
 
 	std::string MemorySessionStore::generate_id()
@@ -153,9 +153,9 @@ namespace coroute
 		c.value = session_id;
 		c.path = options_.cookie_path;
 		if (!options_.cookie_domain.empty())
-			{
-				c.domain = options_.cookie_domain;
-			}
+		{
+			c.domain = options_.cookie_domain;
+		}
 		c.max_age = options_.max_age;
 		c.secure = options_.secure;
 		c.http_only = options_.http_only;
@@ -173,18 +173,18 @@ namespace coroute
 		bool need_set_cookie = false;
 
 		if (session_id)
-			{
-				// Try to load existing session
-				sess = store_->load(std::string(*session_id));
-			}
+		{
+			// Try to load existing session
+			sess = store_->load(std::string(*session_id));
+		}
 
 		if (!sess)
-			{
-				// Create new session
-				auto new_id = store_->generate_id();
-				sess = std::make_shared<Session>(new_id, true);
-				need_set_cookie = true;
-			}
+		{
+			// Create new session
+			auto new_id = store_->generate_id();
+			sess = std::make_shared<Session>(new_id, true);
+			need_set_cookie = true;
+		}
 
 		// Store session in request context
 		req.set_context(SESSION_KEY, sess);
@@ -194,15 +194,15 @@ namespace coroute
 
 		// Auto-save if modified
 		if (options_.auto_save && sess->is_modified())
-			{
-				store_->save(*sess);
-			}
+		{
+			store_->save(*sess);
+		}
 
 		// Set cookie if new session or rolling
 		if (need_set_cookie || (options_.rolling && !sess->is_new()))
-			{
-				set_cookie(resp, create_session_cookie(sess->id()));
-			}
+		{
+			set_cookie(resp, create_session_cookie(sess->id()));
+		}
 
 		co_return resp;
 	}
@@ -217,10 +217,10 @@ namespace coroute
 	{
 		auto sess = get_session(req);
 		if (sess)
-			{
-				store_->destroy(sess->id());
-				delete_cookie(resp, options_.cookie_name, options_.cookie_path, options_.cookie_domain);
-			}
+		{
+			store_->destroy(sess->id());
+			delete_cookie(resp, options_.cookie_name, options_.cookie_path, options_.cookie_domain);
+		}
 	}
 
 	// ============================================================================
@@ -238,7 +238,7 @@ namespace coroute
 		auto middleware = std::make_shared<SessionMiddleware>(std::move(store), std::move(options));
 
 		return [middleware](Request& req, Next next) -> Task<Response>
-		           { co_return co_await (*middleware)(req, std::move(next)); };
+		{ co_return co_await (*middleware)(req, std::move(next)); };
 	}
 
 }  // namespace coroute

@@ -83,18 +83,18 @@ namespace coroute::net
 			WSADATA wsa_data;
 			int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
 			if (result != 0)
-				{
-					throw std::runtime_error("WSAStartup failed: " + std::to_string(result));
-				}
+			{
+				throw std::runtime_error("WSAStartup failed: " + std::to_string(result));
+			}
 
 			// Create completion port
 			completion_port_ =
 				CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, static_cast<DWORD>(thread_count));
 			if (!completion_port_)
-				{
-					WSACleanup();
-					throw std::runtime_error("CreateIoCompletionPort failed: " + std::to_string(GetLastError()));
-				}
+			{
+				WSACleanup();
+				throw std::runtime_error("CreateIoCompletionPort failed: " + std::to_string(GetLastError()));
+			}
 		}
 
 		~IocpContext() override
@@ -103,17 +103,17 @@ namespace coroute::net
 
 			// Wait for workers
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 
 			if (completion_port_)
-				{
-					CloseHandle(completion_port_);
-				}
+			{
+				CloseHandle(completion_port_);
+			}
 
 			WSACleanup();
 		}
@@ -128,18 +128,18 @@ namespace coroute::net
 
 			// Start worker threads
 			for (size_t i = 0; i < thread_count_; ++i)
-				{
-					workers_.emplace_back([this] { worker_thread(); });
-				}
+			{
+				workers_.emplace_back([this] { worker_thread(); });
+			}
 
 			// Wait for all workers
 			for (auto& worker : workers_)
+			{
+				if (worker.joinable())
 				{
-					if (worker.joinable())
-						{
-							worker.join();
-						}
+					worker.join();
 				}
+			}
 		}
 
 		void run_one() override { process_one_completion(INFINITE); }
@@ -150,9 +150,9 @@ namespace coroute::net
 
 			// Post completion to wake up workers
 			for (size_t i = 0; i < thread_count_; ++i)
-				{
-					PostQueuedCompletionStatus(completion_port_, 0, 0, nullptr);
-				}
+			{
+				PostQueuedCompletionStatus(completion_port_, 0, 0, nullptr);
+			}
 		}
 
 		bool stopped() const noexcept override { return stopped_; }
@@ -173,10 +173,10 @@ namespace coroute::net
 			// A production implementation would use a timer queue
 			std::thread(
 				[this, delay, cb = std::move(callback)]() mutable
-					{
-						std::this_thread::sleep_for(delay);
-						post(std::move(cb));
-					})
+				{
+					std::this_thread::sleep_for(delay);
+					post(std::move(cb));
+				})
 				.detach();
 		}
 
@@ -184,9 +184,9 @@ namespace coroute::net
 		void worker_thread()
 		{
 			while (!stopped_)
-				{
-					process_one_completion(100);  // 100ms timeout to check stopped flag
-				}
+			{
+				process_one_completion(100);  // 100ms timeout to check stopped flag
+			}
 		}
 
 		void process_one_completion(DWORD timeout)
@@ -199,42 +199,42 @@ namespace coroute::net
 				GetQueuedCompletionStatus(completion_port_, &bytes_transferred, &completion_key, &overlapped, timeout);
 
 			if (!overlapped)
+			{
+				if (completion_key == 1)
 				{
-					if (completion_key == 1)
+					// Posted callback
+					std::function<void()> callback;
+					{
+						std::lock_guard lock(callback_mutex_);
+						if (!callbacks_.empty())
 						{
-							// Posted callback
-							std::function<void()> callback;
-							{
-								std::lock_guard lock(callback_mutex_);
-								if (!callbacks_.empty())
-									{
-										callback = std::move(callbacks_.front());
-										callbacks_.pop();
-									}
-							}
-							if (callback)
-								{
-									callback();
-								}
+							callback = std::move(callbacks_.front());
+							callbacks_.pop();
 						}
-					return;
+					}
+					if (callback)
+					{
+						callback();
+					}
 				}
+				return;
+			}
 
 			auto* op = static_cast<IocpOperation*>(overlapped);
 
 			if (!success)
-				{
-					DWORD error = GetLastError();
-					op->error = Error::system(std::error_code(static_cast<int>(error), std::system_category()));
-				}
+			{
+				DWORD error = GetLastError();
+				op->error = Error::system(std::error_code(static_cast<int>(error), std::system_category()));
+			}
 
 			op->bytes_transferred = bytes_transferred;
 
 			// Resume the coroutine
 			if (op->continuation)
-				{
-					op->continuation.resume();
-				}
+			{
+				op->continuation.resume();
+			}
 		}
 	};
 
@@ -260,9 +260,9 @@ namespace coroute::net
 			// Create IPv6 socket (dual-stack: accepts both IPv4 and IPv6)
 			listen_socket_ = WSASocketW(AF_INET6, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
 			if (listen_socket_ == INVALID_SOCKET)
-				{
-					return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
-				}
+			{
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
 
 			// Disable IPV6_V6ONLY to allow IPv4 connections on this socket (dual-stack)
 			DWORD v6only = 0;
@@ -278,10 +278,10 @@ namespace coroute::net
 			int result = WSAIoctl(listen_socket_, SIO_GET_EXTENSION_FUNCTION_POINTER, &accept_ex_guid,
 			                      sizeof(accept_ex_guid), &AcceptEx_, sizeof(AcceptEx_), &bytes, nullptr, nullptr);
 			if (result == SOCKET_ERROR)
-				{
-					close();
-					return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
-				}
+			{
+				close();
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
 
 			// Load GetAcceptExSockaddrs
 			GUID get_addrs_guid = WSAID_GETACCEPTEXSOCKADDRS;
@@ -289,10 +289,10 @@ namespace coroute::net
 				WSAIoctl(listen_socket_, SIO_GET_EXTENSION_FUNCTION_POINTER, &get_addrs_guid, sizeof(get_addrs_guid),
 			             &GetAcceptExSockaddrs_, sizeof(GetAcceptExSockaddrs_), &bytes, nullptr, nullptr);
 			if (result == SOCKET_ERROR)
-				{
-					close();
-					return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
-				}
+			{
+				close();
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
 
 			// Bind to IPv6 any address (dual-stack accepts IPv4 too)
 			sockaddr_in6 addr{};
@@ -301,17 +301,17 @@ namespace coroute::net
 			addr.sin6_port = htons(port);
 
 			if (bind(listen_socket_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-				{
-					close();
-					return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
-				}
+			{
+				close();
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
 
 			// Listen
 			if (::listen(listen_socket_, backlog) == SOCKET_ERROR)
-				{
-					close();
-					return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
-				}
+			{
+				close();
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
 
 			// Get actual port (in case port was 0)
 			sockaddr_in6 bound_addr{};
@@ -327,10 +327,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (listen_socket_ != INVALID_SOCKET)
-				{
-					closesocket(listen_socket_);
-					listen_socket_ = INVALID_SOCKET;
-				}
+			{
+				closesocket(listen_socket_);
+				listen_socket_ = INVALID_SOCKET;
+			}
 		}
 
 		bool is_listening() const noexcept override { return listen_socket_ != INVALID_SOCKET; }
@@ -360,23 +360,23 @@ namespace coroute::net
 			sockaddr_storage addr{};
 			int addr_len = sizeof(addr);
 			if (getpeername(socket_, reinterpret_cast<sockaddr*>(&addr), &addr_len) == 0)
+			{
+				char ip[INET6_ADDRSTRLEN];
+				if (addr.ss_family == AF_INET)
 				{
-					char ip[INET6_ADDRSTRLEN];
-					if (addr.ss_family == AF_INET)
-						{
-							auto* s4 = reinterpret_cast<sockaddr_in*>(&addr);
-							inet_ntop(AF_INET, &s4->sin_addr, ip, sizeof(ip));
-							remote_addr_ = ip;
-							remote_port_ = ntohs(s4->sin_port);
-						}
-					else if (addr.ss_family == AF_INET6)
-						{
-							auto* s6 = reinterpret_cast<sockaddr_in6*>(&addr);
-							inet_ntop(AF_INET6, &s6->sin6_addr, ip, sizeof(ip));
-							remote_addr_ = ip;
-							remote_port_ = ntohs(s6->sin6_port);
-						}
+					auto* s4 = reinterpret_cast<sockaddr_in*>(&addr);
+					inet_ntop(AF_INET, &s4->sin_addr, ip, sizeof(ip));
+					remote_addr_ = ip;
+					remote_port_ = ntohs(s4->sin_port);
 				}
+				else if (addr.ss_family == AF_INET6)
+				{
+					auto* s6 = reinterpret_cast<sockaddr_in6*>(&addr);
+					inet_ntop(AF_INET6, &s6->sin6_addr, ip, sizeof(ip));
+					remote_addr_ = ip;
+					remote_port_ = ntohs(s6->sin6_port);
+				}
+			}
 		}
 
 		~IocpConnection() override { close(); }
@@ -390,10 +390,10 @@ namespace coroute::net
 		void close() override
 		{
 			if (socket_ != INVALID_SOCKET)
-				{
-					closesocket(socket_);
-					socket_ = INVALID_SOCKET;
-				}
+			{
+				closesocket(socket_);
+				socket_ = INVALID_SOCKET;
+			}
 		}
 
 		bool is_open() const noexcept override { return socket_ != INVALID_SOCKET; }
@@ -471,24 +471,24 @@ namespace coroute::net
 			op_->continuation = h;
 
 			if (op_->accept_socket == INVALID_SOCKET)
-				{
-					op_->error = Error::system(std::error_code(WSAGetLastError(), std::system_category()));
-					return false;
-				}
+			{
+				op_->error = Error::system(std::error_code(WSAGetLastError(), std::system_category()));
+				return false;
+			}
 
 			DWORD bytes = 0;
 			BOOL success = AcceptEx_(listen_socket_, op_->accept_socket, op_->accept_buffer, 0,
 			                         sizeof(sockaddr_in6) + 16, sizeof(sockaddr_in6) + 16, &bytes, op_.get());
 
 			if (!success)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != ERROR_IO_PENDING)
 				{
-					DWORD err = WSAGetLastError();
-					if (err != ERROR_IO_PENDING)
-						{
-							op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
-							return false;
-						}
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
 				}
+			}
 
 			return true;
 		}
@@ -496,13 +496,13 @@ namespace coroute::net
 		AcceptResult await_resume()
 		{
 			if (op_->error)
+			{
+				if (op_->accept_socket != INVALID_SOCKET)
 				{
-					if (op_->accept_socket != INVALID_SOCKET)
-						{
-							closesocket(op_->accept_socket);
-						}
-					return unexpected(op_->error);
+					closesocket(op_->accept_socket);
 				}
+				return unexpected(op_->error);
+			}
 
 			// Update the accept socket to inherit listen socket properties
 			setsockopt(op_->accept_socket, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
@@ -515,9 +515,9 @@ namespace coroute::net
 	Task<AcceptResult> IocpListener::async_accept()
 	{
 		if (!is_listening())
-			{
-				co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "Not listening"));
+		}
 
 		AcceptAwaiter awaiter(ctx_, listen_socket_, AcceptEx_);
 		co_return co_await awaiter;
@@ -552,14 +552,14 @@ namespace coroute::net
 			int result = WSARecv(socket_, &wsabuf_, 1, nullptr, &flags_, op_.get(), nullptr);
 
 			if (result == SOCKET_ERROR)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != WSA_IO_PENDING)
 				{
-					DWORD err = WSAGetLastError();
-					if (err != WSA_IO_PENDING)
-						{
-							op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
-							return false;
-						}
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
 				}
+			}
 
 			return true;
 		}
@@ -567,14 +567,14 @@ namespace coroute::net
 		ReadResult await_resume()
 		{
 			if (op_->error)
-				{
-					return unexpected(op_->error);
-				}
+			{
+				return unexpected(op_->error);
+			}
 
 			if (op_->bytes_transferred == 0)
-				{
-					return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
-				}
+			{
+				return unexpected(Error::io(IoError::EndOfStream, "Connection closed by peer"));
+			}
 
 			return static_cast<size_t>(op_->bytes_transferred);
 		}
@@ -583,14 +583,14 @@ namespace coroute::net
 	Task<ReadResult> IocpConnection::async_read(void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		co_return co_await ReadAwaiter(socket_, buffer, len);
 	}
@@ -603,19 +603,19 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_read(buf + total, 1);
+			if (!result)
 			{
-				auto result = co_await async_read(buf + total, 1);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-
-				total += *result;
-				if (buf[total - 1] == delimiter)
-					{
-						break;
-					}
+				co_return unexpected(result.error());
 			}
+
+			total += *result;
+			if (buf[total - 1] == delimiter)
+			{
+				break;
+			}
+		}
 
 		co_return total;
 	}
@@ -648,14 +648,14 @@ namespace coroute::net
 			int result = WSASend(socket_, &wsabuf_, 1, nullptr, 0, op_.get(), nullptr);
 
 			if (result == SOCKET_ERROR)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != WSA_IO_PENDING)
 				{
-					DWORD err = WSAGetLastError();
-					if (err != WSA_IO_PENDING)
-						{
-							op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
-							return false;
-						}
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
 				}
+			}
 
 			return true;
 		}
@@ -663,9 +663,9 @@ namespace coroute::net
 		WriteResult await_resume()
 		{
 			if (op_->error)
-				{
-					return unexpected(op_->error);
-				}
+			{
+				return unexpected(op_->error);
+			}
 
 			return static_cast<size_t>(op_->bytes_transferred);
 		}
@@ -674,14 +674,14 @@ namespace coroute::net
 	Task<WriteResult> IocpConnection::async_write(const void* buffer, size_t len)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		co_return co_await WriteAwaiter(socket_, buffer, len);
 	}
@@ -692,14 +692,14 @@ namespace coroute::net
 		size_t total = 0;
 
 		while (total < len)
+		{
+			auto result = co_await async_write(buf + total, len - total);
+			if (!result)
 			{
-				auto result = co_await async_write(buf + total, len - total);
-				if (!result)
-					{
-						co_return unexpected(result.error());
-					}
-				total += *result;
+				co_return unexpected(result.error());
 			}
+			total += *result;
+		}
 
 		co_return total;
 	}
@@ -738,14 +738,14 @@ namespace coroute::net
 			BOOL success = TransmitFile(socket_, file_, length_, 0, op_.get(), nullptr, 0);
 
 			if (!success)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != WSA_IO_PENDING && err != ERROR_IO_PENDING)
 				{
-					DWORD err = WSAGetLastError();
-					if (err != WSA_IO_PENDING && err != ERROR_IO_PENDING)
-						{
-							op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
-							return false;
-						}
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
 				}
+			}
 
 			return true;
 		}
@@ -753,9 +753,9 @@ namespace coroute::net
 		TransmitResult await_resume()
 		{
 			if (op_->error)
-				{
-					return unexpected(op_->error);
-				}
+			{
+				return unexpected(op_->error);
+			}
 
 			return static_cast<size_t>(op_->bytes_transferred);
 		}
@@ -764,20 +764,20 @@ namespace coroute::net
 	Task<TransmitResult> IocpConnection::async_transmit_file(FileHandle file, size_t offset, size_t length)
 	{
 		if (!is_open())
-			{
-				co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
 
 		if (cancel_token_.is_cancelled())
-			{
-				co_return unexpected(Error::cancelled());
-			}
+		{
+			co_return unexpected(Error::cancelled());
+		}
 
 		HANDLE hFile = static_cast<HANDLE>(file);
 		if (hFile == INVALID_HANDLE_VALUE)
-			{
-				co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid file handle"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid file handle"));
+		}
 
 		co_return co_await TransmitFileAwaiter(socket_, hFile, offset, length);
 	}

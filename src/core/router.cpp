@@ -11,47 +11,47 @@ namespace coroute
 	matcher::RegexMatcher<size_t>& Router::get_matcher_for(HttpMethod method)
 	{
 		switch (method)
-			{
-				case HttpMethod::GET:
-					return get_matcher_;
-				case HttpMethod::POST:
-					return post_matcher_;
-				case HttpMethod::PUT:
-					return put_matcher_;
-				case HttpMethod::DELETE:
-					return delete_matcher_;
-				case HttpMethod::PATCH:
-					return patch_matcher_;
-				case HttpMethod::HEAD:
-					return head_matcher_;
-				case HttpMethod::OPTIONS:
-					return options_matcher_;
-				default:
-					return get_matcher_;
-			}
+		{
+			case HttpMethod::GET:
+				return get_matcher_;
+			case HttpMethod::POST:
+				return post_matcher_;
+			case HttpMethod::PUT:
+				return put_matcher_;
+			case HttpMethod::DELETE:
+				return delete_matcher_;
+			case HttpMethod::PATCH:
+				return patch_matcher_;
+			case HttpMethod::HEAD:
+				return head_matcher_;
+			case HttpMethod::OPTIONS:
+				return options_matcher_;
+			default:
+				return get_matcher_;
+		}
 	}
 
 	const matcher::RegexMatcher<size_t>& Router::get_matcher_for(HttpMethod method) const
 	{
 		switch (method)
-			{
-				case HttpMethod::GET:
-					return get_matcher_;
-				case HttpMethod::POST:
-					return post_matcher_;
-				case HttpMethod::PUT:
-					return put_matcher_;
-				case HttpMethod::DELETE:
-					return delete_matcher_;
-				case HttpMethod::PATCH:
-					return patch_matcher_;
-				case HttpMethod::HEAD:
-					return head_matcher_;
-				case HttpMethod::OPTIONS:
-					return options_matcher_;
-				default:
-					return get_matcher_;
-			}
+		{
+			case HttpMethod::GET:
+				return get_matcher_;
+			case HttpMethod::POST:
+				return post_matcher_;
+			case HttpMethod::PUT:
+				return put_matcher_;
+			case HttpMethod::DELETE:
+				return delete_matcher_;
+			case HttpMethod::PATCH:
+				return patch_matcher_;
+			case HttpMethod::HEAD:
+				return head_matcher_;
+			case HttpMethod::OPTIONS:
+				return options_matcher_;
+			default:
+				return get_matcher_;
+		}
 	}
 
 	std::pair<std::string, std::vector<std::string>> Router::convert_pattern(std::string_view pattern)
@@ -68,65 +68,65 @@ namespace coroute
 
 		size_t i = 0;
 		while (i < pattern.size())
+		{
+			char c = pattern[i];
+
+			if (c == '{')
 			{
-				char c = pattern[i];
+				// Find closing brace
+				size_t end = pattern.find('}', i);
+				if (end == std::string_view::npos)
+				{
+					// Malformed pattern, treat { as literal
+					matcher_pattern << "\\{";
+					++i;
+					continue;
+				}
 
-				if (c == '{')
-					{
-						// Find closing brace
-						size_t end = pattern.find('}', i);
-						if (end == std::string_view::npos)
-							{
-								// Malformed pattern, treat { as literal
-								matcher_pattern << "\\{";
-								++i;
-								continue;
-							}
+				// Extract parameter name
+				std::string_view param_name = pattern.substr(i + 1, end - i - 1);
+				param_names.emplace_back(param_name);
 
-						// Extract parameter name
-						std::string_view param_name = pattern.substr(i + 1, end - i - 1);
-						param_names.emplace_back(param_name);
+				// Add capturing group for path segment: ([A-Za-z0-9_.%\-]+)
+				matcher_pattern << "([" << PATH_SEGMENT_CLASS << "]+)";
 
-						// Add capturing group for path segment: ([A-Za-z0-9_.%\-]+)
-						matcher_pattern << "([" << PATH_SEGMENT_CLASS << "]+)";
-
-						i = end + 1;
-					}
-				else if (c == '*')
-					{
-						// Wildcard - match anything (greedy)
-						if (i + 1 < pattern.size() && pattern[i + 1] == '*')
-							{
-								// ** = match across path segments
-								matcher_pattern << "([" << PATH_ANY_CLASS << "]+)";
-								i += 2;
-							}
-						else
-							{
-								// * = match within path segment
-								matcher_pattern << "([" << PATH_SEGMENT_CLASS << "]*)";
-								++i;
-							}
-					}
-				else if (c == '/')
-					{
-						// Escape forward slash for url-matcher
-						matcher_pattern << "\\/";
-						++i;
-					}
-				else if (c == '.' || c == '+' || c == '?' || c == '(' || c == ')' || c == '[' || c == ']' || c == '^' ||
-				         c == '$' || c == '|' || c == '\\')
-					{
-						// Escape regex special characters
-						matcher_pattern << '\\' << c;
-						++i;
-					}
-				else
-					{
-						matcher_pattern << c;
-						++i;
-					}
+				i = end + 1;
 			}
+			else if (c == '*')
+			{
+				// Wildcard - match anything (greedy)
+				if (i + 1 < pattern.size() && pattern[i + 1] == '*')
+				{
+					// ** = match across path segments
+					matcher_pattern << "([" << PATH_ANY_CLASS << "]+)";
+					i += 2;
+				}
+				else
+				{
+					// * = match within path segment
+					matcher_pattern << "([" << PATH_SEGMENT_CLASS << "]*)";
+					++i;
+				}
+			}
+			else if (c == '/')
+			{
+				// Escape forward slash for url-matcher
+				matcher_pattern << "\\/";
+				++i;
+			}
+			else if (c == '.' || c == '+' || c == '?' || c == '(' || c == ')' || c == '[' || c == ']' || c == '^' ||
+			         c == '$' || c == '|' || c == '\\')
+			{
+				// Escape regex special characters
+				matcher_pattern << '\\' << c;
+				++i;
+			}
+			else
+			{
+				matcher_pattern << c;
+				++i;
+			}
+		}
 
 		return {matcher_pattern.str(), std::move(param_names)};
 	}
@@ -156,18 +156,18 @@ namespace coroute
 		auto matches = matcher.match_with_groups(std::string(path));
 
 		if (matches.empty())
-			{
-				return result;
-			}
+		{
+			return result;
+		}
 
 		// Take the last match (most specific, as per url-matcher convention)
 		const auto& match = matches.back();
 		size_t route_id = match.regex_id;
 
 		if (route_id >= routes_.size())
-			{
-				return result;
-			}
+		{
+			return result;
+		}
 
 		const auto& route = routes_[route_id];
 		result.handler = &route.handler;
@@ -175,23 +175,23 @@ namespace coroute
 		// Extract captured groups as strings
 		// url-matcher groups are 0-indexed
 		if (!match.groups.empty())
+		{
+			size_t max_group = 0;
+			for (const auto& [group_id, positions] : match.groups)
 			{
-				size_t max_group = 0;
-				for (const auto& [group_id, positions] : match.groups)
-					{
-						if (group_id + 1 > max_group) max_group = group_id + 1;
-					}
-
-				result.params.resize(max_group);
-				for (const auto& [group_id, positions] : match.groups)
-					{
-						if (positions.first <= positions.second && positions.second <= path.size())
-							{
-								result.params[group_id] =
-									std::string(path.substr(positions.first, positions.second - positions.first));
-							}
-					}
+				if (group_id + 1 > max_group) max_group = group_id + 1;
 			}
+
+			result.params.resize(max_group);
+			for (const auto& [group_id, positions] : match.groups)
+			{
+				if (positions.first <= positions.second && positions.second <= path.size())
+				{
+					result.params[group_id] =
+						std::string(path.substr(positions.first, positions.second - positions.first));
+				}
+			}
+		}
 
 		return result;
 	}
@@ -226,41 +226,41 @@ namespace coroute
 		auto matches = view_matcher_.match_with_groups(std::string(path));
 
 		if (matches.empty())
-			{
-				return result;
-			}
+		{
+			return result;
+		}
 
 		// Take the last match (most specific)
 		const auto& match = matches.back();
 		size_t route_id = match.regex_id;
 
 		if (route_id >= view_routes_.size())
-			{
-				return result;
-			}
+		{
+			return result;
+		}
 
 		const auto& route = view_routes_[route_id];
 		result.handler = &route.handler;
 
 		// Extract captured groups as strings
 		if (!match.groups.empty())
+		{
+			size_t max_group = 0;
+			for (const auto& [group_id, positions] : match.groups)
 			{
-				size_t max_group = 0;
-				for (const auto& [group_id, positions] : match.groups)
-					{
-						if (group_id + 1 > max_group) max_group = group_id + 1;
-					}
-
-				result.params.resize(max_group);
-				for (const auto& [group_id, positions] : match.groups)
-					{
-						if (positions.first <= positions.second && positions.second <= path.size())
-							{
-								result.params[group_id] =
-									std::string(path.substr(positions.first, positions.second - positions.first));
-							}
-					}
+				if (group_id + 1 > max_group) max_group = group_id + 1;
 			}
+
+			result.params.resize(max_group);
+			for (const auto& [group_id, positions] : match.groups)
+			{
+				if (positions.first <= positions.second && positions.second <= path.size())
+				{
+					result.params[group_id] =
+						std::string(path.substr(positions.first, positions.second - positions.first));
+				}
+			}
+		}
 
 		return result;
 	}

@@ -36,9 +36,9 @@ namespace coroute::http2
 	expected<FrameHeader, Error> FrameHeader::parse(std::span<const uint8_t> data)
 	{
 		if (data.size() < Constants::FrameHeaderSize)
-			{
-				return unexpected(Error::io(IoError::InvalidArgument, "Frame header too short"));
-			}
+		{
+			return unexpected(Error::io(IoError::InvalidArgument, "Frame header too short"));
+		}
 
 		FrameHeader header;
 
@@ -83,20 +83,20 @@ namespace coroute::http2
 
 		// Add settings (if not ACK)
 		if (!ack)
+		{
+			for (const auto& setting : settings)
 			{
-				for (const auto& setting : settings)
-					{
-						// ID (16 bits, big-endian)
-						result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) >> 8));
-						result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) & 0xFF));
+				// ID (16 bits, big-endian)
+				result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) >> 8));
+				result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) & 0xFF));
 
-						// Value (32 bits, big-endian)
-						result.push_back(static_cast<uint8_t>(setting.value >> 24));
-						result.push_back(static_cast<uint8_t>((setting.value >> 16) & 0xFF));
-						result.push_back(static_cast<uint8_t>((setting.value >> 8) & 0xFF));
-						result.push_back(static_cast<uint8_t>(setting.value & 0xFF));
-					}
+				// Value (32 bits, big-endian)
+				result.push_back(static_cast<uint8_t>(setting.value >> 24));
+				result.push_back(static_cast<uint8_t>((setting.value >> 16) & 0xFF));
+				result.push_back(static_cast<uint8_t>((setting.value >> 8) & 0xFF));
+				result.push_back(static_cast<uint8_t>(setting.value & 0xFF));
 			}
+		}
 
 		return result;
 	}

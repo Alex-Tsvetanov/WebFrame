@@ -90,36 +90,36 @@ namespace coroute
 		{
 			// Add stored cookies to request
 			if (!cookies_.empty())
+			{
+				std::string cookie_header;
+				for (const auto& [name, value] : cookies_)
 				{
-					std::string cookie_header;
-					for (const auto& [name, value] : cookies_)
-						{
-							if (!cookie_header.empty())
-								{
-									cookie_header += "; ";
-								}
-							cookie_header += name + "=" + value;
-						}
-					req.add_header("Cookie", cookie_header);
+					if (!cookie_header.empty())
+					{
+						cookie_header += "; ";
+					}
+					cookie_header += name + "=" + value;
 				}
+				req.add_header("Cookie", cookie_header);
+			}
 
 			// Add stored bearer token if present
 			if (bearer_token_)
-				{
-					req.add_header("Authorization", "Bearer " + *bearer_token_);
-				}
+			{
+				req.add_header("Authorization", "Bearer " + *bearer_token_);
+			}
 		}
 
 		void observe(const Response& resp) override
 		{
 			// Learn from Set-Cookie headers
 			for (const auto& [key, value] : resp.headers())
+			{
+				if (key == "Set-Cookie")
 				{
-					if (key == "Set-Cookie")
-						{
-							parse_set_cookie(value);
-						}
+					parse_set_cookie(value);
 				}
+			}
 		}
 
 		bool authenticated() const override { return bearer_token_.has_value() || !cookies_.empty(); }
@@ -148,9 +148,9 @@ namespace coroute
 		{
 			auto it = cookies_.find(name);
 			if (it != cookies_.end())
-				{
-					return it->second;
-				}
+			{
+				return it->second;
+			}
 			return std::nullopt;
 		}
 
@@ -167,21 +167,21 @@ namespace coroute
 
 			auto eq_pos = name_value.find('=');
 			if (eq_pos != std::string::npos)
+			{
+				std::string name = name_value.substr(0, eq_pos);
+				std::string value = name_value.substr(eq_pos + 1);
+
+				// Trim whitespace
+				while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+				while (!name.empty() && name.back() == ' ') name.pop_back();
+				while (!value.empty() && value.front() == ' ') value.erase(0, 1);
+				while (!value.empty() && value.back() == ' ') value.pop_back();
+
+				if (!name.empty())
 				{
-					std::string name = name_value.substr(0, eq_pos);
-					std::string value = name_value.substr(eq_pos + 1);
-
-					// Trim whitespace
-					while (!name.empty() && name.front() == ' ') name.erase(0, 1);
-					while (!name.empty() && name.back() == ' ') name.pop_back();
-					while (!value.empty() && value.front() == ' ') value.erase(0, 1);
-					while (!value.empty() && value.back() == ' ') value.pop_back();
-
-					if (!name.empty())
-						{
-							cookies_[name] = value;
-						}
+					cookies_[name] = value;
 				}
+			}
 		}
 
 		std::unordered_map<std::string, std::string> cookies_;

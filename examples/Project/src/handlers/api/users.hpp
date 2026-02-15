@@ -2,11 +2,13 @@
 
 #include "coroute/core/app.hpp"
 
-namespace project::services {
+namespace project::services
+{
 	class UserService;
 }
 
-namespace project::handlers::api::users {
+namespace project::handlers::api::users
+{
 
 	void register_routes(coroute::App& app, services::UserService& user_service);
 

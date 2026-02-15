@@ -147,22 +147,22 @@ namespace coroute
 		int http_status() const noexcept
 		{
 			if (is_http())
-				{
-					return static_cast<int>(std::get<HttpError>(inner_));
-				}
+			{
+				return static_cast<int>(std::get<HttpError>(inner_));
+			}
 			if (is_io())
+			{
+				auto e = std::get<IoError>(inner_);
+				switch (e)
 				{
-					auto e = std::get<IoError>(inner_);
-					switch (e)
-						{
-							case IoError::Timeout:
-								return 408;
-							case IoError::Cancelled:
-								return 499;  // Client Closed Request
-							default:
-								return 500;
-						}
+					case IoError::Timeout:
+						return 408;
+					case IoError::Cancelled:
+						return 499;  // Client Closed Request
+					default:
+						return 500;
 				}
+			}
 			return 500;
 		}
 

@@ -62,9 +62,9 @@ namespace coroute::net
 		auto ws_version = req.header("Sec-WebSocket-Version");
 
 		if (!connection || !upgrade || !ws_key || !ws_version)
-			{
-				return false;
-			}
+		{
+			return false;
+		}
 
 		// Check header values (case-insensitive for Connection and Upgrade)
 		bool has_upgrade = false;
@@ -101,9 +101,9 @@ namespace coroute::net
 	{
 		auto ws_key = req.header("Sec-WebSocket-Key");
 		if (!ws_key)
-			{
-				return Response::bad_request("Missing Sec-WebSocket-Key header");
-			}
+		{
+			return Response::bad_request("Missing Sec-WebSocket-Key header");
+		}
 
 		std::string accept_key = compute_accept_key(*ws_key);
 
@@ -116,19 +116,19 @@ namespace coroute::net
 		// Handle subprotocol negotiation if requested
 		auto ws_protocol = req.header("Sec-WebSocket-Protocol");
 		if (ws_protocol)
+		{
+			// For now, just echo back the first requested protocol
+			// In a real implementation, this should be configurable
+			auto comma = ws_protocol->find(',');
+			if (comma != std::string_view::npos)
 			{
-				// For now, just echo back the first requested protocol
-				// In a real implementation, this should be configurable
-				auto comma = ws_protocol->find(',');
-				if (comma != std::string_view::npos)
-					{
-						resp.set_header("Sec-WebSocket-Protocol", std::string(ws_protocol->substr(0, comma)));
-					}
-				else
-					{
-						resp.set_header("Sec-WebSocket-Protocol", std::string(*ws_protocol));
-					}
+				resp.set_header("Sec-WebSocket-Protocol", std::string(ws_protocol->substr(0, comma)));
 			}
+			else
+			{
+				resp.set_header("Sec-WebSocket-Protocol", std::string(*ws_protocol));
+			}
+		}
 
 		return resp;
 	}
@@ -176,32 +176,32 @@ namespace coroute::net
 			size_t header_size = 2;
 
 			if (len_byte <= 125)
-				{
-					header.payload_length = len_byte;
-				}
+			{
+				header.payload_length = len_byte;
+			}
 			else if (len_byte == 126)
-				{
-					if (len < 4) return 0;
-					header.payload_length = (static_cast<uint64_t>(data[2]) << 8) | data[3];
-					header_size = 4;
-				}
+			{
+				if (len < 4) return 0;
+				header.payload_length = (static_cast<uint64_t>(data[2]) << 8) | data[3];
+				header_size = 4;
+			}
 			else
-				{  // 127
-					if (len < 10) return 0;
-					header.payload_length = 0;
-					for (int i = 0; i < 8; ++i)
-						{
-							header.payload_length = (header.payload_length << 8) | data[2 + i];
-						}
-					header_size = 10;
+			{  // 127
+				if (len < 10) return 0;
+				header.payload_length = 0;
+				for (int i = 0; i < 8; ++i)
+				{
+					header.payload_length = (header.payload_length << 8) | data[2 + i];
 				}
+				header_size = 10;
+			}
 
 			if (header.masked)
-				{
-					if (len < header_size + 4) return 0;
-					std::memcpy(header.mask_key.data(), data + header_size, 4);
-					header_size += 4;
-				}
+			{
+				if (len < header_size + 4) return 0;
+				std::memcpy(header.mask_key.data(), data + header_size, 4);
+				header_size += 4;
+			}
 
 			return header_size;
 		}
@@ -220,31 +220,31 @@ namespace coroute::net
 
 			uint8_t byte1 = header.masked ? 0x80 : 0x00;
 			if (header.payload_length <= 125)
-				{
-					byte1 |= static_cast<uint8_t>(header.payload_length);
-					result.push_back(byte1);
-				}
+			{
+				byte1 |= static_cast<uint8_t>(header.payload_length);
+				result.push_back(byte1);
+			}
 			else if (header.payload_length <= 0xFFFF)
-				{
-					byte1 |= 126;
-					result.push_back(byte1);
-					result.push_back(static_cast<uint8_t>(header.payload_length >> 8));
-					result.push_back(static_cast<uint8_t>(header.payload_length & 0xFF));
-				}
+			{
+				byte1 |= 126;
+				result.push_back(byte1);
+				result.push_back(static_cast<uint8_t>(header.payload_length >> 8));
+				result.push_back(static_cast<uint8_t>(header.payload_length & 0xFF));
+			}
 			else
+			{
+				byte1 |= 127;
+				result.push_back(byte1);
+				for (int i = 7; i >= 0; --i)
 				{
-					byte1 |= 127;
-					result.push_back(byte1);
-					for (int i = 7; i >= 0; --i)
-						{
-							result.push_back(static_cast<uint8_t>(header.payload_length >> (i * 8)));
-						}
+					result.push_back(static_cast<uint8_t>(header.payload_length >> (i * 8)));
 				}
+			}
 
 			if (header.masked)
-				{
-					result.insert(result.end(), header.mask_key.begin(), header.mask_key.end());
-				}
+			{
+				result.insert(result.end(), header.mask_key.begin(), header.mask_key.end());
+			}
 
 			return result;
 		}
@@ -253,9 +253,9 @@ namespace coroute::net
 		void apply_mask(uint8_t* data, size_t len, const std::array<uint8_t, 4>& mask)
 		{
 			for (size_t i = 0; i < len; ++i)
-				{
-					data[i] ^= mask[i % 4];
-				}
+			{
+				data[i] ^= mask[i % 4];
+			}
 		}
 
 	}  // anonymous namespace
@@ -282,131 +282,124 @@ namespace coroute::net
 		Task<expected<WebSocketMessage, Error>> receive() override
 		{
 			while (is_open_)
+			{
+				// Try to parse a frame from existing buffer
+				if (!read_buffer_.empty())
 				{
-					// Try to parse a frame from existing buffer
-					if (!read_buffer_.empty())
-						{
-							FrameHeader header;
-							size_t header_size = parse_frame_header(read_buffer_.data(), read_buffer_.size(), header);
+					FrameHeader header;
+					size_t header_size = parse_frame_header(read_buffer_.data(), read_buffer_.size(), header);
 
-							if (header_size > 0 && read_buffer_.size() >= header_size + header.payload_length)
+					if (header_size > 0 && read_buffer_.size() >= header_size + header.payload_length)
+					{
+						// We have a complete frame
+						std::vector<uint8_t> payload(read_buffer_.begin() + header_size,
+						                             read_buffer_.begin() + header_size + header.payload_length);
+
+						// Remove frame from buffer
+						read_buffer_.erase(read_buffer_.begin(),
+						                   read_buffer_.begin() + header_size + header.payload_length);
+
+						// Unmask if needed (client frames must be masked)
+						if (header.masked)
+						{
+							apply_mask(payload.data(), payload.size(), header.mask_key);
+						}
+
+						// Handle control frames immediately
+						if (header.opcode == WebSocketOpcode::Ping)
+						{
+							co_await pong(payload);
+							continue;
+						}
+
+						if (header.opcode == WebSocketOpcode::Pong)
+						{
+							// Ignore pongs for now
+							continue;
+						}
+
+						if (header.opcode == WebSocketOpcode::Close)
+						{
+							is_open_ = false;
+							// Echo close frame
+							WebSocketCloseCode code = WebSocketCloseCode::Normal;
+							std::string_view reason;
+							if (payload.size() >= 2)
+							{
+								code = static_cast<WebSocketCloseCode>((payload[0] << 8) | payload[1]);
+								if (payload.size() > 2)
 								{
-									// We have a complete frame
-									std::vector<uint8_t> payload(
-										read_buffer_.begin() + header_size,
-										read_buffer_.begin() + header_size + header.payload_length);
-
-									// Remove frame from buffer
-									read_buffer_.erase(read_buffer_.begin(),
-									                   read_buffer_.begin() + header_size + header.payload_length);
-
-									// Unmask if needed (client frames must be masked)
-									if (header.masked)
-										{
-											apply_mask(payload.data(), payload.size(), header.mask_key);
-										}
-
-									// Handle control frames immediately
-									if (header.opcode == WebSocketOpcode::Ping)
-										{
-											co_await pong(payload);
-											continue;
-										}
-
-									if (header.opcode == WebSocketOpcode::Pong)
-										{
-											// Ignore pongs for now
-											continue;
-										}
-
-									if (header.opcode == WebSocketOpcode::Close)
-										{
-											is_open_ = false;
-											// Echo close frame
-											WebSocketCloseCode code = WebSocketCloseCode::Normal;
-											std::string_view reason;
-											if (payload.size() >= 2)
-												{
-													code =
-														static_cast<WebSocketCloseCode>((payload[0] << 8) | payload[1]);
-													if (payload.size() > 2)
-														{
-															reason = std::string_view(
-																reinterpret_cast<const char*>(payload.data() + 2),
-																payload.size() - 2);
-														}
-												}
-											co_await send_close_frame(code, reason);
-											co_return WebSocketMessage{WebSocketOpcode::Close, std::move(payload)};
-										}
-
-									// Handle data frames
-									if (header.opcode == WebSocketOpcode::Continuation)
-										{
-											// Continuation of fragmented message
-											fragment_buffer_.insert(fragment_buffer_.end(), payload.begin(),
-											                        payload.end());
-
-											if (fragment_buffer_.size() > max_message_size_)
-												{
-													co_await close(WebSocketCloseCode::MessageTooBig,
-													               "Message too large");
-													co_return unexpected(
-														Error::io(IoError::Unknown, "Message too large"));
-												}
-
-											if (header.fin)
-												{
-													// Final fragment
-													WebSocketMessage msg{fragment_opcode_, std::move(fragment_buffer_)};
-													fragment_buffer_.clear();
-													co_return msg;
-												}
-										}
-									else
-										{
-											// New message
-											if (!fragment_buffer_.empty())
-												{
-													// Protocol error: new message while fragmented message incomplete
-													co_await close(WebSocketCloseCode::ProtocolError,
-													               "Incomplete fragmented message");
-													co_return unexpected(Error::io(IoError::Unknown, "Protocol error"));
-												}
-
-											if (header.fin)
-												{
-													// Complete message in single frame
-													co_return WebSocketMessage{header.opcode, std::move(payload)};
-												}
-											else
-												{
-													// Start of fragmented message
-													fragment_opcode_ = header.opcode;
-													fragment_buffer_ = std::move(payload);
-												}
-										}
-
-									continue;
+									reason = std::string_view(reinterpret_cast<const char*>(payload.data() + 2),
+									                          payload.size() - 2);
 								}
+							}
+							co_await send_close_frame(code, reason);
+							co_return WebSocketMessage{WebSocketOpcode::Close, std::move(payload)};
 						}
 
-					// Need more data
-					std::array<uint8_t, 8192> buf;
-					auto result = co_await conn_->async_read(buf.data(), buf.size());
-					if (!result)
+						// Handle data frames
+						if (header.opcode == WebSocketOpcode::Continuation)
 						{
-							is_open_ = false;
-							co_return unexpected(result.error());
+							// Continuation of fragmented message
+							fragment_buffer_.insert(fragment_buffer_.end(), payload.begin(), payload.end());
+
+							if (fragment_buffer_.size() > max_message_size_)
+							{
+								co_await close(WebSocketCloseCode::MessageTooBig, "Message too large");
+								co_return unexpected(Error::io(IoError::Unknown, "Message too large"));
+							}
+
+							if (header.fin)
+							{
+								// Final fragment
+								WebSocketMessage msg{fragment_opcode_, std::move(fragment_buffer_)};
+								fragment_buffer_.clear();
+								co_return msg;
+							}
 						}
-					if (*result == 0)
+						else
 						{
-							is_open_ = false;
-							co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+							// New message
+							if (!fragment_buffer_.empty())
+							{
+								// Protocol error: new message while fragmented message incomplete
+								co_await close(WebSocketCloseCode::ProtocolError, "Incomplete fragmented message");
+								co_return unexpected(Error::io(IoError::Unknown, "Protocol error"));
+							}
+
+							if (header.fin)
+							{
+								// Complete message in single frame
+								co_return WebSocketMessage{header.opcode, std::move(payload)};
+							}
+							else
+							{
+								// Start of fragmented message
+								fragment_opcode_ = header.opcode;
+								fragment_buffer_ = std::move(payload);
+							}
 						}
 
-					read_buffer_.insert(read_buffer_.end(), buf.begin(), buf.begin() + *result);
+						continue;
+					}
 				}
+
+				// Need more data
+				std::array<uint8_t, 8192> buf;
+				auto result = co_await conn_->async_read(buf.data(), buf.size());
+				if (!result)
+				{
+					is_open_ = false;
+					co_return unexpected(result.error());
+				}
+				if (*result == 0)
+				{
+					is_open_ = false;
+					co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+				}
+
+				read_buffer_.insert(read_buffer_.end(), buf.begin(), buf.begin() + *result);
+			}
 
 			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
 		}
@@ -435,9 +428,9 @@ namespace coroute::net
 		Task<expected<void, Error>> close(WebSocketCloseCode code, std::string_view reason) override
 		{
 			if (!is_open_)
-				{
-					co_return expected<void, Error>{};
-				}
+			{
+				co_return expected<void, Error>{};
+			}
 			is_open_ = false;
 			co_return co_await send_close_frame(code, reason);
 		}
@@ -465,10 +458,10 @@ namespace coroute::net
 
 			// Send payload
 			if (len > 0)
-				{
-					auto payload_result = co_await conn_->async_write_all(data, len);
-					if (!payload_result) co_return unexpected(payload_result.error());
-				}
+			{
+				auto payload_result = co_await conn_->async_write_all(data, len);
+				if (!payload_result) co_return unexpected(payload_result.error());
+			}
 
 			co_return expected<void, Error>{};
 		}
@@ -492,9 +485,9 @@ namespace coroute::net
 	                                                                                 const Request& req)
 	{
 		if (!is_websocket_upgrade(req))
-			{
-				co_return unexpected(Error::io(IoError::InvalidArgument, "Not a WebSocket upgrade request"));
-			}
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "Not a WebSocket upgrade request"));
+		}
 
 		// Create and send upgrade response
 		auto response = create_upgrade_response(req);
@@ -508,19 +501,19 @@ namespace coroute::net
 		resp_str += "\r\n";
 
 		for (const auto& [name, value] : response.headers())
-			{
-				resp_str += name;
-				resp_str += ": ";
-				resp_str += value;
-				resp_str += "\r\n";
-			}
+		{
+			resp_str += name;
+			resp_str += ": ";
+			resp_str += value;
+			resp_str += "\r\n";
+		}
 		resp_str += "\r\n";
 
 		auto result = co_await conn->async_write_all(resp_str.data(), resp_str.size());
 		if (!result)
-			{
-				co_return unexpected(result.error());
-			}
+		{
+			co_return unexpected(result.error());
+		}
 
 		co_return std::make_unique<WebSocketConnectionImpl>(std::move(conn));
 	}

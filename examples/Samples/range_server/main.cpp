@@ -11,7 +11,8 @@
 
 using namespace coroute;
 
-int main() {
+int main()
+{
 	App app;
 	app.threads(4);
 
@@ -25,7 +26,8 @@ int main() {
 
 	{
 		std::ofstream f(test_file, std::ios::binary);
-		for (size_t i = 0; i < file_size; i++) {
+		for (size_t i = 0; i < file_size; i++)
+		{
 			char c = static_cast<char>(i % 256);
 			f.write(&c, 1);
 		}
@@ -37,8 +39,10 @@ int main() {
 	// =========================================================================
 
 	// Index page with instructions
-	app.get("/", [](Request&) -> Task<Response> {
-		co_return Response::html(R"(
+	app.get("/",
+	        [](Request&) -> Task<Response>
+	        {
+				co_return Response::html(R"(
 <!DOCTYPE html>
 <html>
 <head><title>Range Request Demo</title></head>
@@ -82,72 +86,84 @@ curl -v -H "Range: bytes=0-99,500-599" http://localhost:8080/data
 </body>
 </html>
         )");
-	});
+			});
 
 	// File-based range request (uses RangeResponseBuilder with file)
-	app.get("/file", [&test_file](Request& req) -> Task<Response> {
-		RangeResponseBuilder builder;
-		builder.file(test_file, "application/octet-stream").etag("\"test-file-v1\"");
+	app.get("/file",
+	        [&test_file](Request& req) -> Task<Response>
+	        {
+				RangeResponseBuilder builder;
+				builder.file(test_file, "application/octet-stream").etag("\"test-file-v1\"");
 
-		co_return builder.build(req);
-	});
+				co_return builder.build(req);
+			});
 
 	// In-memory data with range support
-	app.get("/data", [](Request& req) -> Task<Response> {
-		// Generate some data
-		std::string data;
-		data.reserve(10000);
-		for (int i = 0; i < 1000; i++) {
-			data += "Line " + std::to_string(i) + ": Hello, World!\n";
-		}
+	app.get("/data",
+	        [](Request& req) -> Task<Response>
+	        {
+				// Generate some data
+				std::string data;
+				data.reserve(10000);
+				for (int i = 0; i < 1000; i++)
+				{
+					data += "Line " + std::to_string(i) + ": Hello, World!\n";
+				}
 
-		RangeResponseBuilder builder;
-		builder.content(data, "text/plain").etag("\"data-v1\"");
+				RangeResponseBuilder builder;
+				builder.content(data, "text/plain").etag("\"data-v1\"");
 
-		co_return builder.build(req);
-	});
+				co_return builder.build(req);
+			});
 
 	// Simulated video endpoint
-	app.get("/video", [](Request& req) -> Task<Response> {
-		// In a real app, this would be a video file
-		// For demo, we'll use generated data
-		std::string video_data(100000, 'V');  // 100KB of 'V's
+	app.get("/video",
+	        [](Request& req) -> Task<Response>
+	        {
+				// In a real app, this would be a video file
+		        // For demo, we'll use generated data
+				std::string video_data(100000, 'V');  // 100KB of 'V's
 
-		RangeResponseBuilder builder;
-		builder.content(video_data, "video/mp4").etag("\"video-v1\"");
+				RangeResponseBuilder builder;
+				builder.content(video_data, "video/mp4").etag("\"video-v1\"");
 
-		Response resp = builder.build(req);
+				Response resp = builder.build(req);
 
-		// Add video-specific headers
-		resp.set_header("Accept-Ranges", "bytes");
+				// Add video-specific headers
+				resp.set_header("Accept-Ranges", "bytes");
 
-		co_return resp;
-	});
+				co_return resp;
+			});
 
 	// Manual range handling example
-	app.get("/manual", [](Request& req) -> Task<Response> {
-		std::string content = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	app.get("/manual",
+	        [](Request& req) -> Task<Response>
+	        {
+				std::string content = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-		// Check for Range header manually
-		if (should_use_range(req)) {
-			auto range_header = range::get_range(req);
-			if (range_header && range_header->is_single_range()) {
-				ByteRange br = range_header->ranges[0];
-				if (br.normalize(static_cast<int64_t>(content.size()))) {
-					std::string partial =
-					    content.substr(static_cast<size_t>(br.get_start()), static_cast<size_t>(br.length()));
-					co_return partial_content(partial, br.get_start(), br.get_end(),
-					                          static_cast<int64_t>(content.size()), "text/plain");
+				// Check for Range header manually
+				if (should_use_range(req))
+				{
+					auto range_header = range::get_range(req);
+					if (range_header && range_header->is_single_range())
+					{
+						ByteRange br = range_header->ranges[0];
+						if (br.normalize(static_cast<int64_t>(content.size())))
+						{
+							std::string partial =
+								content.substr(static_cast<size_t>(br.get_start()), static_cast<size_t>(br.length()));
+							co_return partial_content(partial, br.get_start(), br.get_end(),
+					                                  static_cast<int64_t>(content.size()), "text/plain");
+						}
+					}
+					co_return range_not_satisfiable(static_cast<int64_t>(content.size()));
 				}
-			}
-			co_return range_not_satisfiable(static_cast<int64_t>(content.size()));
-		}
 
-		// Full content
-		Response resp = Response::ok(content, "text/plain");
-		resp.set_header("Accept-Ranges", "bytes");
-		co_return resp;
-	});
+				// Full content
+				Response resp = Response::ok(content, "text/plain");
+				resp.set_header("Accept-Ranges", "bytes");
+				co_return resp;
+			});
 
 	std::cout << std::endl;
 	std::cout << "Range Request Server" << std::endl;
