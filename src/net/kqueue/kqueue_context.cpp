@@ -130,7 +130,10 @@ namespace coroute::net {
 			}
 		}
 
-		void run_one() override { process_events(); }
+		void run_one() override {
+			process_events();
+			process_callbacks();
+		}
 
 		void stop() override { stopped_ = true; }
 
