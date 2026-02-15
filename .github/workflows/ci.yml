@@ -214,9 +214,9 @@ jobs:
     - name: Install clang-format
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang-format-18
+        sudo apt-get install -y clang-format-21
     
     - name: Check formatting
       run: |
         find include/ src/ examples/ tests/ -name "*.hpp" -o -name "*.cpp" | \
-        xargs clang-format-18 --dry-run --Werror --style="file:.clang-format"
+        xargs clang-format-21 --dry-run --Werror --style="file:.clang-format"
