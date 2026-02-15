@@ -11,14 +11,16 @@
 #include "coroute/core/error.hpp"
 #include "coroute/util/expected.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Form Data Types
 	// ============================================================================
 
 	// A single form field value
-	struct FormField {
+	struct FormField
+	{
 		std::string name;
 		std::string value;
 
@@ -29,7 +31,8 @@ namespace coroute {
 	};
 
 	// Parsed form data
-	class FormData {
+	class FormData
+	{
 		std::vector<FormField> fields_;
 		std::unordered_map<std::string, std::vector<size_t>> index_;
 
@@ -71,7 +74,8 @@ namespace coroute {
 	// Form Parsing
 	// ============================================================================
 
-	namespace form {
+	namespace form
+	{
 
 		// Parse application/x-www-form-urlencoded body
 		expected<FormData, Error> parse_urlencoded(std::string_view body);
@@ -100,35 +104,56 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename T>
-	std::optional<T> FormData::get_as(std::string_view name) const {
+	std::optional<T> FormData::get_as(std::string_view name) const
+	{
 		auto value = get(name);
 		if (!value) return std::nullopt;
 
-		if constexpr (std::is_same_v<T, std::string>) {
-			return std::string(*value);
-		} else if constexpr (std::is_same_v<T, int>) {
-			try {
-				return std::stoi(std::string(*value));
-			} catch (...) {
-				return std::nullopt;
+		if constexpr (std::is_same_v<T, std::string>)
+			{
+				return std::string(*value);
 			}
-		} else if constexpr (std::is_same_v<T, int64_t>) {
-			try {
-				return std::stoll(std::string(*value));
-			} catch (...) {
-				return std::nullopt;
+		else if constexpr (std::is_same_v<T, int>)
+			{
+				try
+					{
+						return std::stoi(std::string(*value));
+					}
+				catch (...)
+					{
+						return std::nullopt;
+					}
 			}
-		} else if constexpr (std::is_same_v<T, double>) {
-			try {
-				return std::stod(std::string(*value));
-			} catch (...) {
-				return std::nullopt;
+		else if constexpr (std::is_same_v<T, int64_t>)
+			{
+				try
+					{
+						return std::stoll(std::string(*value));
+					}
+				catch (...)
+					{
+						return std::nullopt;
+					}
 			}
-		} else if constexpr (std::is_same_v<T, bool>) {
-			return *value == "true" || *value == "1" || *value == "on";
-		} else {
-			static_assert(sizeof(T) == 0, "Unsupported type for get_as");
-		}
+		else if constexpr (std::is_same_v<T, double>)
+			{
+				try
+					{
+						return std::stod(std::string(*value));
+					}
+				catch (...)
+					{
+						return std::nullopt;
+					}
+			}
+		else if constexpr (std::is_same_v<T, bool>)
+			{
+				return *value == "true" || *value == "1" || *value == "on";
+			}
+		else
+			{
+				static_assert(sizeof(T) == 0, "Unsupported type for get_as");
+			}
 	}
 
 }  // namespace coroute

@@ -18,13 +18,15 @@
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
 
-namespace coroute::net {
+namespace coroute::net
+{
 
 	// ============================================================================
 	// TLS Configuration
 	// ============================================================================
 
-	struct TlsConfig {
+	struct TlsConfig
+	{
 		// Certificate and key paths
 		std::filesystem::path cert_file;
 		std::filesystem::path key_file;
@@ -36,7 +38,11 @@ namespace coroute::net {
 		std::filesystem::path chain_file;
 
 		// Minimum TLS version (default: TLS 1.2)
-		enum class MinVersion { TLS_1_2, TLS_1_3 } min_version = MinVersion::TLS_1_2;
+		enum class MinVersion
+		{
+			TLS_1_2,
+			TLS_1_3
+		} min_version = MinVersion::TLS_1_2;
 
 		// Enable client certificate verification
 		bool verify_client = false;
@@ -58,7 +64,8 @@ namespace coroute::net {
 	// TLS Context - Manages SSL_CTX
 	// ============================================================================
 
-	class TlsContext {
+	class TlsContext
+	{
 	public:
 		~TlsContext();
 
@@ -97,7 +104,8 @@ namespace coroute::net {
 	// TLS Connection - Wraps a Connection with TLS
 	// ============================================================================
 
-	class TlsConnection : public Connection {
+	class TlsConnection : public Connection
+	{
 	public:
 		~TlsConnection() override;
 
@@ -122,7 +130,8 @@ namespace coroute::net {
 		void set_cancellation_token(CancellationToken token) override;
 
 		// Get peer certificate info (if client cert verification enabled)
-		struct PeerCertInfo {
+		struct PeerCertInfo
+		{
 			std::string subject;
 			std::string issuer;
 			std::string serial;
@@ -155,7 +164,8 @@ namespace coroute::net {
 	// TLS Listener - Accepts TLS connections
 	// ============================================================================
 
-	class TlsListener {
+	class TlsListener
+	{
 	public:
 		TlsListener(std::unique_ptr<Listener> inner, TlsContext& ctx);
 		~TlsListener();

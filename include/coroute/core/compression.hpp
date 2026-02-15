@@ -11,7 +11,8 @@
 #include "coroute/core/response.hpp"
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declare middleware types
 	using Next = std::function<Task<Response>(Request&)>;
@@ -21,7 +22,8 @@ namespace coroute {
 	// Compression Algorithms
 	// ============================================================================
 
-	enum class CompressionAlgorithm {
+	enum class CompressionAlgorithm
+	{
 		Gzip,     // gzip (deflate + gzip wrapper)
 		Deflate,  // raw deflate
 		Brotli,   // Brotli compression (if available)
@@ -39,7 +41,8 @@ namespace coroute {
 	// Compression Options
 	// ============================================================================
 
-	struct CompressionOptions {
+	struct CompressionOptions
+	{
 		// Enabled algorithms (in preference order)
 		std::set<CompressionAlgorithm> algorithms = {CompressionAlgorithm::Brotli, CompressionAlgorithm::Gzip,
 		                                             CompressionAlgorithm::Deflate};
@@ -80,7 +83,8 @@ namespace coroute {
 	// Compression Functions
 	// ============================================================================
 
-	namespace compress {
+	namespace compress
+	{
 
 		// Check if Brotli is available (compiled with support)
 		bool brotli_available() noexcept;
@@ -114,7 +118,8 @@ namespace coroute {
 	// Compression Middleware
 	// ============================================================================
 
-	class CompressionMiddleware {
+	class CompressionMiddleware
+	{
 	public:
 		explicit CompressionMiddleware(CompressionOptions options = {});
 

@@ -36,7 +36,8 @@
 
 #endif
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Middleware Types
@@ -53,18 +54,21 @@ namespace coroute {
 	// ============================================================================
 
 	// Shutdown options
-	struct ShutdownOptions {
+	struct ShutdownOptions
+	{
 		std::chrono::seconds drain_timeout{30};  // Time to wait for connections to drain
 		bool force_close_after_timeout = true;   // Force close remaining connections after timeout
 	};
 
 	// Pre-compiled middleware chain - built once, executed many times
-	class CompiledMiddlewareChain {
+	class CompiledMiddlewareChain
+	{
 		std::vector<Middleware> middleware_;
 		bool compiled_ = false;
 
 	public:
-		void add(Middleware mw) {
+		void add(Middleware mw)
+		{
 			middleware_.push_back(std::move(mw));
 			compiled_ = false;
 		}
@@ -73,10 +77,12 @@ namespace coroute {
 		size_t size() const noexcept { return middleware_.size(); }
 
 		// Execute the chain with a final handler
-		Task<Response> execute(Request& req, Handler& handler) const {
-			if (middleware_.empty()) {
-				co_return co_await handler(req);
-			}
+		Task<Response> execute(Request& req, Handler& handler) const
+		{
+			if (middleware_.empty())
+				{
+					co_return co_await handler(req);
+				}
 
 			// Build chain from innermost (handler) to outermost (first middleware)
 			// We capture by index to avoid lambda capture issues
@@ -84,22 +90,27 @@ namespace coroute {
 		}
 
 		// Execute with a not-found fallback
-		Task<Response> execute_or_not_found(Request& req, const Handler* handler) const {
-			if (middleware_.empty()) {
-				if (handler) {
-					co_return co_await (*handler)(req);
+		Task<Response> execute_or_not_found(Request& req, const Handler* handler) const
+		{
+			if (middleware_.empty())
+				{
+					if (handler)
+						{
+							co_return co_await (*handler)(req);
+						}
+					co_return Response::not_found();
 				}
-				co_return Response::not_found();
-			}
 
 			co_return co_await execute_at_or_not_found(0, req, handler);
 		}
 
 	private:
-		Task<Response> execute_at(size_t idx, Request& req, const Handler& handler) const {
-			if (idx >= middleware_.size()) {
-				co_return co_await handler(req);
-			}
+		Task<Response> execute_at(size_t idx, Request& req, const Handler& handler) const
+		{
+			if (idx >= middleware_.size())
+				{
+					co_return co_await handler(req);
+				}
 
 			// Create next function that continues the chain
 			Next next = [this, idx, &handler](Request& r) -> Task<Response> { return execute_at(idx + 1, r, handler); };
@@ -107,25 +118,28 @@ namespace coroute {
 			co_return co_await middleware_[idx](req, next);
 		}
 
-		Task<Response> execute_at_or_not_found(size_t idx, Request& req, const Handler* handler) const {
-			if (idx >= middleware_.size()) {
-				if (handler) {
-					co_return co_await (*handler)(req);
+		Task<Response> execute_at_or_not_found(size_t idx, Request& req, const Handler* handler) const
+		{
+			if (idx >= middleware_.size())
+				{
+					if (handler)
+						{
+							co_return co_await (*handler)(req);
+						}
+					co_return Response::not_found();
 				}
-				co_return Response::not_found();
-			}
 
 			// Create next function that continues the chain
-			Next next = [this, idx, handler](Request& r) -> Task<Response> {
-				return execute_at_or_not_found(idx + 1, r, handler);
-			};
+			Next next = [this, idx, handler](Request& r) -> Task<Response>
+				{ return execute_at_or_not_found(idx + 1, r, handler); };
 
 			co_return co_await middleware_[idx](req, next);
 		}
 	};
 
 	// TLS configuration for App
-	struct AppTlsConfig {
+	struct AppTlsConfig
+	{
 		std::filesystem::path cert_file;
 		std::filesystem::path key_file;
 		std::filesystem::path ca_file;     // Optional: for client cert verification
@@ -134,7 +148,8 @@ namespace coroute {
 		std::vector<std::string> alpn_protocols;  // e.g., {"h2", "http/1.1"}
 	};
 
-	class App {
+	class App
+	{
 		Router router_;
 		std::unique_ptr<net::IoContext> io_ctx_;
 		std::unique_ptr<net::Listener> listener_;
@@ -196,59 +211,69 @@ namespace coroute {
 		App& operator=(App&&) = delete;
 
 		// Configuration
-		App& threads(size_t count) {
+		App& threads(size_t count)
+		{
 			thread_count_ = count;
 			return *this;
 		}
 
 		// Route registration (simple form)
-		App& route(HttpMethod method, std::string pattern, Handler handler) {
+		App& route(HttpMethod method, std::string pattern, Handler handler)
+		{
 			router_.add(method, std::move(pattern), std::move(handler));
 			return *this;
 		}
 
 		// Convenience methods
-		App& get(std::string pattern, Handler handler) {
+		App& get(std::string pattern, Handler handler)
+		{
 			return route(HttpMethod::GET, std::move(pattern), std::move(handler));
 		}
 
-		App& post(std::string pattern, Handler handler) {
+		App& post(std::string pattern, Handler handler)
+		{
 			return route(HttpMethod::POST, std::move(pattern), std::move(handler));
 		}
 
-		App& put(std::string pattern, Handler handler) {
+		App& put(std::string pattern, Handler handler)
+		{
 			return route(HttpMethod::PUT, std::move(pattern), std::move(handler));
 		}
 
-		App& del(std::string pattern, Handler handler) {
+		App& del(std::string pattern, Handler handler)
+		{
 			return route(HttpMethod::DELETE, std::move(pattern), std::move(handler));
 		}
 
 		// Route registration with automatic parameter extraction
 		template <typename... Args, typename F>
-		    requires std::invocable<F, Args..., Request&>
-		App& get(std::string pattern, F&& handler) {
+			requires std::invocable<F, Args..., Request&>
+		App& get(std::string pattern, F&& handler)
+		{
 			router_.get<Args...>(std::move(pattern), std::forward<F>(handler));
 			return *this;
 		}
 
 		template <typename... Args, typename F>
-		    requires std::invocable<F, Args..., Request&>
-		App& post(std::string pattern, F&& handler) {
+			requires std::invocable<F, Args..., Request&>
+		App& post(std::string pattern, F&& handler)
+		{
 			router_.post<Args...>(std::move(pattern), std::forward<F>(handler));
 			return *this;
 		}
 
 		template <typename... Args, typename F>
-		    requires std::invocable<F, Args..., Request&>
-		App& put(std::string pattern, F&& handler) {
+			requires std::invocable<F, Args..., Request&>
+		App& put(std::string pattern, F&& handler)
+		{
 			router_.put<Args...>(std::move(pattern), std::forward<F>(handler));
 			return *this;
 		}
 
 		template <typename... Args, typename F>
-		    requires std::invocable<F, Args..., Request&>
-		App& del(std::string pattern, F&& handler) {
+			requires std::invocable<F, Args..., Request&>
+		App& del(std::string pattern, F&& handler)
+		{
 			router_.del<Args...>(std::move(pattern), std::forward<F>(handler));
 			return *this;
 		}
@@ -258,7 +283,8 @@ namespace coroute {
 		const Router& router() const noexcept { return router_; }
 
 		// WebSocket route registration
-		App& ws(std::string path, WebSocketHandler handler) {
+		App& ws(std::string path, WebSocketHandler handler)
+		{
 			ws_handlers_[std::move(path)] = std::move(handler);
 			return *this;
 		}
@@ -270,7 +296,8 @@ namespace coroute {
 		/// Set the authentication state manager.
 		/// For web: use WebAuthState (no-op).
 		/// For desktop/mobile: use ClientAuthState (manages cookies/tokens).
-		App& set_auth_state(std::unique_ptr<AuthState> auth) {
+		App& set_auth_state(std::unique_ptr<AuthState> auth)
+		{
 			auth_state_ = std::move(auth);
 			return *this;
 		}
@@ -282,7 +309,8 @@ namespace coroute {
 #ifdef COROUTE_CLIENT_MODE
 		/// Set the fetch transport for client mode.
 		/// Required for desktop/mobile builds to make HTTP requests.
-		App& set_fetch_transport(std::unique_ptr<FetchTransport> transport, std::string base_url = "") {
+		App& set_fetch_transport(std::unique_ptr<FetchTransport> transport, std::string base_url = "")
+		{
 			fetch_transport_ = std::move(transport);
 			fetch_base_url_ = std::move(base_url);
 			return *this;
@@ -303,7 +331,8 @@ namespace coroute {
 		///
 		/// Auth failures return normal 401/403 Responses (no exceptions).
 		/// Only throws for true invariants/transport failures.
-		Task<Response> fetch(HttpMethod method, std::string_view route, std::string body = "") {
+		Task<Response> fetch(HttpMethod method, std::string_view route, std::string body = "")
+		{
 			// Build request
 			Request req;
 			req.set_method(method);
@@ -312,29 +341,33 @@ namespace coroute {
 			req.set_http_version("HTTP/1.1");
 
 			// Apply auth state (add cookies, tokens, etc.)
-			if (auth_state_) {
-				auth_state_->apply(req);
-			}
+			if (auth_state_)
+				{
+					auth_state_->apply(req);
+				}
 
 #ifdef COROUTE_CLIENT_MODE
 			// Client mode: dispatch via HTTP transport to remote server
-			if (!fetch_transport_) {
-				throw std::runtime_error("fetch() called in client mode without transport configured");
-			}
+			if (!fetch_transport_)
+				{
+					throw std::runtime_error("fetch() called in client mode without transport configured");
+				}
 			Response resp = co_await fetch_transport_->dispatch(req);
 #else
 			// Web/server mode: dispatch in-process through middleware chain
 			auto match = router_.match(method, route);
-			if (match) {
-				req.set_route_params(std::move(match.params));
-			}
+			if (match)
+				{
+					req.set_route_params(std::move(match.params));
+				}
 			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
 #endif
 
 			// Observe response for auth state updates
-			if (auth_state_) {
-				auth_state_->observe(resp);
-			}
+			if (auth_state_)
+				{
+					auth_state_->observe(resp);
+				}
 
 			co_return resp;
 		}
@@ -342,11 +375,13 @@ namespace coroute {
 		/// Convenience methods for fetch
 		Task<Response> fetch_get(std::string_view route) { return fetch(HttpMethod::GET, route); }
 
-		Task<Response> fetch_post(std::string_view route, std::string body = "") {
+		Task<Response> fetch_post(std::string_view route, std::string body = "")
+		{
 			return fetch(HttpMethod::POST, route, std::move(body));
 		}
 
-		Task<Response> fetch_put(std::string_view route, std::string body = "") {
+		Task<Response> fetch_put(std::string_view route, std::string body = "")
+		{
 			return fetch(HttpMethod::PUT, route, std::move(body));
 		}
 
@@ -358,8 +393,8 @@ namespace coroute {
 
 		/// Fetch with cookie/header forwarding from original request.
 		/// Use this in web/server mode to propagate browser cookies to API calls.
-		Task<Response> fetch(const Request& original, HttpMethod method, std::string_view route,
-		                     std::string body = "") {
+		Task<Response> fetch(const Request& original, HttpMethod method, std::string_view route, std::string body = "")
+		{
 			// Build request
 			Request req;
 			req.set_method(method);
@@ -369,47 +404,55 @@ namespace coroute {
 
 			// Forward cookies from original request (web/server mode)
 			auto cookie = original.header("Cookie");
-			if (cookie) {
-				req.add_header("Cookie", std::string(*cookie));
-			}
+			if (cookie)
+				{
+					req.add_header("Cookie", std::string(*cookie));
+				}
 
 			// Forward authorization header if present
 			auto auth = original.header("Authorization");
-			if (auth) {
-				req.add_header("Authorization", std::string(*auth));
-			}
+			if (auth)
+				{
+					req.add_header("Authorization", std::string(*auth));
+				}
 
 			// Apply auth state (may override with stored tokens for client mode)
-			if (auth_state_) {
-				auth_state_->apply(req);
-			}
+			if (auth_state_)
+				{
+					auth_state_->apply(req);
+				}
 
 #ifdef COROUTE_CLIENT_MODE
-			if (!fetch_transport_) {
-				throw std::runtime_error("fetch() called in client mode without transport configured");
-			}
+			if (!fetch_transport_)
+				{
+					throw std::runtime_error("fetch() called in client mode without transport configured");
+				}
 			Response resp = co_await fetch_transport_->dispatch(req);
 #else
 			auto match = router_.match(method, route);
-			if (match) {
-				req.set_route_params(std::move(match.params));
-			}
+			if (match)
+				{
+					req.set_route_params(std::move(match.params));
+				}
 			Response resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
 #endif
 
-			if (auth_state_) {
-				auth_state_->observe(resp);
-			}
+			if (auth_state_)
+				{
+					auth_state_->observe(resp);
+				}
 
 			co_return resp;
 		}
 
 		/// Convenience methods with original request forwarding
-		Task<Response> fetch_get(const Request& original, std::string_view route) {
+		Task<Response> fetch_get(const Request& original, std::string_view route)
+		{
 			return fetch(original, HttpMethod::GET, route);
 		}
 
-		Task<Response> fetch_post(const Request& original, std::string_view route, std::string body = "") {
+		Task<Response> fetch_post(const Request& original, std::string_view route, std::string body = "")
+		{
 			return fetch(original, HttpMethod::POST, route, std::move(body));
 		}
 
@@ -419,7 +462,8 @@ namespace coroute {
 #ifdef COROUTE_HAS_TEMPLATES
 
 		/// Add global view middleware (runs for all views, UI-level concerns only).
-		App& use_view(ViewMiddleware mw) {
+		App& use_view(ViewMiddleware mw)
+		{
 			global_view_middleware_.add(std::move(mw));
 			return *this;
 		}
@@ -427,21 +471,23 @@ namespace coroute {
 		/// Register a view route with typed ViewModel.
 		/// Handler signature: (Request&) -> View<VM>
 		template <typename VM, typename Handler>
-		    requires requires(Handler h, Request& r) {
-			    { h(r) } -> std::same_as<View<VM>>;
-		    }
-		App& view(std::string_view path, Handler&& handler) {
+			requires requires(Handler h, Request& r) {
+				{ h(r) } -> std::same_as<View<VM>>;
+			}
+		App& view(std::string_view path, Handler&& handler)
+		{
 			std::string path_str(path);
 			auto wrapper = [this, path_str,
-			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny> {
-				// Run global view middleware
-				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-				co_await global_view_middleware_.execute(ctx);
+			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
+				{
+					// Run global view middleware
+					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+					co_await global_view_middleware_.execute(ctx);
 
-				// Call handler
-				ViewResult<VM> result = co_await h(req);
-				co_return ViewResultAny(std::move(result));
-			};
+					// Call handler
+					ViewResult<VM> result = co_await h(req);
+					co_return ViewResultAny(std::move(result));
+				};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
@@ -449,47 +495,52 @@ namespace coroute {
 		/// Register a view route with context access.
 		/// Handler signature: (Request&, ViewExecutionContext&) -> View<VM>
 		template <typename VM, typename Handler>
-		    requires requires(Handler h, Request& r, ViewExecutionContext& ctx) {
-			    { h(r, ctx) } -> std::same_as<View<VM>>;
-		    }
-		App& view(std::string_view path, Handler&& handler) {
+			requires requires(Handler h, Request& r, ViewExecutionContext& ctx) {
+				{ h(r, ctx) } -> std::same_as<View<VM>>;
+			}
+		App& view(std::string_view path, Handler&& handler)
+		{
 			std::string path_str(path);
 			auto wrapper = [this, path_str,
-			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny> {
-				// Run global view middleware
-				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-				co_await global_view_middleware_.execute(ctx);
+			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
+				{
+					// Run global view middleware
+					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+					co_await global_view_middleware_.execute(ctx);
 
-				// Call handler with context
-				ViewResult<VM> result = co_await h(req, ctx);
-				co_return ViewResultAny(std::move(result));
-			};
+					// Call handler with context
+					ViewResult<VM> result = co_await h(req, ctx);
+					co_return ViewResultAny(std::move(result));
+				};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
 
 		/// Register a view route with per-route middleware.
 		template <typename VM, typename Handler>
-		    requires requires(Handler h, Request& r, ViewExecutionContext& ctx) {
-			    { h(r, ctx) } -> std::same_as<View<VM>>;
-		    }
-		App& view(std::string_view path, std::vector<ViewMiddleware> per_route_mw, Handler&& handler) {
+			requires requires(Handler h, Request& r, ViewExecutionContext& ctx) {
+				{ h(r, ctx) } -> std::same_as<View<VM>>;
+			}
+		App& view(std::string_view path, std::vector<ViewMiddleware> per_route_mw, Handler&& handler)
+		{
 			std::string path_str(path);
 			auto wrapper = [this, path_str, per_mw = std::move(per_route_mw),
-			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny> {
-				// Run global view middleware
-				ViewExecutionContext ctx{.route = path_str, .view_name = ""};
-				co_await global_view_middleware_.execute(ctx);
+			                h = std::forward<Handler>(handler)](Request& req) mutable -> Task<ViewResultAny>
+				{
+					// Run global view middleware
+					ViewExecutionContext ctx{.route = path_str, .view_name = ""};
+					co_await global_view_middleware_.execute(ctx);
 
-				// Run per-route middleware
-				for (const auto& mw : per_mw) {
-					co_await mw(ctx);
-				}
+					// Run per-route middleware
+					for (const auto& mw : per_mw)
+						{
+							co_await mw(ctx);
+						}
 
-				// Call handler with context
-				ViewResult<VM> result = co_await h(req, ctx);
-				co_return ViewResultAny(std::move(result));
-			};
+					// Call handler with context
+					ViewResult<VM> result = co_await h(req, ctx);
+					co_return ViewResultAny(std::move(result));
+				};
 			router_.add_view(std::string(path), std::move(wrapper));
 			return *this;
 		}
@@ -499,7 +550,8 @@ namespace coroute {
 		// Middleware registration
 		// Middleware is called in order: first registered = outermost (runs first on
 		// request, last on response)
-		App& use(Middleware middleware) {
+		App& use(Middleware middleware)
+		{
 			middleware_chain_.add(std::move(middleware));
 			return *this;
 		}
@@ -518,7 +570,8 @@ namespace coroute {
 
 		// HTTP/2 configuration
 #ifdef COROUTE_HAS_HTTP2
-		App& enable_http2(bool enable = true) {
+		App& enable_http2(bool enable = true)
+		{
 			http2_enabled_ = enable;
 			return *this;
 		}
@@ -530,77 +583,90 @@ namespace coroute {
 		// ========================================================================
 #ifdef COROUTE_HAS_TEMPLATES
 		// Set the template directory
-		App& set_templates(const std::filesystem::path& dir) {
+		App& set_templates(const std::filesystem::path& dir)
+		{
 			template_dir_ = dir;
-			if (!template_env_) {
-				template_env_ = std::make_unique<inja::Environment>();
-			}
+			if (!template_env_)
+				{
+					template_env_ = std::make_unique<inja::Environment>();
+				}
 			template_env_->set_search_included_templates_in_files(true);
 			return *this;
 		}
 
 		// Enable/disable template caching
-		App& set_template_caching(bool enabled) {
+		App& set_template_caching(bool enabled)
+		{
 			template_caching_ = enabled;
 			return *this;
 		}
 
 		// Render a template string with data
-		std::string render(std::string_view template_str, const nlohmann::json& data) {
+		std::string render(std::string_view template_str, const nlohmann::json& data)
+		{
 			ensure_template_env();
 			return template_env_->render(std::string(template_str), data);
 		}
 
 		// Render a template file with data (like v1's app.render())
-		std::string render(const std::string& filename, const nlohmann::json& data) {
+		std::string render(const std::string& filename, const nlohmann::json& data)
+		{
 			ensure_template_env();
 
-			if (template_caching_) {
-				std::lock_guard lock(template_mutex_);
-				auto it = template_cache_.find(filename);
-				if (it != template_cache_.end()) {
-					return template_env_->render(it->second, data);
+			if (template_caching_)
+				{
+					std::lock_guard lock(template_mutex_);
+					auto it = template_cache_.find(filename);
+					if (it != template_cache_.end())
+						{
+							return template_env_->render(it->second, data);
+						}
 				}
-			}
 
 			auto path = template_dir_ / filename;
 			auto tmpl = template_env_->parse_template(path.string());
 			std::string result = template_env_->render(tmpl, data);
 
-			if (template_caching_) {
-				std::lock_guard lock(template_mutex_);
-				// Cache the template content
-				std::ifstream file(path);
-				if (file) {
-					std::ostringstream ss;
-					ss << file.rdbuf();
-					template_cache_[filename] = ss.str();
+			if (template_caching_)
+				{
+					std::lock_guard lock(template_mutex_);
+					// Cache the template content
+					std::ifstream file(path);
+					if (file)
+						{
+							std::ostringstream ss;
+							ss << file.rdbuf();
+							template_cache_[filename] = ss.str();
+						}
 				}
-			}
 
 			return result;
 		}
 
 		// Render template to Response
-		Response render_html(const std::string& filename, const nlohmann::json& data) {
+		Response render_html(const std::string& filename, const nlohmann::json& data)
+		{
 			return Response::html(render(filename, data));
 		}
 
 		// Add custom template callback
 		void add_template_callback(const std::string& name, int num_args,
-		                           const std::function<nlohmann::json(inja::Arguments&)>& callback) {
+		                           const std::function<nlohmann::json(inja::Arguments&)>& callback)
+		{
 			ensure_template_env();
 			template_env_->add_callback(name, num_args, callback);
 		}
 
 		// Clear template cache
-		void clear_template_cache() {
+		void clear_template_cache()
+		{
 			std::lock_guard lock(template_mutex_);
 			template_cache_.clear();
 		}
 
 		// Access inja environment for advanced configuration
-		inja::Environment& template_env() {
+		inja::Environment& template_env()
+		{
 			ensure_template_env();
 			return *template_env_;
 		}
@@ -609,10 +675,12 @@ namespace coroute {
 		const std::filesystem::path& template_dir() const noexcept { return template_dir_; }
 
 	private:
-		void ensure_template_env() {
-			if (!template_env_) {
-				template_env_ = std::make_unique<inja::Environment>();
-			}
+		void ensure_template_env()
+		{
+			if (!template_env_)
+				{
+					template_env_ = std::make_unique<inja::Environment>();
+				}
 		}
 
 	public:

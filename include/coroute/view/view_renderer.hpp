@@ -7,7 +7,8 @@
 #include "coroute/coro/task.hpp"
 #include "coroute/view/view_types.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// IViewRenderer - Abstract interface for platform-specific renderers
@@ -16,7 +17,8 @@ namespace coroute {
 	/// Interface for view renderers. Each platform (web, desktop, mobile)
 	/// implements this interface to render views using platform-specific
 	/// templating engines.
-	struct IViewRenderer {
+	struct IViewRenderer
+	{
 		virtual ~IViewRenderer() = default;
 
 		/// Validate that all registered templates exist.

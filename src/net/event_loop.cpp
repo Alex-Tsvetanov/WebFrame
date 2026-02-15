@@ -9,7 +9,8 @@
 // kqueue implementation in kqueue/kqueue_context.cpp
 #endif
 
-namespace coroute::net {
+namespace coroute::net
+{
 
 	// Factory implementations are in platform-specific files
 

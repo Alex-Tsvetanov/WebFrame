@@ -16,7 +16,8 @@
 #include "coroute/core/cookie.hpp"
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declare middleware types
 	using Next = std::function<Task<Response>(Request&)>;
@@ -26,7 +27,8 @@ namespace coroute {
 	// Session Data
 	// ============================================================================
 
-	class Session {
+	class Session
+	{
 		std::string id_;
 		std::unordered_map<std::string, std::any> data_;
 		std::chrono::system_clock::time_point created_;
@@ -53,25 +55,31 @@ namespace coroute {
 
 		// Get value
 		template <typename T>
-		std::optional<T> get(const std::string& key) const {
+		std::optional<T> get(const std::string& key) const
+		{
 			auto it = data_.find(key);
 			if (it == data_.end()) return std::nullopt;
-			try {
-				return std::any_cast<T>(it->second);
-			} catch (const std::bad_any_cast&) {
-				return std::nullopt;
-			}
+			try
+				{
+					return std::any_cast<T>(it->second);
+				}
+			catch (const std::bad_any_cast&)
+				{
+					return std::nullopt;
+				}
 		}
 
 		// Get value with default
 		template <typename T>
-		T get_or(const std::string& key, T default_value) const {
+		T get_or(const std::string& key, T default_value) const
+		{
 			return get<T>(key).value_or(std::move(default_value));
 		}
 
 		// Set value
 		template <typename T>
-		void set(const std::string& key, T value) {
+		void set(const std::string& key, T value)
+		{
 			data_[key] = std::move(value);
 			modified_ = true;
 		}
@@ -99,7 +107,8 @@ namespace coroute {
 	// Session Store Interface
 	// ============================================================================
 
-	class SessionStore {
+	class SessionStore
+	{
 	public:
 		virtual ~SessionStore() = default;
 
@@ -123,8 +132,10 @@ namespace coroute {
 	// In-Memory Session Store
 	// ============================================================================
 
-	class MemorySessionStore : public SessionStore {
-		struct StoredSession {
+	class MemorySessionStore : public SessionStore
+	{
+		struct StoredSession
+		{
 			std::shared_ptr<Session> session;
 			std::chrono::system_clock::time_point expires;
 		};
@@ -135,7 +146,7 @@ namespace coroute {
 
 	public:
 		MemorySessionStore() = default;
-		explicit MemorySessionStore(std::chrono::seconds max_age) : default_max_age_(max_age) {}
+		explicit MemorySessionStore(std::chrono::seconds max_age) : default_max_age_(max_age) { }
 
 		std::shared_ptr<Session> load(const std::string& id) override;
 		void save(const Session& session) override;
@@ -151,7 +162,8 @@ namespace coroute {
 	// Session Options
 	// ============================================================================
 
-	struct SessionOptions {
+	struct SessionOptions
+	{
 		// Cookie name for session ID
 		std::string cookie_name = "session_id";
 
@@ -180,7 +192,8 @@ namespace coroute {
 	// Session Middleware
 	// ============================================================================
 
-	class SessionMiddleware {
+	class SessionMiddleware
+	{
 		std::shared_ptr<SessionStore> store_;
 		SessionOptions options_;
 

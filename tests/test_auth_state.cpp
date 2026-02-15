@@ -11,10 +11,12 @@ using namespace coroute;
 // WebAuthState Tests
 // ============================================================================
 
-TEST_CASE("WebAuthState - is a no-op for all operations", "[auth][web]") {
+TEST_CASE("WebAuthState - is a no-op for all operations", "[auth][web]")
+{
 	WebAuthState auth;
 
-	SECTION("apply does not modify request") {
+	SECTION("apply does not modify request")
+	{
 		Request req;
 		req.set_path("/test");
 		auth.apply(req);
@@ -22,7 +24,8 @@ TEST_CASE("WebAuthState - is a no-op for all operations", "[auth][web]") {
 		CHECK(req.path() == "/test");
 	}
 
-	SECTION("observe does not crash") {
+	SECTION("observe does not crash")
+	{
 		Response resp = Response::ok("test");
 		auth.observe(resp);
 		// No assertions needed
@@ -37,23 +40,27 @@ TEST_CASE("WebAuthState - is a no-op for all operations", "[auth][web]") {
 // ClientAuthState Tests
 // ============================================================================
 
-TEST_CASE("ClientAuthState - cookie storage and retrieval", "[auth][client]") {
+TEST_CASE("ClientAuthState - cookie storage and retrieval", "[auth][client]")
+{
 	ClientAuthState auth;
 
-	SECTION("initially not authenticated") {
+	SECTION("initially not authenticated")
+	{
 		CHECK(auth.authenticated() == false);
 		CHECK(auth.cookies().empty());
 		CHECK(auth.bearer_token().has_value() == false);
 	}
 
-	SECTION("set and get cookie") {
+	SECTION("set and get cookie")
+	{
 		auth.set_cookie("session_id", "abc123");
 		CHECK(auth.authenticated() == true);
 		CHECK(auth.get_cookie("session_id").value() == "abc123");
 		CHECK(auth.get_cookie("nonexistent").has_value() == false);
 	}
 
-	SECTION("clear removes all state") {
+	SECTION("clear removes all state")
+	{
 		auth.set_cookie("session_id", "abc123");
 		auth.set_bearer_token("my_token");
 		CHECK(auth.authenticated() == true);
@@ -65,10 +72,12 @@ TEST_CASE("ClientAuthState - cookie storage and retrieval", "[auth][client]") {
 	}
 }
 
-TEST_CASE("ClientAuthState - bearer token management", "[auth][client]") {
+TEST_CASE("ClientAuthState - bearer token management", "[auth][client]")
+{
 	ClientAuthState auth;
 
-	SECTION("set and get bearer token") {
+	SECTION("set and get bearer token")
+	{
 		CHECK(auth.bearer_token().has_value() == false);
 
 		auth.set_bearer_token("test_token_123");
@@ -77,10 +86,12 @@ TEST_CASE("ClientAuthState - bearer token management", "[auth][client]") {
 	}
 }
 
-TEST_CASE("ClientAuthState - apply adds auth to request", "[auth][client]") {
+TEST_CASE("ClientAuthState - apply adds auth to request", "[auth][client]")
+{
 	ClientAuthState auth;
 
-	SECTION("adds Cookie header") {
+	SECTION("adds Cookie header")
+	{
 		auth.set_cookie("session_id", "abc123");
 		auth.set_cookie("user", "alice");
 
@@ -94,7 +105,8 @@ TEST_CASE("ClientAuthState - apply adds auth to request", "[auth][client]") {
 		CHECK((cookie->find("user=alice") != std::string::npos));
 	}
 
-	SECTION("adds Authorization header") {
+	SECTION("adds Authorization header")
+	{
 		auth.set_bearer_token("my_jwt_token");
 
 		Request req;
@@ -105,7 +117,8 @@ TEST_CASE("ClientAuthState - apply adds auth to request", "[auth][client]") {
 		CHECK(*auth_header == "Bearer my_jwt_token");
 	}
 
-	SECTION("adds both Cookie and Authorization headers") {
+	SECTION("adds both Cookie and Authorization headers")
+	{
 		auth.set_cookie("session", "xyz");
 		auth.set_bearer_token("token123");
 
@@ -117,10 +130,12 @@ TEST_CASE("ClientAuthState - apply adds auth to request", "[auth][client]") {
 	}
 }
 
-TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]") {
+TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]")
+{
 	ClientAuthState auth;
 
-	SECTION("parses simple Set-Cookie") {
+	SECTION("parses simple Set-Cookie")
+	{
 		Response resp = Response::ok();
 		resp.add_header("Set-Cookie", "session_id=new_session");
 
@@ -130,7 +145,8 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]") 
 		CHECK(auth.get_cookie("session_id").value() == "new_session");
 	}
 
-	SECTION("parses Set-Cookie with attributes") {
+	SECTION("parses Set-Cookie with attributes")
+	{
 		Response resp = Response::ok();
 		resp.add_header("Set-Cookie", "token=abc123; HttpOnly; Secure; Path=/");
 
@@ -140,7 +156,8 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]") 
 		CHECK(auth.get_cookie("token").value() == "abc123");
 	}
 
-	SECTION("handles multiple Set-Cookie headers") {
+	SECTION("handles multiple Set-Cookie headers")
+	{
 		Response resp = Response::ok();
 		resp.add_header("Set-Cookie", "cookie1=value1");
 		resp.add_header("Set-Cookie", "cookie2=value2");
@@ -151,7 +168,8 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]") 
 		CHECK(auth.get_cookie("cookie2").value() == "value2");
 	}
 
-	SECTION("overwrites existing cookie") {
+	SECTION("overwrites existing cookie")
+	{
 		auth.set_cookie("session", "old_value");
 
 		Response resp = Response::ok();
@@ -167,7 +185,8 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]") 
 // Auth Propagation Flow Tests
 // ============================================================================
 
-TEST_CASE("Auth propagation - full apply/observe cycle", "[auth][client]") {
+TEST_CASE("Auth propagation - full apply/observe cycle", "[auth][client]")
+{
 	ClientAuthState auth;
 
 	// Step 1: No auth initially

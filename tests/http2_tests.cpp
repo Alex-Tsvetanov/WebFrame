@@ -14,8 +14,10 @@ using namespace coroute::http2;
 // Frame Header Tests
 // ============================================================================
 
-TEST_CASE("HTTP/2 Frame Header Serialization", "[http2][frame]") {
-	SECTION("Basic frame header") {
+TEST_CASE("HTTP/2 Frame Header Serialization", "[http2][frame]")
+{
+	SECTION("Basic frame header")
+	{
 		FrameHeader header;
 		header.length = 100;
 		header.type = FrameType::Data;
@@ -40,7 +42,8 @@ TEST_CASE("HTTP/2 Frame Header Serialization", "[http2][frame]") {
 		REQUIRE(bytes[8] == 1);
 	}
 
-	SECTION("Large payload length") {
+	SECTION("Large payload length")
+	{
 		FrameHeader header;
 		header.length = 16384;  // 16KB
 		header.type = FrameType::Headers;
@@ -59,7 +62,8 @@ TEST_CASE("HTTP/2 Frame Header Serialization", "[http2][frame]") {
 		REQUIRE(bytes[4] == 0x05);
 	}
 
-	SECTION("Maximum stream ID") {
+	SECTION("Maximum stream ID")
+	{
 		FrameHeader header;
 		header.length = 0;
 		header.type = FrameType::WindowUpdate;
@@ -75,13 +79,15 @@ TEST_CASE("HTTP/2 Frame Header Serialization", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 Frame Header Parsing", "[http2][frame]") {
-	SECTION("Parse valid header") {
+TEST_CASE("HTTP/2 Frame Header Parsing", "[http2][frame]")
+{
+	SECTION("Parse valid header")
+	{
 		std::array<uint8_t, 9> data = {
-		    0x00, 0x00, 0x08,       // Length = 8
-		    0x06,                   // Type = PING
-		    0x01,                   // Flags = ACK
-		    0x00, 0x00, 0x00, 0x00  // Stream ID = 0
+			0x00, 0x00, 0x08,       // Length = 8
+			0x06,                   // Type = PING
+			0x01,                   // Flags = ACK
+			0x00, 0x00, 0x00, 0x00  // Stream ID = 0
 		};
 
 		auto result = FrameHeader::parse(data);
@@ -93,12 +99,13 @@ TEST_CASE("HTTP/2 Frame Header Parsing", "[http2][frame]") {
 		REQUIRE(result->stream_id == 0);
 	}
 
-	SECTION("Parse header with stream ID") {
+	SECTION("Parse header with stream ID")
+	{
 		std::array<uint8_t, 9> data = {
-		    0x00, 0x01, 0x00,       // Length = 256
-		    0x00,                   // Type = DATA
-		    0x00,                   // Flags = none
-		    0x00, 0x00, 0x00, 0x05  // Stream ID = 5
+			0x00, 0x01, 0x00,       // Length = 256
+			0x00,                   // Type = DATA
+			0x00,                   // Flags = none
+			0x00, 0x00, 0x00, 0x05  // Stream ID = 5
 		};
 
 		auto result = FrameHeader::parse(data);
@@ -109,14 +116,16 @@ TEST_CASE("HTTP/2 Frame Header Parsing", "[http2][frame]") {
 		REQUIRE(result->stream_id == 5);
 	}
 
-	SECTION("Reject too short data") {
+	SECTION("Reject too short data")
+	{
 		std::array<uint8_t, 5> data = {0, 0, 0, 0, 0};
 
 		auto result = FrameHeader::parse(data);
 		REQUIRE_FALSE(result.has_value());
 	}
 
-	SECTION("Roundtrip") {
+	SECTION("Roundtrip")
+	{
 		FrameHeader original;
 		original.length = 12345;
 		original.type = FrameType::Headers;
@@ -138,8 +147,10 @@ TEST_CASE("HTTP/2 Frame Header Parsing", "[http2][frame]") {
 // Frame Serialization Tests
 // ============================================================================
 
-TEST_CASE("HTTP/2 SETTINGS Frame", "[http2][frame]") {
-	SECTION("Empty SETTINGS (ACK)") {
+TEST_CASE("HTTP/2 SETTINGS Frame", "[http2][frame]")
+{
+	SECTION("Empty SETTINGS (ACK)")
+	{
 		auto frame = serialize_settings_ack();
 
 		REQUIRE(frame.size() == 9);  // Header only
@@ -152,10 +163,11 @@ TEST_CASE("HTTP/2 SETTINGS Frame", "[http2][frame]") {
 		REQUIRE(header->stream_id == 0);
 	}
 
-	SECTION("SETTINGS with entries") {
+	SECTION("SETTINGS with entries")
+	{
 		std::vector<SettingsEntry> settings = {
-		    {SettingsId::MaxConcurrentStreams, 100},
-		    {SettingsId::InitialWindowSize, 65535},
+			{SettingsId::MaxConcurrentStreams,   100},
+			{   SettingsId::InitialWindowSize, 65535},
 		};
 
 		auto frame = serialize_settings_frame(settings, false);
@@ -171,8 +183,10 @@ TEST_CASE("HTTP/2 SETTINGS Frame", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 PING Frame", "[http2][frame]") {
-	SECTION("PING request") {
+TEST_CASE("HTTP/2 PING Frame", "[http2][frame]")
+{
+	SECTION("PING request")
+	{
 		std::array<uint8_t, 8> opaque = {1, 2, 3, 4, 5, 6, 7, 8};
 		auto frame = serialize_ping_frame(opaque, false);
 
@@ -185,12 +199,14 @@ TEST_CASE("HTTP/2 PING Frame", "[http2][frame]") {
 		REQUIRE_FALSE(header->has_ack());
 
 		// Check opaque data
-		for (int i = 0; i < 8; ++i) {
-			REQUIRE(frame[9 + i] == opaque[i]);
-		}
+		for (int i = 0; i < 8; ++i)
+			{
+				REQUIRE(frame[9 + i] == opaque[i]);
+			}
 	}
 
-	SECTION("PING ACK") {
+	SECTION("PING ACK")
+	{
 		std::array<uint8_t, 8> opaque = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 		auto frame = serialize_ping_frame(opaque, true);
 
@@ -200,8 +216,10 @@ TEST_CASE("HTTP/2 PING Frame", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 GOAWAY Frame", "[http2][frame]") {
-	SECTION("GOAWAY without debug data") {
+TEST_CASE("HTTP/2 GOAWAY Frame", "[http2][frame]")
+{
+	SECTION("GOAWAY without debug data")
+	{
 		auto frame = serialize_goaway_frame(5, ErrorCode::NoError);
 
 		REQUIRE(frame.size() == 9 + 8);
@@ -213,7 +231,8 @@ TEST_CASE("HTTP/2 GOAWAY Frame", "[http2][frame]") {
 		REQUIRE(header->stream_id == 0);
 	}
 
-	SECTION("GOAWAY with debug data") {
+	SECTION("GOAWAY with debug data")
+	{
 		auto frame = serialize_goaway_frame(100, ErrorCode::ProtocolError, "test error");
 
 		REQUIRE(frame.size() == 9 + 8 + 10);  // header + fixed + "test error"
@@ -224,8 +243,10 @@ TEST_CASE("HTTP/2 GOAWAY Frame", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 WINDOW_UPDATE Frame", "[http2][frame]") {
-	SECTION("Connection-level update") {
+TEST_CASE("HTTP/2 WINDOW_UPDATE Frame", "[http2][frame]")
+{
+	SECTION("Connection-level update")
+	{
 		auto frame = serialize_window_update_frame(0, 65535);
 
 		REQUIRE(frame.size() == 9 + 4);
@@ -237,7 +258,8 @@ TEST_CASE("HTTP/2 WINDOW_UPDATE Frame", "[http2][frame]") {
 		REQUIRE(header->stream_id == 0);
 	}
 
-	SECTION("Stream-level update") {
+	SECTION("Stream-level update")
+	{
 		auto frame = serialize_window_update_frame(7, 32768);
 
 		auto header = FrameHeader::parse(frame);
@@ -246,7 +268,8 @@ TEST_CASE("HTTP/2 WINDOW_UPDATE Frame", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 RST_STREAM Frame", "[http2][frame]") {
+TEST_CASE("HTTP/2 RST_STREAM Frame", "[http2][frame]")
+{
 	auto frame = serialize_rst_stream_frame(3, ErrorCode::Cancel);
 
 	REQUIRE(frame.size() == 9 + 4);
@@ -258,8 +281,10 @@ TEST_CASE("HTTP/2 RST_STREAM Frame", "[http2][frame]") {
 	REQUIRE(header->stream_id == 3);
 }
 
-TEST_CASE("HTTP/2 DATA Frame", "[http2][frame]") {
-	SECTION("Empty DATA with END_STREAM") {
+TEST_CASE("HTTP/2 DATA Frame", "[http2][frame]")
+{
+	SECTION("Empty DATA with END_STREAM")
+	{
 		auto frame = serialize_data_frame(1, {}, true);
 
 		REQUIRE(frame.size() == 9);
@@ -272,7 +297,8 @@ TEST_CASE("HTTP/2 DATA Frame", "[http2][frame]") {
 		REQUIRE(header->stream_id == 1);
 	}
 
-	SECTION("DATA with payload") {
+	SECTION("DATA with payload")
+	{
 		std::vector<uint8_t> payload = {0x48, 0x65, 0x6C, 0x6C, 0x6F};  // "Hello"
 		auto frame = serialize_data_frame(5, payload, false);
 
@@ -285,8 +311,10 @@ TEST_CASE("HTTP/2 DATA Frame", "[http2][frame]") {
 	}
 }
 
-TEST_CASE("HTTP/2 HEADERS Frame", "[http2][frame]") {
-	SECTION("HEADERS with END_HEADERS and END_STREAM") {
+TEST_CASE("HTTP/2 HEADERS Frame", "[http2][frame]")
+{
+	SECTION("HEADERS with END_HEADERS and END_STREAM")
+	{
 		std::vector<uint8_t> header_block = {0x82, 0x86, 0x84};  // Some HPACK data
 		auto frame = serialize_headers_frame(1, header_block, true, true);
 
@@ -306,14 +334,19 @@ TEST_CASE("HTTP/2 HEADERS Frame", "[http2][frame]") {
 // HPACK Tests
 // ============================================================================
 
-TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]") {
+TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]")
+{
 	HpackEncoder encoder;
 	HpackDecoder decoder;
 
-	SECTION("Encode and decode simple headers") {
+	SECTION("Encode and decode simple headers")
+	{
 		std::vector<Header> headers = {
-		    {":method", "GET"},         {":path", "/"}, {":scheme", "https"}, {":authority", "example.com"},
-		    {"user-agent", "test/1.0"},
+			{   ":method",         "GET"},
+            {     ":path",           "/"},
+            {   ":scheme",       "https"},
+            {":authority", "example.com"},
+			{"user-agent",    "test/1.0"},
 		};
 
 		auto encoded = encoder.encode(headers);
@@ -324,17 +357,19 @@ TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]") {
 		REQUIRE(decoded.has_value());
 		REQUIRE(decoded->size() == headers.size());
 
-		for (size_t i = 0; i < headers.size(); ++i) {
-			REQUIRE((*decoded)[i].name == headers[i].name);
-			REQUIRE((*decoded)[i].value == headers[i].value);
-		}
+		for (size_t i = 0; i < headers.size(); ++i)
+			{
+				REQUIRE((*decoded)[i].name == headers[i].name);
+				REQUIRE((*decoded)[i].value == headers[i].value);
+			}
 	}
 
-	SECTION("Encode response headers") {
+	SECTION("Encode response headers")
+	{
 		std::vector<Header> headers = {
-		    {":status", "200"},
-		    {"content-type", "text/html"},
-		    {"content-length", "1234"},
+			{       ":status",       "200"},
+			{  "content-type", "text/html"},
+			{"content-length",      "1234"},
 		};
 
 		auto encoded = encoder.encode(headers);
@@ -347,7 +382,8 @@ TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]") {
 		REQUIRE((*decoded)[0].value == "200");
 	}
 
-	SECTION("Empty headers") {
+	SECTION("Empty headers")
+	{
 		std::vector<Header> headers;
 
 		auto encoded = encoder.encode(headers);
@@ -356,24 +392,27 @@ TEST_CASE("HPACK Encoder/Decoder", "[http2][hpack]") {
 	}
 }
 
-TEST_CASE("HPACK Header Utilities", "[http2][hpack]") {
+TEST_CASE("HPACK Header Utilities", "[http2][hpack]")
+{
 	std::vector<Header> headers = {
-	    {":method", "POST"},
-	    {":path", "/api/data"},
-	    {":scheme", "https"},
-	    {":authority", "api.example.com"},
-	    {"content-type", "application/json"},
-	    {"x-custom-header", "value"},
+		{        ":method",             "POST"},
+		{		  ":path",        "/api/data"},
+		{        ":scheme",            "https"},
+		{     ":authority",  "api.example.com"},
+		{   "content-type", "application/json"},
+		{"x-custom-header",            "value"},
 	};
 
-	SECTION("Get pseudo-headers") {
+	SECTION("Get pseudo-headers")
+	{
 		REQUIRE(get_method(headers) == "POST");
 		REQUIRE(get_path(headers) == "/api/data");
 		REQUIRE(get_scheme(headers) == "https");
 		REQUIRE(get_authority(headers) == "api.example.com");
 	}
 
-	SECTION("Find header case-insensitive") {
+	SECTION("Find header case-insensitive")
+	{
 		auto* ct = find_header(headers, "Content-Type");
 		REQUIRE(ct != nullptr);
 		REQUIRE(ct->value == "application/json");
@@ -383,63 +422,71 @@ TEST_CASE("HPACK Header Utilities", "[http2][hpack]") {
 		REQUIRE(custom->value == "value");
 	}
 
-	SECTION("Find non-existent header") {
+	SECTION("Find non-existent header")
+	{
 		auto* missing = find_header(headers, "X-Missing");
 		REQUIRE(missing == nullptr);
 	}
 
-	SECTION("Pseudo-header detection") {
+	SECTION("Pseudo-header detection")
+	{
 		REQUIRE(headers[0].is_pseudo());        // :method
 		REQUIRE(headers[1].is_pseudo());        // :path
 		REQUIRE_FALSE(headers[4].is_pseudo());  // content-type
 	}
 }
 
-TEST_CASE("HTTP/2 Header Validation", "[http2][hpack]") {
-	SECTION("Valid request headers") {
+TEST_CASE("HTTP/2 Header Validation", "[http2][hpack]")
+{
+	SECTION("Valid request headers")
+	{
 		std::vector<Header> headers = {
-		    {":method", "GET"},
-		    {":scheme", "https"},
-		    {":path", "/"},
-		    {"host", "example.com"},
+			{":method",         "GET"},
+			{":scheme",       "https"},
+			{  ":path",           "/"},
+			{   "host", "example.com"},
 		};
 
 		REQUIRE(validate_request_headers(headers));
 	}
 
-	SECTION("Missing required pseudo-header") {
+	SECTION("Missing required pseudo-header")
+	{
 		std::vector<Header> headers = {
-		    {":method", "GET"},
-		    {":scheme", "https"},
-		    // Missing :path
+			{":method",   "GET"},
+			{":scheme", "https"},
+			// Missing :path
 		};
 
 		REQUIRE_FALSE(validate_request_headers(headers));
 	}
 
-	SECTION("Pseudo-headers after regular headers") {
+	SECTION("Pseudo-headers after regular headers")
+	{
 		std::vector<Header> headers = {
-		    {":method", "GET"},
-		    {"host", "example.com"},
-		    {":path", "/"},  // Pseudo-header after regular
-		    {":scheme", "https"},
+			{":method",         "GET"},
+			{   "host", "example.com"},
+			{  ":path",           "/"}, // Pseudo-header after regular
+			{":scheme",       "https"},
 		};
 
 		REQUIRE_FALSE(validate_request_headers(headers));
 	}
 
-	SECTION("Valid response headers") {
+	SECTION("Valid response headers")
+	{
 		std::vector<Header> headers = {
-		    {":status", "200"},
-		    {"content-type", "text/html"},
+			{     ":status",       "200"},
+			{"content-type", "text/html"},
 		};
 
 		REQUIRE(validate_response_headers(headers));
 	}
 
-	SECTION("Response missing :status") {
+	SECTION("Response missing :status")
+	{
 		std::vector<Header> headers = {
-		    {"content-type", "text/html"},
+			{"content-type", "text/html"},
 		};
 
 		REQUIRE_FALSE(validate_response_headers(headers));
@@ -450,21 +497,25 @@ TEST_CASE("HTTP/2 Header Validation", "[http2][hpack]") {
 // Protocol Detection Tests
 // ============================================================================
 
-TEST_CASE("HTTP/2 Protocol Detection", "[http2][connection]") {
-	SECTION("Detect HTTP/2 preface") {
+TEST_CASE("HTTP/2 Protocol Detection", "[http2][connection]")
+{
+	SECTION("Detect HTTP/2 preface")
+	{
 		std::vector<uint8_t> preface(Constants::ClientPreface.begin(), Constants::ClientPreface.end());
 
 		REQUIRE(is_http2_preface(preface));
 	}
 
-	SECTION("Reject HTTP/1.1 request") {
+	SECTION("Reject HTTP/1.1 request")
+	{
 		std::string http11 = "GET / HTTP/1.1\r\n";
 		std::vector<uint8_t> data(http11.begin(), http11.end());
 
 		REQUIRE_FALSE(is_http2_preface(data));
 	}
 
-	SECTION("Reject partial preface") {
+	SECTION("Reject partial preface")
+	{
 		std::string partial = "PRI * HTTP/2.0";
 		std::vector<uint8_t> data(partial.begin(), partial.end());
 
@@ -476,7 +527,8 @@ TEST_CASE("HTTP/2 Protocol Detection", "[http2][connection]") {
 // Constants Tests
 // ============================================================================
 
-TEST_CASE("HTTP/2 Constants", "[http2][frame]") {
+TEST_CASE("HTTP/2 Constants", "[http2][frame]")
+{
 	REQUIRE(Constants::FrameHeaderSize == 9);
 	REQUIRE(Constants::DefaultInitialWindowSize == 65535);
 	REQUIRE(Constants::DefaultMaxFrameSize == 16384);

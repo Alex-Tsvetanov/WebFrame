@@ -4,86 +4,101 @@
 #include <iomanip>
 #include <cctype>
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Cookie Implementation
 	// ============================================================================
 
-	namespace {
+	namespace
+	{
 
-		std::string format_http_date(std::chrono::system_clock::time_point tp) {
+		std::string format_http_date(std::chrono::system_clock::time_point tp)
+		{
 			auto time_t_val = std::chrono::system_clock::to_time_t(tp);
 			std::ostringstream oss;
 			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
 			return oss.str();
 		}
 
-		std::string_view trim(std::string_view s) {
-			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
-				s.remove_prefix(1);
-			}
-			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
-				s.remove_suffix(1);
-			}
+		std::string_view trim(std::string_view s)
+		{
+			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
+				{
+					s.remove_prefix(1);
+				}
+			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+				{
+					s.remove_suffix(1);
+				}
 			return s;
 		}
 
 	}  // anonymous namespace
 
-	std::string Cookie::to_header() const {
+	std::string Cookie::to_header() const
+	{
 		std::ostringstream oss;
 
 		// Name=Value
 		oss << name << "=" << value;
 
 		// Domain
-		if (domain) {
-			oss << "; Domain=" << *domain;
-		}
+		if (domain)
+			{
+				oss << "; Domain=" << *domain;
+			}
 
 		// Path
-		if (path) {
-			oss << "; Path=" << *path;
-		}
+		if (path)
+			{
+				oss << "; Path=" << *path;
+			}
 
 		// Max-Age
-		if (max_age) {
-			oss << "; Max-Age=" << max_age->count();
-		}
+		if (max_age)
+			{
+				oss << "; Max-Age=" << max_age->count();
+			}
 
 		// Expires
-		if (expires) {
-			oss << "; Expires=" << format_http_date(*expires);
-		}
+		if (expires)
+			{
+				oss << "; Expires=" << format_http_date(*expires);
+			}
 
 		// Secure
-		if (secure) {
-			oss << "; Secure";
-		}
+		if (secure)
+			{
+				oss << "; Secure";
+			}
 
 		// HttpOnly
-		if (http_only) {
-			oss << "; HttpOnly";
-		}
+		if (http_only)
+			{
+				oss << "; HttpOnly";
+			}
 
 		// SameSite
-		switch (same_site) {
-			case SameSite::None:
-				oss << "; SameSite=None";
-				break;
-			case SameSite::Lax:
-				oss << "; SameSite=Lax";
-				break;
-			case SameSite::Strict:
-				oss << "; SameSite=Strict";
-				break;
-		}
+		switch (same_site)
+			{
+				case SameSite::None:
+					oss << "; SameSite=None";
+					break;
+				case SameSite::Lax:
+					oss << "; SameSite=Lax";
+					break;
+				case SameSite::Strict:
+					oss << "; SameSite=Strict";
+					break;
+			}
 
 		return oss.str();
 	}
 
-	Cookie Cookie::expired(std::string name) {
+	Cookie Cookie::expired(std::string name)
+	{
 		Cookie c;
 		c.name = std::move(name);
 		c.value = "";
@@ -96,54 +111,64 @@ namespace coroute {
 	// CookieJar Implementation
 	// ============================================================================
 
-	CookieJar CookieJar::parse(std::string_view header) {
+	CookieJar CookieJar::parse(std::string_view header)
+	{
 		CookieJar jar;
 
 		size_t start = 0;
-		while (start < header.size()) {
-			// Find end of this cookie (semicolon or end)
-			size_t end = header.find(';', start);
-			if (end == std::string_view::npos) {
-				end = header.size();
+		while (start < header.size())
+			{
+				// Find end of this cookie (semicolon or end)
+				size_t end = header.find(';', start);
+				if (end == std::string_view::npos)
+					{
+						end = header.size();
+					}
+
+				auto pair = trim(header.substr(start, end - start));
+
+				// Find = separator
+				auto eq = pair.find('=');
+				if (eq != std::string_view::npos)
+					{
+						auto name = trim(pair.substr(0, eq));
+						auto value = trim(pair.substr(eq + 1));
+
+						// Remove quotes if present
+						if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+							{
+								value = value.substr(1, value.size() - 2);
+							}
+
+						if (!name.empty())
+							{
+								jar.cookies_[std::string(name)] = std::string(value);
+							}
+					}
+
+				start = end + 1;
 			}
-
-			auto pair = trim(header.substr(start, end - start));
-
-			// Find = separator
-			auto eq = pair.find('=');
-			if (eq != std::string_view::npos) {
-				auto name = trim(pair.substr(0, eq));
-				auto value = trim(pair.substr(eq + 1));
-
-				// Remove quotes if present
-				if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-					value = value.substr(1, value.size() - 2);
-				}
-
-				if (!name.empty()) {
-					jar.cookies_[std::string(name)] = std::string(value);
-				}
-			}
-
-			start = end + 1;
-		}
 
 		return jar;
 	}
 
-	CookieJar CookieJar::from_request(const Request& req) {
+	CookieJar CookieJar::from_request(const Request& req)
+	{
 		auto cookie_header = req.header("Cookie");
-		if (!cookie_header) {
-			return CookieJar{};
-		}
+		if (!cookie_header)
+			{
+				return CookieJar{};
+			}
 		return parse(*cookie_header);
 	}
 
-	std::optional<std::string_view> CookieJar::get(std::string_view name) const {
+	std::optional<std::string_view> CookieJar::get(std::string_view name) const
+	{
 		auto it = cookies_.find(std::string(name));
-		if (it == cookies_.end()) {
-			return std::nullopt;
-		}
+		if (it == cookies_.end())
+			{
+				return std::nullopt;
+			}
 		return it->second;
 	}
 
@@ -157,20 +182,25 @@ namespace coroute {
 
 	void set_cookie(Response& resp, const Cookie& cookie) { resp.add_header("Set-Cookie", cookie.to_header()); }
 
-	void set_cookies(Response& resp, const std::vector<Cookie>& cookies) {
-		for (const auto& cookie : cookies) {
-			set_cookie(resp, cookie);
-		}
+	void set_cookies(Response& resp, const std::vector<Cookie>& cookies)
+	{
+		for (const auto& cookie : cookies)
+			{
+				set_cookie(resp, cookie);
+			}
 	}
 
-	void delete_cookie(Response& resp, std::string_view name, std::string_view path, std::string_view domain) {
+	void delete_cookie(Response& resp, std::string_view name, std::string_view path, std::string_view domain)
+	{
 		Cookie c = Cookie::expired(std::string(name));
-		if (!path.empty()) {
-			c.path = std::string(path);
-		}
-		if (!domain.empty()) {
-			c.domain = std::string(domain);
-		}
+		if (!path.empty())
+			{
+				c.path = std::string(path);
+			}
+		if (!domain.empty())
+			{
+				c.domain = std::string(domain);
+			}
 		set_cookie(resp, c);
 	}
 

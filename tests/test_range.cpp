@@ -3,8 +3,10 @@
 
 using namespace coroute;
 
-TEST_CASE("ByteRange normalization", "[range]") {
-	SECTION("Normal range 0-499 in 1000 byte file") {
+TEST_CASE("ByteRange normalization", "[range]")
+{
+	SECTION("Normal range 0-499 in 1000 byte file")
+	{
 		ByteRange range;
 		range.start = 0;
 		range.end = 499;
@@ -15,7 +17,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK(range.length() == 500);
 	}
 
-	SECTION("Open-ended range 500- in 1000 byte file") {
+	SECTION("Open-ended range 500- in 1000 byte file")
+	{
 		ByteRange range;
 		range.start = 500;
 		// end is nullopt
@@ -26,7 +29,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK(range.length() == 500);
 	}
 
-	SECTION("Suffix range -500 in 1000 byte file") {
+	SECTION("Suffix range -500 in 1000 byte file")
+	{
 		ByteRange range;
 		// start is nullopt
 		range.end = 500;
@@ -37,7 +41,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK(range.length() == 500);
 	}
 
-	SECTION("Suffix range larger than file") {
+	SECTION("Suffix range larger than file")
+	{
 		ByteRange range;
 		range.end = 2000;  // Suffix of 2000 bytes
 
@@ -47,7 +52,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK(range.length() == 1000);
 	}
 
-	SECTION("End clamped to file size") {
+	SECTION("End clamped to file size")
+	{
 		ByteRange range;
 		range.start = 500;
 		range.end = 2000;  // Beyond file size
@@ -57,7 +63,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK(range.get_end() == 999);
 	}
 
-	SECTION("Start beyond file size is invalid") {
+	SECTION("Start beyond file size is invalid")
+	{
 		ByteRange range;
 		range.start = 1500;
 		range.end = 2000;
@@ -65,7 +72,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK_FALSE(range.normalize(1000));
 	}
 
-	SECTION("End before start is invalid") {
+	SECTION("End before start is invalid")
+	{
 		ByteRange range;
 		range.start = 500;
 		range.end = 100;
@@ -73,7 +81,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 		CHECK_FALSE(range.normalize(1000));
 	}
 
-	SECTION("Zero-length file") {
+	SECTION("Zero-length file")
+	{
 		ByteRange range;
 		range.start = 0;
 		range.end = 0;
@@ -82,7 +91,8 @@ TEST_CASE("ByteRange normalization", "[range]") {
 	}
 }
 
-TEST_CASE("ByteRange Content-Range formatting", "[range]") {
+TEST_CASE("ByteRange Content-Range formatting", "[range]")
+{
 	ByteRange range;
 	range.start = 0;
 	range.end = 499;
@@ -94,8 +104,10 @@ TEST_CASE("ByteRange Content-Range formatting", "[range]") {
 	CHECK(range.to_content_range(1000) == "bytes 500-999/1000");
 }
 
-TEST_CASE("Range header parsing", "[range]") {
-	SECTION("Single range") {
+TEST_CASE("Range header parsing", "[range]")
+{
+	SECTION("Single range")
+	{
 		auto result = range::parse("bytes=0-499");
 		REQUIRE(result.has_value());
 		CHECK(result->unit == "bytes");
@@ -104,7 +116,8 @@ TEST_CASE("Range header parsing", "[range]") {
 		CHECK(result->ranges[0].end == 499);
 	}
 
-	SECTION("Open-ended range") {
+	SECTION("Open-ended range")
+	{
 		auto result = range::parse("bytes=500-");
 		REQUIRE(result.has_value());
 		REQUIRE(result->ranges.size() == 1);
@@ -112,7 +125,8 @@ TEST_CASE("Range header parsing", "[range]") {
 		CHECK_FALSE(result->ranges[0].end.has_value());
 	}
 
-	SECTION("Suffix range") {
+	SECTION("Suffix range")
+	{
 		auto result = range::parse("bytes=-500");
 		REQUIRE(result.has_value());
 		REQUIRE(result->ranges.size() == 1);
@@ -120,7 +134,8 @@ TEST_CASE("Range header parsing", "[range]") {
 		CHECK(result->ranges[0].end == 500);
 	}
 
-	SECTION("Multiple ranges") {
+	SECTION("Multiple ranges")
+	{
 		auto result = range::parse("bytes=0-99, 200-299, -100");
 		REQUIRE(result.has_value());
 		REQUIRE(result->ranges.size() == 3);
@@ -135,7 +150,8 @@ TEST_CASE("Range header parsing", "[range]") {
 		CHECK(result->ranges[2].end == 100);
 	}
 
-	SECTION("With whitespace") {
+	SECTION("With whitespace")
+	{
 		auto result = range::parse("bytes = 0 - 499");
 		REQUIRE(result.has_value());
 		REQUIRE(result->ranges.size() == 1);
@@ -143,31 +159,37 @@ TEST_CASE("Range header parsing", "[range]") {
 		CHECK(result->ranges[0].end == 499);
 	}
 
-	SECTION("Invalid - no equals sign") {
+	SECTION("Invalid - no equals sign")
+	{
 		auto result = range::parse("bytes 0-499");
 		CHECK_FALSE(result.has_value());
 	}
 
-	SECTION("Invalid - unsupported unit") {
+	SECTION("Invalid - unsupported unit")
+	{
 		auto result = range::parse("items=0-499");
 		CHECK_FALSE(result.has_value());
 	}
 
-	SECTION("Invalid - empty") {
+	SECTION("Invalid - empty")
+	{
 		auto result = range::parse("");
 		CHECK_FALSE(result.has_value());
 	}
 
-	SECTION("Invalid - no ranges") {
+	SECTION("Invalid - no ranges")
+	{
 		auto result = range::parse("bytes=");
 		CHECK_FALSE(result.has_value());
 	}
 }
 
-TEST_CASE("RangeResponseBuilder with content", "[range]") {
+TEST_CASE("RangeResponseBuilder with content", "[range]")
+{
 	std::string content = "0123456789";  // 10 bytes
 
-	SECTION("Full response without Range header") {
+	SECTION("Full response without Range header")
+	{
 		Request req;
 		// No Range header
 
@@ -179,7 +201,8 @@ TEST_CASE("RangeResponseBuilder with content", "[range]") {
 		CHECK(resp.body() == content);
 	}
 
-	SECTION("Partial response with Range header") {
+	SECTION("Partial response with Range header")
+	{
 		Request req;
 		req.add_header("Range", "bytes=0-4");
 
@@ -192,16 +215,19 @@ TEST_CASE("RangeResponseBuilder with content", "[range]") {
 
 		// Check Content-Range header
 		bool found_content_range = false;
-		for (const auto& [key, value] : resp.headers()) {
-			if (key == "Content-Range") {
-				CHECK(value == "bytes 0-4/10");
-				found_content_range = true;
+		for (const auto& [key, value] : resp.headers())
+			{
+				if (key == "Content-Range")
+					{
+						CHECK(value == "bytes 0-4/10");
+						found_content_range = true;
+					}
 			}
-		}
 		CHECK(found_content_range);
 	}
 
-	SECTION("Suffix range") {
+	SECTION("Suffix range")
+	{
 		Request req;
 		req.add_header("Range", "bytes=-3");
 
@@ -213,7 +239,8 @@ TEST_CASE("RangeResponseBuilder with content", "[range]") {
 		CHECK(resp.body() == "789");
 	}
 
-	SECTION("Open-ended range") {
+	SECTION("Open-ended range")
+	{
 		Request req;
 		req.add_header("Range", "bytes=7-");
 
@@ -225,7 +252,8 @@ TEST_CASE("RangeResponseBuilder with content", "[range]") {
 		CHECK(resp.body() == "789");
 	}
 
-	SECTION("Invalid range returns 416") {
+	SECTION("Invalid range returns 416")
+	{
 		Request req;
 		req.add_header("Range", "bytes=100-200");  // Beyond content
 
@@ -237,11 +265,13 @@ TEST_CASE("RangeResponseBuilder with content", "[range]") {
 	}
 }
 
-TEST_CASE("RangeResponseBuilder with If-Range", "[range]") {
+TEST_CASE("RangeResponseBuilder with If-Range", "[range]")
+{
 	std::string content = "0123456789";
 	std::string etag = "\"abc123\"";
 
-	SECTION("If-Range matches ETag - serve range") {
+	SECTION("If-Range matches ETag - serve range")
+	{
 		Request req;
 		req.add_header("Range", "bytes=0-4");
 		req.add_header("If-Range", "\"abc123\"");
@@ -254,7 +284,8 @@ TEST_CASE("RangeResponseBuilder with If-Range", "[range]") {
 		CHECK(resp.body() == "01234");
 	}
 
-	SECTION("If-Range doesn't match - serve full content") {
+	SECTION("If-Range doesn't match - serve full content")
+	{
 		Request req;
 		req.add_header("Range", "bytes=0-4");
 		req.add_header("If-Range", "\"different\"");
@@ -268,46 +299,56 @@ TEST_CASE("RangeResponseBuilder with If-Range", "[range]") {
 	}
 }
 
-TEST_CASE("Convenience functions", "[range]") {
-	SECTION("partial_content") {
+TEST_CASE("Convenience functions", "[range]")
+{
+	SECTION("partial_content")
+	{
 		Response resp = partial_content("Hello", 0, 4, 10, "text/plain");
 		CHECK(resp.status() == 206);
 		CHECK(resp.body() == "Hello");
 
 		bool found = false;
-		for (const auto& [key, value] : resp.headers()) {
-			if (key == "Content-Range") {
-				CHECK(value == "bytes 0-4/10");
-				found = true;
+		for (const auto& [key, value] : resp.headers())
+			{
+				if (key == "Content-Range")
+					{
+						CHECK(value == "bytes 0-4/10");
+						found = true;
+					}
 			}
-		}
 		CHECK(found);
 	}
 
-	SECTION("range_not_satisfiable") {
+	SECTION("range_not_satisfiable")
+	{
 		Response resp = range_not_satisfiable(1000);
 		CHECK(resp.status() == 416);
 
 		bool found = false;
-		for (const auto& [key, value] : resp.headers()) {
-			if (key == "Content-Range") {
-				CHECK(value == "bytes */1000");
-				found = true;
+		for (const auto& [key, value] : resp.headers())
+			{
+				if (key == "Content-Range")
+					{
+						CHECK(value == "bytes */1000");
+						found = true;
+					}
 			}
-		}
 		CHECK(found);
 	}
 }
 
-TEST_CASE("RangeHeader validation", "[range]") {
-	SECTION("Valid single range") {
+TEST_CASE("RangeHeader validation", "[range]")
+{
+	SECTION("Valid single range")
+	{
 		auto header = range::parse("bytes=0-499");
 		REQUIRE(header.has_value());
 		CHECK(header->is_valid());
 		CHECK(header->is_single_range());
 	}
 
-	SECTION("Valid multiple ranges") {
+	SECTION("Valid multiple ranges")
+	{
 		auto header = range::parse("bytes=0-99,200-299");
 		REQUIRE(header.has_value());
 		CHECK(header->is_valid());

@@ -10,13 +10,15 @@
 #include "coroute/core/request.hpp"
 #include "coroute/core/response.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Cookie SameSite Policy
 	// ============================================================================
 
-	enum class SameSite {
+	enum class SameSite
+	{
 		None,   // Cookie sent with all requests (requires Secure)
 		Lax,    // Cookie sent with top-level navigations and GET from third-party
 		Strict  // Cookie only sent with same-site requests
@@ -26,7 +28,8 @@ namespace coroute {
 	// Cookie (for setting)
 	// ============================================================================
 
-	struct Cookie {
+	struct Cookie
+	{
 		std::string name;
 		std::string value;
 
@@ -40,31 +43,38 @@ namespace coroute {
 		SameSite same_site = SameSite::Lax;
 
 		// Fluent setters
-		Cookie& set_domain(std::string d) {
+		Cookie& set_domain(std::string d)
+		{
 			domain = std::move(d);
 			return *this;
 		}
-		Cookie& set_path(std::string p) {
+		Cookie& set_path(std::string p)
+		{
 			path = std::move(p);
 			return *this;
 		}
-		Cookie& set_max_age(std::chrono::seconds age) {
+		Cookie& set_max_age(std::chrono::seconds age)
+		{
 			max_age = age;
 			return *this;
 		}
-		Cookie& set_expires(std::chrono::system_clock::time_point exp) {
+		Cookie& set_expires(std::chrono::system_clock::time_point exp)
+		{
 			expires = exp;
 			return *this;
 		}
-		Cookie& set_secure(bool s = true) {
+		Cookie& set_secure(bool s = true)
+		{
 			secure = s;
 			return *this;
 		}
-		Cookie& set_http_only(bool h = true) {
+		Cookie& set_http_only(bool h = true)
+		{
 			http_only = h;
 			return *this;
 		}
-		Cookie& set_same_site(SameSite ss) {
+		Cookie& set_same_site(SameSite ss)
+		{
 			same_site = ss;
 			return *this;
 		}
@@ -80,7 +90,8 @@ namespace coroute {
 	// Cookie Jar (parsed cookies from request)
 	// ============================================================================
 
-	class CookieJar {
+	class CookieJar
+	{
 		std::unordered_map<std::string, std::string> cookies_;
 
 	public:
@@ -134,7 +145,8 @@ namespace coroute {
 	inline Cookie cookie(std::string name, std::string value) { return Cookie{std::move(name), std::move(value)}; }
 
 	// Create a secure session cookie
-	inline Cookie session_cookie(std::string name, std::string value) {
+	inline Cookie session_cookie(std::string name, std::string value)
+	{
 		Cookie c{std::move(name), std::move(value)};
 		c.http_only = true;
 		c.secure = true;

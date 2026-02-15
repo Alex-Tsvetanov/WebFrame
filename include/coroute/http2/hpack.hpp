@@ -13,13 +13,15 @@
 typedef struct nghttp2_hd_deflater nghttp2_hd_deflater;
 typedef struct nghttp2_hd_inflater nghttp2_hd_inflater;
 
-namespace coroute::http2 {
+namespace coroute::http2
+{
 
 	// ============================================================================
 	// HTTP/2 Header
 	// ============================================================================
 
-	struct Header {
+	struct Header
+	{
 		std::string name;
 		std::string value;
 
@@ -31,7 +33,8 @@ namespace coroute::http2 {
 	// HPACK Encoder
 	// ============================================================================
 
-	class HpackEncoder {
+	class HpackEncoder
+	{
 		nghttp2_hd_deflater* deflater_ = nullptr;
 
 	public:
@@ -60,7 +63,8 @@ namespace coroute::http2 {
 	// HPACK Decoder
 	// ============================================================================
 
-	class HpackDecoder {
+	class HpackDecoder
+	{
 		nghttp2_hd_inflater* inflater_ = nullptr;
 
 	public:

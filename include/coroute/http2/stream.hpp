@@ -10,13 +10,15 @@
 #include <memory>
 #include <functional>
 
-namespace coroute::http2 {
+namespace coroute::http2
+{
 
 	// ============================================================================
 	// HTTP/2 Stream States (RFC 7540 Section 5.1)
 	// ============================================================================
 
-	enum class StreamState {
+	enum class StreamState
+	{
 		Idle,
 		ReservedLocal,   // Server push (not implementing)
 		ReservedRemote,  // Server push (not implementing)
@@ -32,7 +34,8 @@ namespace coroute::http2 {
 
 	class Http2Connection;  // Forward declaration
 
-	class Stream {
+	class Stream
+	{
 		uint32_t id_;
 		StreamState state_ = StreamState::Idle;
 		Http2Connection* connection_;
@@ -64,7 +67,8 @@ namespace coroute::http2 {
 		// Accessors
 		uint32_t id() const { return id_; }
 		StreamState state() const { return state_; }
-		bool is_open() const {
+		bool is_open() const
+		{
 			return state_ == StreamState::Open || state_ == StreamState::HalfClosedLocal ||
 			       state_ == StreamState::HalfClosedRemote;
 		}
@@ -102,18 +106,20 @@ namespace coroute::http2 {
 		// Send data frames (handles flow control and fragmentation)
 		Task<expected<void, Error>> send_data(std::span<const uint8_t> data, bool end_stream);
 
-		struct WindowWaiter {
+		struct WindowWaiter
+		{
 			int32_t needed;
 			std::coroutine_handle<> handle;
 		};
 		std::vector<WindowWaiter> window_waiters_;
 
-		struct WindowAwaiter {
+		struct WindowAwaiter
+		{
 			Stream* stream;
 			int32_t needed;
 			bool await_ready() const noexcept;
 			void await_suspend(std::coroutine_handle<> h) noexcept;
-			void await_resume() const noexcept {}
+			void await_resume() const noexcept { }
 		};
 
 		WindowAwaiter wait_for_window(int32_t needed);
@@ -125,7 +131,8 @@ namespace coroute::http2 {
 	// Stream ID Utilities
 	// ============================================================================
 
-	namespace StreamId {
+	namespace StreamId
+	{
 		// Stream 0 is the connection control stream
 		constexpr uint32_t Connection = 0;
 

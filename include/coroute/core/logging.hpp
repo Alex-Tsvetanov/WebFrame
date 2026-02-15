@@ -14,7 +14,8 @@
 #include "coroute/core/response.hpp"
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declare middleware types
 	using Next = std::function<Task<Response>(Request&)>;
@@ -24,7 +25,16 @@ namespace coroute {
 	// Log Levels
 	// ============================================================================
 
-	enum class LogLevel { Trace = 0, Debug = 1, Info = 2, Warn = 3, Error = 4, Fatal = 5, Off = 6 };
+	enum class LogLevel
+	{
+		Trace = 0,
+		Debug = 1,
+		Info = 2,
+		Warn = 3,
+		Error = 4,
+		Fatal = 5,
+		Off = 6
+	};
 
 	std::string_view log_level_name(LogLevel level) noexcept;
 	LogLevel parse_log_level(std::string_view name) noexcept;
@@ -33,7 +43,8 @@ namespace coroute {
 	// Log Entry
 	// ============================================================================
 
-	struct LogEntry {
+	struct LogEntry
+	{
 		LogLevel level;
 		std::chrono::system_clock::time_point timestamp;
 		std::string message;
@@ -43,13 +54,15 @@ namespace coroute {
 		std::vector<std::pair<std::string, std::string>> fields;
 
 		// Add field
-		LogEntry& field(std::string key, std::string value) {
+		LogEntry& field(std::string key, std::string value)
+		{
 			fields.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
 
 		template <typename T>
-		LogEntry& field(std::string key, T value) {
+		LogEntry& field(std::string key, T value)
+		{
 			std::ostringstream oss;
 			oss << value;
 			return field(std::move(key), oss.str());
@@ -60,23 +73,25 @@ namespace coroute {
 	// Log Sink Interface
 	// ============================================================================
 
-	class LogSink {
+	class LogSink
+	{
 	public:
 		virtual ~LogSink() = default;
 		virtual void write(const LogEntry& entry) = 0;
-		virtual void flush() {}
+		virtual void flush() { }
 	};
 
 	// ============================================================================
 	// Console Sink
 	// ============================================================================
 
-	class ConsoleSink : public LogSink {
+	class ConsoleSink : public LogSink
+	{
 		bool colored_ = true;
 		std::mutex mutex_;
 
 	public:
-		explicit ConsoleSink(bool colored = true) : colored_(colored) {}
+		explicit ConsoleSink(bool colored = true) : colored_(colored) { }
 		void write(const LogEntry& entry) override;
 	};
 
@@ -84,12 +99,13 @@ namespace coroute {
 	// JSON Sink (structured logging)
 	// ============================================================================
 
-	class JsonSink : public LogSink {
+	class JsonSink : public LogSink
+	{
 		std::ostream& out_;
 		std::mutex mutex_;
 
 	public:
-		explicit JsonSink(std::ostream& out = std::cout) : out_(out) {}
+		explicit JsonSink(std::ostream& out = std::cout) : out_(out) { }
 		void write(const LogEntry& entry) override;
 	};
 
@@ -97,7 +113,8 @@ namespace coroute {
 	// Logger
 	// ============================================================================
 
-	class Logger {
+	class Logger
+	{
 		std::string name_;
 		LogLevel level_ = LogLevel::Info;
 		std::vector<std::shared_ptr<LogSink>> sinks_;
@@ -105,10 +122,11 @@ namespace coroute {
 
 	public:
 		Logger() = default;
-		explicit Logger(std::string name) : name_(std::move(name)) {}
+		explicit Logger(std::string name) : name_(std::move(name)) { }
 
 		// Configuration
-		Logger& set_level(LogLevel level) {
+		Logger& set_level(LogLevel level)
+		{
 			level_ = level;
 			return *this;
 		}
@@ -155,7 +173,8 @@ namespace coroute {
 	// Request Logging Middleware
 	// ============================================================================
 
-	struct RequestLogOptions {
+	struct RequestLogOptions
+	{
 		LogLevel level = LogLevel::Info;
 		bool log_headers = false;
 		bool log_body = false;

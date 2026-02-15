@@ -7,55 +7,64 @@ using namespace coroute;
 using namespace coroute::net;
 
 // Mock connection for testing
-class MockConnection : public Connection {
+class MockConnection : public Connection
+{
 	bool open_ = true;
 	int id_;
 	static int next_id_;
 
 public:
-	MockConnection() : id_(next_id_++) {}
+	MockConnection() : id_(next_id_++) { }
 
 	int id() const { return id_; }
 
-	Task<ReadResult> async_read(void*, size_t) override {
+	Task<ReadResult> async_read(void*, size_t) override
+	{
 		co_return coroute::unexpected(coroute::Error::io(coroute::IoError::InvalidArgument, "Mock"));
 	}
 
-	Task<ReadResult> async_read_until(void*, size_t, char) override {
+	Task<ReadResult> async_read_until(void*, size_t, char) override
+	{
 		co_return coroute::unexpected(coroute::Error::io(coroute::IoError::InvalidArgument, "Mock"));
 	}
 
-	Task<WriteResult> async_write(const void*, size_t) override {
+	Task<WriteResult> async_write(const void*, size_t) override
+	{
 		co_return coroute::unexpected(coroute::Error::io(coroute::IoError::InvalidArgument, "Mock"));
 	}
 
-	Task<WriteResult> async_write_all(const void*, size_t) override {
+	Task<WriteResult> async_write_all(const void*, size_t) override
+	{
 		co_return coroute::unexpected(coroute::Error::io(coroute::IoError::InvalidArgument, "Mock"));
 	}
 
-	Task<TransmitResult> async_transmit_file(FileHandle, size_t, size_t) override {
+	Task<TransmitResult> async_transmit_file(FileHandle, size_t, size_t) override
+	{
 		co_return coroute::unexpected(coroute::Error::io(coroute::IoError::InvalidArgument, "Mock"));
 	}
 
 	void close() override { open_ = false; }
 	bool is_open() const noexcept override { return open_; }
-	void set_timeout(std::chrono::milliseconds) override {}
+	void set_timeout(std::chrono::milliseconds) override { }
 	std::string remote_address() const override { return "127.0.0.1"; }
 	uint16_t remote_port() const noexcept override { return 12345; }
-	void set_cancellation_token(coroute::CancellationToken) override {}
+	void set_cancellation_token(coroute::CancellationToken) override { }
 };
 
 int MockConnection::next_id_ = 0;
 
-TEST_CASE("ConnectionPool basic operations", "[connection_pool]") {
+TEST_CASE("ConnectionPool basic operations", "[connection_pool]")
+{
 	ConnectionPool pool;
 
-	SECTION("Acquire returns nullptr when empty") {
+	SECTION("Acquire returns nullptr when empty")
+	{
 		auto conn = pool.acquire();
 		CHECK(conn == nullptr);
 	}
 
-	SECTION("Release and acquire reuses connection") {
+	SECTION("Release and acquire reuses connection")
+	{
 		auto conn1 = std::make_unique<MockConnection>();
 		int id = static_cast<MockConnection*>(conn1.get())->id();
 
@@ -68,7 +77,8 @@ TEST_CASE("ConnectionPool basic operations", "[connection_pool]") {
 		CHECK(pool.pool_size() == 0);
 	}
 
-	SECTION("Statistics are tracked") {
+	SECTION("Statistics are tracked")
+	{
 		pool.release(std::make_unique<MockConnection>());
 		pool.release(std::make_unique<MockConnection>());
 
@@ -91,7 +101,8 @@ TEST_CASE("ConnectionPool basic operations", "[connection_pool]") {
 	}
 }
 
-TEST_CASE("ConnectionPool max size", "[connection_pool]") {
+TEST_CASE("ConnectionPool max size", "[connection_pool]")
+{
 	ConnectionPoolConfig config;
 	config.max_size = 2;
 	ConnectionPool pool(config);
@@ -103,7 +114,8 @@ TEST_CASE("ConnectionPool max size", "[connection_pool]") {
 	CHECK(pool.pool_size() == 2);
 }
 
-TEST_CASE("ConnectionPool resetter", "[connection_pool]") {
+TEST_CASE("ConnectionPool resetter", "[connection_pool]")
+{
 	ConnectionPool pool;
 	bool reset_called = false;
 
@@ -113,10 +125,12 @@ TEST_CASE("ConnectionPool resetter", "[connection_pool]") {
 	CHECK(reset_called);
 }
 
-TEST_CASE("PooledConnection RAII", "[connection_pool]") {
+TEST_CASE("PooledConnection RAII", "[connection_pool]")
+{
 	ConnectionPool pool;
 
-	SECTION("Returns to pool on destruction") {
+	SECTION("Returns to pool on destruction")
+	{
 		{
 			auto conn = std::make_unique<MockConnection>();
 			PooledConnection pooled(std::move(conn), &pool);
@@ -124,7 +138,8 @@ TEST_CASE("PooledConnection RAII", "[connection_pool]") {
 		CHECK(pool.pool_size() == 1);
 	}
 
-	SECTION("Release prevents return to pool") {
+	SECTION("Release prevents return to pool")
+	{
 		{
 			auto conn = std::make_unique<MockConnection>();
 			PooledConnection pooled(std::move(conn), &pool);
@@ -134,7 +149,8 @@ TEST_CASE("PooledConnection RAII", "[connection_pool]") {
 		CHECK(pool.pool_size() == 0);
 	}
 
-	SECTION("Detach keeps connection but doesn't return") {
+	SECTION("Detach keeps connection but doesn't return")
+	{
 		{
 			auto conn = std::make_unique<MockConnection>();
 			PooledConnection pooled(std::move(conn), &pool);
@@ -144,7 +160,8 @@ TEST_CASE("PooledConnection RAII", "[connection_pool]") {
 		CHECK(pool.pool_size() == 0);
 	}
 
-	SECTION("Move semantics") {
+	SECTION("Move semantics")
+	{
 		auto conn = std::make_unique<MockConnection>();
 		int id = static_cast<MockConnection*>(conn.get())->id();
 
@@ -157,7 +174,8 @@ TEST_CASE("PooledConnection RAII", "[connection_pool]") {
 	}
 }
 
-TEST_CASE("ConnectionPool reuse rate", "[connection_pool]") {
+TEST_CASE("ConnectionPool reuse rate", "[connection_pool]")
+{
 	ConnectionPool pool;
 
 	CHECK(pool.reuse_rate() == 0.0);
@@ -177,7 +195,8 @@ TEST_CASE("ConnectionPool reuse rate", "[connection_pool]") {
 	CHECK(pool.reuse_rate() == 0.5);
 }
 
-TEST_CASE("ConnectionPool populate", "[connection_pool]") {
+TEST_CASE("ConnectionPool populate", "[connection_pool]")
+{
 	ConnectionPool pool;
 
 	pool.populate([]() { return std::make_unique<MockConnection>(); }, 5);
@@ -185,15 +204,17 @@ TEST_CASE("ConnectionPool populate", "[connection_pool]") {
 	CHECK(pool.pool_size() == 5);
 
 	// Acquire all
-	for (int i = 0; i < 5; ++i) {
-		auto conn = pool.acquire();
-		CHECK(conn != nullptr);
-	}
+	for (int i = 0; i < 5; ++i)
+		{
+			auto conn = pool.acquire();
+			CHECK(conn != nullptr);
+		}
 
 	CHECK(pool.pool_size() == 0);
 }
 
-TEST_CASE("ConnectionPool disable reuse", "[connection_pool]") {
+TEST_CASE("ConnectionPool disable reuse", "[connection_pool]")
+{
 	ConnectionPoolConfig config;
 	config.enable_reuse = false;
 	ConnectionPool pool(config);

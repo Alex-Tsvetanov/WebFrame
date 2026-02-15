@@ -11,23 +11,27 @@
 
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// ViewTemplates - Platform-specific template identifiers
 	// ============================================================================
 
-	struct ViewTemplates {
+	struct ViewTemplates
+	{
 		std::string web;
 		std::string mobile;
 		std::string desktop;
 
 		/// Construct with same template for all platforms
-		explicit ViewTemplates(std::string all) : web(all), mobile(all), desktop(std::move(all)) {}
+		explicit ViewTemplates(std::string all) : web(all), mobile(all), desktop(std::move(all)) { }
 
 		/// Construct with platform-specific templates
 		ViewTemplates(std::string w, std::string m, std::string d)
-		    : web(std::move(w)), mobile(std::move(m)), desktop(std::move(d)) {}
+			: web(std::move(w)), mobile(std::move(m)), desktop(std::move(d))
+		{
+		}
 	};
 
 	// ============================================================================
@@ -35,7 +39,8 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename VM>
-	struct ViewResult {
+	struct ViewResult
+	{
 		ViewTemplates templates;
 		VM model;
 	};
@@ -46,7 +51,8 @@ namespace coroute {
 
 	/// Type-erased view result using std::any and a type-erased JSON conversion
 	/// function
-	struct ViewResultAny {
+	struct ViewResultAny
+	{
 		ViewTemplates templates;
 		std::any model;
 		std::function<nlohmann::json(const std::any&)> to_json_fn;
@@ -54,11 +60,16 @@ namespace coroute {
 		/// Create from a typed ViewResult using templated constructor
 		template <typename VM>
 		ViewResultAny(ViewResult<VM> result)
-		    : templates(std::move(result.templates)), model(std::move(result.model)),
-		      to_json_fn([](const std::any& m) -> nlohmann::json {
-			      // Use nlohmann's automatic conversion which handles ADL properly
-			      return nlohmann::json(std::any_cast<const VM&>(m));
-		      }) {}
+			: templates(std::move(result.templates)),
+			  model(std::move(result.model)),
+			  to_json_fn(
+				  [](const std::any& m) -> nlohmann::json
+					  {
+						  // Use nlohmann's automatic conversion which handles ADL properly
+						  return nlohmann::json(std::any_cast<const VM&>(m));
+					  })
+		{
+		}
 
 		/// Convert the model to JSON
 		[[nodiscard]] nlohmann::json to_json() const { return to_json_fn(model); }

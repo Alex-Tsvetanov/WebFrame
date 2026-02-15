@@ -14,13 +14,15 @@
 #include <mutex>
 #include <atomic>
 
-namespace coroute::http2 {
+namespace coroute::http2
+{
 
 	// ============================================================================
 	// HTTP/2 Connection Settings
 	// ============================================================================
 
-	struct ConnectionSettings {
+	struct ConnectionSettings
+	{
 		uint32_t header_table_size = Constants::DefaultHeaderTableSize;
 		uint32_t enable_push = 0;  // We don't support server push
 		uint32_t max_concurrent_streams = Constants::DefaultMaxConcurrentStreams;
@@ -39,7 +41,8 @@ namespace coroute::http2 {
 	// Handler type for processing requests
 	using RequestHandler = std::function<Task<Response>(Request&)>;
 
-	class Http2Connection : public std::enable_shared_from_this<Http2Connection> {
+	class Http2Connection : public std::enable_shared_from_this<Http2Connection>
+	{
 		std::unique_ptr<net::Connection> conn_;
 
 		// HPACK encoder/decoder
@@ -81,7 +84,7 @@ namespace coroute::http2 {
 		~Http2Connection();
 
 		friend Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(
-		    std::unique_ptr<net::Connection> conn, const Request& upgrade_request);
+			std::unique_ptr<net::Connection> conn, const Request& upgrade_request);
 
 		// Non-copyable, non-movable
 		Http2Connection(const Http2Connection&) = delete;

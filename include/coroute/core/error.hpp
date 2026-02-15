@@ -5,13 +5,15 @@
 #include <string_view>
 #include <system_error>
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// I/O Errors (transport layer)
 	// ============================================================================
 
-	enum class IoError {
+	enum class IoError
+	{
 		Success = 0,
 		ConnectionReset,
 		ConnectionRefused,
@@ -33,7 +35,8 @@ namespace coroute {
 	// HTTP Errors (protocol layer)
 	// ============================================================================
 
-	enum class HttpError {
+	enum class HttpError
+	{
 		// 4xx Client Errors
 		BadRequest = 400,
 		Unauthorized = 401,
@@ -58,12 +61,17 @@ namespace coroute {
 
 // Enable std::error_code integration - MUST be before make_error_code declarations
 template <>
-struct std::is_error_code_enum<coroute::IoError> : std::true_type {};
+struct std::is_error_code_enum<coroute::IoError> : std::true_type
+{
+};
 
 template <>
-struct std::is_error_code_enum<coroute::HttpError> : std::true_type {};
+struct std::is_error_code_enum<coroute::HttpError> : std::true_type
+{
+};
 
-namespace coroute {
+namespace coroute
+{
 
 	// Now declare make_error_code after the enum specializations
 	const std::error_category& io_error_category() noexcept;
@@ -76,7 +84,8 @@ namespace coroute {
 	// Unified Error Type
 	// ============================================================================
 
-	class Error {
+	class Error
+	{
 	public:
 		using Variant = std::variant<IoError, HttpError, std::error_code>;
 
@@ -86,20 +95,21 @@ namespace coroute {
 
 	public:
 		// Constructors
-		Error() : inner_(IoError::Success) {}
+		Error() : inner_(IoError::Success) { }
 
-		Error(IoError e, std::string message = "") : inner_(e), message_(std::move(message)) {}
+		Error(IoError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
 
-		Error(HttpError e, std::string message = "") : inner_(e), message_(std::move(message)) {}
+		Error(HttpError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
 
-		Error(std::error_code ec, std::string message = "") : inner_(ec), message_(std::move(message)) {}
+		Error(std::error_code ec, std::string message = "") : inner_(ec), message_(std::move(message)) { }
 
 		// Factory methods
 		static Error io(IoError e, std::string msg = "") { return Error(e, std::move(msg)); }
 
 		static Error http(HttpError e, std::string msg = "") { return Error(e, std::move(msg)); }
 
-		static Error http(int status, std::string msg = "") {
+		static Error http(int status, std::string msg = "")
+		{
 			return Error(static_cast<HttpError>(status), std::move(msg));
 		}
 
@@ -125,7 +135,8 @@ namespace coroute {
 
 		HttpError http_error() const noexcept { return is_http() ? std::get<HttpError>(inner_) : HttpError::Internal; }
 
-		std::error_code system_error() const noexcept {
+		std::error_code system_error() const noexcept
+		{
 			return is_system() ? std::get<std::error_code>(inner_) : std::error_code{};
 		}
 
@@ -133,21 +144,25 @@ namespace coroute {
 		std::error_code code() const noexcept;
 
 		// HTTP status code (returns 500 for non-HTTP errors)
-		int http_status() const noexcept {
-			if (is_http()) {
-				return static_cast<int>(std::get<HttpError>(inner_));
-			}
-			if (is_io()) {
-				auto e = std::get<IoError>(inner_);
-				switch (e) {
-					case IoError::Timeout:
-						return 408;
-					case IoError::Cancelled:
-						return 499;  // Client Closed Request
-					default:
-						return 500;
+		int http_status() const noexcept
+		{
+			if (is_http())
+				{
+					return static_cast<int>(std::get<HttpError>(inner_));
 				}
-			}
+			if (is_io())
+				{
+					auto e = std::get<IoError>(inner_);
+					switch (e)
+						{
+							case IoError::Timeout:
+								return 408;
+							case IoError::Cancelled:
+								return 499;  // Client Closed Request
+							default:
+								return 500;
+						}
+				}
 			return 500;
 		}
 
@@ -163,7 +178,8 @@ namespace coroute {
 		bool operator!=(const Error& other) const noexcept { return !(*this == other); }
 
 		// Boolean conversion (true if error, false if success)
-		explicit operator bool() const noexcept {
+		explicit operator bool() const noexcept
+		{
 			if (is_io()) return std::get<IoError>(inner_) != IoError::Success;
 			if (is_http()) return true;  // HTTP errors are always errors
 			if (is_system()) return static_cast<bool>(std::get<std::error_code>(inner_));

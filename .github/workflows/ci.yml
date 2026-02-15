@@ -219,4 +219,4 @@ jobs:
     - name: Check formatting
       run: |
         find include/ src/ examples/ tests/ -name "*.hpp" -o -name "*.cpp" | \
-        xargs clang-format-18 --dry-run --Werror
+        xargs clang-format-18 --dry-run --Werror --style="file:.clang-format"

@@ -2,13 +2,15 @@
 
 #include <cstring>
 
-namespace coroute::http2 {
+namespace coroute::http2
+{
 
 	// ============================================================================
 	// Frame Header
 	// ============================================================================
 
-	std::array<uint8_t, 9> FrameHeader::serialize() const {
+	std::array<uint8_t, 9> FrameHeader::serialize() const
+	{
 		std::array<uint8_t, 9> result{};
 
 		// Length (24 bits, big-endian)
@@ -31,10 +33,12 @@ namespace coroute::http2 {
 		return result;
 	}
 
-	expected<FrameHeader, Error> FrameHeader::parse(std::span<const uint8_t> data) {
-		if (data.size() < Constants::FrameHeaderSize) {
-			return unexpected(Error::io(IoError::InvalidArgument, "Frame header too short"));
-		}
+	expected<FrameHeader, Error> FrameHeader::parse(std::span<const uint8_t> data)
+	{
+		if (data.size() < Constants::FrameHeaderSize)
+			{
+				return unexpected(Error::io(IoError::InvalidArgument, "Frame header too short"));
+			}
 
 		FrameHeader header;
 
@@ -59,7 +63,8 @@ namespace coroute::http2 {
 	// Frame Serialization Utilities
 	// ============================================================================
 
-	std::vector<uint8_t> serialize_settings_frame(std::span<const SettingsEntry> settings, bool ack) {
+	std::vector<uint8_t> serialize_settings_frame(std::span<const SettingsEntry> settings, bool ack)
+	{
 		// Each setting is 6 bytes (2 byte ID + 4 byte value)
 		size_t payload_size = ack ? 0 : settings.size() * 6;
 
@@ -77,26 +82,29 @@ namespace coroute::http2 {
 		result.insert(result.end(), header_bytes.begin(), header_bytes.end());
 
 		// Add settings (if not ACK)
-		if (!ack) {
-			for (const auto& setting : settings) {
-				// ID (16 bits, big-endian)
-				result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) >> 8));
-				result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) & 0xFF));
+		if (!ack)
+			{
+				for (const auto& setting : settings)
+					{
+						// ID (16 bits, big-endian)
+						result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) >> 8));
+						result.push_back(static_cast<uint8_t>(static_cast<uint16_t>(setting.id) & 0xFF));
 
-				// Value (32 bits, big-endian)
-				result.push_back(static_cast<uint8_t>(setting.value >> 24));
-				result.push_back(static_cast<uint8_t>((setting.value >> 16) & 0xFF));
-				result.push_back(static_cast<uint8_t>((setting.value >> 8) & 0xFF));
-				result.push_back(static_cast<uint8_t>(setting.value & 0xFF));
+						// Value (32 bits, big-endian)
+						result.push_back(static_cast<uint8_t>(setting.value >> 24));
+						result.push_back(static_cast<uint8_t>((setting.value >> 16) & 0xFF));
+						result.push_back(static_cast<uint8_t>((setting.value >> 8) & 0xFF));
+						result.push_back(static_cast<uint8_t>(setting.value & 0xFF));
+					}
 			}
-		}
 
 		return result;
 	}
 
 	std::vector<uint8_t> serialize_settings_ack() { return serialize_settings_frame({}, true); }
 
-	std::vector<uint8_t> serialize_ping_frame(std::span<const uint8_t, 8> opaque_data, bool ack) {
+	std::vector<uint8_t> serialize_ping_frame(std::span<const uint8_t, 8> opaque_data, bool ack)
+	{
 		FrameHeader header;
 		header.length = 8;  // PING payload is always 8 bytes
 		header.type = FrameType::Ping;
@@ -114,7 +122,8 @@ namespace coroute::http2 {
 	}
 
 	std::vector<uint8_t> serialize_goaway_frame(uint32_t last_stream_id, ErrorCode error_code,
-	                                            std::string_view debug_data) {
+	                                            std::string_view debug_data)
+	{
 		size_t payload_size = 8 + debug_data.size();  // 4 bytes stream ID + 4 bytes error + debug
 
 		FrameHeader header;
@@ -148,7 +157,8 @@ namespace coroute::http2 {
 		return result;
 	}
 
-	std::vector<uint8_t> serialize_window_update_frame(uint32_t stream_id, uint32_t window_size_increment) {
+	std::vector<uint8_t> serialize_window_update_frame(uint32_t stream_id, uint32_t window_size_increment)
+	{
 		FrameHeader header;
 		header.length = 4;  // WINDOW_UPDATE payload is always 4 bytes
 		header.type = FrameType::WindowUpdate;
@@ -170,7 +180,8 @@ namespace coroute::http2 {
 		return result;
 	}
 
-	std::vector<uint8_t> serialize_rst_stream_frame(uint32_t stream_id, ErrorCode error_code) {
+	std::vector<uint8_t> serialize_rst_stream_frame(uint32_t stream_id, ErrorCode error_code)
+	{
 		FrameHeader header;
 		header.length = 4;  // RST_STREAM payload is always 4 bytes
 		header.type = FrameType::RstStream;
@@ -193,7 +204,8 @@ namespace coroute::http2 {
 		return result;
 	}
 
-	std::vector<uint8_t> serialize_data_frame(uint32_t stream_id, std::span<const uint8_t> data, bool end_stream) {
+	std::vector<uint8_t> serialize_data_frame(uint32_t stream_id, std::span<const uint8_t> data, bool end_stream)
+	{
 		FrameHeader header;
 		header.length = static_cast<uint32_t>(data.size());
 		header.type = FrameType::Data;
@@ -211,7 +223,8 @@ namespace coroute::http2 {
 	}
 
 	std::vector<uint8_t> serialize_headers_frame(uint32_t stream_id, std::span<const uint8_t> header_block,
-	                                             bool end_stream, bool end_headers) {
+	                                             bool end_stream, bool end_headers)
+	{
 		FrameHeader header;
 		header.length = static_cast<uint32_t>(header_block.size());
 		header.type = FrameType::Headers;

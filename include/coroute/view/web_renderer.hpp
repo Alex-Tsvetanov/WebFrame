@@ -10,7 +10,8 @@
 #include <inja/inja.hpp>
 #endif
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declaration
 	class App;
@@ -23,11 +24,12 @@ namespace coroute {
 
 	/// Web view renderer using inja template engine.
 	/// Renders ViewModels to HTML responses.
-	class WebViewRenderer : public IViewRenderer {
+	class WebViewRenderer : public IViewRenderer
+	{
 		App& app_;
 
 	public:
-		explicit WebViewRenderer(App& app) : app_(app) {}
+		explicit WebViewRenderer(App& app) : app_(app) { }
 
 		/// Validate all templates exist in the template directory.
 		/// Throws with detailed error listing missing templates.
@@ -40,16 +42,19 @@ namespace coroute {
 #else
 
 	/// Stub renderer when templates are not available.
-	class WebViewRenderer : public IViewRenderer {
+	class WebViewRenderer : public IViewRenderer
+	{
 	public:
-		explicit WebViewRenderer(App& /*app*/) {}
+		explicit WebViewRenderer(App& /*app*/) { }
 
-		void validate_templates(const std::vector<ViewTemplates>& /*templates*/) override {
+		void validate_templates(const std::vector<ViewTemplates>& /*templates*/) override
+		{
 			// No templates to validate
 		}
 
 		Task<Response> render(std::string_view /*template_id*/, const ViewResultAny& /*view_result*/
-		                      ) override {
+		                      ) override
+		{
 			co_return Response::internal_error("Templates not enabled. Build with COROUTE_HAS_TEMPLATES");
 		}
 	};

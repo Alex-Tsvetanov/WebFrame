@@ -12,29 +12,43 @@ using namespace coroute;
 // Test ViewModels
 // ============================================================================
 
-struct SimpleVm {
+struct SimpleVm
+{
 	std::string name;
 	int value;
 };
 
 // ADL to_json for SimpleVm
-inline void to_json(nlohmann::json& j, const SimpleVm& vm) { j = {{"name", vm.name}, {"value", vm.value}}; }
+inline void to_json(nlohmann::json& j, const SimpleVm& vm)
+{
+	j = {
+		{ "name",  vm.name},
+        {"value", vm.value}
+    };
+}
 
-struct ComplexVm {
+struct ComplexVm
+{
 	std::string title;
 	std::vector<std::string> items;
 	bool active;
 };
 
-inline void to_json(nlohmann::json& j, const ComplexVm& vm) {
-	j = {{"title", vm.title}, {"items", vm.items}, {"active", vm.active}};
+inline void to_json(nlohmann::json& j, const ComplexVm& vm)
+{
+	j = {
+		{ "title",  vm.title},
+        { "items",  vm.items},
+        {"active", vm.active}
+    };
 }
 
 // ============================================================================
 // ViewTemplates Tests
 // ============================================================================
 
-TEST_CASE("ViewTemplates - single template for all platforms", "[view]") {
+TEST_CASE("ViewTemplates - single template for all platforms", "[view]")
+{
 	ViewTemplates vt{"common_template"};
 
 	CHECK(vt.web == "common_template");
@@ -42,7 +56,8 @@ TEST_CASE("ViewTemplates - single template for all platforms", "[view]") {
 	CHECK(vt.desktop == "common_template");
 }
 
-TEST_CASE("ViewTemplates - platform-specific templates", "[view]") {
+TEST_CASE("ViewTemplates - platform-specific templates", "[view]")
+{
 	ViewTemplates vt{"web.html", "mobile.html", "desktop.html"};
 
 	CHECK(vt.web == "web.html");
@@ -54,7 +69,8 @@ TEST_CASE("ViewTemplates - platform-specific templates", "[view]") {
 // ViewResult Tests
 // ============================================================================
 
-TEST_CASE("ViewResult - stores ViewModel and templates", "[view]") {
+TEST_CASE("ViewResult - stores ViewModel and templates", "[view]")
+{
 	SimpleVm vm{.name = "test", .value = 42};
 	ViewResult<SimpleVm> result{.templates = ViewTemplates{"test_template"}, .model = std::move(vm)};
 
@@ -63,10 +79,16 @@ TEST_CASE("ViewResult - stores ViewModel and templates", "[view]") {
 	CHECK(result.model.value == 42);
 }
 
-TEST_CASE("ViewResult - with complex ViewModel", "[view]") {
-	ComplexVm vm{.title = "Test Title", .items = {"A", "B", "C"}, .active = true};
-	ViewResult<ComplexVm> result{.templates = ViewTemplates{"listing", "mobile_list", "desktop_list"},
-	                             .model = std::move(vm)};
+TEST_CASE("ViewResult - with complex ViewModel", "[view]")
+{
+	ComplexVm vm{
+		.title = "Test Title", .items = {"A", "B", "C"},
+             .active = true
+    };
+	ViewResult<ComplexVm> result{
+		.templates = ViewTemplates{"listing", "mobile_list", "desktop_list"},
+          .model = std::move(vm)
+    };
 
 	CHECK(result.templates.web == "listing");
 	CHECK(result.templates.mobile == "mobile_list");
@@ -80,7 +102,8 @@ TEST_CASE("ViewResult - with complex ViewModel", "[view]") {
 // ViewResultAny Tests (Type Erasure)
 // ============================================================================
 
-TEST_CASE("ViewResultAny - type erasure from SimpleVm", "[view]") {
+TEST_CASE("ViewResultAny - type erasure from SimpleVm", "[view]")
+{
 	SimpleVm vm{.name = "erased", .value = 100};
 	ViewResult<SimpleVm> typed_result{.templates = ViewTemplates{"simple"}, .model = std::move(vm)};
 
@@ -95,8 +118,12 @@ TEST_CASE("ViewResultAny - type erasure from SimpleVm", "[view]") {
 	CHECK(j["value"] == 100);
 }
 
-TEST_CASE("ViewResultAny - type erasure from ComplexVm", "[view]") {
-	ComplexVm vm{.title = "Complex", .items = {"X", "Y", "Z"}, .active = false};
+TEST_CASE("ViewResultAny - type erasure from ComplexVm", "[view]")
+{
+	ComplexVm vm{
+		.title = "Complex", .items = {"X", "Y", "Z"},
+             .active = false
+    };
 	ViewResult<ComplexVm> typed_result{.templates = ViewTemplates{"complex"}, .model = std::move(vm)};
 
 	ViewResultAny erased(std::move(typed_result));
@@ -108,10 +135,13 @@ TEST_CASE("ViewResultAny - type erasure from ComplexVm", "[view]") {
 	CHECK(j["active"] == false);
 }
 
-TEST_CASE("ViewResultAny - preserves template information", "[view]") {
+TEST_CASE("ViewResultAny - preserves template information", "[view]")
+{
 	SimpleVm vm{.name = "test", .value = 1};
-	ViewResult<SimpleVm> typed_result{.templates = ViewTemplates{"web_t", "mobile_t", "desktop_t"},
-	                                  .model = std::move(vm)};
+	ViewResult<SimpleVm> typed_result{
+		.templates = ViewTemplates{"web_t", "mobile_t", "desktop_t"},
+          .model = std::move(vm)
+    };
 
 	ViewResultAny erased(std::move(typed_result));
 
@@ -126,14 +156,22 @@ TEST_CASE("ViewResultAny - preserves template information", "[view]") {
 
 // --- Empty Values ---
 
-struct EmptyVm {
+struct EmptyVm
+{
 	std::string text;
 	std::vector<int> numbers;
 };
 
-inline void to_json(nlohmann::json& j, const EmptyVm& vm) { j = {{"text", vm.text}, {"numbers", vm.numbers}}; }
+inline void to_json(nlohmann::json& j, const EmptyVm& vm)
+{
+	j = {
+		{   "text",    vm.text},
+        {"numbers", vm.numbers}
+    };
+}
 
-TEST_CASE("ViewTemplates - empty template string", "[view][edge]") {
+TEST_CASE("ViewTemplates - empty template string", "[view][edge]")
+{
 	ViewTemplates vt{""};
 
 	CHECK(vt.web == "");
@@ -141,7 +179,8 @@ TEST_CASE("ViewTemplates - empty template string", "[view][edge]") {
 	CHECK(vt.desktop == "");
 }
 
-TEST_CASE("ViewResult - empty ViewModel strings", "[view][edge]") {
+TEST_CASE("ViewResult - empty ViewModel strings", "[view][edge]")
+{
 	EmptyVm vm{.text = "", .numbers = {}};
 	ViewResult<EmptyVm> result{.templates = ViewTemplates{"empty"}, .model = std::move(vm)};
 
@@ -149,7 +188,8 @@ TEST_CASE("ViewResult - empty ViewModel strings", "[view][edge]") {
 	CHECK(result.model.numbers.empty());
 }
 
-TEST_CASE("ViewResultAny - empty ViewModel converts to valid JSON", "[view][edge]") {
+TEST_CASE("ViewResultAny - empty ViewModel converts to valid JSON", "[view][edge]")
+{
 	EmptyVm vm{.text = "", .numbers = {}};
 	ViewResult<EmptyVm> typed{.templates = ViewTemplates{"empty"}, .model = std::move(vm)};
 
@@ -163,17 +203,24 @@ TEST_CASE("ViewResultAny - empty ViewModel converts to valid JSON", "[view][edge
 
 // --- Special Characters ---
 
-struct SpecialCharsVm {
+struct SpecialCharsVm
+{
 	std::string html;
 	std::string unicode;
 	std::string quotes;
 };
 
-inline void to_json(nlohmann::json& j, const SpecialCharsVm& vm) {
-	j = {{"html", vm.html}, {"unicode", vm.unicode}, {"quotes", vm.quotes}};
+inline void to_json(nlohmann::json& j, const SpecialCharsVm& vm)
+{
+	j = {
+		{   "html",    vm.html},
+        {"unicode", vm.unicode},
+        { "quotes",  vm.quotes}
+    };
 }
 
-TEST_CASE("ViewResultAny - special characters in ViewModel", "[view][edge]") {
+TEST_CASE("ViewResultAny - special characters in ViewModel", "[view][edge]")
+{
 	SpecialCharsVm vm{.html = "<script>alert('xss')</script>",
 	                  .unicode = "Hello World",  // Simplified for portability
 	                  .quotes = R"(He said "Hello" and 'Goodbye')"};
@@ -187,7 +234,8 @@ TEST_CASE("ViewResultAny - special characters in ViewModel", "[view][edge]") {
 	CHECK(j["quotes"] == R"(He said "Hello" and 'Goodbye')");
 }
 
-TEST_CASE("ViewTemplates - special characters in template names", "[view][edge]") {
+TEST_CASE("ViewTemplates - special characters in template names", "[view][edge]")
+{
 	ViewTemplates vt{"path/to/template", "mobile-v2", "desktop_v1.0"};
 
 	CHECK(vt.web == "path/to/template");
@@ -197,29 +245,46 @@ TEST_CASE("ViewTemplates - special characters in template names", "[view][edge]"
 
 // --- Nested Objects ---
 
-struct AddressVm {
+struct AddressVm
+{
 	std::string street;
 	std::string city;
 };
 
-inline void to_json(nlohmann::json& j, const AddressVm& vm) { j = {{"street", vm.street}, {"city", vm.city}}; }
+inline void to_json(nlohmann::json& j, const AddressVm& vm)
+{
+	j = {
+		{"street", vm.street},
+        {  "city",   vm.city}
+    };
+}
 
-struct PersonVm {
+struct PersonVm
+{
 	std::string name;
 	int age;
 	AddressVm address;
 	std::vector<std::string> tags;
 };
 
-inline void to_json(nlohmann::json& j, const PersonVm& vm) {
-	j = {{"name", vm.name}, {"age", vm.age}, {"address", vm.address}, {"tags", vm.tags}};
+inline void to_json(nlohmann::json& j, const PersonVm& vm)
+{
+	j = {
+		{   "name",    vm.name},
+        {    "age",     vm.age},
+        {"address", vm.address},
+        {   "tags",    vm.tags}
+    };
 }
 
-TEST_CASE("ViewResultAny - nested ViewModel objects", "[view][edge]") {
-	PersonVm vm{.name = "Alice",
-	            .age = 30,
-	            .address = {.street = "123 Main St", .city = "Boston"},
-	            .tags = {"developer", "musician"}};
+TEST_CASE("ViewResultAny - nested ViewModel objects", "[view][edge]")
+{
+	PersonVm vm{
+		.name = "Alice",
+		.age = 30,
+		.address = {.street = "123 Main St", .city = "Boston"},
+		.tags = {            "developer",       "musician"}
+    };
 	ViewResult<PersonVm> typed{.templates = ViewTemplates{"person"}, .model = std::move(vm)};
 
 	ViewResultAny erased(std::move(typed));
@@ -235,7 +300,8 @@ TEST_CASE("ViewResultAny - nested ViewModel objects", "[view][edge]") {
 
 // --- Numeric Edge Cases ---
 
-struct NumericVm {
+struct NumericVm
+{
 	int zero;
 	int negative;
 	int large;
@@ -243,11 +309,19 @@ struct NumericVm {
 	bool flag;
 };
 
-inline void to_json(nlohmann::json& j, const NumericVm& vm) {
-	j = {{"zero", vm.zero}, {"negative", vm.negative}, {"large", vm.large}, {"decimal", vm.decimal}, {"flag", vm.flag}};
+inline void to_json(nlohmann::json& j, const NumericVm& vm)
+{
+	j = {
+		{    "zero",     vm.zero},
+        {"negative", vm.negative},
+        {   "large",    vm.large},
+        { "decimal",  vm.decimal},
+        {    "flag",     vm.flag}
+    };
 }
 
-TEST_CASE("ViewResultAny - numeric edge cases", "[view][edge]") {
+TEST_CASE("ViewResultAny - numeric edge cases", "[view][edge]")
+{
 	NumericVm vm{.zero = 0, .negative = -42, .large = 2147483647, .decimal = 3.14159265359, .flag = false};
 	ViewResult<NumericVm> typed{.templates = ViewTemplates{"numeric"}, .model = std::move(vm)};
 
@@ -265,11 +339,13 @@ TEST_CASE("ViewResultAny - numeric edge cases", "[view][edge]") {
 
 // --- Large Collections ---
 
-TEST_CASE("ViewResultAny - large vector in ViewModel", "[view][edge]") {
+TEST_CASE("ViewResultAny - large vector in ViewModel", "[view][edge]")
+{
 	std::vector<std::string> large_items;
-	for (int i = 0; i < 1000; ++i) {
-		large_items.push_back("item_" + std::to_string(i));
-	}
+	for (int i = 0; i < 1000; ++i)
+		{
+			large_items.push_back("item_" + std::to_string(i));
+		}
 
 	ComplexVm vm{.title = "Large Collection", .items = std::move(large_items), .active = true};
 	ViewResult<ComplexVm> typed{.templates = ViewTemplates{"large"}, .model = std::move(vm)};
@@ -284,7 +360,8 @@ TEST_CASE("ViewResultAny - large vector in ViewModel", "[view][edge]") {
 
 // --- Multiple Type Erasures ---
 
-TEST_CASE("ViewResultAny - multiple independent erasures", "[view][edge]") {
+TEST_CASE("ViewResultAny - multiple independent erasures", "[view][edge]")
+{
 	// Create two different ViewResultAny from different types
 	SimpleVm vm1{.name = "first", .value = 1};
 	ComplexVm vm2{.title = "second", .items = {"a"}, .active = true};
@@ -309,29 +386,37 @@ TEST_CASE("ViewResultAny - multiple independent erasures", "[view][edge]") {
 
 #include "coroute/core/router.hpp"
 
-TEST_CASE("Router - add and match view routes", "[view][router]") {
+TEST_CASE("Router - add and match view routes", "[view][router]")
+{
 	coroute::Router router;
 	bool handler_called = false;
 
 	// Add a view route
-	router.add_view("/test", [&](Request&) -> Task<ViewResultAny> {
-		handler_called = true;
-		SimpleVm vm{.name = "test", .value = 42};
-		co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"test"}, .model = std::move(vm)});
-	});
+	router.add_view("/test",
+	                [&](Request&) -> Task<ViewResultAny>
+	                    {
+							handler_called = true;
+							SimpleVm vm{.name = "test", .value = 42};
+							co_return ViewResultAny(
+								ViewResult<SimpleVm>{.templates = ViewTemplates{"test"}, .model = std::move(vm)});
+						});
 
 	// Match should find the route
 	auto match = router.match_view("/test");
 	CHECK(match.handler != nullptr);
 }
 
-TEST_CASE("Router - view routes with parameters", "[view][router]") {
+TEST_CASE("Router - view routes with parameters", "[view][router]")
+{
 	coroute::Router router;
 
-	router.add_view("/user/{id}", [](Request&) -> Task<ViewResultAny> {
-		SimpleVm vm{.name = "user", .value = 0};
-		co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)});
-	});
+	router.add_view("/user/{id}",
+	                [](Request&) -> Task<ViewResultAny>
+	                    {
+							SimpleVm vm{.name = "user", .value = 0};
+							co_return ViewResultAny(
+								ViewResult<SimpleVm>{.templates = ViewTemplates{"user"}, .model = std::move(vm)});
+						});
 
 	auto match = router.match_view("/user/123");
 	CHECK(match.handler != nullptr);
@@ -339,29 +424,37 @@ TEST_CASE("Router - view routes with parameters", "[view][router]") {
 	CHECK(match.params[0] == "123");
 }
 
-TEST_CASE("Router - view route not found", "[view][router]") {
+TEST_CASE("Router - view route not found", "[view][router]")
+{
 	coroute::Router router;
 
-	router.add_view("/existing", [](Request&) -> Task<ViewResultAny> {
-		SimpleVm vm{.name = "", .value = 0};
-		co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"t"}, .model = std::move(vm)});
-	});
+	router.add_view(
+		"/existing",
+		[](Request&) -> Task<ViewResultAny>
+			{
+				SimpleVm vm{.name = "", .value = 0};
+				co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"t"}, .model = std::move(vm)});
+			});
 
 	auto match = router.match_view("/nonexistent");
 	CHECK(match.handler == nullptr);
 }
 
-TEST_CASE("Router - view routes independent from regular routes", "[view][router]") {
+TEST_CASE("Router - view routes independent from regular routes", "[view][router]")
+{
 	coroute::Router router;
 
 	// Add regular GET route
 	router.add(HttpMethod::GET, "/api", [](Request&) -> Task<Response> { co_return Response::ok("API"); });
 
 	// Add view route with same path
-	router.add_view("/api", [](Request&) -> Task<ViewResultAny> {
-		SimpleVm vm{.name = "view", .value = 1};
-		co_return ViewResultAny(ViewResult<SimpleVm>{.templates = ViewTemplates{"api"}, .model = std::move(vm)});
-	});
+	router.add_view("/api",
+	                [](Request&) -> Task<ViewResultAny>
+	                    {
+							SimpleVm vm{.name = "view", .value = 1};
+							co_return ViewResultAny(
+								ViewResult<SimpleVm>{.templates = ViewTemplates{"api"}, .model = std::move(vm)});
+						});
 
 	// Both should be findable independently
 	auto regular_match = router.match(HttpMethod::GET, "/api");

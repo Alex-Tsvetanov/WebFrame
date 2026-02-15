@@ -49,7 +49,8 @@
 
 #endif
 
-namespace coroute {
+namespace coroute
+{
 
 	// Version info
 	constexpr int VERSION_MAJOR = 2;

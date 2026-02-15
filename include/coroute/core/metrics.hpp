@@ -16,7 +16,8 @@
 #include "coroute/core/response.hpp"
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declare middleware types
 	using Next = std::function<Task<Response>(Request&)>;
@@ -27,14 +28,15 @@ namespace coroute {
 	// ============================================================================
 
 	// Counter - monotonically increasing value
-	class Counter {
+	class Counter
+	{
 		std::atomic<uint64_t> value_{0};
 		std::string name_;
 		std::string help_;
 		std::vector<std::pair<std::string, std::string>> labels_;
 
 	public:
-		Counter(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) {}
+		Counter(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
 
 		void inc(uint64_t delta = 1) { value_.fetch_add(delta, std::memory_order_relaxed); }
 		uint64_t value() const { return value_.load(std::memory_order_relaxed); }
@@ -43,7 +45,8 @@ namespace coroute {
 		const std::string& name() const { return name_; }
 		const std::string& help() const { return help_; }
 
-		Counter& label(std::string key, std::string value) {
+		Counter& label(std::string key, std::string value)
+		{
 			labels_.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
@@ -51,16 +54,18 @@ namespace coroute {
 	};
 
 	// Gauge - value that can go up or down
-	class Gauge {
+	class Gauge
+	{
 		std::atomic<double> value_{0.0};
 		std::string name_;
 		std::string help_;
 
 	public:
-		Gauge(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) {}
+		Gauge(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
 
 		void set(double value) { value_.store(value, std::memory_order_relaxed); }
-		void inc(double delta = 1.0) {
+		void inc(double delta = 1.0)
+		{
 			double old = value_.load(std::memory_order_relaxed);
 			while (!value_.compare_exchange_weak(old, old + delta, std::memory_order_relaxed));
 		}
@@ -72,7 +77,8 @@ namespace coroute {
 	};
 
 	// Histogram - distribution of values
-	class Histogram {
+	class Histogram
+	{
 		std::string name_;
 		std::string help_;
 		std::vector<double> buckets_;
@@ -103,7 +109,8 @@ namespace coroute {
 	// Metrics Registry
 	// ============================================================================
 
-	class MetricsRegistry {
+	class MetricsRegistry
+	{
 		std::unordered_map<std::string, std::shared_ptr<Counter>> counters_;
 		std::unordered_map<std::string, std::shared_ptr<Gauge>> gauges_;
 		std::unordered_map<std::string, std::shared_ptr<Histogram>> histograms_;
@@ -133,7 +140,8 @@ namespace coroute {
 	// HTTP Metrics
 	// ============================================================================
 
-	struct HttpMetrics {
+	struct HttpMetrics
+	{
 		std::shared_ptr<Counter> requests_total;
 		std::shared_ptr<Counter> requests_by_status;
 		std::shared_ptr<Histogram> request_duration;
@@ -147,7 +155,8 @@ namespace coroute {
 	// Metrics Middleware
 	// ============================================================================
 
-	struct MetricsOptions {
+	struct MetricsOptions
+	{
 		std::string path = "/metrics";  // Path to expose metrics
 		bool expose_endpoint = true;    // Auto-add /metrics endpoint
 	};
@@ -161,14 +170,16 @@ namespace coroute {
 	// ============================================================================
 
 	// Timer helper for measuring duration
-	class ScopedTimer {
+	class ScopedTimer
+	{
 		Histogram& histogram_;
 		std::chrono::steady_clock::time_point start_;
 
 	public:
-		explicit ScopedTimer(Histogram& h) : histogram_(h), start_(std::chrono::steady_clock::now()) {}
+		explicit ScopedTimer(Histogram& h) : histogram_(h), start_(std::chrono::steady_clock::now()) { }
 
-		~ScopedTimer() {
+		~ScopedTimer()
+		{
 			auto end = std::chrono::steady_clock::now();
 			auto duration = std::chrono::duration<double>(end - start_).count();
 			histogram_.observe(duration);

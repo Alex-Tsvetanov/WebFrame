@@ -14,13 +14,15 @@
 #include <cstdint>
 #include <span>
 
-namespace coroute::net {
+namespace coroute::net
+{
 
 	// ============================================================================
 	// WebSocket Frame Types (RFC 6455)
 	// ============================================================================
 
-	enum class WebSocketOpcode : uint8_t {
+	enum class WebSocketOpcode : uint8_t
+	{
 		Continuation = 0x0,
 		Text = 0x1,
 		Binary = 0x2,
@@ -35,7 +37,8 @@ namespace coroute::net {
 	// WebSocket Close Codes (RFC 6455 Section 7.4.1)
 	// ============================================================================
 
-	enum class WebSocketCloseCode : uint16_t {
+	enum class WebSocketCloseCode : uint16_t
+	{
 		Normal = 1000,           // Normal closure
 		GoingAway = 1001,        // Endpoint going away (e.g., server shutdown)
 		ProtocolError = 1002,    // Protocol error
@@ -55,7 +58,8 @@ namespace coroute::net {
 	// WebSocket Message
 	// ============================================================================
 
-	struct WebSocketMessage {
+	struct WebSocketMessage
+	{
 		WebSocketOpcode opcode;
 		std::vector<uint8_t> data;
 
@@ -67,23 +71,28 @@ namespace coroute::net {
 		bool is_pong() const { return opcode == WebSocketOpcode::Pong; }
 
 		// Get text content (for text messages)
-		std::string_view text() const {
+		std::string_view text() const
+		{
 			return std::string_view(reinterpret_cast<const char*>(data.data()), data.size());
 		}
 
 		// Get close code (for close messages)
-		WebSocketCloseCode close_code() const {
-			if (data.size() >= 2) {
-				return static_cast<WebSocketCloseCode>((data[0] << 8) | data[1]);
-			}
+		WebSocketCloseCode close_code() const
+		{
+			if (data.size() >= 2)
+				{
+					return static_cast<WebSocketCloseCode>((data[0] << 8) | data[1]);
+				}
 			return WebSocketCloseCode::NoStatusReceived;
 		}
 
 		// Get close reason (for close messages)
-		std::string_view close_reason() const {
-			if (data.size() > 2) {
-				return std::string_view(reinterpret_cast<const char*>(data.data() + 2), data.size() - 2);
-			}
+		std::string_view close_reason() const
+		{
+			if (data.size() > 2)
+				{
+					return std::string_view(reinterpret_cast<const char*>(data.data() + 2), data.size() - 2);
+				}
 			return {};
 		}
 	};
@@ -92,7 +101,8 @@ namespace coroute::net {
 	// WebSocket Connection
 	// ============================================================================
 
-	class WebSocketConnection {
+	class WebSocketConnection
+	{
 	public:
 		virtual ~WebSocketConnection() = default;
 
@@ -147,7 +157,8 @@ namespace coroute::net {
 	// WebSocket Configuration
 	// ============================================================================
 
-	struct WebSocketConfig {
+	struct WebSocketConfig
+	{
 		// Maximum message size (default 16MB)
 		size_t max_message_size = 16 * 1024 * 1024;
 
@@ -169,7 +180,8 @@ namespace coroute::net {
 
 }  // namespace coroute::net
 
-namespace coroute {
+namespace coroute
+{
 
 	// Re-export for convenience
 	using net::WebSocketCloseCode;

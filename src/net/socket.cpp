@@ -2,7 +2,8 @@
 
 // Placeholder - socket utilities shared across platforms
 
-namespace coroute::net {
+namespace coroute::net
+{
 
 	// Common socket utilities will go here
 

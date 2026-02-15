@@ -21,7 +21,8 @@
 #include "coroute/core/error.hpp"
 #include "coroute/util/expected.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// JSON Value Type
@@ -36,7 +37,8 @@ namespace coroute {
 	using JsonArray = std::vector<JsonValue>;
 	using JsonObject = std::unordered_map<std::string, JsonValue>;
 
-	class JsonValue {
+	class JsonValue
+	{
 	public:
 		using Variant = std::variant<JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject>;
 
@@ -45,22 +47,24 @@ namespace coroute {
 
 	public:
 		// Constructors
-		JsonValue() : value_(nullptr) {}
-		JsonValue(std::nullptr_t) : value_(nullptr) {}
-		JsonValue(bool b) : value_(b) {}
-		JsonValue(int i) : value_(static_cast<double>(i)) {}
-		JsonValue(int64_t i) : value_(static_cast<double>(i)) {}
-		JsonValue(double d) : value_(d) {}
-		JsonValue(const char* s) : value_(std::string(s)) {}
-		JsonValue(std::string s) : value_(std::move(s)) {}
-		JsonValue(std::string_view s) : value_(std::string(s)) {}
-		JsonValue(JsonArray arr) : value_(std::move(arr)) {}
-		JsonValue(JsonObject obj) : value_(std::move(obj)) {}
+		JsonValue() : value_(nullptr) { }
+		JsonValue(std::nullptr_t) : value_(nullptr) { }
+		JsonValue(bool b) : value_(b) { }
+		JsonValue(int i) : value_(static_cast<double>(i)) { }
+		JsonValue(int64_t i) : value_(static_cast<double>(i)) { }
+		JsonValue(double d) : value_(d) { }
+		JsonValue(const char* s) : value_(std::string(s)) { }
+		JsonValue(std::string s) : value_(std::move(s)) { }
+		JsonValue(std::string_view s) : value_(std::string(s)) { }
+		JsonValue(JsonArray arr) : value_(std::move(arr)) { }
+		JsonValue(JsonObject obj) : value_(std::move(obj)) { }
 
 		// Initializer list constructors
-		JsonValue(std::initializer_list<JsonValue> list) : value_(JsonArray(list)) {}
+		JsonValue(std::initializer_list<JsonValue> list) : value_(JsonArray(list)) { }
 		JsonValue(std::initializer_list<std::pair<const std::string, JsonValue>> list)
-		    : value_(JsonObject(list.begin(), list.end())) {}
+			: value_(JsonObject(list.begin(), list.end()))
+		{
+		}
 
 		// Type checks
 		bool is_null() const { return std::holds_alternative<JsonNull>(value_); }
@@ -82,35 +86,42 @@ namespace coroute {
 		JsonObject& as_object() { return std::get<JsonObject>(value_); }
 
 		// Safe accessors (return optional)
-		std::optional<bool> get_bool() const {
+		std::optional<bool> get_bool() const
+		{
 			if (is_bool()) return as_bool();
 			return std::nullopt;
 		}
-		std::optional<double> get_number() const {
+		std::optional<double> get_number() const
+		{
 			if (is_number()) return as_number();
 			return std::nullopt;
 		}
-		std::optional<std::string_view> get_string() const {
+		std::optional<std::string_view> get_string() const
+		{
 			if (is_string()) return as_string();
 			return std::nullopt;
 		}
 
 		// Object access
-		JsonValue& operator[](const std::string& key) {
-			if (!is_object()) {
-				value_ = JsonObject{};
-			}
+		JsonValue& operator[](const std::string& key)
+		{
+			if (!is_object())
+				{
+					value_ = JsonObject{};
+				}
 			return std::get<JsonObject>(value_)[key];
 		}
 
-		const JsonValue* get(const std::string& key) const {
+		const JsonValue* get(const std::string& key) const
+		{
 			if (!is_object()) return nullptr;
 			auto& obj = std::get<JsonObject>(value_);
 			auto it = obj.find(key);
 			return it != obj.end() ? &it->second : nullptr;
 		}
 
-		bool contains(const std::string& key) const {
+		bool contains(const std::string& key) const
+		{
 			if (!is_object()) return false;
 			return std::get<JsonObject>(value_).count(key) > 0;
 		}
@@ -120,17 +131,20 @@ namespace coroute {
 
 		const JsonValue& operator[](size_t index) const { return std::get<JsonArray>(value_)[index]; }
 
-		size_t size() const {
+		size_t size() const
+		{
 			if (is_array()) return std::get<JsonArray>(value_).size();
 			if (is_object()) return std::get<JsonObject>(value_).size();
 			return 0;
 		}
 
 		// Array operations
-		void push_back(JsonValue val) {
-			if (!is_array()) {
-				value_ = JsonArray{};
-			}
+		void push_back(JsonValue val)
+		{
+			if (!is_array())
+				{
+					value_ = JsonArray{};
+				}
 			std::get<JsonArray>(value_).push_back(std::move(val));
 		}
 
@@ -146,7 +160,8 @@ namespace coroute {
 	// JSON Parsing
 	// ============================================================================
 
-	namespace json {
+	namespace json
+	{
 
 		// Parse JSON string
 		expected<JsonValue, Error> parse(std::string_view json);
@@ -176,7 +191,8 @@ namespace coroute {
 	inline Response json_response(const JsonValue& value) { return Response::ok(value.dump(), "application/json"); }
 
 	// Create JSON response with status
-	inline Response json_response(int status, const JsonValue& value) {
+	inline Response json_response(int status, const JsonValue& value)
+	{
 		Response resp(status, {}, value.dump());
 		resp.set_header("Content-Type", "application/json");
 		resp.set_header("Content-Length", std::to_string(resp.body().size()));
@@ -187,24 +203,28 @@ namespace coroute {
 	// JSON Builder (Fluent API)
 	// ============================================================================
 
-	class JsonBuilder {
+	class JsonBuilder
+	{
 		JsonValue root_;
 
 	public:
-		JsonBuilder() : root_(JsonObject{}) {}
+		JsonBuilder() : root_(JsonObject{}) { }
 
-		JsonBuilder& set(const std::string& key, JsonValue value) {
+		JsonBuilder& set(const std::string& key, JsonValue value)
+		{
 			root_[key] = std::move(value);
 			return *this;
 		}
 
-		JsonBuilder& set(const std::string& key, const char* value) {
+		JsonBuilder& set(const std::string& key, const char* value)
+		{
 			root_[key] = std::string(value);
 			return *this;
 		}
 
 		template <typename T>
-		JsonBuilder& set(const std::string& key, T value) {
+		JsonBuilder& set(const std::string& key, T value)
+		{
 			root_[key] = JsonValue(value);
 			return *this;
 		}

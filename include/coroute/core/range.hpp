@@ -9,14 +9,16 @@
 #include "coroute/core/request.hpp"
 #include "coroute/core/response.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Range Request Types
 	// ============================================================================
 
 	// A single byte range (start and end are inclusive)
-	struct ByteRange {
+	struct ByteRange
+	{
 		std::optional<int64_t> start;  // nullopt means "from end"
 		std::optional<int64_t> end;    // nullopt means "to end"
 
@@ -38,7 +40,8 @@ namespace coroute {
 	};
 
 	// Parsed Range header
-	struct RangeHeader {
+	struct RangeHeader
+	{
 		std::string unit = "bytes";  // Only "bytes" is supported
 		std::vector<ByteRange> ranges;
 
@@ -53,7 +56,8 @@ namespace coroute {
 	// Range Parsing
 	// ============================================================================
 
-	namespace range {
+	namespace range
+	{
 
 		// Parse Range header value
 		// Returns nullopt if header is malformed or not a byte range
@@ -81,7 +85,8 @@ namespace coroute {
 	// Range Response Builder
 	// ============================================================================
 
-	class RangeResponseBuilder {
+	class RangeResponseBuilder
+	{
 	public:
 		// Set the full content and its metadata
 		RangeResponseBuilder& content(std::string data, std::string content_type);

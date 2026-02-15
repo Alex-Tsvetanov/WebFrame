@@ -7,7 +7,8 @@
 
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// ViewExecutionContext - Minimal, platform-agnostic
@@ -16,7 +17,8 @@ namespace coroute {
 	/// Minimal execution context for views.
 	/// Contains ONLY framework-owned metadata, no user-defined types.
 	/// This is intentionally minimal—views should fetch data via app.fetch().
-	struct ViewExecutionContext {
+	struct ViewExecutionContext
+	{
 		/// Route pattern that matched (e.g., "/user/{id}").
 		std::string_view route;
 
@@ -47,7 +49,8 @@ namespace coroute {
 	// ViewMiddlewareChain - Execute middleware in order
 	// ============================================================================
 
-	class ViewMiddlewareChain {
+	class ViewMiddlewareChain
+	{
 	public:
 		void add(ViewMiddleware mw) { middleware_.push_back(std::move(mw)); }
 
@@ -55,10 +58,12 @@ namespace coroute {
 		size_t size() const noexcept { return middleware_.size(); }
 
 		/// Execute all middleware in registration order.
-		Task<void> execute(ViewExecutionContext& ctx) const {
-			for (const auto& mw : middleware_) {
-				co_await mw(ctx);
-			}
+		Task<void> execute(ViewExecutionContext& ctx) const
+		{
+			for (const auto& mw : middleware_)
+				{
+					co_await mw(ctx);
+				}
 		}
 
 	private:

@@ -8,13 +8,15 @@
 #include <optional>
 #include <filesystem>
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// File Response Info (for zero-copy file serving)
 	// ============================================================================
 
-	struct FileResponseInfo {
+	struct FileResponseInfo
+	{
 		std::filesystem::path path;
 		size_t offset = 0;
 		size_t length = 0;  // 0 = entire file from offset
@@ -24,7 +26,8 @@ namespace coroute {
 	// Response
 	// ============================================================================
 
-	class Response {
+	class Response
+	{
 	public:
 		using Header = std::pair<std::string, std::string>;
 		using Headers = std::vector<Header>;
@@ -40,8 +43,12 @@ namespace coroute {
 		Response() = default;
 
 		Response(int status, Headers headers, std::string body)
-		    : status_(status), status_text_(default_status_text(status)), headers_(std::move(headers)),
-		      body_(std::move(body)) {}
+			: status_(status),
+			  status_text_(default_status_text(status)),
+			  headers_(std::move(headers)),
+			  body_(std::move(body))
+		{
+		}
 
 		// Accessors
 		int status() const noexcept { return status_; }
@@ -50,21 +57,25 @@ namespace coroute {
 		std::string_view body() const noexcept { return body_; }
 
 		// Mutators
-		void set_header(std::string key, std::string value) {
+		void set_header(std::string key, std::string value)
+		{
 			// Check if header already exists, update if so
-			for (auto& [k, v] : headers_) {
-				if (k == key) {
-					v = std::move(value);
-					return;
+			for (auto& [k, v] : headers_)
+				{
+					if (k == key)
+						{
+							v = std::move(value);
+							return;
+						}
 				}
-			}
 			headers_.emplace_back(std::move(key), std::move(value));
 		}
 
 		// Add header (allows duplicates, needed for Set-Cookie)
 		void add_header(std::string key, std::string value) { headers_.emplace_back(std::move(key), std::move(value)); }
 
-		void set_status(int status) {
+		void set_status(int status)
+		{
 			status_ = status;
 			status_text_ = default_status_text(status);
 		}
@@ -78,15 +89,17 @@ namespace coroute {
 		std::string serialize_headers() const;
 
 		// Static factory methods
-		static Response ok(std::string body = "", std::string content_type = "text/plain") {
+		static Response ok(std::string body = "", std::string content_type = "text/plain")
+		{
 			Response r;
 			r.status_ = 200;
 			r.status_text_ = "OK";
 			r.body_ = std::move(body);
-			if (!r.body_.empty()) {
-				r.headers_.emplace_back("Content-Type", std::move(content_type));
-				r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
-			}
+			if (!r.body_.empty())
+				{
+					r.headers_.emplace_back("Content-Type", std::move(content_type));
+					r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+				}
 			return r;
 		}
 
@@ -94,7 +107,8 @@ namespace coroute {
 
 		static Response html(std::string body) { return ok(std::move(body), "text/html"); }
 
-		static Response not_found(std::string body = "Not Found") {
+		static Response not_found(std::string body = "Not Found")
+		{
 			Response r;
 			r.status_ = 404;
 			r.status_text_ = "Not Found";
@@ -104,7 +118,8 @@ namespace coroute {
 			return r;
 		}
 
-		static Response bad_request(std::string body = "Bad Request") {
+		static Response bad_request(std::string body = "Bad Request")
+		{
 			Response r;
 			r.status_ = 400;
 			r.status_text_ = "Bad Request";
@@ -114,7 +129,8 @@ namespace coroute {
 			return r;
 		}
 
-		static Response internal_error(std::string body = "Internal Server Error") {
+		static Response internal_error(std::string body = "Internal Server Error")
+		{
 			Response r;
 			r.status_ = 500;
 			r.status_text_ = "Internal Server Error";
@@ -124,7 +140,8 @@ namespace coroute {
 			return r;
 		}
 
-		static Response redirect(std::string location, int status = 302) {
+		static Response redirect(std::string location, int status = 302)
+		{
 			Response r;
 			r.status_ = status;
 			r.status_text_ = default_status_text(status);
@@ -134,7 +151,8 @@ namespace coroute {
 		}
 
 		// Reset for object pooling
-		void reset() {
+		void reset()
+		{
 			status_ = 200;
 			status_text_ = "OK";
 			headers_.clear();
@@ -143,7 +161,8 @@ namespace coroute {
 		}
 
 		// Zero-copy file response
-		void set_file(const std::filesystem::path& path, size_t offset = 0, size_t length = 0) {
+		void set_file(const std::filesystem::path& path, size_t offset = 0, size_t length = 0)
+		{
 			file_info_ = FileResponseInfo{path, offset, length};
 			body_.clear();  // File replaces body
 		}
@@ -153,7 +172,8 @@ namespace coroute {
 
 		// Create a file response (headers only, body sent via zero-copy)
 		static Response file(const std::filesystem::path& path, std::string_view content_type, size_t file_size,
-		                     size_t offset = 0, size_t length = 0) {
+		                     size_t offset = 0, size_t length = 0)
+		{
 			Response r;
 			r.status_ = 200;
 			r.headers_.emplace_back("Content-Type", std::string(content_type));
@@ -171,7 +191,8 @@ namespace coroute {
 	// ResponseBuilder - Mutable, fluent builder
 	// ============================================================================
 
-	class ResponseBuilder {
+	class ResponseBuilder
+	{
 		int status_ = 200;
 		Response::Headers headers_;
 		std::string body_;
@@ -180,46 +201,55 @@ namespace coroute {
 		ResponseBuilder() = default;
 
 		// Fluent setters
-		ResponseBuilder& status(int code) {
+		ResponseBuilder& status(int code)
+		{
 			status_ = code;
 			return *this;
 		}
 
-		ResponseBuilder& header(std::string key, std::string value) {
+		ResponseBuilder& header(std::string key, std::string value)
+		{
 			headers_.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
 
 		ResponseBuilder& content_type(std::string type) { return header("Content-Type", std::move(type)); }
 
-		ResponseBuilder& body(std::string content) {
+		ResponseBuilder& body(std::string content)
+		{
 			body_ = std::move(content);
 			return *this;
 		}
 
-		ResponseBuilder& json_body(std::string content) {
+		ResponseBuilder& json_body(std::string content)
+		{
 			body_ = std::move(content);
 			return content_type("application/json");
 		}
 
-		ResponseBuilder& html_body(std::string content) {
+		ResponseBuilder& html_body(std::string content)
+		{
 			body_ = std::move(content);
 			return content_type("text/html");
 		}
 
 		// Build final response
-		Response build() {
+		Response build()
+		{
 			// Add Content-Length if body is set and not already present
 			bool has_content_length = false;
-			for (const auto& [k, v] : headers_) {
-				if (k == "Content-Length") {
-					has_content_length = true;
-					break;
+			for (const auto& [k, v] : headers_)
+				{
+					if (k == "Content-Length")
+						{
+							has_content_length = true;
+							break;
+						}
 				}
-			}
-			if (!has_content_length && !body_.empty()) {
-				headers_.emplace_back("Content-Length", std::to_string(body_.size()));
-			}
+			if (!has_content_length && !body_.empty())
+				{
+					headers_.emplace_back("Content-Length", std::to_string(body_.size()));
+				}
 
 			return Response(status_, std::move(headers_), std::move(body_));
 		}

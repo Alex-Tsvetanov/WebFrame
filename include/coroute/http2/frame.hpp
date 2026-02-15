@@ -9,13 +9,15 @@
 #include <string_view>
 #include <array>
 
-namespace coroute::http2 {
+namespace coroute::http2
+{
 
 	// ============================================================================
 	// HTTP/2 Frame Types (RFC 7540 Section 6)
 	// ============================================================================
 
-	enum class FrameType : uint8_t {
+	enum class FrameType : uint8_t
+	{
 		Data = 0x0,
 		Headers = 0x1,
 		Priority = 0x2,  // Deprecated, but must handle
@@ -32,7 +34,8 @@ namespace coroute::http2 {
 	// HTTP/2 Frame Flags
 	// ============================================================================
 
-	namespace FrameFlags {
+	namespace FrameFlags
+	{
 		// DATA frame flags
 		constexpr uint8_t EndStream = 0x01;
 		constexpr uint8_t Padded = 0x08;
@@ -56,7 +59,8 @@ namespace coroute::http2 {
 	// HTTP/2 Error Codes (RFC 7540 Section 7)
 	// ============================================================================
 
-	enum class ErrorCode : uint32_t {
+	enum class ErrorCode : uint32_t
+	{
 		NoError = 0x0,
 		ProtocolError = 0x1,
 		InternalError = 0x2,
@@ -77,7 +81,8 @@ namespace coroute::http2 {
 	// HTTP/2 Settings Parameters (RFC 7540 Section 6.5.2)
 	// ============================================================================
 
-	enum class SettingsId : uint16_t {
+	enum class SettingsId : uint16_t
+	{
 		HeaderTableSize = 0x1,
 		EnablePush = 0x2,
 		MaxConcurrentStreams = 0x3,
@@ -90,7 +95,8 @@ namespace coroute::http2 {
 	// HTTP/2 Frame Header (9 bytes)
 	// ============================================================================
 
-	struct FrameHeader {
+	struct FrameHeader
+	{
 		uint32_t length;     // 24 bits - payload length
 		FrameType type;      // 8 bits
 		uint8_t flags;       // 8 bits
@@ -114,7 +120,8 @@ namespace coroute::http2 {
 	// Settings Entry
 	// ============================================================================
 
-	struct SettingsEntry {
+	struct SettingsEntry
+	{
 		SettingsId id;
 		uint32_t value;
 	};
@@ -123,7 +130,8 @@ namespace coroute::http2 {
 	// Frame Constants
 	// ============================================================================
 
-	namespace Constants {
+	namespace Constants
+	{
 		// Frame header size
 		constexpr size_t FrameHeaderSize = 9;
 

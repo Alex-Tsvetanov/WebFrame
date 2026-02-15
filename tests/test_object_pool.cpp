@@ -5,23 +5,27 @@
 
 using namespace coroute;
 
-TEST_CASE("ObjectPool basic operations", "[pool]") {
+TEST_CASE("ObjectPool basic operations", "[pool]")
+{
 	ObjectPool<int> pool(10);
 
-	SECTION("Acquire creates new object when pool is empty") {
+	SECTION("Acquire creates new object when pool is empty")
+	{
 		auto obj = pool.acquire();
 		REQUIRE(obj != nullptr);
 		CHECK(pool.size() == 0);
 	}
 
-	SECTION("Release returns object to pool") {
+	SECTION("Release returns object to pool")
+	{
 		auto obj = pool.acquire();
 		*obj = 42;
 		pool.release(std::move(obj));
 		CHECK(pool.size() == 1);
 	}
 
-	SECTION("Acquire reuses released object") {
+	SECTION("Acquire reuses released object")
+	{
 		auto obj1 = pool.acquire();
 		*obj1 = 42;
 		pool.release(std::move(obj1));
@@ -32,7 +36,8 @@ TEST_CASE("ObjectPool basic operations", "[pool]") {
 		CHECK(pool.size() == 0);
 	}
 
-	SECTION("Pool respects max size") {
+	SECTION("Pool respects max size")
+	{
 		ObjectPool<int> small_pool(2);
 
 		auto obj1 = small_pool.acquire();
@@ -47,10 +52,12 @@ TEST_CASE("ObjectPool basic operations", "[pool]") {
 	}
 }
 
-TEST_CASE("ObjectPool with reset function", "[pool]") {
+TEST_CASE("ObjectPool with reset function", "[pool]")
+{
 	ObjectPool<std::string> pool(10, [](std::string& s) { s.clear(); });
 
-	SECTION("Reset function is called on release") {
+	SECTION("Reset function is called on release")
+	{
 		auto obj = pool.acquire();
 		*obj = "hello";
 		pool.release(std::move(obj));
@@ -60,16 +67,19 @@ TEST_CASE("ObjectPool with reset function", "[pool]") {
 	}
 }
 
-TEST_CASE("ObjectPool reserve", "[pool]") {
+TEST_CASE("ObjectPool reserve", "[pool]")
+{
 	ObjectPool<int> pool(100);
 	pool.reserve(10);
 	CHECK(pool.size() == 10);
 }
 
-TEST_CASE("PooledObject RAII", "[pool]") {
+TEST_CASE("PooledObject RAII", "[pool]")
+{
 	ObjectPool<int> pool(10);
 
-	SECTION("Object returned to pool on destruction") {
+	SECTION("Object returned to pool on destruction")
+	{
 		{
 			auto obj = pool.acquire();
 			PooledObject<int> pooled(std::move(obj), &pool);
@@ -78,7 +88,8 @@ TEST_CASE("PooledObject RAII", "[pool]") {
 		CHECK(pool.size() == 1);
 	}
 
-	SECTION("Release prevents return to pool") {
+	SECTION("Release prevents return to pool")
+	{
 		{
 			auto obj = pool.acquire();
 			PooledObject<int> pooled(std::move(obj), &pool);
@@ -88,7 +99,8 @@ TEST_CASE("PooledObject RAII", "[pool]") {
 		CHECK(pool.size() == 0);  // Not returned
 	}
 
-	SECTION("Move semantics work correctly") {
+	SECTION("Move semantics work correctly")
+	{
 		PooledObject<int> pooled1(pool.acquire(), &pool);
 		*pooled1 = 42;
 
@@ -98,20 +110,24 @@ TEST_CASE("PooledObject RAII", "[pool]") {
 	}
 }
 
-TEST_CASE("BufferPool", "[pool]") {
+TEST_CASE("BufferPool", "[pool]")
+{
 	BufferPool pool(4096, 10);
 
-	SECTION("Acquire returns buffer with reserved capacity") {
+	SECTION("Acquire returns buffer with reserved capacity")
+	{
 		auto buf = pool.acquire();
 		CHECK(buf->capacity() >= 4096);
 	}
 
-	SECTION("Acquire with size returns larger buffer") {
+	SECTION("Acquire with size returns larger buffer")
+	{
 		auto buf = pool.acquire(8192);
 		CHECK(buf->capacity() >= 8192);
 	}
 
-	SECTION("Released buffers are cleared") {
+	SECTION("Released buffers are cleared")
+	{
 		auto buf = pool.acquire();
 		buf->resize(100, 'x');
 		pool.release(std::move(buf));
@@ -121,7 +137,8 @@ TEST_CASE("BufferPool", "[pool]") {
 	}
 }
 
-TEST_CASE("Request reset", "[pool]") {
+TEST_CASE("Request reset", "[pool]")
+{
 	Request req;
 	req.set_method(HttpMethod::POST);
 	req.set_path("/test");
@@ -137,7 +154,8 @@ TEST_CASE("Request reset", "[pool]") {
 	CHECK(req.headers().empty());
 }
 
-TEST_CASE("Response reset", "[pool]") {
+TEST_CASE("Response reset", "[pool]")
+{
 	Response resp = Response::ok("hello", "text/plain");
 
 	resp.reset();
@@ -147,7 +165,8 @@ TEST_CASE("Response reset", "[pool]") {
 	CHECK(resp.headers().empty());
 }
 
-TEST_CASE("Request/Response pool integration", "[pool]") {
+TEST_CASE("Request/Response pool integration", "[pool]")
+{
 	ObjectPool<Request> req_pool(10, [](Request& r) { r.reset(); });
 	ObjectPool<Response> resp_pool(10, [](Response& r) { r.reset(); });
 

@@ -11,13 +11,26 @@
 #include "coroute/util/expected.hpp"
 #include "coroute/util/from_string.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// HTTP Method
 	// ============================================================================
 
-	enum class HttpMethod { GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, CONNECT, TRACE, UNKNOWN };
+	enum class HttpMethod
+	{
+		GET,
+		POST,
+		PUT,
+		DELETE,
+		PATCH,
+		HEAD,
+		OPTIONS,
+		CONNECT,
+		TRACE,
+		UNKNOWN
+	};
 
 	HttpMethod parse_method(std::string_view method) noexcept;
 	std::string_view method_to_string(HttpMethod method) noexcept;
@@ -26,7 +39,8 @@ namespace coroute {
 	// Request
 	// ============================================================================
 
-	class Request {
+	class Request
+	{
 	public:
 		using Headers = std::unordered_map<std::string, std::string>;
 		using QueryParams = std::unordered_map<std::string, std::string>;
@@ -78,67 +92,81 @@ namespace coroute {
 
 		// Get route parameter by index (0-based, positional)
 		template <typename T = std::string>
-		expected<T, Error> param(size_t index) const {
-			if (index >= route_params_.size()) {
-				return unexpected(
-				    Error::http(HttpError::BadRequest, "Route parameter index out of range: " + std::to_string(index)));
-			}
+		expected<T, Error> param(size_t index) const
+		{
+			if (index >= route_params_.size())
+				{
+					return unexpected(Error::http(HttpError::BadRequest,
+					                              "Route parameter index out of range: " + std::to_string(index)));
+				}
 			return from_string<T>(route_params_[index]);
 		}
 
 		// Get header value
-		std::optional<std::string_view> header(std::string_view key) const {
+		std::optional<std::string_view> header(std::string_view key) const
+		{
 			// Case-insensitive lookup would be better, but keeping simple for now
 			auto it = headers_.find(std::string(key));
-			if (it != headers_.end()) {
-				return it->second;
-			}
+			if (it != headers_.end())
+				{
+					return it->second;
+				}
 			return std::nullopt;
 		}
 
 		// Get query parameter
 		template <typename T = std::string>
-		expected<T, Error> query(std::string_view key) const {
+		expected<T, Error> query(std::string_view key) const
+		{
 			auto it = query_params_.find(std::string(key));
-			if (it == query_params_.end()) {
-				return unexpected(Error::http(HttpError::BadRequest, "Missing query parameter: " + std::string(key)));
-			}
+			if (it == query_params_.end())
+				{
+					return unexpected(
+						Error::http(HttpError::BadRequest, "Missing query parameter: " + std::string(key)));
+				}
 			return from_string<T>(it->second);
 		}
 
 		// Get optional query parameter
 		template <typename T = std::string>
-		std::optional<T> query_opt(std::string_view key) const {
+		std::optional<T> query_opt(std::string_view key) const
+		{
 			auto it = query_params_.find(std::string(key));
-			if (it == query_params_.end()) {
-				return std::nullopt;
-			}
+			if (it == query_params_.end())
+				{
+					return std::nullopt;
+				}
 			auto result = from_string<T>(it->second);
-			if (result) {
-				return std::move(*result);
-			}
+			if (result)
+				{
+					return std::move(*result);
+				}
 			return std::nullopt;
 		}
 
 		// Check if connection should be kept alive
-		bool keep_alive() const noexcept {
+		bool keep_alive() const noexcept
+		{
 			auto conn = header("Connection");
-			if (conn) {
-				// Case-insensitive comparison would be better
-				if (*conn == "close") return false;
-				if (*conn == "keep-alive") return true;
-			}
+			if (conn)
+				{
+					// Case-insensitive comparison would be better
+					if (*conn == "close") return false;
+					if (*conn == "keep-alive") return true;
+				}
 			// HTTP/1.1 defaults to keep-alive
 			return http_version_ == "HTTP/1.1";
 		}
 
 		// Content length
-		std::optional<size_t> content_length() const {
+		std::optional<size_t> content_length() const
+		{
 			auto cl = header("Content-Length");
-			if (cl) {
-				auto result = from_string<size_t>(*cl);
-				if (result) return *result;
-			}
+			if (cl)
+				{
+					auto result = from_string<size_t>(*cl);
+					if (result) return *result;
+				}
 			return std::nullopt;
 		}
 
@@ -147,25 +175,31 @@ namespace coroute {
 
 		// Context storage (for middleware)
 		template <typename T>
-		void set_context(const std::string& key, T value) const {
+		void set_context(const std::string& key, T value) const
+		{
 			context_[key] = std::move(value);
 		}
 
 		template <typename T>
-		std::optional<T> get_context(const std::string& key) const {
+		std::optional<T> get_context(const std::string& key) const
+		{
 			auto it = context_.find(key);
 			if (it == context_.end()) return std::nullopt;
-			try {
-				return std::any_cast<T>(it->second);
-			} catch (const std::bad_any_cast&) {
-				return std::nullopt;
-			}
+			try
+				{
+					return std::any_cast<T>(it->second);
+				}
+			catch (const std::bad_any_cast&)
+				{
+					return std::nullopt;
+				}
 		}
 
 		bool has_context(const std::string& key) const { return context_.count(key) > 0; }
 
 		// Reset for object pooling
-		void reset() {
+		void reset()
+		{
 			method_ = HttpMethod::GET;
 			path_.clear();
 			query_string_.clear();

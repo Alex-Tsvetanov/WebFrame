@@ -12,7 +12,8 @@
 #include "coroute/core/response.hpp"
 #include "coroute/coro/task.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// Forward declare middleware types (also defined in app.hpp)
 	using Next = std::function<Task<Response>(Request&)>;
@@ -22,7 +23,8 @@ namespace coroute {
 	// MIME Types
 	// ============================================================================
 
-	class MimeTypes {
+	class MimeTypes
+	{
 	public:
 		// Get MIME type for file extension (without dot)
 		static std::string_view get(std::string_view extension) noexcept;
@@ -41,7 +43,8 @@ namespace coroute {
 	// Static File Options
 	// ============================================================================
 
-	struct StaticFileOptions {
+	struct StaticFileOptions
+	{
 		// Root directory for static files
 		std::filesystem::path root;
 
@@ -86,7 +89,8 @@ namespace coroute {
 	// Static File Server
 	// ============================================================================
 
-	class StaticFileServer {
+	class StaticFileServer
+	{
 	public:
 		explicit StaticFileServer(StaticFileOptions options);
 

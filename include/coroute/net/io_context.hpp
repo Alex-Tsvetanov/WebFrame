@@ -10,7 +10,8 @@
 #include "coroute/coro/task.hpp"
 #include "coroute/coro/cancellation.hpp"
 
-namespace coroute::net {
+namespace coroute::net
+{
 
 	// Forward declarations
 	class Socket;
@@ -23,7 +24,8 @@ namespace coroute::net {
 	// Connection handler callback for multi-accept
 	using ConnectionHandler = std::function<void(std::unique_ptr<Connection>)>;
 
-	class IoContext {
+	class IoContext
+	{
 	public:
 		virtual ~IoContext() = default;
 
@@ -48,7 +50,8 @@ namespace coroute::net {
 		// Enable multi-accept mode (SO_REUSEPORT on Linux)
 		// Each worker thread accepts on its own listener for better scalability
 		// Returns false if not supported or failed
-		virtual bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog = 1024) {
+		virtual bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog = 1024)
+		{
 			(void)port;
 			(void)handler;
 			(void)backlog;
@@ -84,7 +87,8 @@ namespace coroute::net {
 	// Listener - Accepts incoming connections
 	// ============================================================================
 
-	class Listener {
+	class Listener
+	{
 	public:
 		virtual ~Listener() = default;
 
@@ -111,7 +115,8 @@ namespace coroute::net {
 	// Connection - Async read/write on a socket
 	// ============================================================================
 
-	class Connection {
+	class Connection
+	{
 	public:
 		virtual ~Connection() = default;
 

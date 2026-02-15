@@ -10,24 +10,29 @@
 #include "coroute/util/expected.hpp"
 #include "coroute/core/error.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// FromString trait - Convert string to type T
 	// ============================================================================
 
 	template <typename T, typename = void>
-	struct FromString {
+	struct FromString
+	{
 		// Default implementation using operator>>
-		static expected<T, Error> parse(std::string_view s) {
+		static expected<T, Error> parse(std::string_view s)
+		{
 			T value;
 			std::istringstream iss{std::string(s)};
-			if (iss >> value) {
-				// Check that we consumed the entire string
-				if (iss.eof() || (iss >> std::ws).eof()) {
-					return value;
+			if (iss >> value)
+				{
+					// Check that we consumed the entire string
+					if (iss.eof() || (iss >> std::ws).eof())
+						{
+							return value;
+						}
 				}
-			}
 			return unexpected(Error::http(HttpError::BadRequest, "Failed to parse parameter: " + std::string(s)));
 		}
 	};
@@ -37,22 +42,27 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename T>
-	struct FromString<T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>> {
-		static expected<T, Error> parse(std::string_view s) {
-			if (s.empty()) {
-				return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
-			}
+	struct FromString<T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>>>
+	{
+		static expected<T, Error> parse(std::string_view s)
+		{
+			if (s.empty())
+				{
+					return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
+				}
 
 			T value;
 			auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
 
-			if (ec == std::errc{} && ptr == s.data() + s.size()) {
-				return value;
-			}
+			if (ec == std::errc{} && ptr == s.data() + s.size())
+				{
+					return value;
+				}
 
-			if (ec == std::errc::result_out_of_range) {
-				return unexpected(Error::http(HttpError::BadRequest, "Parameter out of range: " + std::string(s)));
-			}
+			if (ec == std::errc::result_out_of_range)
+				{
+					return unexpected(Error::http(HttpError::BadRequest, "Parameter out of range: " + std::string(s)));
+				}
 
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid integer: " + std::string(s)));
 		}
@@ -63,11 +73,14 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename T>
-	struct FromString<T, std::enable_if_t<std::is_floating_point_v<T>>> {
-		static expected<T, Error> parse(std::string_view s) {
-			if (s.empty()) {
-				return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
-			}
+	struct FromString<T, std::enable_if_t<std::is_floating_point_v<T>>>
+	{
+		static expected<T, Error> parse(std::string_view s)
+		{
+			if (s.empty())
+				{
+					return unexpected(Error::http(HttpError::BadRequest, "Empty parameter"));
+				}
 
 			// std::from_chars for floating point may not be available on all compilers
 			// Fall back to stringstream for portability
@@ -75,9 +88,10 @@ namespace coroute {
 			std::istringstream iss{std::string(s)};
 			iss >> value;
 
-			if (!iss.fail() && (iss.eof() || (iss >> std::ws).eof())) {
-				return value;
-			}
+			if (!iss.fail() && (iss.eof() || (iss >> std::ws).eof()))
+				{
+					return value;
+				}
 
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid number: " + std::string(s)));
 		}
@@ -88,14 +102,18 @@ namespace coroute {
 	// ============================================================================
 
 	template <>
-	struct FromString<bool> {
-		static expected<bool, Error> parse(std::string_view s) {
-			if (s == "true" || s == "1" || s == "yes" || s == "on") {
-				return true;
-			}
-			if (s == "false" || s == "0" || s == "no" || s == "off") {
-				return false;
-			}
+	struct FromString<bool>
+	{
+		static expected<bool, Error> parse(std::string_view s)
+		{
+			if (s == "true" || s == "1" || s == "yes" || s == "on")
+				{
+					return true;
+				}
+			if (s == "false" || s == "0" || s == "no" || s == "off")
+				{
+					return false;
+				}
 			return unexpected(Error::http(HttpError::BadRequest, "Invalid boolean: " + std::string(s)));
 		}
 	};
@@ -105,7 +123,8 @@ namespace coroute {
 	// ============================================================================
 
 	template <>
-	struct FromString<std::string> {
+	struct FromString<std::string>
+	{
 		static expected<std::string, Error> parse(std::string_view s) { return std::string(s); }
 	};
 
@@ -114,7 +133,8 @@ namespace coroute {
 	// ============================================================================
 
 	template <>
-	struct FromString<std::string_view> {
+	struct FromString<std::string_view>
+	{
 		static expected<std::string_view, Error> parse(std::string_view s) { return s; }
 	};
 
@@ -123,15 +143,19 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename T>
-	struct FromString<std::optional<T>> {
-		static expected<std::optional<T>, Error> parse(std::string_view s) {
-			if (s.empty()) {
-				return std::optional<T>{std::nullopt};
-			}
+	struct FromString<std::optional<T>>
+	{
+		static expected<std::optional<T>, Error> parse(std::string_view s)
+		{
+			if (s.empty())
+				{
+					return std::optional<T>{std::nullopt};
+				}
 			auto result = FromString<T>::parse(s);
-			if (result) {
-				return std::optional<T>{std::move(*result)};
-			}
+			if (result)
+				{
+					return std::optional<T>{std::move(*result)};
+				}
 			return unexpected(result.error());
 		}
 	};
@@ -141,7 +165,8 @@ namespace coroute {
 	// ============================================================================
 
 	template <typename T>
-	expected<T, Error> from_string(std::string_view s) {
+	expected<T, Error> from_string(std::string_view s)
+	{
 		return FromString<T>::parse(s);
 	}
 

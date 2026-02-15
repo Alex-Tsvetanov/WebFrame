@@ -12,13 +12,15 @@
 #include "coroute/coro/task.hpp"
 #include "coroute/net/io_context.hpp"
 
-namespace coroute {
+namespace coroute
+{
 
 	// ============================================================================
 	// Chunked Encoding Utilities
 	// ============================================================================
 
-	namespace chunked {
+	namespace chunked
+	{
 
 		// Encode a single chunk (data -> "size\r\ndata\r\n")
 		std::string encode_chunk(std::string_view data);
@@ -38,7 +40,8 @@ namespace coroute {
 	// ChunkedResponse - For streaming responses without known Content-Length
 	// ============================================================================
 
-	class ChunkedResponse {
+	class ChunkedResponse
+	{
 	public:
 		using Header = std::pair<std::string, std::string>;
 		using Headers = std::vector<Header>;
@@ -55,18 +58,20 @@ namespace coroute {
 
 	public:
 		ChunkedResponse() = default;
-		explicit ChunkedResponse(net::Connection* conn) : conn_(conn) {}
+		explicit ChunkedResponse(net::Connection* conn) : conn_(conn) { }
 
 		// Set connection (must be called before writing)
 		void set_connection(net::Connection* conn) { conn_ = conn; }
 
 		// Status and headers (must be set before first write)
-		ChunkedResponse& status(int code) {
+		ChunkedResponse& status(int code)
+		{
 			status_ = code;
 			return *this;
 		}
 
-		ChunkedResponse& header(std::string key, std::string value) {
+		ChunkedResponse& header(std::string key, std::string value)
+		{
 			headers_.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
@@ -74,7 +79,8 @@ namespace coroute {
 		ChunkedResponse& content_type(std::string type) { return header("Content-Type", std::move(type)); }
 
 		// Add a trailer (sent after all chunks)
-		ChunkedResponse& trailer(std::string key, std::string value) {
+		ChunkedResponse& trailer(std::string key, std::string value)
+		{
 			trailers_.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
@@ -107,9 +113,10 @@ namespace coroute {
 	// ChunkedBodyReader - For reading chunked request bodies
 	// ============================================================================
 
-	class ChunkedBodyReader {
+	class ChunkedBodyReader
+	{
 	public:
-		explicit ChunkedBodyReader(net::Connection* conn) : conn_(conn) {}
+		explicit ChunkedBodyReader(net::Connection* conn) : conn_(conn) { }
 
 		// Read the entire chunked body into a string
 		// Use this for small bodies where you want all data at once
