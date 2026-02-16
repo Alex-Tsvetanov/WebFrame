@@ -241,7 +241,7 @@ jobs:
           version: '18'
           database: 'build'
           thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
-          ignore: 'external|build|_deps'
+          ignore: 'external|build|_deps|lib|benchmark|doc'
           files-changed-only: false
           lines-changed-only: false
           extra-args: '-std=c++20'

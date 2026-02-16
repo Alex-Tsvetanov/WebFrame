@@ -10,4 +10,3 @@
 	path = tests/Catch2
 	url = https://github.com/catchorg/Catch2
 	branch = v3.5.2
-
