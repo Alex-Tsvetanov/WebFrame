@@ -12,6 +12,9 @@
 
 #if defined(COROUTE_PLATFORM_WINDOWS)
 
+#include <chrono>
+#include <condition_variable>
+#include <functional>
 #include <thread>
 #include <vector>
 #include <queue>
@@ -85,6 +88,10 @@ namespace coroute::net
 		std::condition_variable timer_cv_;
 		std::priority_queue<TimerEntry, std::vector<TimerEntry>, std::greater<TimerEntry>> timers_;
 		std::thread timer_thread_;
+
+		// Posted callbacks
+		std::mutex callback_mutex_;
+		std::queue<std::function<void()>> callbacks_;
 
 	public:
 		explicit IocpContext(size_t thread_count) : thread_count_(thread_count)
