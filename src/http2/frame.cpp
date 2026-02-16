@@ -145,7 +145,7 @@ namespace coroute::http2
 		result.push_back(static_cast<uint8_t>(last_stream_id & 0xFF));
 
 		// Error code (32 bits, big-endian)
-		uint32_t error = static_cast<uint32_t>(error_code);
+		auto error = static_cast<uint32_t>(error_code);
 		result.push_back(static_cast<uint8_t>(error >> 24));
 		result.push_back(static_cast<uint8_t>((error >> 16) & 0xFF));
 		result.push_back(static_cast<uint8_t>((error >> 8) & 0xFF));
@@ -195,7 +195,7 @@ namespace coroute::http2
 		result.insert(result.end(), header_bytes.begin(), header_bytes.end());
 
 		// Error code (32 bits, big-endian)
-		uint32_t error = static_cast<uint32_t>(error_code);
+		auto error = static_cast<uint32_t>(error_code);
 		result.push_back(static_cast<uint8_t>(error >> 24));
 		result.push_back(static_cast<uint8_t>((error >> 16) & 0xFF));
 		result.push_back(static_cast<uint8_t>((error >> 8) & 0xFF));

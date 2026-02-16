@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstring>
-#include <random>
 #include <cctype>
 
 // Use OpenSSL for SHA-1 and Base64 (available on all platforms)
@@ -37,15 +36,15 @@ namespace coroute::net
 			BIO_write(b64, data, static_cast<int>(len));
 			BIO_flush(b64);
 
-			BUF_MEM* bufPtr;
-			BIO_get_mem_ptr(b64, &bufPtr);
-			std::string result(bufPtr->data, bufPtr->length);
+			BUF_MEM* buf_ptr = nullptr;
+			BIO_get_mem_ptr(b64, &buf_ptr);
+			std::string result(buf_ptr->data, buf_ptr->length);
 			BIO_free_all(b64);
 			return result;
 		}
 
 		// WebSocket magic GUID (RFC 6455)
-		constexpr std::string_view WS_MAGIC_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+		constexpr std::string_view ws_magic_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 	}  // anonymous namespace
 
@@ -86,9 +85,9 @@ namespace coroute::net
 	{
 		// Concatenate client key with magic GUID
 		std::string combined;
-		combined.reserve(client_key.size() + WS_MAGIC_GUID.size());
+		combined.reserve(client_key.size() + ws_magic_guid.size());
 		combined.append(client_key);
-		combined.append(WS_MAGIC_GUID);
+		combined.append(ws_magic_guid);
 
 		// SHA-1 hash
 		auto hash = sha1(combined.data(), combined.size());
@@ -211,7 +210,7 @@ namespace coroute::net
 		{
 			std::vector<uint8_t> result;
 
-			uint8_t byte0 = static_cast<uint8_t>(header.opcode);
+			auto byte0 = static_cast<uint8_t>(header.opcode);
 			if (header.fin) byte0 |= 0x80;
 			if (header.rsv1) byte0 |= 0x40;
 			if (header.rsv2) byte0 |= 0x20;
@@ -254,7 +253,7 @@ namespace coroute::net
 		{
 			for (size_t i = 0; i < len; ++i)
 			{
-				data[i] ^= mask[i % 4];
+				data[i] ^= mask[i % 4];  // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
 			}
 		}
 
@@ -271,12 +270,12 @@ namespace coroute::net
 		std::vector<uint8_t> fragment_buffer_;
 		WebSocketOpcode fragment_opcode_ = WebSocketOpcode::Text;
 		bool is_open_ = true;
-		size_t max_message_size_ = 16 * 1024 * 1024;
+		size_t max_message_size_ = 16ULL * 1024 * 1024;
 
 	public:
 		explicit WebSocketConnectionImpl(std::unique_ptr<Connection> conn) : conn_(std::move(conn))
 		{
-			read_buffer_.reserve(64 * 1024);
+			read_buffer_.reserve(64ULL * 1024);
 		}
 
 		Task<expected<WebSocketMessage, Error>> receive() override
@@ -329,12 +328,14 @@ namespace coroute::net
 								code = static_cast<WebSocketCloseCode>((payload[0] << 8) | payload[1]);
 								if (payload.size() > 2)
 								{
-									reason = std::string_view(reinterpret_cast<const char*>(payload.data() + 2),
-									                          payload.size() - 2);
+									reason = std::string_view(
+										reinterpret_cast<const char*>(
+											payload.data() + 2),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+										payload.size() - 2);
 								}
 							}
 							co_await send_close_frame(code, reason);
-							co_return WebSocketMessage{WebSocketOpcode::Close, std::move(payload)};
+							co_return WebSocketMessage{.opcode = WebSocketOpcode::Close, .data = std::move(payload)};
 						}
 
 						// Handle data frames
@@ -352,7 +353,7 @@ namespace coroute::net
 							if (header.fin)
 							{
 								// Final fragment
-								WebSocketMessage msg{fragment_opcode_, std::move(fragment_buffer_)};
+								WebSocketMessage msg{.opcode = fragment_opcode_, .data = std::move(fragment_buffer_)};
 								fragment_buffer_.clear();
 								co_return msg;
 							}
@@ -370,7 +371,7 @@ namespace coroute::net
 							if (header.fin)
 							{
 								// Complete message in single frame
-								co_return WebSocketMessage{header.opcode, std::move(payload)};
+								co_return WebSocketMessage{.opcode = header.opcode, .data = std::move(payload)};
 							}
 							else
 							{
@@ -406,8 +407,10 @@ namespace coroute::net
 
 		Task<expected<void, Error>> send_text(std::string_view text) override
 		{
-			co_return co_await send_frame(WebSocketOpcode::Text, reinterpret_cast<const uint8_t*>(text.data()),
-			                              text.size());
+			co_return co_await send_frame(
+				WebSocketOpcode::Text,
+				reinterpret_cast<const uint8_t*>(text.data()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				text.size());
 		}
 
 		Task<expected<void, Error>> send_binary(std::span<const uint8_t> data) override
@@ -435,11 +438,11 @@ namespace coroute::net
 			co_return co_await send_close_frame(code, reason);
 		}
 
-		bool is_open() const override { return is_open_; }
+		[[nodiscard]] bool is_open() const override { return is_open_; }
 
-		std::string remote_address() const override { return conn_->remote_address(); }
+		[[nodiscard]] std::string remote_address() const override { return conn_->remote_address(); }
 
-		uint16_t remote_port() const override { return conn_->remote_port(); }
+		[[nodiscard]] uint16_t remote_port() const override { return conn_->remote_port(); }
 
 	private:
 		Task<expected<void, Error>> send_frame(WebSocketOpcode opcode, const uint8_t* data, size_t len)
@@ -482,7 +485,7 @@ namespace coroute::net
 	// ============================================================================
 
 	Task<expected<std::unique_ptr<WebSocketConnection>, Error>> upgrade_to_websocket(std::unique_ptr<Connection> conn,
-	                                                                                 const Request& req)
+	                                                                                 Request req)
 	{
 		if (!is_websocket_upgrade(req))
 		{

@@ -8,7 +8,6 @@
 typedef SSIZE_T ssize_t;
 #endif
 #include <nghttp2/nghttp2.h>
-#include <algorithm>
 #include <cctype>
 
 namespace coroute::http2
@@ -61,8 +60,10 @@ namespace coroute::http2
 		for (const auto& h : headers)
 		{
 			nghttp2_nv nv;
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, cppcoreguidelines-pro-type-const-cast)
 			nv.name = reinterpret_cast<uint8_t*>(const_cast<char*>(h.name.data()));
 			nv.namelen = h.name.size();
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast, cppcoreguidelines-pro-type-const-cast)
 			nv.value = reinterpret_cast<uint8_t*>(const_cast<char*>(h.value.data()));
 			nv.valuelen = h.value.size();
 			nv.flags = NGHTTP2_NV_FLAG_NONE;
@@ -169,7 +170,9 @@ namespace coroute::http2
 
 			if (inflate_flags & NGHTTP2_HD_INFLATE_EMIT)
 			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 				result.push_back({std::string(reinterpret_cast<const char*>(nv.name), nv.namelen),
+				                  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 				                  std::string(reinterpret_cast<const char*>(nv.value), nv.valuelen)});
 			}
 
@@ -238,31 +241,31 @@ namespace coroute::http2
 
 	std::string_view get_method(std::span<const Header> headers)
 	{
-		auto* h = find_header(headers, ":method");
+		const auto* h = find_header(headers, ":method");
 		return h ? std::string_view(h->value) : std::string_view{};
 	}
 
 	std::string_view get_scheme(std::span<const Header> headers)
 	{
-		auto* h = find_header(headers, ":scheme");
+		const auto* h = find_header(headers, ":scheme");
 		return h ? std::string_view(h->value) : std::string_view{};
 	}
 
 	std::string_view get_authority(std::span<const Header> headers)
 	{
-		auto* h = find_header(headers, ":authority");
+		const auto* h = find_header(headers, ":authority");
 		return h ? std::string_view(h->value) : std::string_view{};
 	}
 
 	std::string_view get_path(std::span<const Header> headers)
 	{
-		auto* h = find_header(headers, ":path");
+		const auto* h = find_header(headers, ":path");
 		return h ? std::string_view(h->value) : std::string_view{};
 	}
 
 	std::string_view get_status(std::span<const Header> headers)
 	{
-		auto* h = find_header(headers, ":status");
+		const auto* h = find_header(headers, ":status");
 		return h ? std::string_view(h->value) : std::string_view{};
 	}
 
@@ -285,11 +288,17 @@ namespace coroute::http2
 					return false;
 				}
 				if (h.name == ":method")
+				{
 					has_method = true;
+				}
 				else if (h.name == ":scheme")
+				{
 					has_scheme = true;
+				}
 				else if (h.name == ":path")
+				{
 					has_path = true;
+				}
 				else if (h.name == ":authority")
 				{ /* optional */
 				}
@@ -331,7 +340,9 @@ namespace coroute::http2
 					return false;
 				}
 				if (h.name == ":status")
+				{
 					has_status = true;
+				}
 				else
 				{
 					// Only :status is allowed in responses

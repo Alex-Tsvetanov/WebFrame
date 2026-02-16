@@ -24,17 +24,29 @@ namespace coroute::http2
 			for (unsigned char c : input)
 			{
 				if (c >= 'A' && c <= 'Z')
+				{
 					val = (val << 6) | (c - 'A');
+				}
 				else if (c >= 'a' && c <= 'z')
+				{
 					val = (val << 6) | (c - 'a' + 26);
+				}
 				else if (c >= '0' && c <= '9')
+				{
 					val = (val << 6) | (c - '0' + 52);
+				}
 				else if (c == '-' || c == '+')
+				{
 					val = (val << 6) | 62;
+				}
 				else if (c == '_' || c == '/')
+				{
 					val = (val << 6) | 63;
+				}
 				else
+				{
 					continue;  // Skip invalid characters (like padding '=')
+				}
 
 				valb += 6;
 				if (valb >= 0)
@@ -85,7 +97,7 @@ namespace coroute::http2
 		  local_window_size_(Constants::DefaultInitialWindowSize),
 		  remote_window_size_(Constants::DefaultInitialWindowSize)
 	{
-		read_buffer_.reserve(64 * 1024);
+		read_buffer_.reserve(64ULL * 1024);
 	}
 
 	Http2Connection::~Http2Connection() { is_open_.store(false, std::memory_order_relaxed); }
@@ -202,11 +214,11 @@ namespace coroute::http2
 	{
 		// Server sends SETTINGS frame as preface
 		std::vector<SettingsEntry> settings = {
-			{SettingsId::MaxConcurrentStreams, local_settings_.max_concurrent_streams},
-			{   SettingsId::InitialWindowSize,    local_settings_.initial_window_size},
-			{        SettingsId::MaxFrameSize,         local_settings_.max_frame_size},
-			{   SettingsId::MaxHeaderListSize,   local_settings_.max_header_list_size},
-			{          SettingsId::EnablePush,									  0}, // We don't support server push
+			{.id = SettingsId::MaxConcurrentStreams, .value = local_settings_.max_concurrent_streams},
+			{   .id = SettingsId::InitialWindowSize,    .value = local_settings_.initial_window_size},
+			{        .id = SettingsId::MaxFrameSize,         .value = local_settings_.max_frame_size},
+			{   .id = SettingsId::MaxHeaderListSize,   .value = local_settings_.max_header_list_size},
+			{          .id = SettingsId::EnablePush,                                      .value = 0}, // We don't support server push
 		};
 
 		auto frame = serialize_settings_frame(settings, false);
@@ -250,8 +262,7 @@ namespace coroute::http2
 	// Frame Processing
 	// ============================================================================
 
-	Task<expected<void, Error>> Http2Connection::process_frame(const FrameHeader& header,
-	                                                           std::span<const uint8_t> payload)
+	Task<expected<void, Error>> Http2Connection::process_frame(FrameHeader header, std::span<const uint8_t> payload)
 	{
 		switch (header.type)
 		{
@@ -296,7 +307,7 @@ namespace coroute::http2
 		}
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_data_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_data_frame(FrameHeader header,
 	                                                                std::span<const uint8_t> payload)
 	{
 		if (header.stream_id == 0)
@@ -352,7 +363,7 @@ namespace coroute::http2
 		co_return expected<void, Error>{};
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_headers_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_headers_frame(FrameHeader header,
 	                                                                   std::span<const uint8_t> payload)
 	{
 		if (header.stream_id == 0)
@@ -565,7 +576,7 @@ namespace coroute::http2
 		co_return expected<void, Error>{};
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_settings_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_settings_frame(FrameHeader header,
 	                                                                    std::span<const uint8_t> payload)
 	{
 		if (header.stream_id != 0)
@@ -595,10 +606,9 @@ namespace coroute::http2
 
 		for (size_t i = 0; i < payload.size(); i += 6)
 		{
-			uint16_t id = (static_cast<uint16_t>(payload[i]) << 8) | payload[i + 1];
-			uint32_t value = (static_cast<uint32_t>(payload[i + 2]) << 24) |
-			                 (static_cast<uint32_t>(payload[i + 3]) << 16) |
-			                 (static_cast<uint32_t>(payload[i + 4]) << 8) | static_cast<uint32_t>(payload[i + 5]);
+			auto id = static_cast<uint16_t>((static_cast<uint16_t>(payload[i]) << 8) | payload[i + 1]);
+			auto value = (static_cast<uint32_t>(payload[i + 2]) << 24) | (static_cast<uint32_t>(payload[i + 3]) << 16) |
+			             (static_cast<uint32_t>(payload[i + 4]) << 8) | static_cast<uint32_t>(payload[i + 5]);
 
 			// Validate settings
 			switch (static_cast<SettingsId>(id))
@@ -653,7 +663,7 @@ namespace coroute::http2
 		co_return co_await send_frame(ack);
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_ping_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_ping_frame(FrameHeader header,
 	                                                                std::span<const uint8_t> payload)
 	{
 		if (header.stream_id != 0)
@@ -681,7 +691,7 @@ namespace coroute::http2
 		co_return co_await send_frame(pong);
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_goaway_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_goaway_frame(FrameHeader header,
 	                                                                  std::span<const uint8_t> payload)
 	{
 		if (header.stream_id != 0)
@@ -712,7 +722,7 @@ namespace coroute::http2
 		co_return expected<void, Error>{};
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_window_update_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_window_update_frame(FrameHeader header,
 	                                                                         std::span<const uint8_t> payload)
 	{
 		if (payload.size() != 4)
@@ -771,7 +781,7 @@ namespace coroute::http2
 		co_return expected<void, Error>{};
 	}
 
-	Task<expected<void, Error>> Http2Connection::process_rst_stream_frame(const FrameHeader& header,
+	Task<expected<void, Error>> Http2Connection::process_rst_stream_frame(FrameHeader header,
 	                                                                      std::span<const uint8_t> payload)
 	{
 		if (header.stream_id == 0)
@@ -932,7 +942,7 @@ namespace coroute::http2
 	}
 
 	Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(std::unique_ptr<net::Connection> conn,
-	                                                                         const Request& req)
+	                                                                         Request req)
 	{
 		// Send 101 Switching Protocols response
 		std::string response =

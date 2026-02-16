@@ -14,3 +14,4 @@ package-lock.json
 build/
 benchmark/benchmark.sh
 debug.log
+.cache/

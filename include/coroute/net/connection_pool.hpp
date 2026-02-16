@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <queue>
 #include <mutex>
 #include <memory>
 #include <atomic>
@@ -45,10 +44,7 @@ namespace coroute::net
 		std::atomic<size_t> total_reused_{0};
 
 	public:
-		explicit ConnectionPool(ConnectionPoolConfig config = {}) : config_(std::move(config))
-		{
-			pool_.reserve(config_.max_size);
-		}
+		explicit ConnectionPool(ConnectionPoolConfig config = {}) : config_(config) { pool_.reserve(config_.max_size); }
 
 		// Set custom reset function (called when connection is returned)
 		void set_resetter(ConnectionResetter resetter) { resetter_ = std::move(resetter); }
@@ -96,7 +92,7 @@ namespace coroute::net
 		}
 
 		// Pre-populate the pool with connections
-		void populate(ConnectionFactory factory, size_t count)
+		void populate(const ConnectionFactory& factory, size_t count)
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			for (size_t i = 0; i < count && pool_.size() < config_.max_size; ++i)
@@ -187,8 +183,8 @@ namespace coroute::net
 		}
 
 		// Access
-		Connection* get() { return conn_.get(); }
-		const Connection* get() const { return conn_.get(); }
+		[[nodiscard]] Connection* get() { return conn_.get(); }
+		[[nodiscard]] const Connection* get() const { return conn_.get(); }
 		Connection& operator*() { return *conn_; }
 		const Connection& operator*() const { return *conn_; }
 		Connection* operator->() { return conn_.get(); }

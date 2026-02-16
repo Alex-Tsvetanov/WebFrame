@@ -68,21 +68,35 @@ namespace coroute::http2
 			return unexpected(Error::io(IoError::InvalidArgument, "Missing :method"));
 		}
 
-		HttpMethod method;
+		HttpMethod method = HttpMethod::UNKNOWN;
 		if (method_str == "GET")
+		{
 			method = HttpMethod::GET;
+		}
 		else if (method_str == "POST")
+		{
 			method = HttpMethod::POST;
+		}
 		else if (method_str == "PUT")
+		{
 			method = HttpMethod::PUT;
+		}
 		else if (method_str == "DELETE")
+		{
 			method = HttpMethod::DELETE;
+		}
 		else if (method_str == "HEAD")
+		{
 			method = HttpMethod::HEAD;
+		}
 		else if (method_str == "OPTIONS")
+		{
 			method = HttpMethod::OPTIONS;
+		}
 		else if (method_str == "PATCH")
+		{
 			method = HttpMethod::PATCH;
+		}
 		else
 		{
 			return unexpected(Error::io(IoError::InvalidArgument, "Unknown method"));
@@ -130,7 +144,7 @@ namespace coroute::http2
 		// Set body
 		if (!request_body_.empty())
 		{
-			req.set_body(std::string(reinterpret_cast<const char*>(request_body_.data()), request_body_.size()));
+			req.set_body(std::string(request_body_.begin(), request_body_.end()));
 		}
 
 		// Mark as HTTP/2
@@ -139,7 +153,7 @@ namespace coroute::http2
 		return req;
 	}
 
-	Task<expected<void, Error>> Stream::send_response(const Response& response)
+	Task<expected<void, Error>> Stream::send_response(Response response)
 	{
 		if (response_headers_sent_)
 		{
@@ -202,10 +216,11 @@ namespace coroute::http2
 		// Send body if present
 		if (!body.empty())
 		{
-			auto body_result =
-				co_await send_data(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(body.data()), body.size()),
-			                       true  // end_stream
-			    );
+			auto body_result = co_await send_data(
+				std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(body.data()),
+			                             body.size()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+				true                                    // end_stream
+			);
 			if (!body_result)
 			{
 				co_return unexpected(body_result.error());
@@ -256,9 +271,9 @@ namespace coroute::http2
 			size_t remaining = data.size() - offset;
 			size_t chunk_size = std::min(remaining, static_cast<size_t>(max_frame_size));
 
-			// TODO: Check flow control window and wait if necessary
+			// TODO(runner): Check flow control window and wait if necessary
 			// Check flow control window and wait if necessary
-			int32_t needed = static_cast<int32_t>(chunk_size);
+			auto needed = static_cast<int32_t>(chunk_size);
 			while (remote_window_size_ < needed || connection_->connection_window_size() < needed)
 			{
 				int32_t available = std::min(remote_window_size_, connection_->connection_window_size());
@@ -303,10 +318,13 @@ namespace coroute::http2
 
 	void Stream::WindowAwaiter::await_suspend(std::coroutine_handle<> h) noexcept
 	{
-		stream->window_waiters_.push_back({needed, h});
+		stream->window_waiters_.push_back({.needed = needed, .handle = h});
 	}
 
-	Stream::WindowAwaiter Stream::wait_for_window(int32_t needed) { return WindowAwaiter{this, needed}; }
+	Stream::WindowAwaiter Stream::wait_for_window(int32_t needed)
+	{
+		return WindowAwaiter{.stream = this, .needed = needed};
+	}
 
 	void Stream::notify_window_update()
 	{

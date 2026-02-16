@@ -7,8 +7,6 @@
 #include "coroute/coro/task.hpp"
 
 #include <cstdint>
-#include <memory>
-#include <functional>
 
 namespace coroute::http2
 {
@@ -17,7 +15,7 @@ namespace coroute::http2
 	// HTTP/2 Stream States (RFC 7540 Section 5.1)
 	// ============================================================================
 
-	enum class StreamState
+	enum class StreamState : std::uint8_t
 	{
 		Idle,
 		ReservedLocal,   // Server push (not implementing)
@@ -65,30 +63,30 @@ namespace coroute::http2
 		Stream& operator=(Stream&&) = delete;
 
 		// Accessors
-		uint32_t id() const { return id_; }
-		StreamState state() const { return state_; }
-		bool is_open() const
+		[[nodiscard]] uint32_t id() const { return id_; }
+		[[nodiscard]] StreamState state() const { return state_; }
+		[[nodiscard]] bool is_open() const
 		{
 			return state_ == StreamState::Open || state_ == StreamState::HalfClosedLocal ||
 			       state_ == StreamState::HalfClosedRemote;
 		}
 
 		// Flow control
-		int32_t local_window_size() const { return local_window_size_; }
-		int32_t remote_window_size() const { return remote_window_size_; }
+		[[nodiscard]] int32_t local_window_size() const { return local_window_size_; }
+		[[nodiscard]] int32_t remote_window_size() const { return remote_window_size_; }
 		void update_local_window(int32_t delta);
 		void update_remote_window(int32_t delta);
 
 		// Request handling
 		void receive_headers(std::vector<Header> headers, bool end_stream);
 		void receive_data(std::span<const uint8_t> data, bool end_stream);
-		bool is_request_complete() const { return headers_complete_ && body_complete_; }
+		[[nodiscard]] bool is_request_complete() const { return headers_complete_ && body_complete_; }
 
 		// Build Request object from received headers/body
-		expected<Request, Error> build_request() const;
+		[[nodiscard]] expected<Request, Error> build_request() const;
 
 		// Response handling
-		Task<expected<void, Error>> send_response(const Response& response);
+		Task<expected<void, Error>> send_response(Response response);
 
 		// State transitions
 		void transition_to(StreamState new_state);
@@ -117,30 +115,28 @@ namespace coroute::http2
 		{
 			Stream* stream;
 			int32_t needed;
-			bool await_ready() const noexcept;
+			[[nodiscard]] bool await_ready() const noexcept;
 			void await_suspend(std::coroutine_handle<> h) noexcept;
 			void await_resume() const noexcept { }
 		};
 
 		WindowAwaiter wait_for_window(int32_t needed);
-
-	private:
 	};
 
 	// ============================================================================
 	// Stream ID Utilities
 	// ============================================================================
 
-	namespace StreamId
+	namespace stream_id
 	{
 		// Stream 0 is the connection control stream
-		constexpr uint32_t Connection = 0;
+		constexpr uint32_t connection = 0;
 
 		// Client-initiated streams are odd
 		inline bool is_client_initiated(uint32_t id) { return id != 0 && (id & 1) == 1; }
 
 		// Server-initiated streams are even (for push, which we don't implement)
 		inline bool is_server_initiated(uint32_t id) { return id != 0 && (id & 1) == 0; }
-	}  // namespace StreamId
+	}  // namespace stream_id
 
 }  // namespace coroute::http2

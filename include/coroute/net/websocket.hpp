@@ -64,20 +64,20 @@ namespace coroute::net
 		std::vector<uint8_t> data;
 
 		// Convenience accessors
-		bool is_text() const { return opcode == WebSocketOpcode::Text; }
-		bool is_binary() const { return opcode == WebSocketOpcode::Binary; }
-		bool is_close() const { return opcode == WebSocketOpcode::Close; }
-		bool is_ping() const { return opcode == WebSocketOpcode::Ping; }
-		bool is_pong() const { return opcode == WebSocketOpcode::Pong; }
+		[[nodiscard]] bool is_text() const { return opcode == WebSocketOpcode::Text; }
+		[[nodiscard]] bool is_binary() const { return opcode == WebSocketOpcode::Binary; }
+		[[nodiscard]] bool is_close() const { return opcode == WebSocketOpcode::Close; }
+		[[nodiscard]] bool is_ping() const { return opcode == WebSocketOpcode::Ping; }
+		[[nodiscard]] bool is_pong() const { return opcode == WebSocketOpcode::Pong; }
 
 		// Get text content (for text messages)
-		std::string_view text() const
+		[[nodiscard]] std::string_view text() const
 		{
-			return std::string_view(reinterpret_cast<const char*>(data.data()), data.size());
+			return {reinterpret_cast<const char*>(data.data()), data.size()};  // NOLINT
 		}
 
 		// Get close code (for close messages)
-		WebSocketCloseCode close_code() const
+		[[nodiscard]] WebSocketCloseCode close_code() const
 		{
 			if (data.size() >= 2)
 			{
@@ -87,11 +87,11 @@ namespace coroute::net
 		}
 
 		// Get close reason (for close messages)
-		std::string_view close_reason() const
+		[[nodiscard]] std::string_view close_reason() const
 		{
 			if (data.size() > 2)
 			{
-				return std::string_view(reinterpret_cast<const char*>(data.data() + 2), data.size() - 2);
+				return {reinterpret_cast<const char*>(data.data() + 2), data.size() - 2};  // NOLINT
 			}
 			return {};
 		}
@@ -116,23 +116,22 @@ namespace coroute::net
 		virtual Task<expected<void, Error>> send_binary(std::span<const uint8_t> data) = 0;
 
 		// Send ping
-		virtual Task<expected<void, Error>> ping(std::span<const uint8_t> data = {}) = 0;
+		virtual Task<expected<void, Error>> ping(std::span<const uint8_t> data) = 0;
 
 		// Send pong (usually automatic in response to ping)
-		virtual Task<expected<void, Error>> pong(std::span<const uint8_t> data = {}) = 0;
+		virtual Task<expected<void, Error>> pong(std::span<const uint8_t> data) = 0;
 
 		// Close connection with code and reason
-		virtual Task<expected<void, Error>> close(WebSocketCloseCode code = WebSocketCloseCode::Normal,
-		                                          std::string_view reason = "") = 0;
+		virtual Task<expected<void, Error>> close(WebSocketCloseCode code, std::string_view reason) = 0;
 
 		// Check if connection is open
-		virtual bool is_open() const = 0;
+		[[nodiscard]] virtual bool is_open() const = 0;
 
 		// Get remote address
-		virtual std::string remote_address() const = 0;
+		[[nodiscard]] virtual std::string remote_address() const = 0;
 
 		// Get remote port
-		virtual uint16_t remote_port() const = 0;
+		[[nodiscard]] virtual uint16_t remote_port() const = 0;
 	};
 
 	// ============================================================================
@@ -151,7 +150,7 @@ namespace coroute::net
 	// Upgrade an HTTP connection to WebSocket
 	// Returns nullptr if upgrade fails
 	Task<expected<std::unique_ptr<WebSocketConnection>, Error>> upgrade_to_websocket(std::unique_ptr<Connection> conn,
-	                                                                                 const Request& req);
+	                                                                                 Request req);
 
 	// ============================================================================
 	// WebSocket Configuration
@@ -160,10 +159,10 @@ namespace coroute::net
 	struct WebSocketConfig
 	{
 		// Maximum message size (default 16MB)
-		size_t max_message_size = 16 * 1024 * 1024;
+		size_t max_message_size = 16ULL * 1024 * 1024;
 
 		// Maximum frame size (default 64KB)
-		size_t max_frame_size = 64 * 1024;
+		size_t max_frame_size = 64ULL * 1024;
 
 		// Ping interval (0 = disabled)
 		std::chrono::seconds ping_interval{30};

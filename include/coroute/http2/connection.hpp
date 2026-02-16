@@ -84,7 +84,7 @@ namespace coroute::http2
 		~Http2Connection();
 
 		friend Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(
-			std::unique_ptr<net::Connection> conn, const Request& upgrade_request);
+			std::unique_ptr<net::Connection> conn, Request req);
 
 		// Non-copyable, non-movable
 		Http2Connection(const Http2Connection&) = delete;
@@ -131,16 +131,14 @@ namespace coroute::http2
 		Task<expected<void, Error>> receive_preface();
 
 		// Frame processing
-		Task<expected<void, Error>> process_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_data_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_headers_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_settings_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_ping_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_goaway_frame(const FrameHeader& header, std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_window_update_frame(const FrameHeader& header,
-		                                                        std::span<const uint8_t> payload);
-		Task<expected<void, Error>> process_rst_stream_frame(const FrameHeader& header,
-		                                                     std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_data_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_headers_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_settings_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_ping_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_goaway_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_window_update_frame(FrameHeader header, std::span<const uint8_t> payload);
+		Task<expected<void, Error>> process_rst_stream_frame(FrameHeader header, std::span<const uint8_t> payload);
 
 		// Stream management
 		Stream* get_stream(uint32_t stream_id);
@@ -172,6 +170,6 @@ namespace coroute::http2
 
 	// Create HTTP/2 connection from upgraded HTTP/1.1 connection
 	Task<expected<std::shared_ptr<Http2Connection>, Error>> upgrade_to_http2(std::unique_ptr<net::Connection> conn,
-	                                                                         const Request& upgrade_request);
+	                                                                         Request req);
 
 }  // namespace coroute::http2

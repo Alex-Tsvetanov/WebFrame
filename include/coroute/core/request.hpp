@@ -18,7 +18,7 @@ namespace coroute
 	// HTTP Method
 	// ============================================================================
 
-	enum class HttpMethod
+	enum class HttpMethod : std::uint8_t
 	{
 		GET,
 		POST,
@@ -194,7 +194,7 @@ namespace coroute
 			}
 		}
 
-		bool has_context(const std::string& key) const { return context_.count(key) > 0; }
+		bool has_context(const std::string& key) const { return context_.contains(key); }
 
 		// Reset for object pooling
 		void reset()

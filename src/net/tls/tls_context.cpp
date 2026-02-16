@@ -25,7 +25,7 @@ namespace coroute::net
 
 			char buf[256];
 			ERR_error_string_n(err, buf, sizeof(buf));
-			return std::string(buf);
+			return {buf};
 		}
 
 		Error make_tls_error(const std::string& msg)
@@ -37,6 +37,7 @@ namespace coroute::net
 		int alpn_select_callback(SSL* ssl, const unsigned char** out, unsigned char* outlen, const unsigned char* in,
 		                         unsigned int inlen, void* arg)
 		{
+			(void)ssl;
 			auto* config_protocols = static_cast<std::vector<std::string>*>(arg);
 			if (!config_protocols || config_protocols->empty())
 			{
@@ -52,7 +53,8 @@ namespace coroute::net
 				unsigned char len = *client++;
 				if (client + len > client_end) break;
 
-				std::string_view client_proto(reinterpret_cast<const char*>(client), len);
+				std::string_view client_proto(reinterpret_cast<const char*>(client),
+				                              len);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 
 				// Check if we support this protocol
 				for (const auto& server_proto : *config_protocols)
@@ -74,6 +76,7 @@ namespace coroute::net
 		// SNI callback wrapper
 		int sni_callback_wrapper(SSL* ssl, int* al, void* arg)
 		{
+			(void)al;
 			auto* ctx = static_cast<TlsContext*>(arg);
 			const char* servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
@@ -248,7 +251,8 @@ namespace coroute::net
 		SSL_get0_alpn_selected(ssl, &data, &len);
 		if (data && len > 0)
 		{
-			return std::string_view(reinterpret_cast<const char*>(data), len);
+			return std::string_view(reinterpret_cast<const char*>(data),
+			                        len);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
 		}
 		return std::nullopt;
 	}
@@ -541,7 +545,7 @@ namespace coroute::net
 	Task<expected<void, Error>> TlsConnection::flush_write_bio()
 	{
 		char buf[16384];
-		int pending;
+		int pending = 0;
 		BIO* wbio = static_cast<BIO*>(wbio_);
 
 		while ((pending = BIO_pending(wbio)) > 0)
