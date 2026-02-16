@@ -1,0 +1,70 @@
+---
+Checks: >
+  bugprone-*,
+  cert-*,
+  cppcoreguidelines-*,
+  google-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-member-init,
+  -cppcoreguidelines-special-member-functions,
+  -google-runtime-int,
+  -modernize-use-trailing-return-type,
+  -readability-braces-around-statements,
+  -readability-implicit-bool-conversion,
+  -readability-redundant-string-init,
+  -readability-isolate-declaration,
+  -google-build-using-namespace,
+  -cppcoreguidelines-owning-memory,
+  -bugprone-narrowing-conversions,
+  -cppcoreguidelines-narrowing-conversions,
+  -bugprone-easily-swappable-parameters,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-convert-member-functions-to-static,
+  -bugprone-branch-clone,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays
+
+WarningsAsErrors: "*"
+
+HeaderFilterRegex: 'include/coroute/.*'
+
+CheckOptions:
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.StructCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumConstantCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.FunctionCase
+    value:           lower_case
+  - key:             readability-identifier-naming.VariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.ParameterCase
+    value:           lower_case
+  - key:             readability-identifier-naming.NamespaceCase
+    value:           lower_case
+  - key:             readability-identifier-naming.MemberCase
+    value:           lower_case
+  - key:             readability-identifier-naming.PrivateMemberSuffix
+    value:           _
+  - key:             readability-identifier-naming.ProtectedMemberSuffix
+    value:           _
+  - key:             google-readability-braces-around-statements.ShortIfThreshold
+    value:           2
+  - key:             modernize-use-auto.MinTypeNameLength
+    value:           5
+  - key:             performance-for-range-copy.WarnOnAllAutoCopies
+    value:           true
+...

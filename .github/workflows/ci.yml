@@ -3,8 +3,10 @@ name: CI Build & Test
 on:
   push:
     branches: [ main, master, develop ]
+    paths: ['**.cpp', '**.hpp', '**.cc', '**.hh', '**.c', '**.h', '**.cmake', '**/CMakeLists.txt', '.clang-format', '.clang-tidy', '.github/workflows/ci.yml']
   pull_request:
     branches: [ main, master, develop ]
+    paths: ['**.cpp', '**.hpp', '**.cc', '**.hh', '**.c', '**.h', '**.cmake', '**/CMakeLists.txt', '.clang-format', '.clang-tidy', '.github/workflows/ci.yml']
 
 jobs:
   build-linux:
@@ -18,7 +20,7 @@ jobs:
         build_type: [Debug, Release]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     
@@ -62,7 +64,7 @@ jobs:
         build_type: [Debug, Release]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     
@@ -97,7 +99,7 @@ jobs:
         build_type: [Debug, Release]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     
@@ -135,7 +137,7 @@ jobs:
         sanitizer: [address, thread, undefined]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     
@@ -179,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     
@@ -199,24 +201,47 @@ jobs:
           --xml --xml-version=2 2> cppcheck-report.xml || true
     
     - name: Upload cppcheck report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: cppcheck-report
         path: cppcheck-report.xml
-
-  format-check:
-    name: Code Formatting Check
+  cpp-linter:
+    name: C++ Linter (Clang-Format & Clang-Tidy)
     runs-on: ubuntu-latest
-    
+    continue-on-error: true
+    permissions: 
+      pull-requests: write
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install clang-format
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang-format-21
-    
-    - name: Check formatting
-      run: |
-        find include/ src/ examples/ tests/ -name "*.hpp" -o -name "*.cpp" | \
-        xargs clang-format-21 --dry-run --Werror --style="file:.clang-format"
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev liburing-dev zlib1g-dev
+
+      - name: Generate Compilation Database
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCOROUTE_BUILD_EXAMPLES=ON \
+            -DCOROUTE_BUILD_TESTS=ON \
+            -DCOROUTE_ENABLE_TLS=ON \
+            -DCOROUTE_ENABLE_HTTP2=ON \
+            -DCOROUTE_ENABLE_SIMDJSON=ON
+
+      - uses: cpp-linter/cpp-linter-action@v2
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          style: 'file'
+          tidy-checks: ''
+          version: '18'
+          database: 'build'
+          thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
+          ignore: 'external|build|_deps'
+          files-changed-only: false
+          lines-changed-only: false
+          extra-args: '-std=c++20'
