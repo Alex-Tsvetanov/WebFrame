@@ -1,4 +1,5 @@
 #include "coroute/core/range.hpp"
+#include "coroute/core/time.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -260,9 +261,18 @@ namespace coroute
 			}
 
 			// Otherwise treat as date - compare with Last-Modified
-			// For simplicity, just do string comparison
-			// A proper implementation would parse HTTP dates
-			return !last_modified.empty() && value == last_modified;
+			auto parsed_time = time::from_http_date(value);
+			auto lm_time = time::from_http_date(last_modified);
+
+			if (parsed_time && lm_time)
+			{
+				// HTTP dates only have 1-second precision
+				auto parsed_sec = std::chrono::time_point_cast<std::chrono::seconds>(*parsed_time);
+				auto lm_sec = std::chrono::time_point_cast<std::chrono::seconds>(*lm_time);
+				return parsed_sec == lm_sec;
+			}
+
+			return false;
 		}
 
 	}  // namespace range

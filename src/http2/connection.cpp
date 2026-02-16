@@ -1,7 +1,6 @@
 #include "coroute/http2/connection.hpp"
 
 #include <cstring>
-#include <stdexcept>
 #include <cctype>
 
 namespace coroute::http2

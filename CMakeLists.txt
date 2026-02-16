@@ -62,6 +62,7 @@ endif()
 add_library(coroute STATIC
     # Core
     src/core/error.cpp
+    src/core/time.cpp
     src/core/request.cpp
     src/core/response.cpp
     src/core/router.cpp

@@ -271,7 +271,6 @@ namespace coroute::http2
 			size_t remaining = data.size() - offset;
 			size_t chunk_size = std::min(remaining, static_cast<size_t>(max_frame_size));
 
-			// TODO(runner): Check flow control window and wait if necessary
 			// Check flow control window and wait if necessary
 			auto needed = static_cast<int32_t>(chunk_size);
 			while (remote_window_size_ < needed || connection_->connection_window_size() < needed)

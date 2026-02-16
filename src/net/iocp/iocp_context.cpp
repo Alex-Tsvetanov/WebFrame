@@ -72,9 +72,19 @@ namespace coroute::net
 		std::atomic<bool> stopped_{false};
 		size_t thread_count_;
 
-		// Posted callbacks
-		std::mutex callback_mutex_;
-		std::queue<std::function<void()>> callbacks_;
+		// Timer queue
+		struct TimerEntry
+		{
+			std::chrono::system_clock::time_point expiry;
+			std::function<void()> callback;
+
+			bool operator>(const TimerEntry& other) const { return expiry > other.expiry; }
+		};
+
+		std::mutex timer_mutex_;
+		std::condition_variable timer_cv_;
+		std::priority_queue<TimerEntry, std::vector<TimerEntry>, std::greater<TimerEntry>> timers_;
+		std::thread timer_thread_;
 
 	public:
 		explicit IocpContext(size_t thread_count) : thread_count_(thread_count)
@@ -95,6 +105,9 @@ namespace coroute::net
 				WSACleanup();
 				throw std::runtime_error("CreateIoCompletionPort failed: " + std::to_string(GetLastError()));
 			}
+
+			// Start timer thread
+			timer_thread_ = std::thread([this] { timer_thread_proc(); });
 		}
 
 		~IocpContext() override
@@ -116,6 +129,16 @@ namespace coroute::net
 			}
 
 			WSACleanup();
+
+			if (timer_thread_.joinable())
+			{
+				{
+					std::lock_guard lock(timer_mutex_);
+					stopped_ = true;
+				}
+				timer_cv_.notify_all();
+				timer_thread_.join();
+			}
 		}
 
 		HANDLE handle() const noexcept { return completion_port_; }
@@ -153,6 +176,8 @@ namespace coroute::net
 			{
 				PostQueuedCompletionStatus(completion_port_, 0, 0, nullptr);
 			}
+
+			timer_cv_.notify_all();
 		}
 
 		bool stopped() const noexcept override { return stopped_; }
@@ -169,18 +194,43 @@ namespace coroute::net
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
 		{
-			// Simple implementation using a separate thread
-			// A production implementation would use a timer queue
-			std::thread(
-				[this, delay, cb = std::move(callback)]() mutable
-				{
-					std::this_thread::sleep_for(delay);
-					post(std::move(cb));
-				})
-				.detach();
+			auto expiry = std::chrono::system_clock::now() + delay;
+			{
+				std::lock_guard lock(timer_mutex_);
+				timers_.push({expiry, std::move(callback)});
+			}
+			timer_cv_.notify_all();
 		}
 
 	private:
+		void timer_thread_proc()
+		{
+			while (!stopped_)
+			{
+				std::unique_lock lock(timer_mutex_);
+				if (timers_.empty())
+				{
+					timer_cv_.wait(lock, [this] { return stopped_ || !timers_.empty(); });
+				}
+				else
+				{
+					auto now = std::chrono::system_clock::now();
+					auto& top = timers_.top();
+					if (top.expiry <= now)
+					{
+						auto cb = std::move(const_cast<TimerEntry&>(top).callback);
+						timers_.pop();
+						lock.unlock();
+						post(std::move(cb));
+					}
+					else
+					{
+						timer_cv_.wait_until(lock, top.expiry);
+					}
+				}
+			}
+		}
+
 		void worker_thread()
 		{
 			while (!stopped_)
@@ -350,6 +400,11 @@ namespace coroute::net
 		CancellationToken cancel_token_;
 		std::string remote_addr_;
 		uint16_t remote_port_ = 0;
+
+		// Buffered reading for async_read_until
+		std::vector<char> buffer_;
+		size_t buffer_pos_ = 0;
+		size_t buffer_end_ = 0;
 
 	public:
 		IocpConnection(IocpContext& ctx, SOCKET socket) : ctx_(ctx), socket_(socket)
@@ -597,24 +652,44 @@ namespace coroute::net
 
 	Task<ReadResult> IocpConnection::async_read_until(void* buffer, size_t len, char delimiter)
 	{
-		// Simple implementation - read byte by byte until delimiter
-		// A production implementation would be more efficient
-		char* buf = static_cast<char*>(buffer);
+		if (!is_open())
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
+
+		char* out = static_cast<char*>(buffer);
 		size_t total = 0;
 
 		while (total < len)
 		{
-			auto result = co_await async_read(buf + total, 1);
+			// Check internal buffer first
+			if (buffer_pos_ < buffer_end_)
+			{
+				char c = buffer_[buffer_pos_++];
+				out[total++] = c;
+				if (c == delimiter)
+				{
+					co_return total;
+				}
+				continue;
+			}
+
+			// Buffer empty, read more from socket
+			if (buffer_.empty())
+			{
+				buffer_.resize(4096);
+			}
+
+			auto result = co_await async_read(buffer_.data(), buffer_.size());
 			if (!result)
 			{
 				co_return unexpected(result.error());
 			}
 
-			total += *result;
-			if (buf[total - 1] == delimiter)
-			{
-				break;
-			}
+			buffer_pos_ = 0;
+			buffer_end_ = *result;
+
+			// Continue with the loop to consume from the newsly filled buffer
 		}
 
 		co_return total;

@@ -9,7 +9,7 @@ TEST_CASE("Router basic matching", "[router]")
 
 	bool handler_called = false;
 	router.get("/hello",
-	           [&handler_called](Request& req) -> Task<Response>
+	           [&handler_called](Request&) -> Task<Response>
 	           {
 				   handler_called = true;
 				   co_return Response::ok("Hello");
@@ -40,9 +40,9 @@ TEST_CASE("Router parameter extraction", "[router]")
 {
 	Router router;
 
-	router.get("/user/{id}", [](Request& req) -> Task<Response> { co_return Response::ok(); });
+	router.get("/user/{id}", [](Request&) -> Task<Response> { co_return Response::ok(); });
 
-	router.get("/user/{uid}/post/{pid}", [](Request& req) -> Task<Response> { co_return Response::ok(); });
+	router.get("/user/{uid}/post/{pid}", [](Request&) -> Task<Response> { co_return Response::ok(); });
 
 	SECTION("single parameter")
 	{
@@ -74,13 +74,13 @@ TEST_CASE("Router HTTP methods", "[router]")
 {
 	Router router;
 
-	router.get("/resource", [](Request& req) -> Task<Response> { co_return Response::ok("GET"); });
+	router.get("/resource", [](Request&) -> Task<Response> { co_return Response::ok("GET"); });
 
-	router.post("/resource", [](Request& req) -> Task<Response> { co_return Response::ok("POST"); });
+	router.post("/resource", [](Request&) -> Task<Response> { co_return Response::ok("POST"); });
 
-	router.put("/resource", [](Request& req) -> Task<Response> { co_return Response::ok("PUT"); });
+	router.put("/resource", [](Request&) -> Task<Response> { co_return Response::ok("PUT"); });
 
-	router.del("/resource", [](Request& req) -> Task<Response> { co_return Response::ok("DELETE"); });
+	router.del("/resource", [](Request&) -> Task<Response> { co_return Response::ok("DELETE"); });
 
 	SECTION("GET")
 	{

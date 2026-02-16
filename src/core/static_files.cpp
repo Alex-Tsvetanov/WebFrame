@@ -1,6 +1,7 @@
 #include "coroute/core/static_files.hpp"
 #include "coroute/core/range.hpp"
 
+#include "coroute/core/time.hpp"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -334,9 +335,23 @@ namespace coroute
 		auto if_modified_since = req.header("If-Modified-Since");
 		if (if_modified_since && options_.last_modified)
 		{
-			// Parse the date and compare
-			// For simplicity, we'll skip full parsing and just use ETag
-			// A production implementation would parse HTTP dates
+			auto parsed_time = time::from_http_date(*if_modified_since);
+			if (parsed_time)
+			{
+				// Convert filesystem time to system clock time
+				auto mtime_sys = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+					mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+
+				// If the file hasn't been modified since the given date
+				// Note: HTTP dates only have 1-second precision
+				auto mtime_sec = std::chrono::time_point_cast<std::chrono::seconds>(mtime_sys);
+				auto parsed_sec = std::chrono::time_point_cast<std::chrono::seconds>(*parsed_time);
+
+				if (mtime_sec <= parsed_sec)
+				{
+					return true;
+				}
+			}
 		}
 
 		return false;

@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <cstdint>
 
 namespace coroute
 {
@@ -12,7 +13,7 @@ namespace coroute
 	// I/O Errors (transport layer)
 	// ============================================================================
 
-	enum class IoError
+	enum class IoError : std::uint8_t
 	{
 		Success = 0,
 		ConnectionReset,
@@ -35,7 +36,7 @@ namespace coroute
 	// HTTP Errors (protocol layer)
 	// ============================================================================
 
-	enum class HttpError
+	enum class HttpError : std::uint16_t
 	{
 		// 4xx Client Errors
 		BadRequest = 400,
@@ -97,11 +98,11 @@ namespace coroute
 		// Constructors
 		Error() : inner_(IoError::Success) { }
 
-		Error(IoError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
+		explicit Error(IoError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
 
-		Error(HttpError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
+		explicit Error(HttpError e, std::string message = "") : inner_(e), message_(std::move(message)) { }
 
-		Error(std::error_code ec, std::string message = "") : inner_(ec), message_(std::move(message)) { }
+		explicit Error(std::error_code ec, std::string message = "") : inner_(ec), message_(std::move(message)) { }
 
 		// Factory methods
 		static Error io(IoError e, std::string msg = "") { return Error(e, std::move(msg)); }
@@ -120,31 +121,43 @@ namespace coroute
 		static Error timeout() { return Error(IoError::Timeout, "Operation timed out"); }
 
 		// Type checks
-		bool is_io() const noexcept { return std::holds_alternative<IoError>(inner_); }
+		[[nodiscard]] bool is_io() const noexcept { return std::holds_alternative<IoError>(inner_); }
 
-		bool is_http() const noexcept { return std::holds_alternative<HttpError>(inner_); }
+		[[nodiscard]] bool is_http() const noexcept { return std::holds_alternative<HttpError>(inner_); }
 
-		bool is_system() const noexcept { return std::holds_alternative<std::error_code>(inner_); }
+		[[nodiscard]] bool is_system() const noexcept { return std::holds_alternative<std::error_code>(inner_); }
 
-		bool is_cancelled() const noexcept { return is_io() && std::get<IoError>(inner_) == IoError::Cancelled; }
+		[[nodiscard]] bool is_cancelled() const noexcept
+		{
+			return is_io() && std::get<IoError>(inner_) == IoError::Cancelled;
+		}
 
-		bool is_timeout() const noexcept { return is_io() && std::get<IoError>(inner_) == IoError::Timeout; }
+		[[nodiscard]] bool is_timeout() const noexcept
+		{
+			return is_io() && std::get<IoError>(inner_) == IoError::Timeout;
+		}
 
 		// Accessors
-		IoError io_error() const noexcept { return is_io() ? std::get<IoError>(inner_) : IoError::Unknown; }
+		[[nodiscard]] IoError io_error() const noexcept
+		{
+			return is_io() ? std::get<IoError>(inner_) : IoError::Unknown;
+		}
 
-		HttpError http_error() const noexcept { return is_http() ? std::get<HttpError>(inner_) : HttpError::Internal; }
+		[[nodiscard]] HttpError http_error() const noexcept
+		{
+			return is_http() ? std::get<HttpError>(inner_) : HttpError::Internal;
+		}
 
-		std::error_code system_error() const noexcept
+		[[nodiscard]] std::error_code system_error() const noexcept
 		{
 			return is_system() ? std::get<std::error_code>(inner_) : std::error_code{};
 		}
 
 		// Convert to std::error_code (for interop)
-		std::error_code code() const noexcept;
+		[[nodiscard]] std::error_code code() const noexcept;
 
 		// HTTP status code (returns 500 for non-HTTP errors)
-		int http_status() const noexcept
+		[[nodiscard]] int http_status() const noexcept
 		{
 			if (is_http())
 			{
@@ -167,10 +180,10 @@ namespace coroute
 		}
 
 		// Human-readable message
-		std::string_view message() const noexcept { return message_; }
+		[[nodiscard]] std::string_view message() const noexcept { return message_; }
 
 		// Full description
-		std::string to_string() const;
+		[[nodiscard]] std::string to_string() const;
 
 		// Comparison
 		bool operator==(const Error& other) const noexcept { return inner_ == other.inner_; }
