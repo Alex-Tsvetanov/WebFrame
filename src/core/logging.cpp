@@ -258,12 +258,12 @@ namespace coroute
 	// Request Logging Middleware
 	// ============================================================================
 
-	Middleware request_logger(RequestLogOptions options)
+	Middleware request_logger(const RequestLogOptions& options)
 	{
 		return request_logger(default_logger(), std::move(options));
 	}
 
-	Middleware request_logger(Logger& logger, RequestLogOptions options)
+	Middleware request_logger(Logger& logger, const RequestLogOptions& options)
 	{
 		return [&logger, options](Request& req, Next next) -> Task<Response>
 		{

@@ -265,7 +265,6 @@ namespace coroute
 			}
 
 			std::string delimiter = "--" + std::string(boundary);
-			std::string end_delimiter = delimiter + "--";
 
 			size_t pos = body.find(delimiter);
 			if (pos == std::string_view::npos)

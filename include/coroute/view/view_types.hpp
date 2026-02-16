@@ -59,7 +59,7 @@ namespace coroute
 
 		/// Create from a typed ViewResult using templated constructor
 		template <typename VM>
-		ViewResultAny(ViewResult<VM> result)
+		explicit ViewResultAny(ViewResult<VM> result)
 			: templates(std::move(result.templates)),
 			  model(std::move(result.model)),
 			  to_json_fn(

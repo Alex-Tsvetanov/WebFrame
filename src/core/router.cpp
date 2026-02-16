@@ -161,16 +161,16 @@ namespace coroute
 		}
 
 		// Take the last match (most specific, as per url-matcher convention)
-		const auto& match = matches.back();
-		size_t route_id = match.regex_id;
+		const auto& m = matches.back();
+		size_t route_id = m.regex_id;
 
 		if (route_id >= routes_.size())
 		{
 			return result;
 		}
 
-		const auto& route = routes_[route_id];
-		result.handler = &route.handler;
+		const auto& r = routes_[route_id];
+		result.handler = &r.handler;
 
 		// Extract captured groups as strings
 		// url-matcher groups are 0-indexed
@@ -183,7 +183,7 @@ namespace coroute
 			}
 
 			result.params.resize(max_group);
-			for (const auto& [group_id, positions] : match.groups)
+			for (const auto& [group_id, positions] : m.groups)
 			{
 				if (positions.first <= positions.second && positions.second <= path.size())
 				{
@@ -231,28 +231,28 @@ namespace coroute
 		}
 
 		// Take the last match (most specific)
-		const auto& match = matches.back();
-		size_t route_id = match.regex_id;
+		const auto& m = matches.back();
+		size_t route_id = m.regex_id;
 
 		if (route_id >= view_routes_.size())
 		{
 			return result;
 		}
 
-		const auto& route = view_routes_[route_id];
-		result.handler = &route.handler;
+		const auto& r = view_routes_[route_id];
+		result.handler = &r.handler;
 
 		// Extract captured groups as strings
-		if (!match.groups.empty())
+		if (!m.groups.empty())
 		{
 			size_t max_group = 0;
-			for (const auto& [group_id, positions] : match.groups)
+			for (const auto& [group_id, positions] : m.groups)
 			{
 				if (group_id + 1 > max_group) max_group = group_id + 1;
 			}
 
 			result.params.resize(max_group);
-			for (const auto& [group_id, positions] : match.groups)
+			for (const auto& [group_id, positions] : m.groups)
 			{
 				if (positions.first <= positions.second && positions.second <= path.size())
 				{

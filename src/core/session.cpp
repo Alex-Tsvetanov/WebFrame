@@ -146,7 +146,7 @@ namespace coroute
 	{
 	}
 
-	Cookie SessionMiddleware::create_session_cookie(const std::string& session_id)
+	Cookie SessionMiddleware::create_session_cookie(const std::string& session_id) const
 	{
 		Cookie c;
 		c.name = options_.cookie_name;

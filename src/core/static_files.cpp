@@ -265,7 +265,7 @@ namespace coroute
 	}
 
 	std::string StaticFileServer::generate_etag(const std::filesystem::path& path, std::uintmax_t size,
-	                                            std::filesystem::file_time_type mtime) const
+	                                            std::filesystem::file_time_type mtime)
 	{
 		// Simple ETag: hash of path + size + mtime
 		auto mtime_ns = mtime.time_since_epoch().count();
@@ -388,7 +388,7 @@ namespace coroute
 	}
 
 	std::string StaticFileServer::generate_directory_listing(const std::filesystem::path& dir,
-	                                                         std::string_view url_path) const
+	                                                         std::string_view url_path)
 	{
 		std::ostringstream html;
 		html << "<!DOCTYPE html>\n";

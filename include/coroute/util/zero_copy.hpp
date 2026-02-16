@@ -41,13 +41,14 @@ namespace coroute
 
 		// Open file for reading
 		explicit FileHandleGuard(const std::filesystem::path& path)
-		{
+			:
 #ifdef _WIN32
-			handle_ = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-			                      FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OVERLAPPED, nullptr);
+			  handle_(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+		                          FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OVERLAPPED, nullptr))
 #else
-			fd_ = open(path.c_str(), O_RDONLY);
+			  fd_(open(path.c_str(), O_RDONLY))
 #endif
+		{
 		}
 
 		~FileHandleGuard() { close(); }
@@ -58,12 +59,16 @@ namespace coroute
 
 		// Movable
 		FileHandleGuard(FileHandleGuard&& other) noexcept
+			:
+#ifdef _WIN32
+			  handle_(other.handle_)
+#else
+			  fd_(other.fd_)
+#endif
 		{
 #ifdef _WIN32
-			handle_ = other.handle_;
 			other.handle_ = INVALID_HANDLE_VALUE;
 #else
-			fd_ = other.fd_;
 			other.fd_ = -1;
 #endif
 		}
@@ -166,7 +171,8 @@ namespace coroute
 
 	// Send response headers then file body using zero-copy
 	// Useful for static file serving
-	inline Task<expected<size_t, Error>> send_response_with_file(net::Connection& conn, Response& headers_response,
+	inline Task<expected<size_t, Error>> send_response_with_file(net::Connection& conn,
+	                                                             const Response& headers_response,
 	                                                             const std::filesystem::path& file_path,
 	                                                             size_t offset = 0, size_t length = 0)
 	{

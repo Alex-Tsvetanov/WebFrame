@@ -124,7 +124,7 @@ namespace coroute
 		explicit CompressionMiddleware(CompressionOptions options = {});
 
 		// Middleware function
-		Task<Response> operator()(Request& req, Next next);
+		Task<Response> operator()(Request& req, Next next) const;
 
 		// Check if content type should be compressed
 		bool should_compress(std::string_view content_type) const;

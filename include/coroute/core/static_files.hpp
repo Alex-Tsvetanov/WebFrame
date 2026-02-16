@@ -111,8 +111,8 @@ namespace coroute
 		StaticFileOptions options_;
 
 		// Generate ETag from file metadata
-		std::string generate_etag(const std::filesystem::path& path, std::uintmax_t size,
-		                          std::filesystem::file_time_type mtime) const;
+		static std::string generate_etag(const std::filesystem::path& path, std::uintmax_t size,
+		                                 std::filesystem::file_time_type mtime);
 
 		// Check if extension is allowed
 		bool is_extension_allowed(std::string_view ext) const;
@@ -129,7 +129,7 @@ namespace coroute
 		std::optional<std::string> read_file(const std::filesystem::path& path) const;
 
 		// Generate directory listing HTML
-		std::string generate_directory_listing(const std::filesystem::path& dir, std::string_view url_path) const;
+		static std::string generate_directory_listing(const std::filesystem::path& dir, std::string_view url_path);
 	};
 
 	// ============================================================================

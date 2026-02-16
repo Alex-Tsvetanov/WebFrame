@@ -70,9 +70,9 @@ namespace coroute
 		{
 			return it->second;
 		}
-		auto counter = std::make_shared<Counter>(name, help);
-		counters_[name] = counter;
-		return counter;
+		auto c = std::make_shared<Counter>(name, help);
+		counters_[name] = c;
+		return c;
 	}
 
 	std::shared_ptr<Gauge> MetricsRegistry::gauge(const std::string& name, const std::string& help)
@@ -83,9 +83,9 @@ namespace coroute
 		{
 			return it->second;
 		}
-		auto gauge = std::make_shared<Gauge>(name, help);
-		gauges_[name] = gauge;
-		return gauge;
+		auto g = std::make_shared<Gauge>(name, help);
+		gauges_[name] = g;
+		return g;
 	}
 
 	std::shared_ptr<Histogram> MetricsRegistry::histogram(const std::string& name, const std::vector<double>& buckets,
@@ -97,9 +97,9 @@ namespace coroute
 		{
 			return it->second;
 		}
-		auto histogram = std::make_shared<Histogram>(name, buckets, help);
-		histograms_[name] = histogram;
-		return histogram;
+		auto h = std::make_shared<Histogram>(name, buckets, help);
+		histograms_[name] = h;
+		return h;
 	}
 
 	std::string MetricsRegistry::prometheus_export() const
@@ -199,12 +199,12 @@ namespace coroute
 	HttpMetrics::HttpMetrics() : HttpMetrics(default_metrics()) { }
 
 	HttpMetrics::HttpMetrics(MetricsRegistry& registry)
+		: requests_total(registry.counter("http_requests_total", "Total HTTP requests")),
+		  requests_by_status(registry.counter("http_requests_by_status", "HTTP requests by status code")),
+		  request_duration(registry.histogram("http_request_duration_seconds", Histogram::default_latency_buckets(),
+	                                          "HTTP request duration in seconds")),
+		  requests_in_flight(registry.gauge("http_requests_in_flight", "Current in-flight requests"))
 	{
-		requests_total = registry.counter("http_requests_total", "Total HTTP requests");
-		requests_by_status = registry.counter("http_requests_by_status", "HTTP requests by status code");
-		request_duration = registry.histogram("http_request_duration_seconds", Histogram::default_latency_buckets(),
-		                                      "HTTP request duration in seconds");
-		requests_in_flight = registry.gauge("http_requests_in_flight", "Current in-flight requests");
 	}
 
 	// ============================================================================

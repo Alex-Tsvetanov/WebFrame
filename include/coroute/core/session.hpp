@@ -198,7 +198,7 @@ namespace coroute
 		SessionOptions options_;
 
 	public:
-		SessionMiddleware(std::shared_ptr<SessionStore> store, SessionOptions options = {});
+		explicit SessionMiddleware(std::shared_ptr<SessionStore> store, SessionOptions options = {});
 
 		Task<Response> operator()(Request& req, Next next);
 
@@ -209,7 +209,7 @@ namespace coroute
 		void destroy_session(Request& req, Response& resp);
 
 	private:
-		Cookie create_session_cookie(const std::string& session_id);
+		[[nodiscard]] Cookie create_session_cookie(const std::string& session_id) const;
 	};
 
 	// ============================================================================

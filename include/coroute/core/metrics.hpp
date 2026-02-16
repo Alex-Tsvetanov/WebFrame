@@ -36,7 +36,7 @@ namespace coroute
 		std::vector<std::pair<std::string, std::string>> labels_;
 
 	public:
-		Counter(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
+		explicit Counter(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
 
 		void inc(uint64_t delta = 1) { value_.fetch_add(delta, std::memory_order_relaxed); }
 		uint64_t value() const { return value_.load(std::memory_order_relaxed); }
@@ -61,7 +61,7 @@ namespace coroute
 		std::string help_;
 
 	public:
-		Gauge(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
+		explicit Gauge(std::string name, std::string help = "") : name_(std::move(name)), help_(std::move(help)) { }
 
 		void set(double value) { value_.store(value, std::memory_order_relaxed); }
 		void inc(double delta = 1.0)

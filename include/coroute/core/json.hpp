@@ -56,8 +56,8 @@ namespace coroute
 		JsonValue(const char* s) : value_(std::string(s)) { }
 		JsonValue(std::string s) : value_(std::move(s)) { }
 		JsonValue(std::string_view s) : value_(std::string(s)) { }
-		JsonValue(JsonArray arr) : value_(std::move(arr)) { }
-		JsonValue(JsonObject obj) : value_(std::move(obj)) { }
+		explicit JsonValue(JsonArray arr) : value_(std::move(arr)) { }
+		explicit JsonValue(JsonObject obj) : value_(std::move(obj)) { }
 
 		// Initializer list constructors
 		JsonValue(std::initializer_list<JsonValue> list) : value_(JsonArray(list)) { }

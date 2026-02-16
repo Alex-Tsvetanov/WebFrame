@@ -184,9 +184,9 @@ namespace coroute
 
 	void set_cookies(Response& resp, const std::vector<Cookie>& cookies)
 	{
-		for (const auto& cookie : cookies)
+		for (const auto& c : cookies)
 		{
-			set_cookie(resp, cookie);
+			set_cookie(resp, c);
 		}
 	}
 

@@ -40,7 +40,7 @@ namespace coroute
 						std::lock_guard lock(mutex_);
 						cbs = std::move(callbacks_);
 					}
-					for (auto& cb : cbs)
+					for (const auto& cb : cbs)
 					{
 						if (cb) cb();
 					}
@@ -92,13 +92,13 @@ namespace coroute
 		CancellationToken& operator=(CancellationToken&&) = default;
 
 		// Check if cancellation has been requested
-		bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
+		[[nodiscard]] bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
 
 		// Implicit conversion to bool (true if NOT cancelled, for easy checks)
 		explicit operator bool() const noexcept { return !is_cancelled(); }
 
 		// Check if this token is valid (has associated state)
-		bool valid() const noexcept { return state_ != nullptr; }
+		[[nodiscard]] bool valid() const noexcept { return state_ != nullptr; }
 
 		// Register a callback to be invoked when cancelled
 		// Callback is invoked immediately if already cancelled
@@ -131,13 +131,13 @@ namespace coroute
 		CancellationSource& operator=(CancellationSource&&) = default;
 
 		// Get a token that can be passed to operations
-		CancellationToken token() const { return CancellationToken{state_}; }
+		[[nodiscard]] CancellationToken token() const { return CancellationToken{state_}; }
 
 		// Request cancellation
 		bool cancel() noexcept { return state_ && state_->cancel(); }
 
 		// Check if cancellation has been requested
-		bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
+		[[nodiscard]] bool is_cancelled() const noexcept { return state_ && state_->is_cancelled(); }
 	};
 
 	// ============================================================================

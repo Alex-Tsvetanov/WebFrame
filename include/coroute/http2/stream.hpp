@@ -117,7 +117,7 @@ namespace coroute::http2
 			int32_t needed;
 			[[nodiscard]] bool await_ready() const noexcept;
 			void await_suspend(std::coroutine_handle<> h) noexcept;
-			void await_resume() const noexcept { }
+			static void await_resume() noexcept { }
 		};
 
 		WindowAwaiter wait_for_window(int32_t needed);

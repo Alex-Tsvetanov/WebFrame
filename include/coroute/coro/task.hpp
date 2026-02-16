@@ -40,10 +40,10 @@ namespace coroute
 
 			struct FinalAwaiter
 			{
-				bool await_ready() const noexcept { return false; }
+				static bool await_ready() noexcept { return false; }
 
 				template <typename Promise>
-				std::coroutine_handle<> await_suspend(std::coroutine_handle<Promise> h) noexcept
+				static std::coroutine_handle<> await_suspend(std::coroutine_handle<Promise> h) noexcept
 				{
 					auto& promise = h.promise();
 
@@ -67,11 +67,11 @@ namespace coroute
 					return std::noop_coroutine();
 				}
 
-				void await_resume() noexcept { }
+				static void await_resume() noexcept { }
 			};
 
-			std::suspend_always initial_suspend() noexcept { return {}; }
-			FinalAwaiter final_suspend() noexcept { return {}; }
+			static std::suspend_always initial_suspend() noexcept { return {}; }
+			static FinalAwaiter final_suspend() noexcept { return {}; }
 
 			void detach() noexcept { detached_ = true; }
 
@@ -122,7 +122,7 @@ namespace coroute
 		{
 			Task<void> get_return_object() noexcept;
 
-			void return_void() noexcept { }
+			static void return_void() noexcept { }
 
 			void result()
 			{
@@ -331,9 +331,9 @@ namespace coroute
 
 	struct YieldAwaiter
 	{
-		bool await_ready() const noexcept { return false; }
+		static bool await_ready() noexcept { return false; }
 
-		std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) const noexcept
+		static std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) noexcept
 		{
 			// Yield the OS time slice so other threads can make progress,
 			// then resume ourselves.  This is a lightweight cooperative
@@ -342,7 +342,7 @@ namespace coroute
 			return h;  // symmetric transfer: resume immediately after yielding
 		}
 
-		void await_resume() const noexcept { }
+		static void await_resume() noexcept { }
 	};
 
 	inline YieldAwaiter yield() noexcept { return {}; }
@@ -355,7 +355,7 @@ namespace coroute
 	{
 		bool cancelled_ = false;
 
-		bool await_ready() const noexcept { return false; }
+		static bool await_ready() noexcept { return false; }
 
 		template <typename Promise>
 		bool await_suspend(std::coroutine_handle<Promise> h) noexcept

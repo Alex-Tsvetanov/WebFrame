@@ -77,7 +77,7 @@ namespace coroute
 		size_t size() const noexcept { return middleware_.size(); }
 
 		// Execute the chain with a final handler
-		Task<Response> execute(Request& req, Handler& handler) const
+		Task<Response> execute(Request& req, const Handler& handler) const
 		{
 			if (middleware_.empty())
 			{
