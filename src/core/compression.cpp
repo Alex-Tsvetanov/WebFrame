@@ -517,21 +517,15 @@ namespace coroute
 		return false;
 	}
 
-	Task<Response> CompressionMiddleware::operator()(Request& req, Next next)
+	Task<Response> CompressionMiddleware::operator()(Request& req, Next next) const
 	{
 		// Get response from next handler
 		Response resp = co_await next(req);
 
 		// Skip if response already has Content-Encoding
-		if (options_.skip_if_encoded)
+		if (options_.skip_if_encoded && resp.header("Content-Encoding"))
 		{
-			for (const auto& [key, value] : resp.headers())
-			{
-				if (key == "Content-Encoding")
-				{
-					co_return resp;
-				}
-			}
+			co_return resp;
 		}
 
 		// Check body size
@@ -541,15 +535,7 @@ namespace coroute
 		}
 
 		// Check content type
-		std::string_view content_type;
-		for (const auto& [key, value] : resp.headers())
-		{
-			if (key == "Content-Type")
-			{
-				content_type = value;
-				break;
-			}
-		}
+		auto content_type = resp.header("Content-Type").value_or("");
 
 		if (content_type.empty() || !should_compress(content_type))
 		{

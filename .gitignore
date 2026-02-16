@@ -11,7 +11,7 @@ node_modules/
 bin/
 benchmark/tmp/
 package-lock.json
-build/
+build*/
 benchmark/benchmark.sh
 debug.log
 .cache/

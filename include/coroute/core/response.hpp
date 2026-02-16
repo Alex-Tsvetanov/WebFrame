@@ -56,6 +56,19 @@ namespace coroute
 		const Headers& headers() const noexcept { return headers_; }
 		std::string_view body() const noexcept { return body_; }
 
+		// Get header value
+		[[nodiscard]] std::optional<std::string_view> header(std::string_view key) const noexcept
+		{
+			for (const auto& [k, v] : headers_)
+			{
+				if (k == key)
+				{
+					return v;
+				}
+			}
+			return std::nullopt;
+		}
+
 		// Mutators
 		void set_header(std::string key, std::string value)
 		{

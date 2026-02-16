@@ -174,10 +174,10 @@ namespace coroute
 
 		// Extract captured groups as strings
 		// url-matcher groups are 0-indexed
-		if (!match.groups.empty())
+		if (!m.groups.empty())
 		{
 			size_t max_group = 0;
-			for (const auto& [group_id, positions] : match.groups)
+			for (const auto& [group_id, positions] : m.groups)
 			{
 				if (group_id + 1 > max_group) max_group = group_id + 1;
 			}
