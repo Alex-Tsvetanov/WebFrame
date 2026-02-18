@@ -1,4 +1,5 @@
 #include "coroute/core/cookie.hpp"
+#include "coroute/core/time.hpp"
 
 #include <sstream>
 #include <iomanip>
