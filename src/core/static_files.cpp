@@ -254,6 +254,7 @@ namespace coroute
 		// Check that the path is within root (prevent directory traversal)
 		auto [root_end, path_end] =
 			std::mismatch(root_canonical.begin(), root_canonical.end(), canonical.begin(), canonical.end());
+		(void)path_end;
 
 		// Path must start with root
 		if (root_end != root_canonical.end())
@@ -298,11 +299,8 @@ namespace coroute
 			// Convert file_time_type to system_clock for formatting
 			auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
 				mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-			auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
 
-			std::ostringstream oss;
-			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
-			resp.set_header("Last-Modified", oss.str());
+			resp.set_header("Last-Modified", time::to_http_date(sctp));
 		}
 
 		// Cache-Control
@@ -580,10 +578,7 @@ namespace coroute
 		{
 			auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
 				mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-			auto time_t_val = std::chrono::system_clock::to_time_t(sctp);
-			std::ostringstream oss;
-			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
-			last_modified_str = oss.str();
+			last_modified_str = time::to_http_date(sctp);
 		}
 
 		if (check_not_modified(req, etag, mtime))

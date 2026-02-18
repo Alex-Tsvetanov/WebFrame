@@ -1,5 +1,6 @@
 #include "coroute/core/logging.hpp"
 
+#include "coroute/core/time.hpp"
 #include <ctime>
 
 namespace coroute
@@ -77,8 +78,9 @@ namespace coroute
 			auto time_t_val = std::chrono::system_clock::to_time_t(tp);
 			auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()) % 1000;
 
+			auto tm = time::localtime(time_t_val);
 			std::ostringstream oss;
-			oss << std::put_time(std::localtime(&time_t_val), "%Y-%m-%d %H:%M:%S");
+			oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
 			oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
 			return oss.str();
 		}

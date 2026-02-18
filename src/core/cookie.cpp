@@ -14,14 +14,6 @@ namespace coroute
 	namespace
 	{
 
-		std::string format_http_date(std::chrono::system_clock::time_point tp)
-		{
-			auto time_t_val = std::chrono::system_clock::to_time_t(tp);
-			std::ostringstream oss;
-			oss << std::put_time(std::gmtime(&time_t_val), "%a, %d %b %Y %H:%M:%S GMT");
-			return oss.str();
-		}
-
 		std::string_view trim(std::string_view s)
 		{
 			while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
@@ -65,7 +57,7 @@ namespace coroute
 		// Expires
 		if (expires)
 		{
-			oss << "; Expires=" << format_http_date(*expires);
+			oss << "; Expires=" << time::to_http_date(*expires);
 		}
 
 		// Secure

@@ -6,13 +6,35 @@
 namespace coroute::time
 {
 
+	std::tm gmtime(std::time_t t)
+	{
+		std::tm tm{};
+#ifdef _WIN32
+		gmtime_s(&tm, &t);
+#else
+		gmtime_r(&t, &tm);
+#endif
+		return tm;
+	}
+
+	std::tm localtime(std::time_t t)
+	{
+		std::tm tm{};
+#ifdef _WIN32
+		localtime_s(&tm, &t);
+#else
+		localtime_r(&t, &tm);
+#endif
+		return tm;
+	}
+
 	std::string to_http_date(std::chrono::system_clock::time_point tp)
 	{
 		std::time_t t = std::chrono::system_clock::to_time_t(tp);
-		std::tm* tm = std::gmtime(&t);
+		std::tm tm = gmtime(t);
 
 		std::ostringstream oss;
-		oss << std::put_time(tm, "%a, %d %b %Y %H:%M:%S GMT");
+		oss << std::put_time(&tm, "%a, %d %b %Y %H:%M:%S GMT");
 		return oss.str();
 	}
 

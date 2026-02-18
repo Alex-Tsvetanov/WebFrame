@@ -4,6 +4,7 @@
 #include <string_view>
 #include <chrono>
 #include <optional>
+#include <ctime>
 
 namespace coroute::time
 {
@@ -19,5 +20,15 @@ namespace coroute::time
 	 * Supports standard RFC 1123 format.
 	 */
 	std::optional<std::chrono::system_clock::time_point> from_http_date(std::string_view date);
+
+	/**
+	 * @brief Thread-safe version of std::gmtime.
+	 */
+	std::tm gmtime(std::time_t t);
+
+	/**
+	 * @brief Thread-safe version of std::localtime.
+	 */
+	std::tm localtime(std::time_t t);
 
 }  // namespace coroute::time

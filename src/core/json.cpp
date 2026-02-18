@@ -65,8 +65,8 @@ namespace coroute
 		void dump_impl(std::ostream& os, const JsonValue& value, int indent, int depth)
 		{
 			bool pretty = indent >= 0;
-			std::string indent_str = pretty ? std::string(depth * indent, ' ') : "";
-			std::string child_indent = pretty ? std::string((depth + 1) * indent, ' ') : "";
+			std::string indent_str = pretty ? std::string(static_cast<size_t>(depth) * indent, ' ') : "";
+			std::string child_indent = pretty ? std::string((static_cast<size_t>(depth) + 1) * indent, ' ') : "";
 
 			if (value.is_null())
 			{

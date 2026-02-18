@@ -751,12 +751,13 @@ namespace coroute::http2
 		if (header.stream_id == 0)
 		{
 			// Connection-level window update
-			remote_window_size_ += static_cast<int32_t>(increment);
-			if (remote_window_size_ > static_cast<int32_t>(Constants::MaxWindowSize))
+			int64_t new_size = static_cast<int64_t>(remote_window_size_) + static_cast<int64_t>(increment);
+			if (new_size > static_cast<int64_t>(Constants::MaxWindowSize))
 			{
 				co_await send_goaway(ErrorCode::FlowControlError, "Window overflow");
 				co_return unexpected(Error::io(IoError::InvalidArgument, "Window overflow"));
 			}
+			remote_window_size_ = static_cast<int32_t>(new_size);
 
 			// Notify all streams that connection window has increased
 			{
