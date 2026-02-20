@@ -1,0 +1,114 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\pgfplotsset{compat=1.18}
+
+% Define colors for syntax highlighting
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+% C++ language definition
+\lstdefinelanguage{ModernC++}{
+  keywords={alignas, alignof, and, and_eq, asm, atomic_cancel, atomic_commit, atomic_noexcept, auto, bitand, bitor, bool, break, case, catch, char, char8_t, char16_t, char32_t, class, compl, concept, const, consteval, 
+  constexpr, constinit, const_cast, continue, contract_assert, co_await, co_return, co_yield, decltype, default, delete, do, double, dynamic_cast, else, enum, explicit, export, extern, false, float, for, friend, goto, if, inline, int, long, mutable, namespace, new, noexcept, not, not_eq, nullptr, operator, or, or_eq, private, protected, public, reflexpr, register, reinterpret_cast, requires, return, short, signed, sizeof, static, static_assert, static_cast, struct, switch, synchronized, template, this, thread_local, throw, true, try, typedef, typeid, typename, union, unsigned, using, virtual, void, volatile, wchar_t, while, xor, xor_eq},
+  sensitive=true,
+  morecomment=[l]//,
+  morestring=[b]',
+  morestring=[b]",
+  showstringspaces=true,
+  basicstyle=\ttfamily\small              
+}
+
+% Python language definition
+\lstdefinelanguage{Python}{
+  morekeywords={
+    def, return, if, elif, else, while, for, in, try, except, finally, 
+    class, from, import, as, pass, raise, break, continue, lambda, 
+    with, assert, yield, del, global, nonlocal, True, False, None
+  },
+  sensitive=true,
+  morecomment=[l]\#,
+  morestring=[b]',
+  morestring=[b]",
+  showstringspaces=false,
+  basicstyle=\ttfamily\small
+}
+
+\lstdefinelanguage{JavaScript}{
+  keywords={typeof, new, true, false, catch, function, return, null, catch, switch, var, if, in, while, do, else, case, break, const, let,
+  class, export, boolean, throw, implements, import, this, constructor},
+  sensitive=true,
+  morecomment=[l]//,
+  morestring=[b]',
+  morestring=[b]",
+  showstringspaces=false,
+  basicstyle=\ttfamily\small
+}
+
+\lstset{style=mystyle}
+
+\begin{document}
+
+\title{
+% TODO: Title the paper accordingly 
+}
+
+\author{\IEEEauthorblockN{Alex Tsvetanov}
+\IEEEauthorblockA{Student, Bachelor of Computer and Software Engineering\\
+Technical University of Sofia \\
+Sofia, Bulgaria \\
+atsvetanov@tu-sofia.bg}
+}
+
+\maketitle
+
+\begin{abstract}
+% TODO: Add abstract
+\end{abstract}
+
+\begin{IEEEkeywords}
+% TODO: Add keywords
+\end{IEEEkeywords}
+
+% TODO: Add the sections from ./sections/ using \input{...}
+
+\bibliographystyle{ieeetr}
+\bibliography{bibliography}
+
+\end{document}
