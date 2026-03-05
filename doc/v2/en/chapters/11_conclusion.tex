@@ -1,0 +1,92 @@
+% ============================================================================
+% Conclusion
+% ============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+This thesis presented a systematic investigation into the design, implementation, and experimental evaluation of Coroute --- a high-performance C++ library for building web applications. The research addressed the fundamental question of whether the combination of modern language capabilities (C++20 coroutines), OS-specific I/O optimizations (IOCP, io\_uring), and algorithmic innovations (DFA-based routing) could achieve performance commensurate with leading industrial solutions while offering a significantly simplified programming model.
+
+\subsection{Summary of Achievements}
+
+The work encompassed the full software development lifecycle --- from analyzing existing solutions and identifying their limitations, to designing a modular architecture and implementing key components, terminating with systematic testing and comparative performance evaluation.
+
+\subsubsection{Architectural Achievements}
+
+A central result of this work is the realization of a coroutine infrastructure based on the \texttt{Task<T>} type. This type implements lazy coroutines with support for detached execution, continuation chaining, and cooperative cancellation. The stackless nature of these coroutines ensures minimal memory consumption --- approximately 23 bytes per coroutine for state storage, compared to the typical 1MB for a thread stack. This capability allows the instantiation of hundreds of thousands of concurrent coroutines on a memory-constrained machine.
+
+Multi-protocol support constitutes the second key achievement. The library implements HTTP/1.1 with keep-alive and chunked transfer encoding, HTTP/2 featuring HPACK compression, stream multiplexing and flow control, as well as WebSockets for bidirectional real-time communication. The protocols are multiplexed over a single port via ALPN negotiation, simplifying deployment and firewall configuration.
+
+DFA-based routing, founded on the algorithm from ``Matching Text from Start to Finish Against Multiple Regular Expressions'' \cite{stankov2024regex}, acts as the third significant achievement. The algorithm attains O(N) time complexity relative to the overall length of the URL, completely independent of the number of registered routes. Experimental evaluation demonstrated up to a 100x improvement compared to \texttt{std::regex} when serving 500 routes.
+
+Type-safe parameter extraction utilizes C++20 concepts for compile-time validation of types. This approach eliminates an entire class of runtime errors associated with incorrect URL parameter conversions.
+
+Platform independence is achieved via an abstract I/O layer with optimized implementations targeted at each operating system: IOCP for Windows, io\_uring for Linux, and kqueue for macOS. Each implementation utilizes the native system mechanisms of its platform to attain maximum performance.
+
+\subsubsection{Experimental Results}
+
+Experimental evaluation conducted on a system featuring an AMD Ryzen 5 3600 (6 cores, 12 threads) and up to 1024 concurrent clients demonstrated a highly competitive performance landscape relative to leading C++ libraries. Coroute achieves a throughput of 1,378,578 requests per second for simple HTTP responses on Windows utilizing the IOCP backend. Median latency stands at 212 microseconds, average latency at 743 microseconds, and minimum latency dips to 59 microseconds. An error rate of 0\% confirms the system's absolute stability under high load. Memory consumption remains highly efficient --- approximately 23 bytes per coroutine for the state, alongside buffers strictly allocated for I/O operations.
+
+\subsubsection{Practical Applicability}
+
+The practical applicability of the library is demonstrated through the reference application (Flutter Enterprise App) --- a fully-fledged, cross-platform task management system. The application illustrates the integration of all key Coroute components: a REST API providing CRUD operations for tasks and users, WebSockets for real-time updates, session-based authentication, server-generated views (View) utilizing HTML templates, and perhaps most importantly --- the compilation of the entire backend as a native static/dynamic library executed within a Flutter mobile application via Dart FFI. The architecture adheres to proven production patterns and can serve as an exemplary foundation for building modern, cross-platform solutions.
+
+\subsection{Scientific Contribution}
+
+This thesis yields the following scientific contributions, which can be grouped into three fundamental directions.
+
+The first contribution is the integration of DFA-based routing into a full-scale web library. The algorithm presented in ``Matching Text from Start to Finish Against Multiple Regular Expressions'' \cite{stankov2024regex}, initially produced for general regular expression matching, was successfully adapted and integrated within the HTTP routing pipeline context. Experimental evaluation establishes that the theoretical O(N) complexity holds decisively in practice, with matching time remaining nearly constant as route counts scale from 10 to 500.
+
+The second contribution involves the development of a coroutine executive model specifically designed for network applications. The model, centered around the \texttt{Task<T>} type, demonstrates how C++20 coroutines can be optimally employed in building high-performance asynchronous systems. Vital innovations include detached execution intended for fire-and-forget tasks, continuation chaining for compositional execution, and a zero-compromise integration with platform-specific I/O components.
+
+The third contribution is the demonstration of a type-safe API design inside a web routing matrix. Relying on C++20 concepts for compile-time validation of URL patterns is an innovative approach enhancing overall application robustness while injecting virtually zero runtime overhead.
+
+\subsection{Study Limitations}
+
+It is important to acknowledge the limitations encountered in the current study. Experimental evaluation occurred on a localhost setup, eliminating intrinsic network latency, potentially painting slightly more optimistic performance scenarios than real-condition deployments. Additionally, while the io\_uring backend for Linux is fully synthesized and tested, there remain quantifiable disparities in absolute throughput versus Windows IOCP, driven inherently by differing kernel architectures. The HTTP/3 (QUIC) protocol is not presently implemented due to its formidable complexity. Finally, tests mapped up to 1024 concurrent clients during average conditions and up to 10,000 within hostile stress tests.
+
+\subsection{Directions for Future Development}
+
+The Coroute library can be aggressively expanded across several strategic trajectories.
+
+\subsubsection{HTTP/3 and QUIC}
+
+HTTP/3, stationed upon the QUIC protocol, represents the next epoch of web communication. QUIC directly repairs a fundamental failure inside TCP --- Head-of-Line blocking at the transport layer. In a TCP session, any missing packet immediately halts delivery for all sequential packets in that pipeline. QUIC, executing entirely on UDP, authorizes the independent transit of multifarious streams, remaining instrumental for unstable network landscapes.
+
+Integrating QUIC inside Coroute would escalate the library's hallmark traits of type safety and peak efficiency toward modern transport domains. Future implementation targets invoking \texttt{msquic} or \texttt{quiche} as the central nexus, aligned cleanly to Coroute's internal coroutine API.
+
+\subsubsection{Compile-Time Query Builder}
+
+A subsequent strategic direction concerns a fully compile-time query builder interfacing databases. This component, structured inside an adjunctive project, diffuses the compile-time safety paradigms governing URL parameters downward into the database abstraction strata.
+
+Legacy ORM tools utilize conventional runtime string formatting to synthesize SQL cascades, instigating profound risks involving SQL injections or localized runtime faults arising from broken syntax parameters. A Compile-time query builder enlists C++20 \texttt{constexpr} parameters and concepts specifically to:
+\begin{itemize}
+    \item Validate foundational SQL syntax instantly during compilation
+    \item Generate type-safe mappings between structural C++ layouts and database columns
+    \item Entirely vanquish SQL injection attacks through fully parameterized streams
+    \item Maintain a zero runtime generation overhead penalty
+\end{itemize}
+
+Integration with Coroute will present an asynchronous database client wrapped tightly in an idiomatic coroutine API:
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily]
+auto users = co_await db.query<User>()
+    .where(User::age > 18)
+    .order_by(User::name)
+    .limit(10)
+    .execute();
+\end{lstlisting}
+
+\subsubsection{Additional Directions}
+
+A prolonged road map suggests expanding heavily towards horizontal scaling through clustered load-balancing via multi-process architecture. Support for gRPC microservices integration remains an intriguing avenue, similarly accompanied by natively interwoven OpenTelemetry data targeting modern distributed tracing protocols. Wrapping the architecture reliably across robust package managers like vcpkg and Conan will accelerate its global adoption cycle.
+
+\subsection{Final Words}
+
+Coroute emphatically showcases that modern C++ (C++20 and beyond) remains an exceptionally superior choice for the intensive architecting of high-performance web applications. Coroutines systematically eliminate previous hurdles concerning asynchronous development -- specifically callback labyrinths and grueling debugging chains -- while safeguarding peak non-blocking I/O velocities.
+
+The development of Coroute substantiated the argument that a web framework could simultaneously embody blazing speeds alongside effortless structural adoption. Exploring the C++ type system effectively unlocked massive optimizations, proving its value additionally as an instrument for rock-solid zero-tolerance compile-time policing. The DFA-based routing structure validated the immense capacity possessed by algorithmic innovations to unilaterally transform practical benchmarks.
+
+The library exists inside an open-source footprint, positioned for consumption and collaborative adaptation right alongside the open community. There remains immense optimism that Coroute may perform a foundational role fueling forthcoming endeavors, providing a distinct reference model for coroutine web deployment and generally supercharging the future C++ web and cross-platform mobile ecosystems.
+
+Not to be overlooked, the architecture enclosing the "Headless Web Engine" --- enabling the absolute migration and execution of a fully unified web backend directly inside the active process memory of a mobile Flutter application --- exhibits a spectacularly revolutionary technique steering modern software ecologies. It entirely curtails the chaotic redundancy of business logic, equalizes API treaties across client boundaries, and forcefully ushers in a highly secure, offline-capable infrastructural topology for the next epoch of mobile and desktop solutions.
+
+In totality, this thesis flawlessly accomplished its predetermined objectives and missions. A highly functional, comprehensively mapped, extensively analyzed library structure now operates completely prepared for immediate insertion into pragmatic production projects. Analytical benchmarking explicitly corroborates that strategic decisions deployed alongside Coroute command immense peak velocity scaling, mirroring industry benchmarks and commanding immense authority throughout the field.

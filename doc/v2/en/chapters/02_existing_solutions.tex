@@ -1,0 +1,108 @@
+% ============================================================================
+% Chapter 2: Review of Existing Solutions
+% ============================================================================
+\section{Review of Existing Solutions}
+\label{sec:existing_solutions}
+
+Analyzing existing solutions is a critical step in the software design process. It helps identify established architectural patterns, avoid known pitfalls, and define areas where the new solution can add value. In the context of C++ web libraries, this analysis is particularly important due to the wide variety of approaches---ranging from low-level network programming to high-level abstractions similar to those found in interpreted languages.
+
+This chapter presents a systematic review of five leading C++ libraries for web development: Boost.Beast, Drogon, Crow, Oat++, and Pistache. For each library, we analyze architectural decisions, the concurrency model, API design, and documented performance. The analysis concludes with a comparative table and a justification for the development of Coroute.
+
+\subsection{Boost.Beast}
+
+Boost.Beast \cite{boost_beast} is part of the established Boost library collection and represents one of the most mature implementations of HTTP and WebSocket protocols for C++. It is built on top of Boost.Asio, providing a solid foundation for asynchronous networking operations.
+
+The philosophy behind Boost.Beast is to provide a low level of abstraction, granting the developer full control over every aspect of HTTP communication. This means the library does not enforce a specific architecture or usage model, but instead provides building blocks from which developers can construct their solutions.
+
+One of the main advantages of Boost.Beast is its integration with the Boost ecosystem. Developers already using other Boost libraries can easily add HTTP functionality to their projects. The documentation is comprehensive, including numerous examples for various use cases. Its active community ensures rapid assistance when issues arise.
+
+Despite these advantages, Boost.Beast has significant drawbacks. The low level of abstraction means that even simple tasks require a substantial amount of code. The lack of built-in routing forces developers to implement their own logic for directing requests. There is no middleware system, making it difficult to add cross-cutting concerns like logging, authentication, or compression. The learning curve is steep, especially for developers without prior experience using Boost.Asio.
+
+\subsection{Drogon}
+
+Drogon \cite{drogon} has established itself as one of the fastest C++ web libraries, regularly ranking at the top of the TechEmpower Web Framework Benchmarks \cite{techempower}. It was developed with a focus on performance and provides a full suite of features for building modern web applications.
+
+Drogon's architecture is based on a non-blocking I/O model using an event loop to handle multiple concurrent connections. The library supports HTTP/1.1, HTTP/2, and WebSocket protocols, making it suitable for a wide range of applications. The built-in ORM system simplifies database interactions, supporting PostgreSQL, MySQL, and SQLite.
+
+One of Drogon's strengths is its middleware system, which allows the addition of request processing filters. The library also provides tools for automatically generating controllers from definitions, which speeds up development. The documentation is good, albeit primarily in English and Chinese.
+
+Despite its impressive performance, Drogon has certain shortcomings. Its asynchronous model relies heavily on callbacks, which can lead to ``callback hell'' when handling complex logic. Although recent versions have added partial support for C++20 coroutines, the integration is not fully comprehensive across all library components. Configuration can be complex for beginners, and the substantial size of the library increases compilation times.
+
+\subsection{Crow}
+
+Crow \cite{crow} is a micro-framework inspired by the popular Python library Flask. The primary goal of Crow is to provide a minimalist and intuitive API that allows for the rapid creation of web applications with minimal code.
+
+One of Crow's most appealing features is its simplicity. It is implemented as a header-only library, meaning integration into a project is as simple as including a single header file. Routing is handled via lambda functions, making the code readable and easy to understand. For developers coming from Python or JavaScript ecosystems, Crow's syntax will feel familiar and intuitive.
+
+Crow is particularly well-suited for small projects, prototypes, and internal tools where simplicity is prioritized over raw performance. The library supports WebSocket communication and provides basic middleware capabilities.
+
+Despite its elegance, Crow has significant limitations. The lack of HTTP/2 support makes it unsuitable for modern production applications that require multiplexing and efficient header compression. The default synchronous execution model means performance degrades significantly under heavy load. The library does not provide built-in tools for databases, sessions, or authentication, necessitating the use of third-party libraries.
+
+\subsection{Oat++}
+
+Oat++ \cite{oatpp} represents a modern approach to C++ web development, placing a strong emphasis on type safety and automation. It was designed with the philosophy that API documentation should be automatically generated from the code rather than maintained manually.
+
+A central concept in Oat++ is its Data Transfer Object (DTO) system. Developers define data structures using specialized macros, enabling automatic serialization and deserialization to JSON, as well as the generation of OpenAPI/Swagger documentation. This eliminates common errors associated with manually writing documentation and ensures it always remains synchronized with the code.
+
+The library offers both synchronous and asynchronous APIs, giving developers flexibility in choosing their execution model. The built-in data validation system further enhances application reliability.
+
+The primary drawback of Oat++ is its proprietary type system. Instead of using standard C++ types, the library requires the use of specialized wrapper classes, which can be confusing for beginners. The learning curve is steeper compared to simpler libraries. The lack of HTTP/2 support is also a major omission for applications requiring high performance with many concurrent requests.
+
+\subsection{Pistache}
+
+Pistache \cite{pistache} is a library focused on creating RESTful API services. It is designed around code elegance and ease of use, strictly adhering to principles of modern C++ design.
+
+Pistache's API is clean and expressive, allowing the definition of endpoints with minimal boilerplate code. It employs an asynchronous execution model based on Linux epoll, which ensures high performance when handling multiple concurrent connections. Built-in support for HTTP methods, status codes, and content negotiation streamlines the construction of standard REST APIs.
+
+Pistache also provides additional features such as rate limiting, timeout management, and graceful shutdown, which are critical for production deployments. The documentation is clear and includes examples for frequently encountered scenarios.
+
+The most significant limitations of Pistache relate to its platform support and feature set. The library works exclusively on Linux, making it unsuitable for projects demanding cross-platform compatibility. The lack of HTTP/2 and WebSocket support restricts its applicability in modern real-time web applications. Development activity has also decreased in recent years, raising concerns regarding long-term maintenance and evolution.
+
+\subsection{Comparison with C++ UI Frameworks (Qt, Slint)}
+
+The traditional approach to building Graphical User Interfaces (GUIs) in C++ involves using specialized frameworks like Qt or newer alternatives like Slint. Qt provides a massive ecosystem alongside its proprietary Meta-Object Compiler (MOC), but it strongly couples the business logic with its specific paradigm model. This often complicates reusing logic between remote backend services and local client applications. Slint offers a more modern declarative syntax, yet it still demands specialized tooling and mastering a new design language.
+
+In contrast, Coroute's integration with Flutter offers an innovative architectural approach. Instead of C++ managing the UI rendering, the C++ core is compiled as a shared library and functions as a headless web engine executing locally on the device. The entire backend logic (routing, controllers, databases, WebSockets) remains identical to that of the network server. Flutter handles exclusively the frontend presentation. The connection is established via the high-performance Dart FFI (Foreign Function Interface), transferring states and messages with minimal overhead. This approach unifies the absolute performance of a C++ backend with the rich ecosystem of Flutter, enabling the creation of 60fps cross-platform (iOS, Android, Windows, macOS, Linux) applications using the exact same codebase.
+
+\subsection{Comparative Analysis}
+
+Following the detailed review of each library, it is useful to conduct a systematic comparison based on key functionality. Table \ref{tab:comparison} summarizes the support for various features across the examined libraries, including Coroute.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of C++ web libraries by key features}
+\label{tab:comparison}
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+\textbf{Feature} & \textbf{Beast} & \textbf{Drogon} & \textbf{Crow} & \textbf{Oat++} & \textbf{Pistache} & \textbf{Coroute} \\
+\hline
+HTTP/1.1 & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+HTTP/2 & -- & \checkmark & -- & -- & -- & \checkmark \\
+WebSocket & \checkmark & \checkmark & \checkmark & \checkmark & -- & \checkmark \\
+C++20 Coroutines & -- & Partial & -- & -- & -- & \checkmark \\
+Middleware & -- & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+Type-Safe Routing & -- & -- & -- & \checkmark & -- & \checkmark \\
+Cross-platform & \checkmark & \checkmark & \checkmark & \checkmark & -- & \checkmark \\
+\hline
+\end{tabular}
+\end{table}
+
+The table demonstrates that while each library possesses unique strengths, none provides the complete set of highly desirable modern features out of the box. Boost.Beast is powerful but too low-level. Drogon is fast but relies mainly on callbacks. Crow is simple but functionally restricted. Oat++ is type-safe but lacks HTTP/2. Pistache is elegant but strictly limited to Linux.
+
+\subsection{Motivation for Coroute}
+
+The analysis of existing solutions reveals a significant gap in the market. Currently, no mainstream C++ framework natively couples all of the following vital traits into a unified implementation:
+
+First, \textbf{first-class support for C++20 coroutines}. Coroutines are a revolutionary feature allowing asynchronous code to be written with syntax almost identical to synchronous flow. Although C++20 standardizing them was finalized in 2020, the majority of libraries still rely intensely on callbacks or provide merely highly fragmented coroutine wrappers.
+
+Second, \textbf{HTTP/2 with ALPN negotiation}. Adopted significantly back in 2015, HTTP/2 implements deep multiplexed structural improvements over legacy systems alongside robust HPACK compression. Yet surprisingly, many prominent C++ server architectures explicitly neglect transparently supporting it natively or impose notoriously complicated setup procedures.
+
+Third, \textbf{type-safe parameterized routing verified during compile-time}. Traditional C++ routers conventionally isolate mapped inputs stringifying results completely and arbitrarily forcing unsafe runtime parsing logic. Employing explicit template architectures allows compilation to catch mismatch faults automatically, erasing profound vulnerability thresholds entirely.
+
+Fourth, \textbf{DFA-based routing with guaranteed O(N) complexity}. Most frameworks employ sequential evaluations processing route trees fundamentally exhibiting O(N $\times$ M) complexity constraints. Applying concepts documented inside ``Matching Text from Start to Finish Against Multiple Regular Expressions'' \cite{stankov2024regex} dictates uniquely linear parsing latencies completely disconnected from scaling internal route totals.
+
+Fifth, \textbf{platform independence powered by heavily optimized I/O backends}. Maximizing native networking capabilities inherently requires utilizing precisely aligned native mechanisms --- IOCP on Windows, io\_uring over Linux architectures, and kqueue serving macOS natively. Optimal throughput explicitly demands bypassing standard highly abstracted layers whenever possible.
+
+Sixth, \textbf{integration connecting cross-platform UI tooling natively highlighting Flutter}. Facilitating compiling standalone server logic seamlessly into embedded shared resources natively breaks barriers historically dividing dedicated backend daemons aside standard desktop UI clients through high-speed native FFI operations.
+
+Coroute was explicitly engineered resolving uniquely these isolated omissions universally. The core architecture integrates entirely these listed characteristics constructing an elegant, fully modernized solution targeting explicit performance spanning standard C++ backend routines securely natively perfectly. Succeeding chapters dissect structurally explicit architectural logic validating inherently mapped integration steps systematically.

@@ -1,0 +1,224 @@
+\documentclass[12pt]{article}
+\usepackage{cmap} % Fixes search and copy-paste for Cyrillic in PDF
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[bulgarian]{babel}
+
+% --- Typography ---
+\usepackage[top=2.5cm, bottom=2.5cm, left=3.0cm, right=2.0cm, a4paper]{geometry}
+\usepackage{parskip}
+\setlength{\parskip}{1\baselineskip}
+\usepackage{soul}
+\usepackage{lscape}
+\usepackage{setspace}
+\usepackage[none]{hyphenat} % No hyphenation
+\usepackage[expansion=false]{microtype} % Better text spacing and overflow prevention
+\emergencystretch=1.5em % Help with line breaks in no-hyphenation environment
+\sloppy
+\usepackage{indentfirst} % Indent first paragraph after section
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0pt}
+
+% --- Page Numbering (Bottom Right) ---
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[R]{\thepage}
+
+% --- Section Formatting ---
+\usepackage[compact]{titlesec}
+
+% --- Captions (Tables & Figures) ---
+\usepackage{caption}
+\usepackage{subcaption}
+
+% --- Other Essential Packages ---
+% Math
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+
+% Graphics & Figures
+\usepackage{graphicx}
+\usepackage{epstopdf}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabu}
+
+% Bibliography & TOC
+\usepackage{cite}
+\usepackage{tocloft}
+\usepackage[nottoc]{tocbibind}
+\usepackage[toc,page]{appendix}
+
+% Tools & Utilities
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{enumerate}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{subfiles}
+\usepackage{titlepic}
+\usepackage{filecontents}
+\usepackage{textcomp}
+\usepackage{gensymb}
+\usepackage{fancyvrb}
+\usepackage{eurosym}
+\usepackage{siunitx}
+\usepackage{listings}
+\usepackage{hyperref}
+
+
+\begin{document}
+
+% --- Code Highlighting ---
+\definecolor{cppblue}{RGB}{0,0,180}
+\definecolor{cppgreen}{RGB}{0,128,0}
+\definecolor{cppred}{RGB}{180,0,0}
+\definecolor{cppgray}{RGB}{128,128,128}
+
+\lstset{
+    language=C++,
+    basicstyle=\small\ttfamily,
+    breaklines=true,
+    breakatwhitespace=true,
+    keywordstyle=\color{cppblue}\bfseries,
+    stringstyle=\color{cppred},
+    commentstyle=\color{cppgreen}, % Removed itshape
+    identifierstyle=\color{black},
+    showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{cppgray},
+    numbersep=8pt,
+    aboveskip=1.5em,
+    belowskip=1.5em,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{cppgray},
+    backgroundcolor=\color{white},
+    tabsize=4,
+    captionpos=b,
+    morekeywords={co_await, co_return, co_yield, Task, expected, unexpected, requires, concept, constexpr, noexcept, nullptr, override, final},
+    emph={Request, Response, Handler, Middleware, Router, App, Connection, WebSocketConnection, IoContext},
+    emphstyle=\color{cppblue},
+    extendedchars=true,
+    columns=fullflexible,
+    keepspaces=true,
+    inputencoding=utf8,
+    columns=fullflexible,
+    keepspaces=true,
+    inputencoding=utf8,
+    literate={а}{{\cyra}}1 {б}{{\cyrb}}1 {в}{{\cyrv}}1 {г}{{\cyrg}}1 {д}{{\cyrd}}1
+             {е}{{\cyre}}1 {ж}{{\cyrzh}}1 {з}{{\cyrz}}1 {и}{{\cyri}}1 {й}{{\cyrishrt}}1
+             {к}{{\cyrk}}1 {л}{{\cyrl}}1 {м}{{\cyrm}}1 {н}{{\cyrn}}1 {о}{{\cyro}}1
+             {п}{{\cyrp}}1 {р}{{\cyrr}}1 {с}{{\cyrs}}1 {т}{{\cyrt}}1 {у}{{\cyru}}1
+             {ф}{{\cyrf}}1 {х}{{\cyrh}}1 {ц}{{\cyrc}}1 {ч}{{\cyrch}}1 {ш}{{\cyrsh}}1
+             {щ}{{\cyrshch}}1 {ъ}{{\cyrhrdsn}}1 {ь}{{\cyrsftsn}}1 {ю}{{\cyryu}}1 {я}{{\cyrya}}1
+             {А}{{\CYRA}}1 {Б}{{\CYRB}}1 {В}{{\CYRV}}1 {Г}{{\CYRG}}1 {Д}{{\CYRD}}1
+             {Е}{{\CYRE}}1 {Ж}{{\CYRZH}}1 {З}{{\CYRZ}}1 {И}{{\CYRI}}1 {Й}{{\CYRISHRT}}1
+             {К}{{\CYRK}}1 {Л}{{\CYRL}}1 {М}{{\CYRM}}1 {Н}{{\CYRN}}1 {О}{{\CYRO}}1
+             {П}{{\CYRP}}1 {Р}{{\CYRR}}1 {С}{{\CYRS}}1 {Т}{{\CYRT}}1 {У}{{\CYRU}}1
+             {Ф}{{\CYRF}}1 {Х}{{\CYRH}}1 {Ц}{{\CYRC}}1 {Ч}{{\CYRCH}}1 {Ш}{{\CYRSH}}1
+             {Щ}{{\CYRSHCH}}1 {Ъ}{{\CYRHRDSN}}1 {Ь}{{\CYRSFTSN}}1 {Ю}{{\CYRYU}}1 {Я}{{\CYRYA}}1,
+}
+\setlength{\parskip}{1\baselineskip}
+
+\title{Проектиране и разработване на библиотека на С++, подпомагаща създаването на уеб приложения}
+\author{Алекс Цветанов}
+\date{\today}
+
+\begin{titlepage}
+\begin{center}
+{\Large ДИПЛОМНА РАБОТА}\\
+
+\bigskip
+
+\begin{figure} [h]
+\includegraphics[width=0.6\linewidth]{../images/ту.png}
+\centering
+\end{figure}
+
+
+\bigskip
+
+{\bf \textsc{\huge Проектиране и разработване на библиотека на С++, подпомагаща създаването на уеб приложения}}\\[8mm]
+
+{\Large Coroute: Coroutine-Based Multi-Protocol Web Framework}\\[15mm]
+
+\begin{table}[H]
+\centering
+\large
+\begin{tabu} to \linewidth { X[r] X[l] X[l]}
+Изготвил & Факултетен номер & Специалност \\
+\hline
+Алекс Цветанов & 121222225 & Компютърно и софтуерно инженерство \\
+\end{tabu}
+\end{table}
+
+\vspace{1cm}
+
+{Научен ръководител}\\
+доц. д-р инж. Иван Станков\\
+Катедра ``Киберсигурност''
+
+
+\mbox{}
+\vfill
+\large Технически университет -- София, \today \\
+\end{center}
+\end{titlepage}
+
+\newpage
+\tableofcontents\thispagestyle{empty}
+
+\newpage
+\input{chapters/00_abstract.tex}
+
+\newpage
+\input{chapters/01_introduction.tex}
+
+\newpage
+\input{chapters/02_existing_solutions.tex}
+
+\newpage
+\input{chapters/03_theoretical_background.tex}
+
+\newpage
+\input{chapters/04_architecture.tex}
+
+\newpage
+\input{chapters/05_protocols.tex}
+
+\newpage
+\input{chapters/06_type_safe_params.tex}
+
+\newpage
+\input{chapters/07_views_templating.tex}
+
+\newpage
+\input{chapters/08_flutter_integration.tex}
+
+\newpage
+\input{chapters/09_example_app.tex}
+
+\newpage
+\input{chapters/10_testing.tex}
+
+\newpage
+\input{chapters/11_conclusion.tex}
+
+\newpage
+\bibliographystyle{ieeetr}
+% Shared bibliography
+\bibliography{../references}
+
+\end{document}

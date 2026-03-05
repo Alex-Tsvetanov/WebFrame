@@ -1,0 +1,140 @@
+% ============================================================================
+% Chapter 3: Theoretical Background
+% ============================================================================
+\section{Theoretical Background}
+\label{sec:theoretical_background}
+
+To completely understand the architecture and implementation details of the Coroute library, it is essential to first introduce the key theoretical concepts that underlie its development. This chapter reviews the necessary background regarding HTTP protocols, WebSocket communication, TLS encryption, C++20 coroutines, asynchronous I/O models, and routing algorithms.
+
+The concepts discussed here form the technical foundation upon which Coroute is built. A solid grasp of these principles is crucial for determining why specific architectural decisions were made later in the project.
+
+\subsection{Evolution of the HTTP Protocol}
+
+The Hypertext Transfer Protocol (HTTP) is the fundamental protocol of the World Wide Web. Since its inception, it has undergone significant changes to accommodate the growing demands of modern web applications. Coroute supports both HTTP/1.1 and HTTP/2, as they represent the most widely used versions of the protocol today.
+
+\subsubsection{HTTP/1.1 -- The Persistent Standard}
+
+HTTP/1.1, standardized in RFC 2616 (later updated by RFC 7230-7235), introduced several critical improvements over HTTP/1.0. Its most significant feature is persistent connections (keep-alive), which allows multiple requests and responses to be transmitted over a single TCP connection.
+
+An HTTP/1.1 request consists of a request line, header fields, an empty line, and an optional message body. The text-based nature of HTTP/1.1 makes it easy to debug but relatively inefficient for parsing.
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, caption={Example HTTP/1.1 Request}]
+GET /api/users?id=123 HTTP/1.1
+Host: api.example.com
+Accept: application/json
+Connection: keep-alive
+
+\end{lstlisting}
+
+Major limitations of HTTP/1.1 include Head-of-Line (HoL) blocking at the application layer. Since requests must be answered in the order they are received, a slow response blocks all subsequent requests on the same connection. To circumvent this, browsers typically open multiple parallel TCP connections to a single server, consuming additional system resources.
+
+\subsubsection{HTTP/2 -- Binary Multiplexing}
+
+HTTP/2, defined in RFC 7540, was developed to address the performance bottlenecks of HTTP/1.1. It retains the same semantics (methods, status codes, URIs) but drastically changes how data is formatted and transported.
+
+Key features of HTTP/2 include:
+\begin{itemize}
+    \item \textbf{Binary Framing:} Data is divided into discrete binary frames, making parsing more efficient and less error-prone compared to text-based HTTP/1.1.
+    \item \textbf{Multiplexing:} Multiple concurrent requests and responses can be interleaved over a single TCP connection without blocking each other, eliminating application-layer HoL blocking.
+    \item \textbf{Header Compression (HPACK):} Headers are compressed to reduce overhead, which is especially beneficial for microservices that exchange many small requests.
+    \item \textbf{Server Push:} The server can preemptively send resources to the client before they are explicitly requested.
+\end{itemize}
+
+HTTP/2 implementation requires maintaining complex state for each connection, including stream management, flow control windows, and HPACK dynamic tables.
+
+\subsection{Real-time Communication via WebSocket}
+
+While HTTP is fundamentally a request-response protocol where the client must initiate communication, many modern applications require real-time, bidirectional data transfer. The WebSocket protocol (RFC 6455) was designed specifically for this purpose.
+
+A WebSocket connection begins as a standard HTTP/1.1 request containing specific \texttt{Upgrade} headers. If the server supports WebSocket, it responds with a \texttt{101 Switching Protocols} status code, and the TCP connection transitions from HTTP to the WebSocket protocol.
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, caption={WebSocket Handshake Request}]
+GET /chat HTTP/1.1
+Host: server.example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+\end{lstlisting}
+
+Once established, the connection remains open, allowing both the client and server to send discrete messages (frames) at any time. WebSocket uses minimal framing overhead, making it highly efficient for high-frequency data transmission applications such as chat systems, live dashboards, and multiplayer games.
+
+\subsection{Transport Layer Security (TLS)}
+
+Security is a mandatory requirement for modern network communication. Transport Layer Security (TLS) is a cryptographic protocol designed to provide communication security over a computer network.
+
+TLS provides three main guarantees:
+\begin{enumerate}
+    \item \textbf{Confidentiality:} Data is encrypted, preventing eavesdropping.
+    \item \textbf{Integrity:} Data cannot be modified in transit without detection.
+    \item \textbf{Authentication:} The client can verify the identity of the server (and optionally, the server can verify the client).
+\end{enumerate}
+
+\subsubsection{The TLS Handshake}
+
+Before application data can be transmitted, the client and server must perform a TLS handshake to negotiate cryptographic algorithms, authenticate the server, and establish shared session keys. This process introduces latency, typically requiring one or two extra network round-trips.
+
+\subsubsection{Application-Layer Protocol Negotiation (ALPN)}
+
+ALPN is a TLS extension that allows the application layer to negotiate which protocol should be performed over a secure connection. This is primarily used to negotiate between HTTP/1.1 and HTTP/2 without requiring an additional network round-trip.
+
+During the TLS ClientHello, the client sends a list of supported protocols (e.g., \texttt{["h2", "http/1.1"]}). The server selects one from the list and includes it in its ServerHello response. This allows the server to immediately begin communicating using the selected protocol once the handshake completes.
+
+\subsection{C++20 Coroutines}
+
+One of the most transformative features introduced in the C++20 standard is coroutines. A coroutine is a function that can suspend execution to be resumed later. Unlike traditional functions that execute from start to finish and return once, coroutines can yield values or wait for asynchronous operations without blocking the underlying operating system thread.
+
+\subsubsection{Coroutines vs. Threads}
+
+Traditionally, high-concurrency servers utilized a thread-per-connection model. While simple to implement, this approach scales poorly. OS threads consume significant memory (typically a 1MB-8MB stack each) and incur substantial context-switching overhead.
+
+Coroutines, conversely, are managed in user-space. Suspending a coroutine involves saving a small amount of state (local variables and the instruction pointer) to the heap. This makes coroutines extremely lightweight, allowing a server to maintain millions of concurrent connections on standard hardware.
+
+\subsubsection{The C++20 Approach}
+
+C++20 provides the core language mechanics for coroutines but does not provide high-level abstractions like network sockets or event loops. It introduces three new keywords:
+\begin{itemize}
+    \item \texttt{co\_await}: Suspends the coroutine until the awaited operation completes.
+    \item \texttt{co\_return}: Returns a value from the coroutine and terminates it.
+    \item \texttt{co\_yield}: Returns a value and suspends the coroutine, typically used for generators.
+\end{itemize}
+
+A coroutine in C++ requires a return type that conforms to the coroutine promise specification. The library author must implement a \texttt{promise\_type} to dictate how the coroutine behaves upon suspension, resumption, and completion.
+
+\subsection{Asynchronous I/O Models}
+
+To maximize the benefits of coroutines, they must be paired with an efficient asynchronous I/O model. Different operating systems provide different mechanisms for scalable I/O.
+
+\subsubsection{Reactor Pattern (epoll/kqueue)}
+
+Linux uses \texttt{epoll}, while macOS and BSD use \texttt{kqueue}. Both follow the Reactor pattern. The application registers file descriptors (sockets) with the OS and asks to be notified when they are ready for reading or writing. When a socket is ready, the application performs a non-blocking read/write operation.
+
+This model pairs well with coroutines: a coroutine initiates a read, registers interest with the event loop, and suspends. When the event loop detects the socket is ready, it resumes the coroutine, which then performs the actual read operation.
+
+\subsubsection{Proactor Pattern (IOCP/io\_uring)}
+
+Windows provides I/O Completion Ports (IOCP), and newer Linux kernels provide \texttt{io\_uring}. These follow the Proactor pattern. Instead of waiting for a socket to be "ready," the application initiates the read/write operation directly, providing a buffer. The OS performs the operation asynchronously in the background and posts a completion event to a queue when finished.
+
+The Proactor model is generally more efficient, as it requires fewer system calls and allows the OS to optimize memory transfers directly. Coroute's architecture dictates that its I/O abstraction layer must support both Reactor and Proactor models to achieve optimal performance across all platforms.
+
+\subsection{Routing Algorithms}
+
+A web framework must efficiently map incoming requested URLs to their corresponding handler functions. This process is called routing.
+
+\subsubsection{Regular Expressions}
+
+The naive approach utilizes regular expressions to match URL patterns. Each registered route compiles to a regex. Upon receiving a request, the router tests the URL against each regex sequentially until a match is found.
+
+While simple to implement, this approach is extremely inefficient. The time complexity grows linearly with the number of registered routes ($O(N)$), which becomes a significant bottleneck in large enterprise APIs with hundreds of endpoints.
+
+\subsubsection{Radix Trees}
+
+A more performant approach uses a Radix Tree (or Trie). The URL paths are split by segments, and common prefixes are shared among branches. This provides much faster routing, typically $O(K)$, where $K$ is the length of the URL path, effectively independent of the total number of routes.
+
+However, handling dynamic parameters within path segments (e.g., \texttt{/users/\{id\}/profile}) significantly complicates Radix Tree implementations and can degrade performance if not handled carefully through backtracking.
+
+\subsubsection{Deterministic Finite Automata (DFA)}
+
+An advanced theoretical approach involves compiling all route patterns into a single Deterministic Finite Automaton (DFA) \cite{stankov2024regex}. A DFA evaluates the input string character by character. Since all routes are represented in a single state machine, the router only needs to scan the incoming URL exactly once.
+
+This provides theoretically optimal $O(K)$ matching time, where $K$ is the length of the string, while gracefully handling complex route parameters and wildcards. Coroute leverages this approach to guarantee consistently high routing performance regardless of the application's size.

@@ -1,0 +1,60 @@
+% ============================================================================
+% Глава 8: Flutter Интеграция и Headless Изпълнение
+% ============================================================================
+\section{Flutter Интеграция и Headless Изпълнение}
+\label{sec:flutter-integration}
+
+Традиционните уеб сървъри отговарят на HTTP заявки по мрежата. Този модел е доказан и се използва за изграждане на облачни архитектури (виж глава \ref{sec:architecture}). Но какво се случва, когато желаем да преведем същата бизнес логика и изчислителна мощ във вградена среда (embedded) като крос-платформено мобилно или десктоп приложение?
+
+Coroute решава този проблем чрез напълно интегриран ``headless'' (без мрежови интерфейс) режим, който си взаимодейства с Flutter фронтенд чрез Foreign Function Interface (FFI). Този подход позволява на Flutter UI да комуникира директно с C++ ядрото в рамките на един и същ процес, заобикаляйки мрежовия стек изцяло.
+
+\subsection{Взаимодействие между C++ и Dart (FFI)}
+Интеграцията на високо ниво изисква създаването на общ слой за комуникация между системния език (C++) и потребителския интерфейс (Dart). За тази цел е създаден модулът \texttt{bridge/}, който експортира чист C API:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Експортиране на C функции от Coroute}]
+extern "C" {
+    COROUTE_EXPORT void* coroute_init(const char* config_json);
+    COROUTE_EXPORT void coroute_shutdown(void* engine_ptr);
+    COROUTE_EXPORT void coroute_dispatch_request(
+        void* engine_ptr, 
+        const char* method, 
+        const char* path, 
+        const char* body, 
+        void (*callback)(int, const char*)
+    );
+}
+\end{lstlisting}
+
+В тази архитектура, Flutter приложението инициализира \texttt{App} обект в C++ паметта, и използва върнатия указател като контекст. Методът \texttt{coroute\_dispatch\_request} позволява на Flutter да симулира HTTP заявки вътрешно в паметта (in-memory request). Това означава, че всички съществуващи C++ endpoints се изпълняват без промяна, а отговорът се връща към Dart асинхронно чрез предоставения callback указател.
+
+\subsection{Инструментариум за интеграция (Tooling)}
+Интеграцията на голям CMake проект като Coroute вътре в структурата на Flutter проект може да бъде сложна и тромава задача, поради спецификите на системите за компилация за Android, iOS, Windows, Linux и macOS.
+
+За да автоматизира тази интеграция, Coroute предоставя специализирани CMake конфигурации: \texttt{coroute\_framework} и \texttt{CorouteApp.cmake}.
+
+\subsubsection{\texttt{coroute\_framework}}
+Тази CMake цел (target) събира цялата функционалност на уеб рамката и я пакетира като динамична библиотека (Shared Library) --- \texttt{libcoroute.so}, \texttt{coroute.dll} или \texttt{libcoroute.dylib}, в зависимост от операционната система. 
+
+\subsubsection{\texttt{CorouteApp.cmake} и \texttt{.flutter} пясъчник}
+Този авто-генериран пясъчник (sandbox) се грижи за инициализацията на Flutter проекта. При извикване на \texttt{find\_package(CorouteApp)}, CMake:
+\begin{itemize}
+    \item Описва необходимите source файлове за C++ бизнес логиката.
+    \item Автоматично линква \texttt{coroute\_framework}.
+    \item Дефинира правилата за копиране на динамичната библиотека във \texttt{.flutter} структурата при билд.
+\end{itemize}
+
+Този подход премахва необходимостта програмистът да се грижи за сложни FFI конфигурации на ниво OS на компилация, осигурявайки "plug-and-play" изживяване при разработване на крос-платформени приложения с C++ бекенд логика и Flutter UI.
+
+\subsection{Управление на събития през езиковата граница}
+Едно от най-големите предизвикателства при FFI е управлението на асинхронни събития. Както дефинирахме в глава \ref{sec:architecture}, Coroute почива на C++20 корутини (\texttt{Task<T>}), които се изпълняват в специален \texttt{IoContext} тред пул. 
+
+В същото време, Flutter UI работи в собствен основен isolate (нишка). За да се избегнат състезания за данни (data races) и блокирания на UI нишката, всяко извикване от Dart към C++ е асинхронно: 
+\begin{enumerate}
+    \item Dart извиква \texttt{coroute\_dispatch\_request} чрез създаване на C-struct.
+    \item C++ кодът стартира корутина и веднага връща контрола на Dart isolate-а.
+    \item Корутината се изпълнява във фонов режим в \texttt{IoContext}.
+    \item Когато корутината завърши и произведе резултат, тя извиква подадения C-callback.
+    \item FFI слойът в Dart превежда този резултат обратно в Dart \texttt{Future<String>} или еквивалентен обект, който Flutter може да визуализира.
+\end{enumerate}
+
+Това съвместно съществуване на два различни асинхронни модела (C++ корутини и Dart Futures) чрез тясна C FFI граница е в основата на възможностите на библиотеката за изграждане на високопроизводителни мобилни приложения.

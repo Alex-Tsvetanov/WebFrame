@@ -1,0 +1,514 @@
+% ============================================================================
+% Chapter 7: Example Application
+% ============================================================================
+\section{Example Application}
+\label{sec:example_app}
+
+The theoretical concepts and architectural decisions presented in previous chapters acquire practical value only when applied in a realistic context. This chapter presents the Task Dashboard --- a fully-featured real-time task management system that serves as a reference implementation for building production-ready web applications with Coroute.
+
+The example application is designed with two main goals. First, to demonstrate the integration of all key Coroute components into a unified solution: REST API, WebSocket communication, authentication, middleware chaining, and server-side rendering. Second, to illustrate best practices and architectural patterns that can be applied when building real-world web applications.
+
+\subsection{Application Description}
+
+Task Dashboard is a collaborative web application for managing tasks in a team environment. The system allows users to create, edit, and delete tasks, with changes reflected in real-time across all connected clients via WebSockets. This use case was chosen because it requires a combination of traditional HTTP operations (CRUD) and real-time communication, which is typical for modern web applications.
+
+The application demonstrates the following Coroute capabilities: a REST API with a full set of CRUD operations for tasks and users, WebSocket for real-time broadcast updates, server-side rendering with HTML templates using the Inja library, session-based authentication with cookie management, a middleware chain for request logging, static file serving with zero-copy I/O, and FFI integration for sharing the same backend logic within a cross-platform Flutter mobile application.
+
+\subsection{Project Structure (Flutter Enterprise App)}
+
+The project follows a standardized enterprise structure for cross-platform C++ web/headless applications, with clear separation between different application layers. Source files are organized by functionality rather than type, which facilitates navigation and maintenance, including a specialized FFI wrapper for Flutter.
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, frame=none, numbers=none]
+FlutterEnterpriseProject/
++-- CMakeLists.txt            # Builds both executable and FFI SHARED library
++-- src/
+|   +-- main.cpp              # Entry point for standalone Web Server
+|   +-- ffi_bridge.cpp        # Entry point for Flutter Headless mode
+|   +-- app/                  # Server configuration
+|   |   +-- config.hpp        # Configuration
+|   |   +-- server.hpp        # Server setup
+|   +-- middleware/           # Middleware components
+|   |   +-- auth.cpp          # Authentication
+|   |   +-- logging.cpp       # Request logging
+|   +-- handlers/             # Route handlers
+|   |   +-- pages.cpp         # HTML pages
+|   |   +-- api/              # REST endpoints
+|   |   |   +-- tasks.cpp     # Task CRUD
+|   |   |   +-- users.cpp     # User management
+|   |   +-- websocket/        # Real-time hub
+|   |       +-- task_hub.cpp  # WebSocket handler
+|   +-- models/               # Data structures
+|   |   +-- task.hpp          # Task model
+|   |   +-- user.hpp          # User model
+|   +-- services/             # Business logic
+|       +-- task_service.hpp  # Task operations
+|       +-- user_service.hpp  # User operations
++-- templates/                # HTML/ViewTemplates
+|   +-- layouts/              # Base layout
+|   +-- pages/                # Page templates
+|       +-- index.html        # Dashboard
+|       +-- login.html        # Login page
++-- static/                   # Static assets
+|   +-- css/                  # Stylesheets
+|   +-- js/                   # JavaScript
++-- tests/                    # Unit tests
+\end{lstlisting}
+
+\subsection{Configuration}
+
+\subsubsection{Config class}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Configuration class}]
+struct Config {
+    uint16_t port = 8080;
+    size_t thread_count = 4;
+    std::string static_path = "static";
+    std::string template_path = "templates";
+    
+    // TLS configuration (optional)
+    std::optional<TlsConfig> tls;
+    
+    static Config from_env() {
+        Config config;
+        
+        if (auto port = std::getenv("PORT")) {
+            config.port = static_cast<uint16_t>(std::stoi(port));
+        }
+        
+        if (auto threads = std::getenv("THREADS")) {
+            config.thread_count = std::stoul(threads);
+        }
+        
+        return config;
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Server setup}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Server initialization}]
+class Server {
+    coroute::App app_;
+    Config config_;
+    
+public:
+    explicit Server(const Config& config) : config_(config) {
+        app_.threads(config.thread_count);
+        
+        // Setup middleware
+        setup_middleware();
+        
+        // Setup routes
+        setup_routes();
+        
+        // Setup WebSocket
+        setup_websocket();
+        
+        // Setup static files
+        app_.static_files("/static", config.static_path);
+    }
+    
+    void run() {
+        app_.run(config_.port);
+    }
+    
+    void stop() {
+        app_.shutdown({
+            .drain_timeout = std::chrono::seconds(30),
+            .force_close_after_timeout = true
+        });
+    }
+};
+\end{lstlisting}
+
+\subsection{Middleware}
+
+\subsubsection{Logging middleware}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Request logging middleware}]
+Middleware logging_middleware() {
+    return [](Request& req, Next next) -> Task<Response> {
+        auto start = std::chrono::steady_clock::now();
+        
+        // Log request
+        std::cout << req.method_string() << " " << req.path() << std::endl;
+        
+        // Call next middleware/handler
+        auto resp = co_await next(req);
+        
+        // Log response time
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        auto ms = std::chrono::duration_cast<
+            std::chrono::milliseconds>(elapsed).count();
+        
+        std::cout << "  -> " << resp.status_code() 
+                  << " (" << ms << "ms)" << std::endl;
+        
+        co_return resp;
+    };
+}
+\end{lstlisting}
+
+\subsubsection{Authentication middleware}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Authentication middleware}]
+Middleware auth_middleware(UserService& user_service) {
+    return [&user_service](Request& req, Next next) -> Task<Response> {
+        // Check for session cookie
+        auto session_id = req.cookie("session_id");
+        if (!session_id) {
+            co_return Response::unauthorized("Not authenticated");
+        }
+        
+        // Validate session
+        auto user = user_service.get_by_session(*session_id);
+        if (!user) {
+            co_return Response::unauthorized("Invalid session");
+        }
+        
+        // Store user in request context
+        req.set_context("user", *user);
+        
+        // Continue to handler
+        co_return co_await next(req);
+    };
+}
+\end{lstlisting}
+
+\subsection{REST API handlers}
+
+\subsubsection{Task CRUD}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Task API handlers}]
+void setup_task_routes(App& app, TaskService& task_service, 
+                       TaskHub& task_hub) {
+    // List all tasks
+    app.get("/api/tasks", [&](Request& req) -> Task<Response> {
+        auto tasks = task_service.get_all();
+        co_return Response::json(tasks);
+    });
+    
+    // Get task by ID
+    app.get<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        auto task = task_service.get_by_id(id);
+        if (!task) {
+            co_return Response::not_found("Task not found");
+        }
+        co_return Response::json(*task);
+    });
+    
+    // Create task
+    app.post("/api/tasks", [&](Request& req) -> Task<Response> {
+        auto body = req.json<TaskCreateRequest>();
+        if (!body) {
+            co_return Response::bad_request("Invalid JSON");
+        }
+        
+        auto task = task_service.create(*body);
+        
+        // Broadcast to WebSocket clients
+        task_hub.broadcast({
+            .type = "task_created",
+            .payload = task
+        });
+        
+        co_return Response::created(task);
+    });
+    
+    // Update task
+    app.put<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        auto body = req.json<TaskUpdateRequest>();
+        if (!body) {
+            co_return Response::bad_request("Invalid JSON");
+        }
+        
+        auto task = task_service.update(id, *body);
+        if (!task) {
+            co_return Response::not_found("Task not found");
+        }
+        
+        // Broadcast update
+        task_hub.broadcast({
+            .type = "task_updated",
+            .payload = *task
+        });
+        
+        co_return Response::json(*task);
+    });
+    
+    // Delete task
+    app.del<int>("/api/tasks/{id}", 
+        [&](int id, Request& req) -> Task<Response> {
+        if (!task_service.remove(id)) {
+            co_return Response::not_found("Task not found");
+        }
+        
+        // Broadcast deletion
+        task_hub.broadcast({
+            .type = "task_deleted",
+            .payload = {{"id", id}}
+        });
+        
+        co_return Response::no_content();
+    });
+}
+\end{lstlisting}
+
+\subsection{WebSocket handler}
+
+\subsubsection{TaskHub class}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket TaskHub}]
+class TaskHub {
+    std::mutex mutex_;
+    std::set<WebSocketConnection*> clients_;
+    
+public:
+    void add_client(WebSocketConnection* client) {
+        std::lock_guard lock(mutex_);
+        clients_.insert(client);
+    }
+    
+    void remove_client(WebSocketConnection* client) {
+        std::lock_guard lock(mutex_);
+        clients_.erase(client);
+    }
+    
+    void broadcast(const json& message) {
+        std::lock_guard lock(mutex_);
+        auto data = message.dump();
+        
+        for (auto* client : clients_) {
+            // Fire-and-forget send
+            client->send(data);
+        }
+    }
+};
+\end{lstlisting}
+
+\subsubsection{WebSocket route}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={WebSocket route setup}]
+void setup_websocket(App& app, TaskHub& task_hub) {
+    app.websocket("/ws", [&task_hub](
+        std::unique_ptr<WebSocketConnection> ws) -> Task<void> {
+        
+        auto* ws_ptr = ws.get();
+        task_hub.add_client(ws_ptr);
+        
+        // RAII cleanup
+        struct Cleanup {
+            TaskHub& hub;
+            WebSocketConnection* client;
+            ~Cleanup() { hub.remove_client(client); }
+        } cleanup{task_hub, ws_ptr};
+        
+        // Message loop
+        while (true) {
+            auto msg = co_await ws->receive();
+            if (!msg) break;  // Connection closed
+            
+            if (msg->type == WebSocketMessage::Text) {
+                // Handle client messages (e.g., subscriptions)
+                auto data = json::parse(msg->data);
+                // Process message...
+            }
+        }
+    });
+}
+\end{lstlisting}
+
+\subsection{HTML Templates}
+
+\subsubsection{Template rendering}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Template rendering}]
+app.get("/", [&](Request& req) -> Task<Response> {
+    auto tasks = task_service.get_all();
+    auto stats = task_service.get_statistics();
+    
+    auto html = render_template("pages/index.html", {
+        {"tasks", tasks},
+        {"stats", stats},
+        {"user", req.context<User>("user")}
+    });
+    
+    co_return Response::html(html);
+});
+\end{lstlisting}
+
+\subsubsection{Example template}
+
+\begin{lstlisting}[language=HTML, basicstyle=\small\ttfamily, caption={Dashboard template}]
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>Task Dashboard</h1>
+    
+    <div class="stats">
+        <div class="stat">
+            <span class="value">{{ stats.total }}</span>
+            <span class="label">Total Tasks</span>
+        </div>
+        <div class="stat">
+            <span class="value">{{ stats.completed }}</span>
+            <span class="label">Completed</span>
+        </div>
+    </div>
+    
+    <ul class="task-list" id="tasks">
+        {% for task in tasks %}
+        <li data-id="{{ task.id }}">
+            <span class="title">{{ task.title }}</span>
+            <span class="status">{{ task.status }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}
+\end{lstlisting}
+
+\subsection{JavaScript client}
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, caption={WebSocket client (JavaScript)}]
+const ws = new WebSocket(`ws://${location.host}/ws`);
+
+ws.onmessage = (event) => {
+    const { type, payload } = JSON.parse(event.data);
+    
+    switch (type) {
+        case 'task_created':
+            addTaskToList(payload);
+            break;
+        case 'task_updated':
+            updateTaskInList(payload);
+            break;
+        case 'task_deleted':
+            removeTaskFromList(payload.id);
+            break;
+    }
+};
+
+ws.onclose = () => {
+    // Reconnect after delay
+    setTimeout(() => location.reload(), 3000);
+};
+\end{lstlisting}
+
+\subsection{Entry point}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={main.cpp}]
+#include "app/config.hpp"
+#include "app/server.hpp"
+#include <csignal>
+
+namespace {
+    project::Server* g_server = nullptr;
+    
+    void signal_handler(int signal) {
+        if (signal == SIGINT || signal == SIGTERM) {
+            std::cout << "\nShutting down...\n";
+            if (g_server) {
+                g_server->stop();
+            }
+        }
+    }
+}
+
+int main() {
+    try {
+        auto config = project::Config::from_env();
+        
+        project::Server server(config);
+        g_server = &server;
+        
+        std::signal(SIGINT, signal_handler);
+        std::signal(SIGTERM, signal_handler);
+        
+        server.run();
+        
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << "\n";
+        return 1;
+    }
+}
+\end{lstlisting}
+
+\subsection{Unification between Web and Flutter (FFI Entry Point)}
+
+One of the key innovations in the project's architecture is the ability for the same application to be compiled as a static/dynamic library for use in Flutter. For this purpose, a special \texttt{ffi\_bridge.cpp} entry point is added, which precisely replicates the setup from \texttt{main.cpp} but exposes it through a C API:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FFI Bridge initialization (ffi\_bridge.cpp)}]
+#include "app/config.hpp"
+#include "app/server.hpp"
+
+// Cross-platform exports
+#if defined(_WIN32)
+#define COROUTE_EXPORT __declspec(dllexport)
+#else
+#define COROUTE_EXPORT __attribute__((visibility("default")))
+#endif
+
+extern "C" {
+    COROUTE_EXPORT void* coroute_init(const char* config_json) {
+        // Parse configuration from Flutter
+        auto config = project::Config::from_json(config_json);
+        
+        // Create server context in memory
+        auto* server = new project::Server(config);
+        
+        // Return opaque pointer to Dart
+        return server;
+    }
+    
+    COROUTE_EXPORT void coroute_dispatch_request(
+        void* engine_ptr, 
+        const char* method, 
+        const char* path, 
+        const char* body, 
+        void (*callback)(int, const char*)
+    ) {
+        if (!engine_ptr || !callback) return;
+        auto* server = static_cast<project::Server*>(engine_ptr);
+        
+        // Invoke internal engine for routing
+        // The server processes the request without a network socket and calls the callback with HTML/JSON 
+    }
+}
+\end{lstlisting}
+
+This approach, supported by a dual build target in \texttt{CMakeLists.txt} (compiling \texttt{main.cpp} to an EXE and \texttt{ffi\_bridge.cpp} to a SHARED library), ensures that the entire business logic (database, routing, middleware validations) is perfectly identical whether accessed over a network using a browser or internally within a single-process execution inside a mobile Flutter application. This minimizes code duplication and significantly eases maintenance.
+
+\subsection{Analysis of Architectural Decisions}
+
+The example application illustrates several key architectural decisions that characteristic of Coroute and differentiate it from other libraries.
+
+\subsubsection{Coroutine Model for WebSocket}
+
+The WebSocket handler demonstrates the elegance of the coroutine model. Instead of a callback-based approach featuring event handler registration, the code is structured as a sequential loop using \texttt{co\_await}. This drastically simplifies state management and error handling. The RAII pattern for cleanup ensures that the client is removed from the hub even during unexpected connection terminations.
+
+\subsubsection{Type-safe Route Parameters}
+
+Routes such as \texttt{app.get<int>("/api/tasks/\{id\}", ...)} demonstrate type-safe parameter extraction. The parameter \texttt{id} is automatically converted to an \texttt{int} and passed to the handler as a typed argument. Conversion errors are automatically handled by the library, returning a 400 Bad Request.
+
+\subsubsection{Middleware Composition}
+
+The middleware chain allows for the modular addition of cross-cutting concerns. The logging middleware measures the processing time of each request, while the authentication middleware protects specific routes. Middleware components are independent and can be combined in any arbitrary order.
+
+\subsection{Comparison with Other Libraries}
+
+To evaluate the practical value of Coroute, it is beneficial to compare the implementation complexity of the Task Dashboard against other libraries.
+
+With Express.js (Node.js), a similar application would require approximately the same volume of code but with a callback-based or Promise-based asynchronous model. JavaScript lacks compile-time type checking, meaning parameter type errors are only discovered at runtime.
+
+With Drogon (C++), the code structure would be similar, but asynchronous operations would rely on callbacks or partial coroutine support. Drogon provides ORM integration, which Coroute lacks; however, this is a deliberate architectural decision to preserve modularity.
+
+With Flask (Python), the application would be significantly shorter due to the dynamic nature of the language, but performance would be orders of magnitude lower. Furthermore, WebSocket support necessitates additional libraries such as Flask-SocketIO.
+
+\subsection{Conclusion}
+
+The Task Dashboard demonstrates that Coroute is suitable for building full-featured, production-ready web applications. The coroutine model simplifies asynchronous code, type-safe parameters improve reliability, and the middleware system enables a modular architecture. The example application can serve as a starting point for developers aiming to utilize Coroute in real-world projects.

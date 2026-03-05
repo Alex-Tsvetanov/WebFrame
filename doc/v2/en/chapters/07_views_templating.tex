@@ -1,0 +1,49 @@
+% ============================================================================
+% Chapter 7: Views and Templating
+% ============================================================================
+\section{Views and Templating}
+\label{sec:views-templating}
+
+With the evolution of the Coroute ecosystem, a need emerged for a more direct technical integration for generating HTML content on the server (Server-Side Rendering). To serve this purpose, the \texttt{view/} module was created, providing a powerful, yet easy-to-use templating system.
+
+\subsection{Inja Integration}
+The module utilizes \texttt{Inja} as its internal template engine. Inja is a modern C++ library that implements the Jinja syntax (popular in the Python ecosystem) and seamlessly integrates with the JSON structure provided by \texttt{nlohmann::json}. This choice ensures flexibility, allowing templates to easily iterate over arrays, directly evaluate conditional logic, and format data.
+
+\subsection{View System Components}
+
+At the core of the architecture are several key components that together ensure a predictable template lifecycle:
+
+\subsubsection{\texttt{ViewTemplates} Caching}
+The \texttt{ViewTemplates} class acts as a global registry (or singleton associated with the main \texttt{App} context). Its role is to load the template content from the file system or memory during initialization, parse them via Inja, and store the compiled representation (AST - Abstract Syntax Tree) in its cache.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Configuring ViewTemplates}]
+ViewTemplates::get().add_template_file(
+    "auth_info", 
+    "templates/auth_info.html"
+);
+\end{lstlisting}
+
+This pre-compilation implies that during HTTP request handling, neither disk I/O nor lexical analysis of the template is performed --- only the evaluation of the AST tree with the provided context happens. This drastically increases throughput.
+
+\subsubsection{\texttt{ViewRouteInfo} for Configuration}
+\texttt{ViewRouteInfo} provides a structure for defining the metadata of a given view --- for example, which template name it invokes and which dynamic parameters it expects from the handler.
+
+\subsubsection{Easy Construction via \texttt{ResponseBuilder}}
+Integration with the network layer is simplified through extensions in the response object. Modules can return a ready HTML response using helper functions that automatically supply an \texttt{nlohmann::json} context to the cached template:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Returning a Rendered Template}]
+app.get("/profile", [](Request& req) -> Task<Response> {
+    nlohmann::json context;
+    context["username"] = "admin";
+    context["last_login"] = "2024-03-01";
+    
+    // Automatically renders the auth_info template and sets Content-Type: text/html
+    co_return ResponseBuilder::render_view("auth_info", context);
+});
+\end{lstlisting}
+
+\subsection{Execution of Templated Routes}
+
+Upon receiving a request to \texttt{/profile}, the handler constructs the corresponding JSON context. Then, invoking \texttt{render\_view} passes the request to the Inja interpreter, which locates the memory AST associated with the key \texttt{auth\_info}. The interpreter generates the final HTML string. \texttt{ResponseBuilder} then automatically constructs a valid HTTP 200 OK response with the header \texttt{Content-Type: text/html; charset=utf-8} and dispatches it to the client.
+
+This mechanism enables the development of classic SSR (Server-Side Rendered) websites and portals directly within Coroute, alongside JSON-based RESTful API endpoints, without necessitating the introduction of additional external web servers.

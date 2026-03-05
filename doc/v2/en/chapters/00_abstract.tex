@@ -1,0 +1,18 @@
+% ============================================================================
+% Abstract
+% ============================================================================
+\section*{Abstract}
+
+This thesis presents the design, implementation, and experimental evaluation of Coroute --- a high-performance C++ library for building web applications based on modern C++20 features. The primary objective is to demonstrate that the combination of stackless coroutines, OS-native asynchronous I/O mechanisms, and algorithmically optimized routing can achieve performance comparable to leading industrial solutions while significantly simplifying the programming model.
+
+The architecture of Coroute is founded on several key innovations. The execution model employs the \texttt{Task<T>} type, implementing lazy coroutines with support for detached execution and cooperative cancellation. This model eliminates the traditional drawbacks of callback-based asynchronous programming while preserving the efficiency of non-blocking I/O. The network layer abstracts platform-specific mechanisms --- IOCP for Windows and io\_uring for Linux --- behind a unified interface, enabling zero-copy operations and syscall batching. Routing utilizes a DFA-based algorithm, published in ``Matching Text from Start to Finish Against Multiple Regular Expressions'' \cite{stankov2024regex}, achieving O(N) time complexity relative to URL length, independent of the number of registered routes. Fourth, the architecture integrates a template view system and seamless Flutter support via Dart FFI, enabling the reuse of the library as a headless web engine for building native mobile and desktop applications.
+
+The library supports multiple protocols on a single port via ALPN negotiation: HTTP/1.1 with keep-alive, HTTP/2 with HPACK compression and stream multiplexing, and WebSocket for bidirectional real-time communication. Type-safe parameter extraction leverages C++20 concepts for compile-time validation, eliminating an entire class of runtime errors. The template view system extends server-side rendering capabilities through integration with the Inja template engine.
+
+Experimental evaluation on a system with AMD Ryzen 5 3600 (6 cores, 12 threads) and up to 1024 concurrent clients demonstrates throughput of 1,378,578 requests per second for simple HTTP responses, with median latency of 212 microseconds and 0\% error rate. Comparative analysis with Crow, Boost.Beast, and Drogon shows that Coroute achieves comparable or superior performance with a significantly simpler API.
+
+The scientific contributions include: integration of DFA-based routing into a full-featured web framework; a coroutine execution model specifically designed for network applications; and demonstration of practical applicability through a production-scale example application.
+
+\vspace{1cm}
+
+\textbf{Keywords:} C++20, coroutines, web server, HTTP/2, WebSocket, IOCP, io\_uring, DFA routing, type safety, asynchronous I/O, Flutter, Dart FFI, Template Views, Inja

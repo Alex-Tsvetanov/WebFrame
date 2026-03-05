@@ -1,0 +1,106 @@
+% ============================================================================
+% Chapter 1: Introduction
+% ============================================================================
+\section{Introduction}
+
+\subsection{Relevance of the Problem}
+
+Over the past two decades, web technologies have undergone a dramatic transformation. From static HTML pages served by simple CGI scripts, the industry has transitioned to complex, interactive applications operating in real time. Modern web services must handle thousands, and occasionally millions, of concurrent connections while maintaining latency in the order of milliseconds.
+
+Traditional approaches to building web servers rely on the ``thread-per-connection'' model. In this model, each incoming connection is handled by a dedicated thread, which blocks while waiting for data from the client or the database. Although conceptually simple, this approach encounters severe limitations when scaling. Thread creation consumes significant system resources---typically around 1MB of memory for the stack. With thousands of concurrent connections, memory consumption becomes unacceptable. Furthermore, context switching between threads introduces additional overhead, which reduces the overall performance of the system.
+
+These limitations motivated the development of asynchronous execution models. In the asynchronous approach, a small number of threads (usually equal to the number of CPU cores) handles multiple connections using non-blocking I/O operations and event loops. When an operation cannot complete immediately, instead of blocking the thread, it registers a callback function that will be invoked upon the operation's completion. In the meantime, the thread can serve other requests.
+
+The C++ language remains a preferred choice for systems programming and applications with stringent performance requirements. Its ability to generate optimized machine code, combined with a rich standard library and low-level programming capabilities, makes it ideal for building high-performance network applications.
+
+With the introduction of coroutines in the C++20 standard \cite{cpp20standard}, a new opportunity emerges to create asynchronous code that is both efficient and readable. Coroutines are functions that can suspend execution at specific points and resume later without blocking the thread. This allows writing code that appears synchronous and sequential but actually executes asynchronously. This eliminates the so-called ``callback hell''---the problem of deeply nested callback functions characteristic of traditional asynchronous APIs.
+
+\subsection{Goals and Objectives}
+
+The primary goal of this thesis is the design and implementation of a modern C++ library for creating web applications that meets contemporary requirements for performance, reliability, and development convenience.
+
+The library must \textbf{simplify the development} of web applications through an intuitive API based on C++20 coroutines. Developers must be able to write asynchronous code with a syntax similar to synchronous code, without having to manually manage callbacks or promises.
+
+The library must \textbf{ensure high performance} through non-blocking I/O and efficient resource management. The goal is to achieve performance comparable to leading C++ web libraries while maintaining the simplicity of the API.
+
+The library must \textbf{support multiple protocols}, including HTTP/1.1, HTTP/2, and WebSocket. HTTP/2 is particularly important for modern web applications as it allows request multiplexing and efficient header compression. WebSocket is necessary for applications requiring real-time bidirectional communication.
+
+The library must \textbf{provide type safety} when extracting parameters from URL addresses. Instead of returning parameters as strings requiring manual conversion, the library must automatically extract values of the correct type, catching errors during compilation.
+
+The library must be \textbf{platform-independent}, operating on Windows, Linux, and macOS. For each platform, optimized native mechanisms for asynchronous I/O must be utilized.
+
+The library must be \textbf{extensible}, allowing the easy addition of new protocols and middleware components. The architecture must adhere to the principles of modularity and separation of concerns.
+
+To achieve these goals, the following specific tasks have been set:
+
+The first task is the \textbf{analysis of existing C++ web libraries}. It is necessary to research popular solutions such as Boost.Beast, Drogon, Crow, and others, to identify their advantages and disadvantages, and to determine what functionalities are missing in the market.
+
+The second task is the \textbf{design of a modular architecture} with a clear separation of concerns. The architecture must allow independent development of individual components and the easy addition of new functionalities.
+
+The third task is the \textbf{implementation of a coroutine infrastructure}. It is necessary to create the \texttt{Task<T>} type, which will serve as the foundation for asynchronous operations within the library.
+
+The fourth task is the \textbf{implementation of a DFA-based router} with O(N) complexity, based on the algorithm described in `Matching Text from Start to Finish Against Multiple Regular Expressions' \cite{stankov2024regex}. This algorithm allows for the efficient matching of URL addresses against multiple templates.
+
+The fifth task is the \textbf{development of platform-specific I/O backends} for IOCP (Windows), io\_uring (Linux), and kqueue (macOS). Each backend must optimally utilize the native mechanisms of its respective operating system.
+
+The sixth task is the \textbf{integration of HTTP/2} with ALPN negotiation and HPACK header compression. HTTP/2 must work seamlessly alongside HTTP/1.1, with the protocol being selected automatically during the TLS handshake.
+
+The seventh task is the \textbf{implementation of the WebSocket protocol} for bidirectional communication. WebSocket must support both text and binary messages.
+
+The eighth task is the \textbf{testing and benchmark analysis} of performance. It is necessary to create unit tests for all components and measure performance in comparison to other libraries.
+
+\subsection{Scope and Limitations}
+
+When designing any software system, it is important to clearly define what falls within the scope of development and what remains outside it. This allows focusing efforts on key functionalities and avoiding so-called ``scope creep''---the uncontrolled expansion of requirements.
+
+The Coroute library is designed as a \textit{library}, not as a standalone server or framework. This is a deliberate architectural decision that gives developers maximum flexibility. The library provides the building blocks for creating web applications but leaves control over configuration, deployment, and integration with other systems entirely to the developer.
+
+The following functionalities fall within the scope of the current development:
+
+Support for \textbf{HTTP/1.1 and HTTP/2 protocols} is a core functionality of the library. HTTP/1.1 is still widely used and must be supported for compatibility. HTTP/2 provides significant performance improvements and is necessary for modern applications.
+
+The \textbf{WebSocket protocol} enables bidirectional communication between client and server. This is necessary for applications such as chat systems, real-time games, collaborative editors, and dashboards with live updates.
+
+\textbf{TLS encryption} is mandatory for modern web applications. The library must support TLS 1.2 and TLS 1.3, including ALPN negotiation for HTTP protocol selection.
+
+\textbf{Static file serving} is a common requirement. The library must support efficient serving of static resources such as CSS, JavaScript, and images, including zero-copy transfer where possible.
+
+The \textbf{Middleware system} allows adding cross-cutting concerns such as logging, authentication, compression, and rate limiting. Middleware components must be composable in any order.
+
+\textbf{Routing with parameters} allows defining dynamic URL templates such as \texttt{/users/\{id\}}. Parameters must be extracted automatically and validated by type.
+
+A \textbf{Template View System for generating HTML} is integrated into the architecture, utilizing Inja for efficient server-side rendering of dynamic web pages.
+
+\textbf{Integration with Flutter via Dart FFI} provides the ability for the C++ core to function as a headless web engine. This enables the creation of cross-platform (mobile and desktop) applications with a unified logic and local execution, eliminating the need for a remote network server.
+
+The following functionalities remain outside the scope of the current development:
+
+\textbf{HTTP/3 (QUIC)} is the newest version of the HTTP protocol, based on UDP instead of TCP. Although HTTP/3 provides additional performance improvements, its implementation is significantly more complex and is planned for future versions of the library.
+
+A \textbf{built-in database or ORM} is not part of the scope. The library focuses on the network layer and leaves the choice of database solution to the developer. This allows integration with any database--SQL, NoSQL, or in-memory.
+
+\textbf{Automatic scaling and load balancing} are infrastructure-level functionalities that are typically implemented through external tools such as Kubernetes, nginx, or HAProxy.
+
+\subsection{Structure of the Thesis}
+
+The thesis is organized into the following chapters:
+
+\textbf{\hyperref[sec:existing_solutions]{Chapter 2}} presents an overview of existing C++ web libraries, their characteristics, and a comparative analysis.
+
+\textbf{\hyperref[sec:theoretical_background]{Chapter 3}} introduces the theoretical foundation--HTTP protocols, WebSocket, TLS, C++20 coroutines, asynchronous I/O, and DFA-based routing.
+
+\textbf{\hyperref[sec:architecture]{Chapter 4}} describes the architecture of Coroute--the modular structure, request lifecycle, coroutine model, and middleware chain.
+
+\textbf{\hyperref[sec:protocols]{Chapter 5}} discusses the implementation of supported protocols--HTTP/1.1, HTTP/2, and WebSocket.
+
+\textbf{\hyperref[sec:type_safe_params]{Chapter 6}} presents the system for type-safe parameter extraction from URL addresses.
+
+\textbf{\hyperref[sec:views_templating]{Chapter 7}} describes the template view system and integration with Inja.
+
+\textbf{\hyperref[sec:flutter_integration]{Chapter 8}} examines the integration with Flutter via Dart FFI and the architecture of a headless web engine.
+
+\textbf{\hyperref[sec:example_app]{Chapter 9}} demonstrates a sample application built with the library, serving simultaneously as a standalone server and a Flutter client back-end engine.
+
+\textbf{\hyperref[sec:testing]{Chapter 10}} contains the testing results, including boundary testing of FFI interactions, and performance analysis.
+
+The \textbf{\hyperref[sec:conclusion]{Conclusion}} summarizes the achieved results and outlines directions for future development.

@@ -1,0 +1,301 @@
+% ============================================================================
+% Chapter 6: Type-Safe Parameter Extraction
+% ============================================================================
+\section{Type-Safe Parameter Extraction}
+\label{sec:type_safe_params}
+
+Type safety is a fundamental principle in modern software engineering, enabling the detection of errors during compilation rather than at runtime. In the context of web libraries, type safety during URL parameter processing is particularly critical, as incorrect data conversion can lead to runtime exceptions, security vulnerabilities, or incorrect application behavior.
+
+This chapter presents the mechanism for type-safe parameter extraction in Coroute, which leverages C++20 concepts and variadic templates to achieve compile-time validation. This approach eliminates an entire class of runtime errors and significantly reduces the boilerplate code required to handle URL parameters.
+
+\subsection{Motivation}
+
+Handling URL parameters is a fundamental task for any web library. In a REST API, parameters are often part of the URL path--for example, \texttt{/users/123} or \texttt{/orders/456/items/789}. These parameters must be extracted and converted to appropriate types before they can be utilized in the business logic.
+
+In traditional web libraries, URL parameters are extracted as strings and then manually converted. This approach has several drawbacks: it requires boilerplate code for each conversion, errors are only discovered at runtime, and validation steps are easily forgotten.
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Traditional approach}]
+// Traditional approach - error-prone
+app.get("/user/{id}", [](Request& req) -> Task<Response> {
+    auto id_str = req.param("id");  // Returns string
+    int id;
+    try {
+        id = std::stoi(id_str);  // Manual conversion
+    } catch (...) {
+        co_return Response::bad_request("Invalid ID");
+    }
+    // Use id...
+});
+\end{lstlisting}
+
+Coroute eliminates this boilerplate code through automatic type extraction:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Coroute approach}]
+// Coroute approach - type-safe
+app.get<int>("/user/{id}", [](int id, Request& req) -> Task<Response> {
+    // id is already an int, validated at runtime
+    // Type mismatch is a compile-time error
+    co_return Response::ok("User: " + std::to_string(id));
+});
+\end{lstlisting}
+
+\subsection{Template-Based Route Handlers}
+
+\subsubsection{Registration with Type Parameters}
+
+The \texttt{route()} method utilizes variadic templates to specify types:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Template route registration}]
+template<typename... Args, typename F>
+    requires std::invocable<F, Args..., Request&>
+void route(HttpMethod method, std::string pattern, F&& handler) {
+    add(method, std::move(pattern), 
+        make_handler<Args...>(std::forward<F>(handler)));
+}
+
+// Convenience methods
+template<typename... Args, typename F>
+    requires std::invocable<F, Args..., Request&>
+void get(std::string pattern, F&& handler) {
+    route<Args...>(HttpMethod::GET, std::move(pattern), 
+        std::forward<F>(handler));
+}
+\end{lstlisting}
+
+\textbf{C++20 Concepts:} The constraint \texttt{requires std::invocable<F, Args..., Request\&>} guarantees that the handler function can be called with the specified types.
+
+\subsubsection{Generating a Wrapper Handler}
+
+\texttt{make\_handler()} creates a wrapper that extracts the parameters:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={make\_handler implementation}]
+template<typename... Args, typename F>
+static Handler make_handler(F&& f) {
+    return [func = std::forward<F>(f)](Request& req) mutable 
+        -> Task<Response> {
+        return invoke_with_params<Args...>(
+            func, req, std::index_sequence_for<Args...>{});
+    };
+}
+\end{lstlisting}
+
+\subsubsection{Extraction and Invocation}
+
+\texttt{invoke\_with\_params()} extracts each parameter and invokes the handler:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={invoke\_with\_params implementation}]
+template<typename... Args, typename F, size_t... Is>
+static Task<Response> invoke_with_params(
+    F& func, Request& req, std::index_sequence<Is...>) {
+    
+    if constexpr (sizeof...(Args) == 0) {
+        // No parameters to extract
+        co_return co_await func(req);
+    } else {
+        // Extract each parameter from route_params
+        auto params = std::make_tuple(extract_param<Args>(req, Is)...);
+        
+        // Check if any extraction failed
+        if (!all_valid(std::get<Is>(params)...)) {
+            co_return Response::bad_request("Invalid route parameters");
+        }
+        
+        // Call the handler with extracted values
+        co_return co_await func(*std::get<Is>(params)..., req);
+    }
+}
+\end{lstlisting}
+
+\textbf{Fold expressions:} The expression \texttt{(results.has\_value() \&\& ...)} utilizes a C++17 fold expression to verify all results concurrently.
+
+\subsection{The FromString<T> Trait System}
+
+Conversion from a string to a type is performed via the \texttt{FromString<T>} trait class.
+
+\subsubsection{Basic Structure}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString trait}]
+template<typename T>
+struct FromString {
+    static expected<T, Error> parse(std::string_view s);
+};
+\end{lstlisting}
+
+\subsubsection{Specialization for Integer Types}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString for integers}]
+template<std::integral T>
+struct FromString<T> {
+    static expected<T, Error> parse(std::string_view s) {
+        T value;
+        auto [ptr, ec] = std::from_chars(
+            s.data(), s.data() + s.size(), value);
+        
+        if (ec == std::errc{} && ptr == s.data() + s.size()) {
+            return value;
+        }
+        
+        return unexpected(Error::parse(
+            "Invalid integer: " + std::string(s)));
+    }
+};
+\end{lstlisting}
+
+\texttt{std::from\_chars()} is a high-performance function from C++17 that ignores system locales and operates significantly faster than \texttt{std::stoi()}.
+
+\subsubsection{Specialization for Floating-point Types}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString for floating-point}]
+template<std::floating_point T>
+struct FromString<T> {
+    static expected<T, Error> parse(std::string_view s) {
+        T value;
+        auto [ptr, ec] = std::from_chars(
+            s.data(), s.data() + s.size(), value);
+        
+        if (ec == std::errc{} && ptr == s.data() + s.size()) {
+            return value;
+        }
+        
+        return unexpected(Error::parse(
+            "Invalid number: " + std::string(s)));
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Specialization for std::string}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={FromString for string}]
+template<>
+struct FromString<std::string> {
+    static expected<std::string, Error> parse(std::string_view s) {
+        return std::string(s);
+    }
+};
+\end{lstlisting}
+
+\subsubsection{Custom User Types}
+
+Users can add specializations for their own types:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Custom FromString specialization}]
+// Custom UUID type
+struct UUID {
+    std::array<uint8_t, 16> data;
+    
+    static std::optional<UUID> from_string(std::string_view s);
+};
+
+template<>
+struct FromString<UUID> {
+    static expected<UUID, Error> parse(std::string_view s) {
+        auto uuid = UUID::from_string(s);
+        if (uuid) {
+            return *uuid;
+        }
+        return unexpected(Error::parse("Invalid UUID: " + std::string(s)));
+    }
+};
+
+// Usage
+app.get<UUID>("/resource/{id}", [](UUID id, Request& req) 
+    -> Task<Response> {
+    // id is a validated UUID
+});
+\end{lstlisting}
+
+\subsection{Compile-time Type Checking}
+
+The C++ compiler guarantees correspondence between:
+\begin{itemize}
+    \item The number of \texttt{\{param\}} placeholders in the URL template
+    \item The number of template parameters
+    \item The signature of the handler function
+\end{itemize}
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Compile-time type checking}]
+// OK - 2 params, 2 template args, handler takes (int, string, Request&)
+app.get<int, std::string>("/user/{id}/post/{slug}", 
+    [](int id, std::string slug, Request& req) -> Task<Response> {
+        // ...
+    });
+
+// COMPILE ERROR - handler signature doesn't match
+app.get<int, std::string>("/user/{id}/post/{slug}", 
+    [](int id, Request& req) -> Task<Response> {  // Missing string param
+        // ...
+    });
+
+// COMPILE ERROR - wrong parameter type
+app.get<int>("/user/{id}", 
+    [](std::string id, Request& req) -> Task<Response> {  // Should be int
+        // ...
+    });
+\end{lstlisting}
+
+\subsection{Runtime Validation}
+
+During runtime execution, if a conversion fails, an automatic 400 Bad Request is returned:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Runtime validation}]
+// Request: GET /user/abc (invalid integer)
+// Response: 400 Bad Request - "Invalid route parameters"
+
+// Request: GET /user/123 (valid integer)
+// Handler is called with id = 123
+\end{lstlisting}
+
+\subsection{Multiple Parameters Support}
+
+Coroute supports an arbitrary number of parameters:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Multiple parameters}]
+app.get<int, int, std::string>("/org/{org_id}/team/{team_id}/member/{name}",
+    [](int org_id, int team_id, std::string name, Request& req) 
+        -> Task<Response> {
+        // All parameters are extracted and validated
+        co_return Response::ok(
+            "Org: " + std::to_string(org_id) + 
+            ", Team: " + std::to_string(team_id) +
+            ", Member: " + name
+        );
+    });
+\end{lstlisting}
+
+\subsection{Analysis of Advantages}
+
+Type-safe parameter extraction provides multiple advantages that can be analyzed from several perspectives.
+
+\subsubsection{Correctness and Reliability}
+
+The primary advantage is the elimination of an entire class of runtime errors. In the traditional approach, a parameter type error (e.g., passing a string instead of a number) is only discovered during execution when \texttt{std::stoi} intentionally throws an exception. In the Coroute approach, a mismatch between the declared type and the handler's signature is a compile-time error. This means that if the code complies successfully, the parameter types correctly match and are guaranteed to be correct.
+
+\subsubsection{Performance}
+
+Using \texttt{std::from\_chars} instead of \texttt{std::stoi} or \texttt{std::stod} yields measurable performance benefits. \texttt{std::from\_chars} is a locale-independent function introduced in C++17 that neither performs dynamic memory allocation nor relies on global state. Benchmarks demonstrate that \texttt{std::from\_chars} operates 2-5 times faster than traditional conversion tools.
+
+\subsubsection{Extensibility}
+
+The trait-based design of \texttt{FromString<T>} supports easy expansion for user-defined types. Developers can easily define specializations for domain-specific constructs like UUIDs, Emails, or custom identifiers without modifying the core library itself.
+
+\subsubsection{Self-Documenting Code}
+
+The type parameters in the route handler signature serve as a powerful form of documentation. When a developer sees \texttt{app.get<int, std::string>("/user/\{id\}/post/\{slug\}", ...)}, the required parameter types are immediately clear without the need for supplementary documentation.
+
+\subsection{Comparison with Other Libraries}
+
+To completely evaluate the value of the type-safe approach, it is useful to compare it against other popular libraries.
+
+Express.js (Node.js) extracts all parameters as strings via \texttt{req.params.id}. Conversion and validation operate entirely under the developer's responsibility. JavaScript inherently lacks compile-time type checking, meaning errors are only discovered at runtime.
+
+Flask (Python) also extracts parameters essentially as strings by default, although it supports type converters such as \texttt{<int:id>}. However, these converters belong to runtime mechanisms and do not offer compile-time guarantees safely.
+
+Drogon (C++) enables strongly typed parameters through complex macros, but the approach is more verbose and does not natively employ modern C++20 features such as concepts.
+
+Oat++ provides type-safe DTO objects, but heavily mandates utilizing custom wrapper types natively instead of standard conventional C++ typing smoothly.
+
+Coroute cleanly combines strict type safety relying heavily on standard C++ types with modern language features seamlessly, successfully striking an optimal balance between safety and convenience correctly.
+
+\subsection{Conclusion}
+
+Type-safe parameter extraction represents a fundamental innovation within Coroute, comprehensively demonstrating how modern C++ capabilities directly improve the reliability and performance natively in web applications. The combination of variadic templates, concepts, and trait-based design delivers an elegant solution that is simultaneously securely type-safe and incredibly performant.
