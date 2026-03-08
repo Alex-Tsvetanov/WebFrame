@@ -33,10 +33,22 @@ function(add_coroute_app TARGET_NAME)
         coroute 
         ${ARG_DEPENDENCIES}
     )
-    
+
     # Platform-specific linking options (Whole Archive)
     if(APPLE)
         target_link_libraries(${TARGET_NAME}_shared PRIVATE -Wl,-force_load coroute)
+        # Statically absorb OpenSSL into the shared library so the macOS App
+        # Sandbox cannot block absolute Homebrew dylib paths at runtime.
+        # We bypass the cached imported targets (which point to .dylib) by
+        # linking the .a archives directly. -dead_strip_dylibs then drops
+        # the dynamic stubs that still arrive transitively from coroute.
+        get_filename_component(_ssl_lib "${OPENSSL_SSL_LIBRARY}" REALPATH)
+        get_filename_component(_ssl_dir "${_ssl_lib}" DIRECTORY)
+        target_link_libraries(${TARGET_NAME}_shared PRIVATE
+            "${_ssl_dir}/libssl.a"
+            "${_ssl_dir}/libcrypto.a"
+            "-Wl,-dead_strip_dylibs"
+        )
     elseif(MSVC)
         target_link_libraries(${TARGET_NAME}_shared PRIVATE /WHOLEARCHIVE:coroute)
     else()
@@ -100,7 +112,7 @@ function(add_coroute_app TARGET_NAME)
         # We use execute_process directly here to ensure it happens during configuration
         # checking the command result
         execute_process(
-            COMMAND flutter create . --platforms=android,ios,macos,web,windows,linux --suppress-analytics
+            COMMAND flutter create . --project-name ${TARGET_NAME} --platforms=android,ios,macos,web,windows,linux --suppress-analytics
             WORKING_DIRECTORY "${FLUTTER_PROJECT_DIR}"
             RESULT_VARIABLE FLUTTER_CREATE_RESULT
         )
@@ -152,11 +164,49 @@ function(add_coroute_app TARGET_NAME)
     ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/templates" "${FLUTTER_PROJECT_DIR}/lib/templates")
     ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/viewmodels" "${FLUTTER_PROJECT_DIR}/lib/viewmodels")
 
-    # 2c. Copy Shared Library to Source Root (for FFI)
+    # 2c. Write per-project hook config: lib path (line 1) + flutter project dir (line 2).
+    # Named by TARGET_NAME so concurrent builds of multiple projects don't overwrite each other.
+    # The hook scans all .coroute_lib_path.* files and matches by flutter project root.
+    set(COROUTE_HOOK_CONFIG "${CMAKE_SOURCE_DIR}/packages/coroute_framework/.coroute_lib_path.${TARGET_NAME}")
     add_custom_command(TARGET ${TARGET_NAME}_shared POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${TARGET_NAME}_shared> ${FLUTTER_PROJECT_DIR}/
-        COMMENT "Copying shared library to Source Root for Flutter Run"
+        COMMAND ${CMAKE_COMMAND} -E echo "$<TARGET_FILE:${TARGET_NAME}_shared>" > "${COROUTE_HOOK_CONFIG}"
+        COMMAND ${CMAKE_COMMAND} -E echo "${FLUTTER_PROJECT_DIR}" >> "${COROUTE_HOOK_CONFIG}"
+        COMMENT "Writing coroute_framework hook config (.coroute_lib_path.${TARGET_NAME})"
     )
+
+    # 2d. Patch macOS entitlements unconditionally (runs every CMake configure).
+    # flutter create does not add network.client; this ensures it is always present.
+    if(EXISTS "${FLUTTER_PROJECT_DIR}/macos/Runner")
+        set(MACOS_RUNNER_DIR "${FLUTTER_PROJECT_DIR}/macos/Runner")
+        file(WRITE "${MACOS_RUNNER_DIR}/Release.entitlements"
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+\t<key>com.apple.security.app-sandbox</key>
+\t<true/>
+\t<key>com.apple.security.network.client</key>
+\t<true/>
+</dict>
+</plist>
+")
+        file(WRITE "${MACOS_RUNNER_DIR}/DebugProfile.entitlements"
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
+<dict>
+\t<key>com.apple.security.app-sandbox</key>
+\t<true/>
+\t<key>com.apple.security.cs.allow-jit</key>
+\t<true/>
+\t<key>com.apple.security.network.server</key>
+\t<true/>
+\t<key>com.apple.security.network.client</key>
+\t<true/>
+</dict>
+</plist>
+")
+    endif()
 
     # =========================================================================
     # 3. Run Targets

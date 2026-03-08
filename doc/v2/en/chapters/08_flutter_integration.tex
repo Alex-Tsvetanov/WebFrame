@@ -36,14 +36,26 @@ To automate this integration, Coroute provides specialized CMake configurations:
 This CMake target gathers all the functionality of the web framework and packages it as a dynamic (Shared) Library --- \texttt{libcoroute.so}, \texttt{coroute.dll}, or \texttt{libcoroute.dylib}, depending on the operating system.
 
 \subsubsection{\texttt{CorouteApp.cmake} and the \texttt{.flutter} Sandbox}
-This auto-generated sandbox manages the initialization of the Flutter project. Upon calling \texttt{find\_package(CorouteApp)}, CMake:
+This auto-generated sandbox manages the initialization of the Flutter project. Upon calling \texttt{add\_coroute\_app()}, CMake:
 \begin{itemize}
     \item Outlines the required source files for the C++ business logic.
     \item Automatically links \texttt{coroute\_framework}.
-    \item Defines rules for copying the dynamic library into the \texttt{.flutter} output structure during build.
+    \item Writes a \texttt{.coroute\_lib\_path} configuration file consumed by the Dart build hook to locate the compiled library and the Flutter project root.
+    \item Patches the macOS \texttt{Runner/Release.entitlements} and \texttt{Runner/DebugProfile.entitlements} to unconditionally enable \texttt{com.apple.security.network.client}, which \texttt{flutter create} omits by default.
 \end{itemize}
 
-This approach removes the necessity for the programmer to handle complex FFI configuration build properties at the OS level, providing a ``plug-and-play'' experience when developing cross-platform applications featuring C++ backend logic and Flutter UI.
+\subsubsection{Dart Build Hook (\texttt{hook/build.dart})}
+The \texttt{coroute\_framework} package provides a Dart build hook compliant with the Dart 3.10+ Native Assets protocol (\texttt{package:hooks}, \texttt{package:code\_assets}). The hook runs automatically as part of every \texttt{flutter run} or \texttt{flutter build} invocation and performs two functions:
+
+\begin{enumerate}
+    \item \textbf{Library bundling}: scans all \texttt{.coroute\_lib\_path.<TARGET\_NAME>} config files in the package root, identifies the one belonging to the current Flutter project by deriving the project root from \texttt{input.outputDirectory} (six levels up through \texttt{.dart\_tool/hooks\_runner/}), copies the pre-built \texttt{libcoroute\_app} into the hook output directory, and declares a \texttt{CodeAsset(DynamicLoadingBundled())}. The Flutter toolchain then bundles and code-signs the library automatically on all five platforms. Using per-project config files (keyed by \texttt{TARGET\_NAME}) ensures that concurrent builds of multiple Coroute projects do not overwrite each other's configuration.
+    \item \textbf{Permission injection}: patches \texttt{android/app/src/main/AndroidManifest.xml} (INTERNET permission) idempotently. macOS entitlements are patched at CMake configure time via \texttt{file(WRITE \ldots)} rather than inside the Xcode build phase, as Xcode prohibits modification of entitlements files during a build.
+\end{enumerate}
+
+\subsubsection{Static OpenSSL Linking on Apple Platforms}
+Because \texttt{libcoroute\_app.dylib} links OpenSSL for TLS support, and macOS App Sandbox blocks access to absolute Homebrew paths (e.g., \texttt{/opt/homebrew/opt/openssl@3/lib/}) at runtime, \texttt{CorouteApp.cmake} explicitly links the OpenSSL static archives (\texttt{libssl.a}, \texttt{libcrypto.a}) directly into the shared library on all Apple targets. The \texttt{-Wl,-dead\_strip\_dylibs} flag removes the residual dynamic stubs that would otherwise arrive transitively. The result is a self-contained \texttt{libcoroute\_app.dylib} (and its \texttt{.framework} wrapper) with no external dependencies blocked by the sandbox.
+
+This approach removes the necessity for the programmer to handle complex FFI configuration build properties at the OS level, providing a true ``plug-and-play'' experience when developing cross-platform applications featuring C++ backend logic and Flutter UI.
 
 \subsection{Event Management across the Language Boundary}
 One of the most significant challenges in FFI is managing asynchronous events. As defined in Chapter \ref{sec:architecture}, Coroute relies on C++20 coroutines (\texttt{Task<T>}), which are executed in a dedicated \texttt{IoContext} thread pool.

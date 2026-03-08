@@ -56,12 +56,13 @@ namespace coroute
 		const Headers& headers() const noexcept { return headers_; }
 		std::string_view body() const noexcept { return body_; }
 
-		// Get header value
 		[[nodiscard]] std::optional<std::string_view> header(std::string_view key) const noexcept
 		{
-			for (const auto& [k, v] : headers_)
+			std::string k(key.begin(), key.end());
+			for (auto& c : k) c = std::tolower(static_cast<unsigned char>(c));
+			for (const auto& [hk, v] : headers_)
 			{
-				if (k == key)
+				if (hk == k)
 				{
 					return v;
 				}
@@ -72,6 +73,7 @@ namespace coroute
 		// Mutators
 		void set_header(std::string key, std::string value)
 		{
+			for (auto& c : key) c = std::tolower(static_cast<unsigned char>(c));
 			// Check if header already exists, update if so
 			for (auto& [k, v] : headers_)
 			{
@@ -85,7 +87,11 @@ namespace coroute
 		}
 
 		// Add header (allows duplicates, needed for Set-Cookie)
-		void add_header(std::string key, std::string value) { headers_.emplace_back(std::move(key), std::move(value)); }
+		void add_header(std::string key, std::string value)
+		{
+			for (auto& c : key) c = std::tolower(static_cast<unsigned char>(c));
+			headers_.emplace_back(std::move(key), std::move(value));
+		}
 
 		void set_status(int status)
 		{
@@ -110,8 +116,8 @@ namespace coroute
 			r.body_ = std::move(body);
 			if (!r.body_.empty())
 			{
-				r.headers_.emplace_back("Content-Type", std::move(content_type));
-				r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+				r.add_header("content-type", std::move(content_type));
+				r.add_header("content-length", std::to_string(r.body_.size()));
 			}
 			return r;
 		}
@@ -126,8 +132,8 @@ namespace coroute
 			r.status_ = 404;
 			r.status_text_ = "Not Found";
 			r.body_ = std::move(body);
-			r.headers_.emplace_back("Content-Type", "text/plain");
-			r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+			r.add_header("content-type", "text/plain");
+			r.add_header("content-length", std::to_string(r.body_.size()));
 			return r;
 		}
 
@@ -137,8 +143,8 @@ namespace coroute
 			r.status_ = 400;
 			r.status_text_ = "Bad Request";
 			r.body_ = std::move(body);
-			r.headers_.emplace_back("Content-Type", "text/plain");
-			r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+			r.add_header("content-type", "text/plain");
+			r.add_header("content-length", std::to_string(r.body_.size()));
 			return r;
 		}
 
@@ -148,8 +154,8 @@ namespace coroute
 			r.status_ = 500;
 			r.status_text_ = "Internal Server Error";
 			r.body_ = std::move(body);
-			r.headers_.emplace_back("Content-Type", "text/plain");
-			r.headers_.emplace_back("Content-Length", std::to_string(r.body_.size()));
+			r.add_header("content-type", "text/plain");
+			r.add_header("content-length", std::to_string(r.body_.size()));
 			return r;
 		}
 
@@ -158,8 +164,8 @@ namespace coroute
 			Response r;
 			r.status_ = status;
 			r.status_text_ = default_status_text(status);
-			r.headers_.emplace_back("Location", std::move(location));
-			r.headers_.emplace_back("Content-Length", "0");
+			r.add_header("location", std::move(location));
+			r.add_header("content-length", "0");
 			return r;
 		}
 
@@ -189,9 +195,9 @@ namespace coroute
 		{
 			Response r;
 			r.status_ = 200;
-			r.headers_.emplace_back("Content-Type", std::string(content_type));
+			r.add_header("content-type", std::string(content_type));
 			size_t actual_length = (length == 0) ? (file_size - offset) : length;
-			r.headers_.emplace_back("Content-Length", std::to_string(actual_length));
+			r.add_header("content-length", std::to_string(actual_length));
 			r.set_file(path, offset, actual_length);
 			return r;
 		}

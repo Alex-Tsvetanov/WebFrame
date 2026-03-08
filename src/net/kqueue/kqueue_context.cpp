@@ -227,6 +227,9 @@ namespace coroute::net
 							// Set non-blocking
 							int flags = fcntl(op->accept_fd, F_GETFL, 0);
 							fcntl(op->accept_fd, F_SETFL, flags | O_NONBLOCK);
+							// Suppress SIGPIPE on writes to half-closed sockets (macOS)
+							int no_sigpipe = 1;
+							setsockopt(op->accept_fd, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
 							op->result = op->accept_fd;
 						}
 					}

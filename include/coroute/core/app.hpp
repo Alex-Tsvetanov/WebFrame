@@ -189,6 +189,11 @@ namespace coroute
 		std::unique_ptr<FetchTransport> fetch_transport_;
 		std::string fetch_base_url_;
 
+		// Out-of-band broadcast callback (set by bridge.cpp in client mode).
+		// Called by fire_broadcast() so project hubs can push events to Flutter
+		// without needing a TCP WebSocket connection.
+		std::function<void(std::string_view)> broadcast_callback_;
+
 		// Template engine
 #ifdef COROUTE_HAS_TEMPLATES
 		std::unique_ptr<inja::Environment> template_env_;
@@ -334,6 +339,25 @@ namespace coroute
 			return *this;
 		}
 
+		/// Set the broadcast callback (called by bridge.cpp in client mode).
+		/// The callback receives every message passed to fire_broadcast().
+		App& set_broadcast_callback(std::function<void(std::string_view)> cb)
+		{
+			broadcast_callback_ = std::move(cb);
+			return *this;
+		}
+
+		/// Fire a broadcast event to all registered listeners (e.g., the FFI bridge).
+		/// Call this from project hub/service code instead of managing a separate
+		/// callback member in each hub.
+		void fire_broadcast(std::string_view message) const
+		{
+			if (broadcast_callback_)
+			{
+				broadcast_callback_(message);
+			}
+		}
+
 		/// Get the base URL for fetch requests.
 		const std::string& fetch_base_url() const noexcept { return fetch_base_url_; }
 
@@ -348,7 +372,8 @@ namespace coroute
 		///
 		/// Auth failures return normal 401/403 Responses (no exceptions).
 		/// Only throws for true invariants/transport failures.
-		Task<Response> fetch(HttpMethod method, std::string_view route, std::string body = "")
+		Task<Response> fetch(HttpMethod method, std::string_view route, std::string body = "",
+		                     const std::unordered_map<std::string, std::string>& headers = {})
 		{
 			// Build request
 			Request req;
@@ -357,50 +382,23 @@ namespace coroute
 			req.set_body(std::move(body));
 			req.set_http_version("HTTP/1.1");
 
+			for (const auto& [k, v] : headers)
+			{
+				req.add_header(k, v);
+			}
+
 			// Apply auth state (add cookies, tokens, etc.)
 			if (auth_state_)
 			{
 				auth_state_->apply(req);
 			}
 
-			// Client mode: dispatch via HTTP transport to remote server
-			// 1. Check View routes (Local UI) - Always prioritize local views
+			// Client mode: if a fetch transport is set, route ALL requests (including
+			// page-view routes) through it to the remote server. This avoids running
+			// view handlers in-process and then issuing nested FFI sub-fetches, which
+			// produces stale data and creates thread-boundary issues across the
+			// Dart/C++ FFI layer.
 			Response resp;
-#ifdef COROUTE_HAS_TEMPLATES
-			if (method == HttpMethod::GET)
-			{
-				auto view_match = router_.match_view(req.path());  // Use path from req to be safe? Or route arg.
-				if (view_match.handler)
-				{
-					req.set_route_params(std::move(view_match.params));
-
-					// Execute view handler
-					try
-					{
-						ViewResultAny view_result = co_await (*view_match.handler)(req);
-
-						// Construct generic view response
-						nlohmann::json json_response;
-						json_response["templates"] = view_result.templates;
-						json_response["model"] = view_result.to_json();
-
-						resp = Response::json(json_response.dump());
-					}
-					catch (const std::exception& e)
-					{
-						resp = Response::internal_error(std::string("View execution error: ") + e.what());
-					}
-
-					if (auth_state_)
-					{
-						auth_state_->observe(resp);
-					}
-					co_return resp;
-				}
-			}
-#endif
-
-			// 2. Client mode: dispatch via HTTP transport to remote server
 			if (fetch_transport_)
 			{
 				resp = co_await fetch_transport_->dispatch(req);
@@ -429,20 +427,93 @@ namespace coroute
 			co_return resp;
 		}
 
+		/// In-process route dispatch — always routes through the local middleware
+		/// chain, never via fetch_transport_. Use this in bridge.cpp so that
+		/// submit_action_async / request_view_async hit the registered handlers
+		/// even when fetch_transport_ is set to the Dart HTTP proxy (which would
+		/// otherwise try to reach 127.0.0.1:8080 — a port that doesn't exist in
+		/// COROUTE_CLIENT_MODE / run_client() builds).
+		Task<Response> dispatch(HttpMethod method, std::string_view route, std::string body = "",
+		                        std::unordered_map<std::string, std::string> headers = {})
+		{
+			Request req;
+			req.set_method(method);
+			req.set_path(std::string(route));
+			req.set_body(std::move(body));
+			req.set_http_version("HTTP/1.1");
+
+			for (const auto& [k, v] : headers)
+			{
+				req.add_header(k, v);
+			}
+
+			if (auth_state_)
+			{
+				auth_state_->apply(req);
+			}
+
+#ifdef COROUTE_HAS_TEMPLATES
+			if (method == HttpMethod::GET)
+			{
+				auto view_match = router_.match_view(req.path());
+				if (view_match.handler)
+				{
+					req.set_route_params(std::move(view_match.params));
+					try
+					{
+						ViewResultAny view_result = co_await (*view_match.handler)(req);
+						nlohmann::json json_response;
+						json_response["templates"] = view_result.templates;
+						json_response["model"]     = view_result.to_json();
+						auto resp = Response::json(json_response.dump());
+						if (auth_state_) auth_state_->observe(resp);
+						co_return resp;
+					}
+					catch (const std::exception& e)
+					{
+						co_return Response::internal_error(std::string("View execution error: ") + e.what());
+					}
+				}
+			}
+#endif
+
+			auto match = router_.match(method, route);
+			if (match)
+			{
+				req.set_route_params(std::move(match.params));
+			}
+			auto resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
+			if (auth_state_)
+			{
+				auth_state_->observe(resp);
+			}
+			co_return resp;
+		}
+
 		/// Convenience methods for fetch
-		Task<Response> fetch_get(std::string_view route) { return fetch(HttpMethod::GET, route); }
-
-		Task<Response> fetch_post(std::string_view route, std::string body = "")
+		Task<Response> fetch_get(std::string_view route,
+		                         const std::unordered_map<std::string, std::string>& headers = {})
 		{
-			return fetch(HttpMethod::POST, route, std::move(body));
+			return fetch(HttpMethod::GET, route, "", headers);
 		}
 
-		Task<Response> fetch_put(std::string_view route, std::string body = "")
+		Task<Response> fetch_post(std::string_view route, std::string body = "",
+		                          const std::unordered_map<std::string, std::string>& headers = {})
 		{
-			return fetch(HttpMethod::PUT, route, std::move(body));
+			return fetch(HttpMethod::POST, route, std::move(body), headers);
 		}
 
-		Task<Response> fetch_delete(std::string_view route) { return fetch(HttpMethod::DELETE, route); }
+		Task<Response> fetch_put(std::string_view route, std::string body = "",
+		                         const std::unordered_map<std::string, std::string>& headers = {})
+		{
+			return fetch(HttpMethod::PUT, route, std::move(body), headers);
+		}
+
+		Task<Response> fetch_delete(std::string_view route,
+		                            const std::unordered_map<std::string, std::string>& headers = {})
+		{
+			return fetch(HttpMethod::DELETE, route, "", headers);
+		}
 
 		// ========================================================================
 		// Fetch with Original Request (for web/server cookie forwarding)
@@ -450,12 +521,45 @@ namespace coroute
 
 		/// Fetch with cookie/header forwarding from original request.
 		/// Use this in web/server mode to propagate browser cookies to API calls.
-		Task<Response> fetch(const Request& original, HttpMethod method, std::string_view route, std::string body = "")
+		Task<Response> fetch(Request original, HttpMethod method, std::string_view route, std::string body = "")
 		{
 			// Build request
 			Request req;
 			req.set_method(method);
-			req.set_path(std::string(route));
+
+			std::string_view route_sv(route);
+			size_t query_pos = route_sv.find('?');
+			if (query_pos != std::string_view::npos)
+			{
+				req.set_path(std::string(route_sv.substr(0, query_pos)));
+				std::string_view query_str = route_sv.substr(query_pos + 1);
+				req.set_query_string(std::string(query_str));
+
+				// Basic query parameter parsing
+				size_t start = 0;
+				while (start < query_str.length())
+				{
+					size_t end = query_str.find('&', start);
+					std::string_view pair = (end == std::string_view::npos) ? query_str.substr(start)
+					                                                        : query_str.substr(start, end - start);
+					size_t eq_pos = pair.find('=');
+					if (eq_pos != std::string_view::npos)
+					{
+						req.add_query_param(std::string(pair.substr(0, eq_pos)), std::string(pair.substr(eq_pos + 1)));
+					}
+					else
+					{
+						req.add_query_param(std::string(pair), "");
+					}
+					if (end == std::string_view::npos) break;
+					start = end + 1;
+				}
+			}
+			else
+			{
+				req.set_path(std::string(route));
+			}
+
 			req.set_body(std::move(body));
 			req.set_http_version("HTTP/1.1");
 
@@ -536,6 +640,78 @@ namespace coroute
 		Task<Response> fetch_post(const Request& original, std::string_view route, std::string body = "")
 		{
 			return fetch(original, HttpMethod::POST, route, std::move(body));
+		}
+
+		/// In-process dispatch with cookie/header forwarding from original request.
+		/// Like fetch(original, ...) but always routes through the local middleware
+		/// chain — never via fetch_transport_. Use this in view handlers for
+		/// sub-fetches to local API routes so coroutines don't cross the
+		/// Dart/C++ thread boundary (which causes a deadlock in client mode).
+		Task<Response> dispatch(Request original, HttpMethod method, std::string_view route,
+		                        std::string body = "")
+		{
+			Request req;
+			req.set_method(method);
+
+			std::string_view route_sv(route);
+			auto query_pos = route_sv.find('?');
+			if (query_pos != std::string_view::npos)
+			{
+				req.set_path(std::string(route_sv.substr(0, query_pos)));
+				std::string_view query_str = route_sv.substr(query_pos + 1);
+				req.set_query_string(std::string(query_str));
+				size_t start = 0;
+				while (start < query_str.length())
+				{
+					size_t end = query_str.find('&', start);
+					std::string_view pair = (end == std::string_view::npos) ? query_str.substr(start)
+					                                                        : query_str.substr(start, end - start);
+					size_t eq_pos = pair.find('=');
+					if (eq_pos != std::string_view::npos)
+					{
+						req.add_query_param(std::string(pair.substr(0, eq_pos)), std::string(pair.substr(eq_pos + 1)));
+					}
+					else
+					{
+						req.add_query_param(std::string(pair), "");
+					}
+					if (end == std::string_view::npos) break;
+					start = end + 1;
+				}
+			}
+			else
+			{
+				req.set_path(std::string(route));
+			}
+
+			req.set_body(std::move(body));
+			req.set_http_version("HTTP/1.1");
+
+			auto cookie = original.header("Cookie");
+			if (cookie) req.add_header("Cookie", std::string(*cookie));
+
+			auto auth = original.header("Authorization");
+			if (auth) req.add_header("Authorization", std::string(*auth));
+
+			if (auth_state_) auth_state_->apply(req);
+
+			auto match = router_.match(method, req.path());
+			if (match) req.set_route_params(std::move(match.params));
+
+			auto resp = co_await middleware_chain_.execute_or_not_found(req, match.handler);
+			if (auth_state_) auth_state_->observe(resp);
+			co_return resp;
+		}
+
+		/// Convenience overloads for dispatch with original request forwarding
+		Task<Response> dispatch_get(const Request& original, std::string_view route)
+		{
+			return dispatch(Request{original}, HttpMethod::GET, route);
+		}
+
+		Task<Response> dispatch_post(const Request& original, std::string_view route, std::string body = "")
+		{
+			return dispatch(Request{original}, HttpMethod::POST, route, std::move(body));
 		}
 
 		// ========================================================================

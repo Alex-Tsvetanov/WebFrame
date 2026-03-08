@@ -10,3 +10,7 @@ doc/api/
 # Flutter/Dart specific
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Coroute CMake build hook configs (machine-local, written by CorouteApp.cmake POST_BUILD)
+# One file per project: .coroute_lib_path.<TARGET_NAME>
+.coroute_lib_path.*

@@ -509,6 +509,82 @@ With Drogon (C++), the code structure would be similar, but asynchronous operati
 
 With Flask (Python), the application would be significantly shorter due to the dynamic nature of the language, but performance would be orders of magnitude lower. Furthermore, WebSocket support necessitates additional libraries such as Flask-SocketIO.
 
+\subsection{Cross-Platform Migration: \texttt{FlutterProject}}
+\label{sec:flutter-project}
+
+The \texttt{examples/FlutterProject} directory presents a complete migration of the Task Dashboard into a fully cross-platform application that targets Web, Mobile (Android/iOS), and Desktop (Linux/macOS/Windows) from a single C++ codebase. It directly inherits all business logic from the original \texttt{examples/Project} while adopting the \texttt{App::view} and \texttt{ViewModel} patterns described in Chapter~\ref{sec:views-templating}.
+
+\subsubsection{Project Structure}
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, frame=none, numbers=none]
+FlutterProject/
++-- CMakeLists.txt                # add_coroute_app macro (Mobile/Desktop/Web)
++-- pubspec.yaml.in               # Dart package descriptor (path injected by CMake)
++-- main.dart                     # Flutter entry point: ScreenRegistry bindings
++-- src/
+|   +-- main.cpp                  # Web-server entry point
+|   +-- app/config.hpp/.cpp       # Environment-based configuration
+|   +-- app/server.hpp/.cpp       # Server wiring (middleware + routes)
+|   +-- middleware/               # auth.cpp, request_logger.cpp
+|   +-- models/                   # task.hpp/.cpp, user.hpp/.cpp
+|   +-- services/                 # task_service, user_service
+|   +-- handlers/
+|   |   +-- pages.cpp             # App::view registrations (cross-platform)
+|   |   +-- api/tasks.cpp         # REST task CRUD
+|   |   +-- api/users.cpp         # REST user / auth
+|   |   +-- websocket/task_hub    # Real-time broadcast hub
+|   +-- viewmodels/               # login_vm, dashboard_vm, task_vm
++-- templates/
+|   +-- web/                      # Inja HTML templates (web target)
+|   |   +-- login.html
+|   |   +-- index.html
+|   |   +-- task_detail.html
+|   +-- app/                      # Flutter Dart screens (mobile/desktop target)
+|       +-- login_screen.dart
+|       +-- dashboard_screen.dart
+|       +-- task_detail_screen.dart
+\end{lstlisting}
+
+\subsubsection{View Registration and ViewModel Pattern}
+
+The core architectural change from the original \texttt{examples/Project} is the replacement of direct template rendering with \texttt{App::view<Vm>} registrations. Instead of constructing an \texttt{nlohmann::json} context and calling \texttt{app.render\_html}, each view handler returns a \texttt{ViewResult<Vm>} containing both a \texttt{ViewTemplates} descriptor (specifying the web HTML filename and the Flutter screen name) and a typed ViewModel:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Cross-platform view route for the dashboard}]
+app.view<DashboardVm>("/",
+    [&app](Request& req) -> View<DashboardVm>
+    {
+        DashboardVm vm;
+        // populate from internal API calls (auth propagated via req)
+        auto tasks_resp = co_await app.fetch_get(req, "/api/tasks");
+        // ... populate vm.tasks, vm.stats ...
+        co_return ViewResult<DashboardVm>{
+            .templates = ViewTemplates("index.html", "DashboardScreen", "DashboardScreen"),
+            .model = std::move(vm)};
+    });
+\end{lstlisting}
+
+At runtime, Coroute inspects the current execution context:
+\begin{itemize}
+    \item \textbf{Web mode} --- the framework serialises the ViewModel to JSON, feeds it to the Inja engine with the specified HTML template name, and returns a \texttt{text/html} response.
+    \item \textbf{Flutter (FFI) mode} --- the framework serialises the ViewModel to JSON and passes it to the Dart \texttt{ScreenRegistry}, which instantiates the named screen widget with the model map.
+\end{itemize}
+
+All API handlers (\texttt{/api/tasks}, \texttt{/api/login}, etc.) and the WebSocket hub (\texttt{/ws}) remain completely unchanged between platforms.
+
+\subsubsection{WebSocket Persistence}
+
+Unlike many cross-platform ports that remove real-time functionality, \texttt{FlutterProject} retains the \texttt{TaskHub} WebSocket endpoint at \texttt{/ws}. The web HTML templates include JavaScript that connects to this endpoint and reloads the view when task mutation events are broadcast. The Flutter mobile/desktop clients can subscribe to the same endpoint via Dart's \texttt{WebSocket} class to achieve equivalent live updates.
+
+\subsubsection{CMake Build Integration}
+
+The \texttt{add\_coroute\_app} macro from \texttt{cmake/CorouteApp.cmake} compiles the same source list into three distinct artifacts depending on the selected platform:
+\begin{itemize}
+    \item \textbf{Web} --- a standalone executable linked against \texttt{coroute} with the HTTP server enabled.
+    \item \textbf{Mobile / Desktop} --- a shared library (\texttt{libflutter\_task\_dashboard.so} / \texttt{.dylib} / \texttt{.dll}) exposing the C FFI symbols consumed by the Flutter \texttt{Bridge} class.
+\end{itemize}
+
+The \texttt{pubspec.yaml.in} template is processed by CMake, which substitutes \texttt{\%\%COROUTE\_FRAMEWORK\_REL\_PATH\%\%} with the actual relative path to the \texttt{packages/coroute\_framework} Dart package, making the project immediately buildable without manual path configuration.
+
 \subsection{Conclusion}
 
-The Task Dashboard demonstrates that Coroute is suitable for building full-featured, production-ready web applications. The coroutine model simplifies asynchronous code, type-safe parameters improve reliability, and the middleware system enables a modular architecture. The example application can serve as a starting point for developers aiming to utilize Coroute in real-world projects.
+The Task Dashboard and its cross-platform successor \texttt{FlutterProject} demonstrate that Coroute is suitable for building full-featured, production-ready web applications. The coroutine model simplifies asynchronous code, type-safe parameters improve reliability, and the middleware system enables a modular architecture. The \texttt{App::view} and \texttt{ViewModel} abstractions allow the same C++ business logic to drive both server-rendered HTML pages and native Flutter UIs without duplication. Both example applications can serve as starting points for developers aiming to utilize Coroute in real-world projects.

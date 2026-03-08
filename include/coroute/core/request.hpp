@@ -80,7 +80,11 @@ namespace coroute
 		void set_http_version(std::string v) { http_version_ = std::move(v); }
 		void set_body(std::string b) { body_ = std::move(b); }
 
-		void add_header(std::string key, std::string value) { headers_[std::move(key)] = std::move(value); }
+		void add_header(std::string key, std::string value)
+		{
+			for (auto& c : key) c = std::tolower(static_cast<unsigned char>(c));
+			headers_[std::move(key)] = std::move(value);
+		}
 
 		void add_query_param(std::string key, std::string value) { query_params_[std::move(key)] = std::move(value); }
 
@@ -103,11 +107,11 @@ namespace coroute
 			return from_string<T>(route_params_[index]);
 		}
 
-		// Get header value
 		std::optional<std::string_view> header(std::string_view key) const
 		{
-			// Case-insensitive lookup would be better, but keeping simple for now
-			auto it = headers_.find(std::string(key));
+			std::string k(key.begin(), key.end());
+			for (auto& c : k) c = std::tolower(static_cast<unsigned char>(c));
+			auto it = headers_.find(k);
 			if (it != headers_.end())
 			{
 				return it->second;
@@ -147,10 +151,9 @@ namespace coroute
 		// Check if connection should be kept alive
 		bool keep_alive() const noexcept
 		{
-			auto conn = header("Connection");
+			auto conn = header("connection");
 			if (conn)
 			{
-				// Case-insensitive comparison would be better
 				if (*conn == "close") return false;
 				if (*conn == "keep-alive") return true;
 			}
@@ -158,10 +161,9 @@ namespace coroute
 			return http_version_ == "HTTP/1.1";
 		}
 
-		// Content length
 		std::optional<size_t> content_length() const
 		{
-			auto cl = header("Content-Length");
+			auto cl = header("content-length");
 			if (cl)
 			{
 				auto result = from_string<size_t>(*cl);
@@ -171,7 +173,7 @@ namespace coroute
 		}
 
 		// Content type
-		std::optional<std::string_view> content_type() const { return header("Content-Type"); }
+		std::optional<std::string_view> content_type() const { return header("content-type"); }
 
 		// Context storage (for middleware)
 		template <typename T>

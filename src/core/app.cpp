@@ -404,14 +404,27 @@ namespace coroute
 					{
 						ViewResultAny view_result = co_await (*view_match.handler)(req);
 
-						// Render the view using the web template
-						nlohmann::json data = view_result.to_json();
-						std::string template_name = view_result.templates.web;
-						if (template_name.find('.') == std::string::npos)
+						// Flutter clients send X-Requested-With: Flutter and expect the
+						// JSON view envelope {templates, model} rather than rendered HTML.
+						auto xrw = req.header("X-Requested-With");
+						if (xrw && *xrw == "Flutter")
 						{
-							template_name += ".html";
+							nlohmann::json json_response;
+							json_response["templates"] = view_result.templates;
+							json_response["model"]     = view_result.to_json();
+							resp = Response::json(json_response.dump());
 						}
-						resp = render_html(template_name, data);
+						else
+						{
+							// Render the view using the web template
+							nlohmann::json data = view_result.to_json();
+							std::string template_name = view_result.templates.web;
+							if (template_name.find('.') == std::string::npos)
+							{
+								template_name += ".html";
+							}
+							resp = render_html(template_name, data);
+						}
 					}
 					catch (const std::exception& e)
 					{

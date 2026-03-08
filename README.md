@@ -178,6 +178,56 @@ app.add_template_callback("upper", 1, [](inja::Arguments& args) {
 });
 ```
 
+### Cross-Platform Views (App::view + ViewModel)
+
+The `App::view<Vm>` API enables a single C++ handler to serve **both** a server-rendered HTML page (via Inja) and a native **Flutter** screen (via FFI), automatically selecting the rendering path at runtime:
+
+```cpp
+// ViewModel — plain aggregate, serialised to JSON by ADL to_json()
+struct DashboardVm {
+    bool authenticated = false;
+    std::string username;
+    std::vector<TaskSummary> tasks;
+};
+
+// Cross-platform view route
+app.view<DashboardVm>("/",
+    [&app](Request& req) -> View<DashboardVm>
+    {
+        DashboardVm vm;
+        auto resp = co_await app.fetch_get(req, "/api/tasks");  // internal sub-request
+        // ... populate vm from resp ...
+        co_return ViewResult<DashboardVm>{
+            // web target → renders "index.html" via Inja
+            // Flutter target → mounts "DashboardScreen" widget via ScreenRegistry
+            .templates = ViewTemplates("index.html", "DashboardScreen", "DashboardScreen"),
+            .model     = std::move(vm)};
+    });
+```
+
+The corresponding Dart entry point binds Flutter widgets to view names:
+
+```dart
+void main() {
+  Bridge.initialize();
+  Bridge.initApp();
+  ScreenRegistry().register('DashboardScreen', (model) => DashboardScreen(model: model));
+  ScreenRegistry().register('LoginScreen',     (model) => LoginScreen(model: model));
+  runApp(const App(homeRoute: '/login'));
+}
+```
+
+The `add_coroute_app` CMake macro compiles the same sources into a web executable **or** a Flutter FFI shared library depending on the target platform:
+
+```cmake
+add_coroute_app(my_app
+    SOURCES src/main.cpp src/handlers/pages.cpp ...
+    PLATFORMS Mobile Desktop Web
+)
+```
+
+See [`examples/FlutterProject`](./examples/FlutterProject) for the complete cross-platform Task Dashboard reference implementation and [`examples/view_example`](./examples/view_example) for a minimal view pattern example.
+
 ## 🔧 Advanced Features
 
 ### Middleware

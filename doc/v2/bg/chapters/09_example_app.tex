@@ -509,6 +509,82 @@ Middleware веригата позволява модулно добавяне �
 
 При Flask (Python), приложението би било значително по-кратко поради динамичната природа на езика, но производителността би била с порядъци по-ниска. WebSocket поддръжката изисква допълнителни библиотеки като Flask-SocketIO.
 
+\subsection{Мигриране към кросплатформена версия: \texttt{FlutterProject}}
+\label{sec:flutter-project-bg}
+
+Директорията \texttt{examples/FlutterProject} представя пълна миграция на Task Dashboard към напълно кросплатформено приложение, насочено едновременно към Web, Mobile (Android/iOS) и Desktop (Linux/macOS/Windows) от една и съща C++ кодова база. То наследява директно цялата бизнес логика от оригиналния \texttt{examples/Project}, като същевременно възприема шаблоните \texttt{App::view} и \texttt{ViewModel}, описани в Глава~\ref{sec:views-templating}.
+
+\subsubsection{Структура на проекта}
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, frame=none, numbers=none]
+FlutterProject/
++-- CMakeLists.txt                # макрос add_coroute_app (Mobile/Desktop/Web)
++-- pubspec.yaml.in               # Dart дескриптор (пътят се задава от CMake)
++-- main.dart                     # Flutter точка на влизане: ScreenRegistry
++-- src/
+|   +-- main.cpp                  # Точка на влизане за уеб сървър
+|   +-- app/config.hpp/.cpp       # Конфигурация чрез environment
+|   +-- app/server.hpp/.cpp       # Свързване на сървъра (middleware + routes)
+|   +-- middleware/               # auth.cpp, request_logger.cpp
+|   +-- models/                   # task.hpp/.cpp, user.hpp/.cpp
+|   +-- services/                 # task_service, user_service
+|   +-- handlers/
+|   |   +-- pages.cpp             # App::view регистрации (кросплатформени)
+|   |   +-- api/tasks.cpp         # REST CRUD за задачи
+|   |   +-- api/users.cpp         # REST потребители / автентикация
+|   |   +-- websocket/task_hub    # Хъб за real-time излъчване
+|   +-- viewmodels/               # login_vm, dashboard_vm, task_vm
++-- templates/
+|   +-- web/                      # Inja HTML шаблони (уеб цел)
+|   |   +-- login.html
+|   |   +-- index.html
+|   |   +-- task_detail.html
+|   +-- app/                      # Flutter Dart екрани (mobile/desktop цел)
+|       +-- login_screen.dart
+|       +-- dashboard_screen.dart
+|       +-- task_detail_screen.dart
+\end{lstlisting}
+
+\subsubsection{Регистрация на изгледи и шаблонът ViewModel}
+
+Основната архитектурна промяна спрямо оригиналния \texttt{examples/Project} е замяната на директното рендиране на шаблони с регистрации \texttt{App::view<Vm>}. Вместо да конструира \texttt{nlohmann::json} контекст и да извиква \texttt{app.render\_html}, всеки handler на изглед връща \texttt{ViewResult<Vm>}, съдържащ \texttt{ViewTemplates} дескриптор (указващ HTML файла за уеб и името на Flutter екрана) и типизиран ViewModel:
+
+\begin{lstlisting}[language=C++, basicstyle=\small\ttfamily, caption={Кросплатформен view маршрут за таблото}]
+app.view<DashboardVm>("/",
+    [&app](Request& req) -> View<DashboardVm>
+    {
+        DashboardVm vm;
+        // попълване от вътрешни API извиквания (auth се предава чрез req)
+        auto tasks_resp = co_await app.fetch_get(req, "/api/tasks");
+        // ... попълване на vm.tasks, vm.stats ...
+        co_return ViewResult<DashboardVm>{
+            .templates = ViewTemplates("index.html", "DashboardScreen", "DashboardScreen"),
+            .model = std::move(vm)};
+    });
+\end{lstlisting}
+
+При изпълнение Coroute проверява текущия контекст на изпълнение:
+\begin{itemize}
+    \item \textbf{Уеб режим} --- фреймуъркът сериализира ViewModel-а към JSON, подава го на Inja engine-а с указаното HTML шаблонно име и връща \texttt{text/html} отговор.
+    \item \textbf{Flutter (FFI) режим} --- фреймуъркът сериализира ViewModel-а към JSON и го подава на Dart \texttt{ScreenRegistry}, който инстанциира съответния Flutter widget с map-а от модела.
+\end{itemize}
+
+Всички API handler-и (\texttt{/api/tasks}, \texttt{/api/login} и др.) и WebSocket хъбът (\texttt{/ws}) остават напълно непроменени между платформите.
+
+\subsubsection{Запазване на WebSocket функционалността}
+
+За разлика от много кросплатформени портове, които премахват real-time функционалността, \texttt{FlutterProject} запазва \texttt{TaskHub} WebSocket крайната точка на \texttt{/ws}. Уеб HTML шаблоните включват JavaScript, който се свързва с тази крайна точка и презарежда изгледа при излъчване на събитие за мутация на задача. Flutter mobile/desktop клиентите могат да се абонират за същата крайна точка чрез Dart класа \texttt{WebSocket} за еквивалентни live актуализации.
+
+\subsubsection{Интеграция с CMake}
+
+Макросът \texttt{add\_coroute\_app} от \texttt{cmake/CorouteApp.cmake} компилира същия списък от изходни файлове в три различни артефакта в зависимост от избраната платформа:
+\begin{itemize}
+    \item \textbf{Web} --- самостоятелен изпълним файл, свързан срещу \texttt{coroute} с активиран HTTP сървър.
+    \item \textbf{Mobile / Desktop} --- споделена библиотека (\texttt{libflutter\_task\_dashboard.so} / \texttt{.dylib} / \texttt{.dll}), излагаща C FFI символи, консумирани от Flutter \texttt{Bridge} класа.
+\end{itemize}
+
+Шаблонът \texttt{pubspec.yaml.in} се обработва от CMake, който замества \texttt{\%\%COROUTE\_FRAMEWORK\_REL\_PATH\%\%} с действителния относителен път до Dart пакета \texttt{packages/coroute\_framework}, правейки проекта незабавно компилируем без ръчна конфигурация на пътища.
+
 \subsection{Заключение}
 
-Task Dashboard демонстрира, че Coroute е подходящ за изграждане на пълноценни production-ready уеб приложения. Корутинният модел опростява асинхронния код, типово-безопасните параметри подобряват надеждността, а middleware системата позволява модулна архитектура. Примерното приложение може да служи като отправна точка за разработчици, които искат да използват Coroute в реални проекти.
+Task Dashboard и неговият кросплатформен наследник \texttt{FlutterProject} демонстрират, че Coroute е подходящ за изграждане на пълноценни production-ready уеб приложения. Корутинният модел опростява асинхронния код, типово-безопасните параметри подобряват надеждността, а middleware системата позволява модулна архитектура. Абстракциите \texttt{App::view} и \texttt{ViewModel} позволяват едната и съща C++ бизнес логика да управлява едновременно сървърно рендирани HTML страници и нативни Flutter потребителски интерфейси без дублиране. И двете примерни приложения могат да служат като отправна точка за разработчици, желаещи да използват Coroute в реални проекти.

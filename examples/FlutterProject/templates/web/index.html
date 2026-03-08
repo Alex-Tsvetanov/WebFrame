@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               background: #f0f2f5; min-height: 100vh; }
+        nav { background: #1a1a2e; color: #fff; padding: 0 2rem;
+              display: flex; align-items: center; height: 56px; gap: 1rem; }
+        nav h1 { font-size: 1.1rem; flex: 1; }
+        nav a { color: #aaa; text-decoration: none; font-size: .9rem; }
+        nav a:hover { color: #fff; }
+        .main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: #fff; border-radius: 10px; padding: 1.2rem 1.5rem;
+                     box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .stat-card .num { font-size: 2rem; font-weight: 700; color: #6c63ff; }
+        .stat-card .label { font-size: .85rem; color: #888; margin-top: .2rem; }
+        .actions { display: flex; justify-content: space-between; align-items: center;
+                   margin-bottom: 1rem; }
+        .actions h2 { font-size: 1.2rem; color: #1a1a2e; }
+        .btn { padding: .55rem 1.1rem; background: #6c63ff; color: #fff; border: none;
+               border-radius: 8px; font-size: .9rem; font-weight: 600; cursor: pointer; }
+        .btn:hover { background: #574fd6; }
+        .btn-sm { padding: .35rem .8rem; font-size: .8rem; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .task-list { display: flex; flex-direction: column; gap: .75rem; }
+        .task-card { background: #fff; border-radius: 10px; padding: 1rem 1.3rem;
+                     box-shadow: 0 2px 8px rgba(0,0,0,.06);
+                     display: flex; align-items: center; gap: 1rem; }
+        .task-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+        .task-info { flex: 1; }
+        .task-title { font-weight: 600; color: #1a1a2e; }
+        .task-desc { font-size: .85rem; color: #888; margin-top: .2rem; }
+        .badge { padding: .2rem .6rem; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+        .badge-pending { background: #fef9c3; color: #854d0e; }
+        .badge-in_progress { background: #dbeafe; color: #1e40af; }
+        .badge-completed { background: #dcfce7; color: #166534; }
+        .task-card a { color: #6c63ff; text-decoration: none; font-size: .85rem; font-weight: 600; }
+        .empty { text-align: center; color: #aaa; padding: 3rem; }
+        /* Modal */
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+                   align-items: center; justify-content: center; z-index: 100; }
+        .overlay.open { display: flex; }
+        .modal { background: #fff; border-radius: 12px; padding: 2rem; width: 100%; max-width: 460px; }
+        .modal h2 { margin-bottom: 1.2rem; font-size: 1.2rem; }
+        .modal label { display: block; font-size: .85rem; font-weight: 600; color: #444;
+                       margin-bottom: .35rem; }
+        .modal input, .modal textarea, .modal select {
+            width: 100%; padding: .65rem .9rem; border: 1.5px solid #ddd;
+            border-radius: 8px; font-size: .95rem; margin-bottom: 1rem; font-family: inherit; }
+        .modal input:focus, .modal textarea:focus, .modal select:focus
+            { outline: none; border-color: #6c63ff; }
+        .modal-actions { display: flex; gap: .75rem; justify-content: flex-end; }
+        #modal-error { display: none; color: #c0392b; font-size: .85rem; margin-bottom: .8rem; }
+        /* WebSocket indicator */
+        #ws-indicator { width: 10px; height: 10px; border-radius: 50%;
+                        background: #aaa; display: inline-block; margin-left: .5rem; }
+        #ws-indicator.connected { background: #27ae60; }
+    </style>
+</head>
+<body>
+<nav>
+    <h1>Task Dashboard <span id="ws-indicator" title="WebSocket status"></span></h1>
+    {% if authenticated %}
+    <span style="color:#ccc;font-size:.9rem">{{ username }}</span>
+    <a href="/logout">Sign out</a>
+    {% else %}
+    <a href="/login">Sign in</a>
+    {% endif %}
+</nav>
+
+<div class="main">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="num" id="stat-total">{{ stats.total }}</div>
+            <div class="label">Total tasks</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:#ca8a04" id="stat-pending">{{ stats.pending }}</div>
+            <div class="label">Pending</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:#2563eb" id="stat-inprogress">{{ stats.in_progress }}</div>
+            <div class="label">In progress</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:#16a34a" id="stat-completed">{{ stats.completed }}</div>
+            <div class="label">Completed</div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <h2>Tasks</h2>
+        {% if authenticated %}
+        <button class="btn" onclick="openModal()">+ New Task</button>
+        {% endif %}
+    </div>
+
+    <div class="task-list" id="task-list">
+        {% if tasks %}
+        {% for task in tasks %}
+        <div class="task-card" id="task-{{ task.id }}">
+            <div class="task-info">
+                <div class="task-title">{{ task.title }}</div>
+                {% if task.description and task.description != "" %}
+                <div class="task-desc">{{ task.description }}</div>
+                {% endif %}
+            </div>
+            <span class="badge badge-{{ task.status }}">{{ task.status }}</span>
+            <a href="/task/{{ task.id }}">Details →</a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty">No tasks yet. Create your first task!</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- New Task Modal -->
+<div class="overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal">
+        <h2>New Task</h2>
+        <div id="modal-error"></div>
+        <label>Title *</label>
+        <input id="task-title" type="text" placeholder="Task title">
+        <label>Description</label>
+        <textarea id="task-desc" rows="3" placeholder="Optional description"></textarea>
+        <div class="modal-actions">
+            <button class="btn" style="background:#eee;color:#333" onclick="closeModalDirect()">Cancel</button>
+            <button class="btn" id="create-btn" onclick="createTask()">Create</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Modal ---
+    function openModal() {
+        document.getElementById('modal-overlay').classList.add('open');
+        document.getElementById('task-title').focus();
+    }
+    function closeModalDirect() {
+        document.getElementById('modal-overlay').classList.remove('open');
+        document.getElementById('modal-error').style.display = 'none';
+    }
+    function closeModal(e) {
+        if (e.target === document.getElementById('modal-overlay')) closeModalDirect();
+    }
+
+    // --- Create task ---
+    async function createTask() {
+        const title = document.getElementById('task-title').value.trim();
+        const desc = document.getElementById('task-desc').value.trim();
+        const errEl = document.getElementById('modal-error');
+        const btn = document.getElementById('create-btn');
+
+        if (!title) { errEl.textContent = 'Title is required'; errEl.style.display = 'block'; return; }
+
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description: desc })
+            });
+            if (resp.ok) {
+                closeModalDirect();
+                document.getElementById('task-title').value = '';
+                document.getElementById('task-desc').value = '';
+                // Reload page to reflect new task (WebSocket will push update too)
+                window.location.reload();
+            } else {
+                const data = await resp.json();
+                errEl.textContent = data.error?.message ?? 'Failed to create task';
+                errEl.style.display = 'block';
+            }
+        } catch (err) {
+            errEl.textContent = 'Network error';
+            errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // --- WebSocket live updates ---
+    const wsIndicator = document.getElementById('ws-indicator');
+    let ws;
+
+    function connectWs() {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+        ws.onopen = () => wsIndicator.classList.add('connected');
+        ws.onclose = () => {
+            wsIndicator.classList.remove('connected');
+            setTimeout(connectWs, 3000);  // Reconnect after 3s
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'task_created' || msg.type === 'task_updated' || msg.type === 'task_deleted') {
+                    window.location.reload();
+                }
+            } catch (e) { /* ignore */ }
+        };
+
+        // Heartbeat ping every 30s
+        setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
+    }
+
+    connectWs();
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task – {{ title }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               background: #f0f2f5; min-height: 100vh; }
+        nav { background: #1a1a2e; color: #fff; padding: 0 2rem;
+              display: flex; align-items: center; height: 56px; gap: 1rem; }
+        nav h1 { font-size: 1.1rem; flex: 1; }
+        nav a { color: #aaa; text-decoration: none; font-size: .9rem; }
+        nav a:hover { color: #fff; }
+        .main { max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: #fff; border-radius: 12px; padding: 2rem;
+                box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+        .card h2 { font-size: 1.4rem; color: #1a1a2e; margin-bottom: .5rem; }
+        .meta { color: #888; font-size: .85rem; margin-bottom: 1.5rem; }
+        .description { color: #444; line-height: 1.6; margin-bottom: 1.5rem; min-height: 2rem; }
+        .badge { padding: .3rem .8rem; border-radius: 20px; font-size: .8rem; font-weight: 600; }
+        .badge-pending { background: #fef9c3; color: #854d0e; }
+        .badge-in_progress { background: #dbeafe; color: #1e40af; }
+        .badge-completed { background: #dcfce7; color: #166534; }
+        .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem; }
+        label { font-size: .85rem; font-weight: 600; color: #444; }
+        select { padding: .5rem .8rem; border: 1.5px solid #ddd; border-radius: 8px;
+                 font-size: .9rem; }
+        select:focus { outline: none; border-color: #6c63ff; }
+        .btn { padding: .55rem 1.1rem; border: none; border-radius: 8px; font-size: .9rem;
+               font-weight: 600; cursor: pointer; }
+        .btn-primary { background: #6c63ff; color: #fff; }
+        .btn-primary:hover { background: #574fd6; }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-secondary { background: #eee; color: #333; }
+        #status-msg { display: none; padding: .6rem 1rem; border-radius: 8px; font-size: .85rem; margin-top: 1rem; }
+        #status-msg.success { background: #dcfce7; color: #166534; display: block; }
+        #status-msg.error { background: #fff0f0; color: #c0392b; display: block; }
+    </style>
+</head>
+<body>
+<nav>
+    <h1><a href="/" style="color:#fff;text-decoration:none">← Task Dashboard</a></h1>
+</nav>
+
+<div class="main">
+    <div class="card">
+        {% if id == 0 %}
+        <h2>Task not found</h2>
+        <p class="meta">The requested task does not exist.</p>
+        <a href="/" class="btn btn-secondary" style="display:inline-block;margin-top:1rem">Back to Dashboard</a>
+        {% else %}
+        <h2 id="task-title">{{ title }}</h2>
+        <div class="meta">
+            ID #{{ id }} &nbsp;·&nbsp; Created {{ created_at }}
+        </div>
+        <div class="description" id="task-desc">{{ description }}</div>
+
+        <div class="row">
+            <span class="badge badge-{{ status }}" id="status-badge">{{ status }}</span>
+        </div>
+
+        <div class="row">
+            <label for="status-select">Change Status</label>
+            <select id="status-select">
+                <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
+                <option value="in_progress" {% if status == "in_progress" %}selected{% endif %}>In Progress</option>
+                <option value="completed" {% if status == "completed" %}selected{% endif %}>Completed</option>
+            </select>
+            <button class="btn btn-primary" onclick="updateStatus()">Save</button>
+            <button class="btn btn-danger" onclick="deleteTask()">Delete</button>
+        </div>
+
+        <div id="status-msg"></div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    const taskId = {{ id }};
+
+    async function updateStatus() {
+        const status = document.getElementById('status-select').value;
+        const msgEl = document.getElementById('status-msg');
+        msgEl.className = '';
+        try {
+            const resp = await fetch(`/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            });
+            if (resp.ok) {
+                const badge = document.getElementById('status-badge');
+                badge.className = `badge badge-${status}`;
+                badge.textContent = status;
+                msgEl.textContent = 'Status updated successfully';
+                msgEl.className = 'success';
+            } else {
+                const data = await resp.json();
+                msgEl.textContent = data.error?.message ?? 'Update failed';
+                msgEl.className = 'error';
+            }
+        } catch (e) {
+            msgEl.textContent = 'Network error';
+            msgEl.className = 'error';
+        }
+    }
+
+    async function deleteTask() {
+        if (!confirm('Delete this task? This cannot be undone.')) return;
+        try {
+            const resp = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+            if (resp.ok) {
+                window.location.href = '/';
+            } else {
+                alert('Failed to delete task');
+            }
+        } catch (e) {
+            alert('Network error');
+        }
+    }
+</script>
+</body>
+</html>

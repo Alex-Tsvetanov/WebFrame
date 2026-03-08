@@ -36,14 +36,26 @@ extern "C" {
 Тази CMake цел (target) събира цялата функционалност на уеб рамката и я пакетира като динамична библиотека (Shared Library) --- \texttt{libcoroute.so}, \texttt{coroute.dll} или \texttt{libcoroute.dylib}, в зависимост от операционната система. 
 
 \subsubsection{\texttt{CorouteApp.cmake} и \texttt{.flutter} пясъчник}
-Този авто-генериран пясъчник (sandbox) се грижи за инициализацията на Flutter проекта. При извикване на \texttt{find\_package(CorouteApp)}, CMake:
+Този авто-генериран пясъчник (sandbox) се грижи за инициализацията на Flutter проекта. При извикване на \texttt{add\_coroute\_app()}, CMake:
 \begin{itemize}
     \item Описва необходимите source файлове за C++ бизнес логиката.
     \item Автоматично линква \texttt{coroute\_framework}.
-    \item Дефинира правилата за копиране на динамичната библиотека във \texttt{.flutter} структурата при билд.
+    \item Записва конфигурационен файл \texttt{.coroute\_lib\_path}, използван от Dart build hook-а за намиране на компилираната библиотека и корена на Flutter проекта.
+    \item Патчва macOS \texttt{Runner/Release.entitlements} и \texttt{Runner/DebugProfile.entitlements}, за да активира безусловно \texttt{com.apple.security.network.client}, което \texttt{flutter create} пропуска по подразбиране.
 \end{itemize}
 
-Този подход премахва необходимостта програмистът да се грижи за сложни FFI конфигурации на ниво OS на компилация, осигурявайки "plug-and-play" изживяване при разработване на крос-платформени приложения с C++ бекенд логика и Flutter UI.
+\subsubsection{Dart Build Hook (\texttt{hook/build.dart})}
+Пакетът \texttt{coroute\_framework} предоставя Dart build hook, съвместим с протокола Native Assets на Dart 3.10+ (\texttt{package:hooks}, \texttt{package:code\_assets}). Хукът се изпълнява автоматично при всяко \texttt{flutter run} или \texttt{flutter build} и изпълнява две функции:
+
+\begin{enumerate}
+    \item \textbf{Пакетиране на библиотеката}: сканира всички конфигурационни файлове \texttt{.coroute\_lib\_path.<TARGET\_NAME>} в корена на пакета, идентифицира подходящия за текущия Flutter проект чрез извличане на корена на проекта от \texttt{input.outputDirectory} (шест нива нагоре през \texttt{.dart\_tool/hooks\_runner/}), копира предварително компилирания \texttt{libcoroute\_app} в директорията за изход на хука и декларира \texttt{CodeAsset(DynamicLoadingBundled())}. Използването на файлове, специфични за всеки проект (именувани по \texttt{TARGET\_NAME}), гарантира, че едновременните билдове на множество Coroute проекти не презаписват взаимно конфигурациите си.
+    \item \textbf{Инжектиране на разрешения}: патчва \texttt{android/app/src/main/AndroidManifest.xml} (INTERNET разрешение) идемпотентно. macOS entitlements се патчват по времето на конфигурацията на CMake чрез \texttt{file(WRITE \ldots)}, а не вътре в Xcode build phase, тъй като Xcode забранява модификацията на entitlements файлове по време на билда.
+\end{enumerate}
+
+\subsubsection{Статично свързване на OpenSSL за Apple платформи}
+Тъй като \texttt{libcoroute\_app.dylib} свързва OpenSSL за TLS поддръжка, а macOS App Sandbox блокира достъпа до абсолютни Homebrew пътища (например \texttt{/opt/homebrew/opt/openssl@3/lib/}) по време на изпълнение, \texttt{CorouteApp.cmake} явно свързва статичните архиви на OpenSSL (\texttt{libssl.a}, \texttt{libcrypto.a}) директно в споделената библиотека за всички Apple таргети. Флагът \texttt{-Wl,-dead\_strip\_dylibs} премахва остатъчните динамични stub-ове, пристигащи транзитивно. Резултатът е самодостатъчна \texttt{libcoroute\_app.dylib} (и нейният \texttt{.framework} wrapper) без външни зависимости, блокирани от sandbox-а.
+
+Този подход премахва необходимостта програмистът да се грижи за сложни FFI конфигурации на ниво OS на компилация, осигурявайки истинско ``plug-and-play'' изживяване при разработване на крос-платформени приложения с C++ бекенд логика и Flutter UI.
 
 \subsection{Управление на събития през езиковата граница}
 Едно от най-големите предизвикателства при FFI е управлението на асинхронни събития. Както дефинирахме в глава \ref{sec:architecture}, Coroute почива на C++20 корутини (\texttt{Task<T>}), които се изпълняват в специален \texttt{IoContext} тред пул. 

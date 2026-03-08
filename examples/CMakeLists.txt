@@ -8,3 +8,6 @@ add_subdirectory(Project)
 
 # View abstraction example
 add_subdirectory(view_example)
+
+# Flutter cross-platform Task Dashboard (migrated from Project)
+add_subdirectory(FlutterProject)

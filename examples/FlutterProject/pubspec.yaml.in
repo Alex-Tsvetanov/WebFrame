@@ -1,0 +1,16 @@
+name: flutter_task_dashboard
+description: Cross-platform Task Dashboard using Coroute View-ViewModel architecture.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  coroute_framework:
+    path: %%COROUTE_FRAMEWORK_REL_PATH%%
+
+flutter:
+  uses-material-design: true
