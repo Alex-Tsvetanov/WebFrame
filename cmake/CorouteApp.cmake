@@ -50,7 +50,7 @@ function(add_coroute_app TARGET_NAME)
             "-Wl,-dead_strip_dylibs"
         )
     elseif(MSVC)
-        target_link_libraries(${TARGET_NAME}_shared PRIVATE /WHOLEARCHIVE:coroute)
+        target_link_options(${TARGET_NAME}_shared PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:coroute>")
     else()
         target_link_libraries(${TARGET_NAME}_shared PRIVATE -Wl,--whole-archive coroute -Wl,--no-whole-archive)
     endif()
@@ -62,10 +62,17 @@ function(add_coroute_app TARGET_NAME)
     )
 
     # Output name (important for FFI loading)
-    set_target_properties(${TARGET_NAME}_shared PROPERTIES 
-        OUTPUT_NAME "coroute_app"
-        PREFIX "lib" # Force lib prefix even on Windows for consistency/simplicity if needed, or handle in Dart
-    )
+    if(WIN32)
+        set_target_properties(${TARGET_NAME}_shared PROPERTIES 
+            OUTPUT_NAME "coroute_app"
+            PREFIX ""
+        )
+    else()
+        set_target_properties(${TARGET_NAME}_shared PROPERTIES 
+            OUTPUT_NAME "coroute_app"
+            PREFIX "lib"
+        )
+    endif()
 
 
     # =========================================================================
@@ -106,8 +113,17 @@ function(add_coroute_app TARGET_NAME)
     
     file(MAKE_DIRECTORY "${FLUTTER_PROJECT_DIR}/lib")
 
-    # Initialize Flutter Project if needed (generates macos/android/ios runners)
-    if(NOT EXISTS "${FLUTTER_PROJECT_DIR}/macos")
+    # Detect host platform for runner check
+    if(WIN32)
+        set(HOST_RUNNER "windows")
+    elseif(APPLE)
+        set(HOST_RUNNER "macos")
+    else()
+        set(HOST_RUNNER "linux")
+    endif()
+
+    # Initialize Flutter Project if needed (generates Platform runners)
+    if(NOT EXISTS "${FLUTTER_PROJECT_DIR}/${HOST_RUNNER}")
         message(STATUS "Initializing Flutter platform runners in ${FLUTTER_PROJECT_DIR}...")
         # We use execute_process directly here to ensure it happens during configuration
         # checking the command result
@@ -124,24 +140,22 @@ function(add_coroute_app TARGET_NAME)
     # Symlink/Copy Helper
     function(ensure_linked SOURCE DEST)
         if(EXISTS "${SOURCE}")
-            # Identify if it's a directory
-            if(IS_DIRECTORY "${SOURCE}")
-                # For directories, on Windows we might need junction or copy. 
-                # On Unix symlink is fine.
-                # cmake -E create_symlink handles files. For dirs?
-                # Let's assume copy for robustness if symlink fails, but try symlink?
-                # Adding symlinks to source dir is risky if not careful.
-                # Assuming user wants this structure.
+            if(NOT EXISTS "${DEST}")
+                # Try symlink first
+                execute_process(
+                    COMMAND ${CMAKE_COMMAND} -E create_symlink "${SOURCE}" "${DEST}"
+                    RESULT_VARIABLE LINK_RESULT
+                    OUTPUT_QUIET
+                    ERROR_QUIET
+                )
                 
-                # Check if dest exists
-                if(NOT EXISTS "${DEST}")
-                     # Create symlink
-                     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink "${SOURCE}" "${DEST}")
-                endif()
-            else()
-                # File
-                if(NOT EXISTS "${DEST}")
-                    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink "${SOURCE}" "${DEST}")
+                # Fallback to copy if symlink failed (common on Windows without Dev Mode)
+                if(NOT LINK_RESULT EQUAL 0)
+                    if(IS_DIRECTORY "${SOURCE}")
+                        execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory "${SOURCE}" "${DEST}")
+                    else()
+                        execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${SOURCE}" "${DEST}")
+                    endif()
                 endif()
             endif()
         endif()
@@ -161,6 +175,7 @@ function(add_coroute_app TARGET_NAME)
     endif()
 
     ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/main.dart" "${FLUTTER_PROJECT_DIR}/lib/main.dart")
+    ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/src" "${FLUTTER_PROJECT_DIR}/lib/src")
     ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/templates" "${FLUTTER_PROJECT_DIR}/lib/templates")
     ensure_linked("${CMAKE_CURRENT_SOURCE_DIR}/viewmodels" "${FLUTTER_PROJECT_DIR}/lib/viewmodels")
 
@@ -244,7 +259,7 @@ function(add_coroute_app TARGET_NAME)
         if(APPLE)
             target_link_libraries(${TARGET_NAME}_server PRIVATE -Wl,-force_load coroute)
         elseif(MSVC)
-            target_link_libraries(${TARGET_NAME}_server PRIVATE /WHOLEARCHIVE:coroute)
+            target_link_options(${TARGET_NAME}_server PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:coroute>")
         else()
             target_link_libraries(${TARGET_NAME}_server PRIVATE -Wl,--whole-archive coroute -Wl,--no-whole-archive)
         endif()

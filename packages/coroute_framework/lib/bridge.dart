@@ -56,6 +56,10 @@ external void _registerBroadcastCallback(
 @Native<Pointer<Utf8> Function()>(assetId: _assetId, symbol: 'get_api_base_url')
 external Pointer<Utf8> _getApiBaseUrl();
 
+@Native<Void Function(Pointer<Utf8>)>(
+    assetId: _assetId, symbol: 'coroute_free_string')
+external void _freeString(Pointer<Utf8> ptr);
+
 class Bridge {
   // Keep listeners alive
   static NativeCallable<FetchRequestCallbackC>? _callbackListener;
@@ -137,7 +141,7 @@ class Bridge {
   // Handle broadcast message from C++ hub
   static void _handleBroadcast(Pointer<Utf8> jsonPtr) {
     final json = jsonPtr.toDartString();
-    malloc.free(jsonPtr);
+    _freeString(jsonPtr);
     _broadcastController.add(json);
   }
 
@@ -156,10 +160,10 @@ class Bridge {
     final headers = headersPtr.toDartString();
     final body = bodyPtr.toDartString();
 
-    malloc.free(urlPtr);
-    malloc.free(methodPtr);
-    malloc.free(headersPtr);
-    malloc.free(bodyPtr);
+    _freeString(urlPtr);
+    _freeString(methodPtr);
+    _freeString(headersPtr);
+    _freeString(bodyPtr);
 
     _doFetch(reqId, url, method, headers, body);
   }
@@ -177,7 +181,7 @@ class Bridge {
         try {
           final ptr = _getApiBaseUrl();
           final resolved = ptr.toDartString();
-          malloc.free(ptr);
+          _freeString(ptr);
           if (resolved.isNotEmpty) {
             _apiBaseUrl = resolved;
             _apiBaseUrlResolved = true;
@@ -288,7 +292,7 @@ class Bridge {
   // Handle view response from C++
   static void _handleViewResponse(int reqId, Pointer<Utf8> jsonPtr) {
     final jsonStr = jsonPtr.toDartString();
-    malloc.free(jsonPtr); // Free the memory allocated by C++ (strdup)
+    _freeString(jsonPtr); // Free the memory allocated by C++ (strdup)
 
     String finalBody = jsonStr;
     try {

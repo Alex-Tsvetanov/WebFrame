@@ -137,7 +137,7 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]")
 	SECTION("parses simple Set-Cookie")
 	{
 		Response resp = Response::ok();
-		resp.add_header("Set-Cookie", "session_id=new_session");
+		resp.add_header("set-cookie", "session_id=new_session");
 
 		auth.observe(resp);
 
@@ -148,7 +148,7 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]")
 	SECTION("parses Set-Cookie with attributes")
 	{
 		Response resp = Response::ok();
-		resp.add_header("Set-Cookie", "token=abc123; HttpOnly; Secure; Path=/");
+		resp.add_header("set-cookie", "token=abc123; HttpOnly; Secure; Path=/");
 
 		auth.observe(resp);
 
@@ -159,8 +159,8 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]")
 	SECTION("handles multiple Set-Cookie headers")
 	{
 		Response resp = Response::ok();
-		resp.add_header("Set-Cookie", "cookie1=value1");
-		resp.add_header("Set-Cookie", "cookie2=value2");
+		resp.add_header("set-cookie", "cookie1=value1");
+		resp.add_header("set-cookie", "cookie2=value2");
 
 		auth.observe(resp);
 
@@ -173,7 +173,7 @@ TEST_CASE("ClientAuthState - observe learns from Set-Cookie", "[auth][client]")
 		auth.set_cookie("session", "old_value");
 
 		Response resp = Response::ok();
-		resp.add_header("Set-Cookie", "session=new_value");
+		resp.add_header("set-cookie", "session=new_value");
 
 		auth.observe(resp);
 
@@ -194,7 +194,7 @@ TEST_CASE("Auth propagation - full apply/observe cycle", "[auth][client]")
 
 	// Step 2: Login response sets cookie
 	Response login_resp = Response::ok(R"({"status":"logged_in"})");
-	login_resp.add_header("Set-Cookie", "auth_token=jwt_here; HttpOnly");
+	login_resp.add_header("set-cookie", "auth_token=jwt_here; HttpOnly");
 
 	auth.observe(login_resp);
 	CHECK(auth.authenticated() == true);

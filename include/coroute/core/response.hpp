@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -228,6 +229,7 @@ namespace coroute
 
 		ResponseBuilder& header(std::string key, std::string value)
 		{
+			for (auto& c : key) c = std::tolower(static_cast<unsigned char>(c));
 			headers_.emplace_back(std::move(key), std::move(value));
 			return *this;
 		}
@@ -259,7 +261,7 @@ namespace coroute
 			bool has_content_length = false;
 			for (const auto& [k, v] : headers_)
 			{
-				if (k == "Content-Length")
+				if (k == "content-length")
 				{
 					has_content_length = true;
 					break;
@@ -267,7 +269,7 @@ namespace coroute
 			}
 			if (!has_content_length && !body_.empty())
 			{
-				headers_.emplace_back("Content-Length", std::to_string(body_.size()));
+				headers_.emplace_back("content-length", std::to_string(body_.size()));
 			}
 
 			return Response(status_, std::move(headers_), std::move(body_));

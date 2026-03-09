@@ -254,9 +254,9 @@ app.use([](Request& req, Next next) -> Task<Response> {
 
 // Authentication middleware
 app.use([](Request& req, Next next) -> Task<Response> {
-    auto auth = req.header("Authorization");
+    auto auth = req.header("authorization");
     if (!auth || !validate_token(*auth)) {
-        co_return Response(401, {{"WWW-Authenticate", "Bearer"}}, "Unauthorized");
+        co_return Response(401, {{"www-authenticate", "Bearer"}}, "Unauthorized");
     }
     co_return co_await next(req);
 });
@@ -305,8 +305,8 @@ app.run(443);
 app.get("/custom", [](Request&) -> Task<Response> {
     co_return ResponseBuilder()
         .status(200)
-        .header("X-Custom-Header", "value")
-        .header("X-Request-ID", generate_uuid())
+        .header("x-custom-header", "value")
+        .header("x-request-id", generate_uuid())
         .content_type("application/json")
         .body(R"({"status":"ok"})"
         .build();

@@ -224,9 +224,20 @@ extern "C"
 			app->set_broadcast_callback(
 			    [cb](std::string_view msg)
 			    {
+				    // Use strdup (C runtime allocation)
 				    char* cstr = strdup(std::string(msg).c_str());
 				    cb(cstr);
 			    });
+		}
+	}
+
+	// Explicitly free a string allocated by the bridge (e.g. via strdup).
+	// Mandatory on Windows to ensure we free on the same heap we allocated on.
+	CROSS_EXPORT void coroute_free_string(char* ptr) noexcept
+	{
+		if (ptr)
+		{
+			free(ptr);
 		}
 	}
 

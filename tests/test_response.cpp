@@ -21,7 +21,7 @@ TEST_CASE("Response factory methods", "[response]")
 		bool found_content_type = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "Content-Type" && v == "application/json")
+			if (k == "content-type" && v == "application/json")
 			{
 				found_content_type = true;
 				break;
@@ -57,7 +57,7 @@ TEST_CASE("Response factory methods", "[response]")
 		bool found_location = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "Location" && v == "/new-location")
+			if (k == "location" && v == "/new-location")
 			{
 				found_location = true;
 				break;
@@ -75,7 +75,7 @@ TEST_CASE("Response serialization", "[response]")
 		std::string serialized = resp.serialize();
 
 		REQUIRE(serialized.find("HTTP/1.1 200 OK") != std::string::npos);
-		REQUIRE(serialized.find("Content-Length: 13") != std::string::npos);
+		REQUIRE(serialized.find("content-length: 13") != std::string::npos);
 		REQUIRE(serialized.find("\r\n\r\n") != std::string::npos);
 		REQUIRE(serialized.find("Hello, World!") != std::string::npos);
 	}
@@ -93,7 +93,7 @@ TEST_CASE("ResponseBuilder", "[response]")
 		bool found_custom = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "X-Custom" && v == "value")
+			if (k == "x-custom" && v == "value")
 			{
 				found_custom = true;
 				break;
@@ -109,7 +109,7 @@ TEST_CASE("ResponseBuilder", "[response]")
 		bool found_ct = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "Content-Type" && v == "text/html")
+			if (k == "content-type" && v == "text/html")
 			{
 				found_ct = true;
 				break;
@@ -125,7 +125,7 @@ TEST_CASE("ResponseBuilder", "[response]")
 		bool found_json_ct = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "Content-Type" && v == "application/json")
+			if (k == "content-type" && v == "application/json")
 			{
 				found_json_ct = true;
 				break;
@@ -141,7 +141,7 @@ TEST_CASE("ResponseBuilder", "[response]")
 		bool found_cl = false;
 		for (const auto& [k, v] : resp.headers())
 		{
-			if (k == "Content-Length" && v == "5")
+			if (k == "content-length" && v == "5")
 			{
 				found_cl = true;
 				break;

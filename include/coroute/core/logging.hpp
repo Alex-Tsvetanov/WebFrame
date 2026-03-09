@@ -183,7 +183,7 @@ namespace coroute
 	};
 
 	// Create request logging middleware
-	Middleware request_logger(RequestLogOptions options = {});
-	Middleware request_logger(Logger& logger, RequestLogOptions options = {});
+	Middleware request_logger(const RequestLogOptions& options = {});
+	Middleware request_logger(Logger& logger, const RequestLogOptions& options = {});
 
 }  // namespace coroute

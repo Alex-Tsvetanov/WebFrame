@@ -115,7 +115,7 @@ namespace coroute
 			// Learn from Set-Cookie headers
 			for (const auto& [key, value] : resp.headers())
 			{
-				if (key == "Set-Cookie")
+				if (key == "set-cookie")
 				{
 					parse_set_cookie(value);
 				}
