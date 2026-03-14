@@ -3,6 +3,7 @@
 .packages
 build/
 pubspec.lock
+native_assets_build.log
 
 # Directory created by dartdoc
 doc/api/
