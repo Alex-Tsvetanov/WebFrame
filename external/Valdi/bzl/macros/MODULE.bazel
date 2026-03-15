@@ -1,3 +1,0 @@
-module(name = "android_macros")
-
-bazel_dep(name = "rules_android", version = "0.5.1")

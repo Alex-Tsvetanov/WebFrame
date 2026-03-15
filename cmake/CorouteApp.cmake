@@ -95,7 +95,7 @@ function(add_coroute_app TARGET_NAME)
         # Calculate relative path to coroute_framework from FLUTTER_PROJECT_DIR
         file(RELATIVE_PATH COROUTE_FRAMEWORK_REL_PATH 
             "${FLUTTER_PROJECT_DIR}" 
-            "${CMAKE_SOURCE_DIR}/packages/coroute_framework"
+            "${CMAKE_SOURCE_DIR}/packages/Flutter/coroute_framework"
         )
         
         # Configure the file
@@ -182,7 +182,7 @@ function(add_coroute_app TARGET_NAME)
     # 2c. Write per-project hook config: lib path (line 1) + flutter project dir (line 2).
     # Named by TARGET_NAME so concurrent builds of multiple projects don't overwrite each other.
     # The hook scans all .coroute_lib_path.* files and matches by flutter project root.
-    set(COROUTE_HOOK_CONFIG "${CMAKE_SOURCE_DIR}/packages/coroute_framework/.coroute_lib_path.${TARGET_NAME}")
+    set(COROUTE_HOOK_CONFIG "${CMAKE_SOURCE_DIR}/packages/Flutter/coroute_framework/.coroute_lib_path.${TARGET_NAME}")
     add_custom_command(TARGET ${TARGET_NAME}_shared POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "$<TARGET_FILE:${TARGET_NAME}_shared>" > "${COROUTE_HOOK_CONFIG}"
         COMMAND ${CMAKE_COMMAND} -E echo "${FLUTTER_PROJECT_DIR}" >> "${COROUTE_HOOK_CONFIG}"

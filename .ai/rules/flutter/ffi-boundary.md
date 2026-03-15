@@ -6,7 +6,7 @@ description: Strict C++ to Dart FFI boundary rules for ABI safety, memory owners
 
 # Flutter FFI Boundary Rules (C++ to Dart Interop)
 
-Coroute compiles web logic into headless engines for Flutter via `src/bridge/` and `packages/coroute_framework/`. Strict adherence to the C API boundary ensures stability and cross-platform reliability.
+Coroute compiles web logic into headless engines for Flutter via `src/bridge/` and `packages/Flutter/coroute_framework/`. Strict adherence to the C API boundary ensures stability and cross-platform reliability.
 
 ## 1. Strict `extern "C"` ABI
 - **No C++ Overloads:** All exported functions must be enclosed in `extern "C"`. Overloaded functions are name-mangled and uncallable from Dart.

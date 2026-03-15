@@ -1,1 +1,0 @@
-module.exports = require('valdi_protobuf/src/ProtobufBuilder').load('valdi_protobuf/test/proto.protodecl');

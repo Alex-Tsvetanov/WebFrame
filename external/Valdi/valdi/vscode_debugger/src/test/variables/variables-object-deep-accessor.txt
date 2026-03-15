@@ -1,3 +1,0 @@
-> result: Bar
-    > get getter: ƒ getter() {}
-    > __proto__: Foo

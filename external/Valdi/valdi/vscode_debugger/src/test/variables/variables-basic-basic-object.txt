@@ -1,3 +1,0 @@
-> result: {a: 1}
-    a: 1
-    > __proto__: Object

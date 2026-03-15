@@ -1,2 +1,0 @@
-stdout> LOG1
-stdout> DONE1

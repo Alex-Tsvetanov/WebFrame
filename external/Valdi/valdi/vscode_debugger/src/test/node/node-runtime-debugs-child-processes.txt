@@ -1,7 +1,0 @@
-{
-    allThreadsStopped : false
-    description : Paused
-    reason : step
-    threadId : <number>
-}
-result: 'It works!'
