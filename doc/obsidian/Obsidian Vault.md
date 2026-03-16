@@ -4,8 +4,6 @@ tags:
   - coroute
   - obsidian
   - architecture
-aliases:
-  - Obsidian Vault Index
 ---
 
 # Obsidian Architecture Vault
@@ -15,6 +13,7 @@ This folder contains the linked architecture notes for Coroute / WebFrame.
 Start with:
 
 - [[Architecture/Project Atlas]]
+- [[Architecture/Performance and Benchmarks]]
 
 Then branch into:
 

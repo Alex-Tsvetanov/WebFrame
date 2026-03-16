@@ -87,6 +87,31 @@ Relevant files:
 
 A view route can resolve in two different shapes depending on who is asking.
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant App
+    participant Handler
+    participant WebRenderer
+    participant Bridge
+
+    Note over Client, Bridge: Browser Path
+    Client->>App: GET /profile
+    App->>Handler: Invoke View Handler
+    Handler-->>App: Return ViewResult<ProfileVM>
+    App->>WebRenderer: Render "profile" with JSON(VM)
+    WebRenderer-->>App: HTML Content
+    App->>Client: 200 OK (text/html)
+
+    Note over Client, Bridge: Flutter/Native Path
+    Client->>App: GET /profile (X-Requested-With: Flutter)
+    App->>Handler: Invoke View Handler
+    Handler-->>App: Return ViewResult<ProfileVM>
+    App->>Bridge: Serialize Envelope {templates, model}
+    Bridge-->>App: JSON String
+    App->>Client: 200 OK (application/json)
+```
+
 ### Browser/web path
 
 When a normal browser request hits a view route in server mode:

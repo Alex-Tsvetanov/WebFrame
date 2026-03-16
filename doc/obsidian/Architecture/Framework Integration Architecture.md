@@ -65,6 +65,25 @@ The integration architecture starts in the build system, not only at runtime.
 
 At runtime, the bridge handles several categories of work.
 
+```mermaid
+sequenceDiagram
+    participant App as Coroute App (C++)
+    participant CRT as CallbackFetchTransport
+    participant Bridge as C++ Bridge
+    participant Host as Host Runtime (Flutter/KMP)
+
+    Note over App, Host: Suspended Request Delegation
+    App->>App: Business Logic executes
+    App->>CRT: fetch("/api/data")
+    CRT->>Bridge: Invoke request_callback
+    Bridge->>Host: Call into Host (via FFI/JNI)
+    Note right of Host: Host performs actual I/O (e.g. via system HTTP)
+    Host-->>Bridge: return Response JSON
+    Bridge->>CRT: resume_fetch(response)
+    CRT-->>App: Task<Response> completes
+    App->>App: Resume Business Logic
+```
+
 ### 1. App initialization
 
 The exported `init_app()` entry point starts the app in a background thread and waits for the `App` instance so transport/broadcast hooks can be injected.

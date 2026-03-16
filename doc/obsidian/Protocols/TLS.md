@@ -15,44 +15,43 @@ aliases:
 > [!abstract]
 > Coroute wraps TLS behind `TlsContext`, `TlsConnection`, and `TlsListener`, integrating HTTPS and ALPN-based protocol negotiation into the main runtime. The current implementation is OpenSSL-backed and is enabled in the build when TLS support is available.
 
-## Main abstractions
+## Implementation Details
+
+### 1. OpenSSL Integration
+Coroute uses **OpenSSL** (or BoringSSL/LibreSSL) for its cryptographic operations. 
+- **`TlsContext`**: A thin RAII wrapper around `SSL_CTX`. It handles certificate loading, private key verification, and global protocol policies.
+- **`TlsConnection`**: Wraps the raw socket `Connection`. It uses an internal `SSL*` object to perform the handshake and encrypt/decrypt data.
+
+### 2. Configuration (`TlsConfig`)
+Setting up TLS requires a `TlsConfig` struct:
+```cpp
+struct TlsConfig {
+    std::string cert_file;      // Path to server certificate
+    std::string key_file;       // Path to private key
+    std::string ca_file;        // (Optional) CA certificate
+    bool verify_client = false; // Client certificate verification
+    std::vector<std::string> alpn_protocols; // e.g., {"h2", "http/1.1"}
+};
+```
+
+### 3. Version Support
+Coroute prioritizes modern encryption:
+- **TLS 1.3**: Supported and preferred. It reduces handshake latency (1-RTT) and removes insecure cipher suites.
+- **TLS 1.2**: Supported for compatibility but can be disabled via configuration.
+- **Older Versions**: SSL 2.0/3.0 and TLS 1.0/1.1 are disabled by default for security.
+
+### 4. ALPN Negotiation
+Application-Layer Protocol Negotiation is critical for HTTP/2.
+- **Process**: During the TLS Client Hello / Server Hello exchange, the client and server negotiate the upper-layer protocol.
+- **Result**: The `TlsConnection` stores the negotiated string (e.g., `h2`). The `App` uses this to decide whether to start an `Http2Connection` or an `Http1Connection`.
+
+### 5. Asynchronous Handshake
+Unlike traditional synchronous servers where `SSL_accept` blocks the thread, Coroute handles the handshake as a C++20 coroutine state. If OpenSSL needs more data (`SSL_ERROR_WANT_READ`), the coroutine suspends and the `IoContext` takes over until the socket is ready again.
 
 Relevant files:
-
 - `[[include/coroute/net/tls.hpp]]`
 - `[[src/net/tls/tls_context.cpp]]`
-- `[[include/coroute/core/app.hpp]]`
 - `[[src/core/app.cpp]]`
-
-### `TlsConfig`
-
-The current TLS configuration surface includes:
-
-- certificate and key paths
-- optional CA and chain files
-- minimum TLS version
-- client certificate verification flag
-- cipher configuration
-- ALPN protocol list
-- session ticket and cache settings
-
-### `TlsContext`
-
-`TlsContext` owns the underlying SSL context and related policy such as SNI callback support and ALPN result lookup.
-
-### `TlsConnection`
-
-`TlsConnection` wraps a generic `Connection` and exposes:
-
-- handshake
-- async read/write operations
-- peer certificate inspection
-- negotiated protocol lookup
-- TLS version lookup
-
-### `TlsListener`
-
-`TlsListener` wraps an existing listener and accepts TLS connections, optionally performing the handshake during accept.
 
 ## Runtime integration
 

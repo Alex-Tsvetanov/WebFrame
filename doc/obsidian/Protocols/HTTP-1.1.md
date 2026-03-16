@@ -49,19 +49,34 @@ Relevant files:
 - `[[include/coroute/core/router.hpp]]`
 - `[[src/core/router.cpp]]`
 
-## Features visible from the current code
+## Implementation Details
 
-### Request/response core
+### 1. Asynchronous Parsing
+HTTP/1.1 requests are parsed in `parse_request()`. The process is incremental and asynchronous:
+- **Header Reading**: The server reads data in `READ_CHUNK_SIZE` intervals until the double CRLF (`\r\n\r\n`) terminator is found.
+- **Limits**: To prevent Slowloris attacks, Coroute enforces a `MAX_HEADER_SIZE` (default 8KB) and `MAX_BODY_SIZE` (default 10MB).
+- **Buffer Pooling**: Parsers acquire buffers from a `buffer_pool` to avoid frequent allocations.
 
-Coroute has first-class abstractions for:
+### 2. URL Decoding
+Coroute performs in-place decoding of percent-encoded URL parameters (e.g., `%20` → ` `). 
+- Plus signs (`+`) in query strings are interpreted as spaces.
+- The decoding logic handles invalid hex sequences gracefully.
 
-- request method, path, query, body, and headers
-- response status, headers, and body
-- JSON and HTML response helpers
-- route parameter extraction
+### 3. Keep-Alive Support
+Coroute supports persistent connections by default (as per RFC 7230).
+- **Persistence**: Reuses the same TCP connection for multiple requests to reduce handshake overhead.
+- **Constraints**:
+    - `MAX_REQUESTS_PER_CONNECTION`: Limits how many requests one client can send before being forced to reconnect (default 100).
+    - `KEEP_ALIVE_TIMEOUT`: Closes idle connections after a set duration (default 30s).
+- **Headers**: Automatically sets `Connection: keep-alive` or `Connection: close` based on internal state.
+
+### 4. Zero-Copy File Transfer
+For static file serving, Coroute bypasses the application buffer entirely.
+- **Mechanism**: On Linux, it uses `sendfile` or `splice`. On Windows, it uses `TransmitFile`. On macOS, it uses the BSD `sendfile`.
+- **Performance**: This reduces CPU usage and memory bandwidth consumption dramatically, as data moves directly from the kernel's file cache to the network socket.
 
 Relevant files:
-
+- `[[src/core/app.cpp]]`
 - `[[include/coroute/core/request.hpp]]`
 - `[[include/coroute/core/response.hpp]]`
 - `[[include/coroute/core/router.hpp]]`

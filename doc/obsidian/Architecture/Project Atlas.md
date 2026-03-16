@@ -21,6 +21,9 @@ Start here for the big picture, then branch into:
 
 - [[Architecture/View and API Abstractions]]
 - [[Architecture/Server Runtime and OS Backends]]
+- [[Architecture/DFA Routing and Middleware]]
+- [[Architecture/Type-Safe Parameters]]
+- [[Architecture/Testing Strategy]]
 - [[Architecture/Framework Integration Architecture]]
 - [[Architecture/Flutter Integration]]
 - [[Renderers/Renderers and Template Engines]]
@@ -60,6 +63,43 @@ The central idea of Coroute v2 is that the same C++ application logic can be dep
 - In **web-server mode**, Coroute owns the socket listener, parses HTTP, routes requests, runs middleware, and renders HTML or returns JSON.
 - In **embedded app mode**, Coroute is compiled as a shared library and hosted by an external UI runtime, currently Flutter.
 - The shared part between those modes is the application core: `App`, `Router`, `Task<T>`, `IoContext`, and the view-model contract represented by `ViewTemplates` and `ViewResult`.
+
+```mermaid
+graph TD
+    subgraph "Application Logic (Shared C++)"
+        App[App Instance]
+        Router[Router]
+        Middleware[Middleware Chain]
+        Handlers[Request Handlers]
+        VM[View Model]
+    end
+
+    subgraph "Web Server Mode"
+        Socket[Socket] --> IoC[IoContext]
+        IoC --> Parser[HTTP Parser]
+        Parser --> App
+        App --> Router
+        Router --> Middleware
+        Middleware --> Handlers
+        Handlers --> VM
+        VM --> WebRenderer[Inja Web Renderer]
+        WebRenderer --> HTTPResp[HTTP Response]
+    end
+
+    subgraph "Embedded App Mode (Flutter)"
+        FlutterUI[Flutter UI] --> DartBridge[Dart Bridge]
+        DartBridge --> CPPBridge[C++ Bridge]
+        CPPBridge --> App
+        App --> Router
+        Router --> Handlers
+        Handlers --> VM
+        VM --> ViewResult[ViewResult Envelope]
+        ViewResult --> CPPBridge
+        CPPBridge --> DartBridge
+        DartBridge --> GenericView[GenericView/JSON]
+        GenericView --> FlutterUI
+    end
+```
 
 ## Main architectural layers
 
@@ -154,7 +194,12 @@ This vault is meant to be descriptive, not speculative.
 
 ## Next notes
 
+- Read [[Architecture/Project Atlas]] for the big picture.
+- Read [[Architecture/Performance and Benchmarks]] for the performance data.
+- Read [[Architecture/Testing Strategy]] for the validation and benchmarking methodology.
+- Read [[Architecture/Type-Safe Parameters]] for the meta-programming and type-safety features.
 - Read [[Architecture/View and API Abstractions]] for the shared view/API contract.
 - Read [[Architecture/Server Runtime and OS Backends]] for the runtime and event-loop story.
+- Read [[Architecture/DFA Routing and Middleware]] for the routing engine details.
 - Read [[Architecture/Framework Integration Architecture]] for the host-framework pattern.
 - Read [[Architecture/Flutter Integration]] for the concrete Flutter path.

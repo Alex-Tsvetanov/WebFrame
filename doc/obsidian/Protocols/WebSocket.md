@@ -14,34 +14,54 @@ aliases:
 > [!abstract]
 > Coroute includes a WebSocket upgrade and session layer on top of the HTTP runtime. It exposes a `WebSocketConnection` abstraction, upgrade helpers, and `App::ws(...)` route registration for real-time application endpoints.
 
-## Main abstractions
+## Implementation Details
+
+### 1. Upgrade Detection
+A WebSocket connection begins with an HTTP GET request containing specific headers:
+- `Upgrade: websocket`
+- `Connection: Upgrade`
+- `Sec-WebSocket-Key`: A base64-encoded random key.
+- `Sec-WebSocket-Version: 13`
+
+Coroute's runtime detects these headers and switches the request handling path to the WebSocket logic before the ordinary router match completes if `App::ws` is being used.
+
+### 2. Handshake & Accept Key
+To complete the handshake, the server must calculate an "Accept Key":
+1. Append the magic GUID `258EAFA5-E914-47DA-95CA-C5AB0DC85B11` to the client's `Sec-WebSocket-Key`.
+2. Compute the **SHA-1** hash of the resulting string.
+3. Base64-encode the hash.
+
+The server then returns this in the `Sec-WebSocket-Accept` header with a `101 Switching Protocols` status.
+
+### 3. Frame Model
+WebSocket communication is broken into frames. Coroute supports:
+- **Data Frames**:
+    - `Text`: UTF-8 encoded text data.
+    - `Binary`: Raw byte sequences.
+- **Control Frames**:
+    - `Close`: Initiates a graceful shutdown of the WebSocket session.
+    - `Ping`: Sent by one side to check if the peer is still responsive.
+    - `Pong`: The required response to a Ping.
+
+### 4. Asynchronous Lifecycle
+Like HTTP requests, the entire WebSocket lifecycle is asynchronous. The handler is a `Task<void>` that runs until the connection is closed.
+
+```cpp
+app.ws("/chat", [](auto ws) -> Task<void> {
+    while (true) {
+        auto msg = co_await ws->receive();
+        if (!msg) break;
+        if (msg->type == WebSocketMessage::Text) {
+            co_await ws->send("Echo: " + msg->data);
+        }
+    }
+});
+```
 
 Relevant files:
-
 - `[[include/coroute/net/websocket.hpp]]`
 - `[[src/net/websocket.cpp]]`
-- `[[include/coroute/core/app.hpp]]`
-
-### `WebSocketConnection`
-
-The runtime abstraction exposes:
-
-- `receive()`
-- `send_text(...)`
-- `send_binary(...)`
-- `ping(...)`
-- `pong(...)`
-- `close(...)`
-- connection metadata accessors
-
-### Message and frame model
-
-The public header includes:
-
-- frame opcodes
-- close codes
-- message helpers for text/binary/close/ping/pong interpretation
-- upgrade helpers for RFC 6455 handshake processing
+- `[[src/core/app.cpp]]`
 
 ## Runtime integration
 

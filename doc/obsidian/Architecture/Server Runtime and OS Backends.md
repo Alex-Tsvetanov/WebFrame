@@ -33,16 +33,37 @@ This note focuses on server mode, but the shared runtime machinery is reused by 
 
 ## HTTP request lifecycle
 
-At a high level, the request path is:
+The request path in Coroute is a series of `co_await` points. Each stage is non-blocking, allowing the thread to return to the `IoContext` while waiting for I/O or processing.
 
-1. create or select the `IoContext`
-2. create a listener
-3. accept a connection
-4. start `handle_connection(...)` as a detached coroutine
-5. parse the request
-6. route and execute middleware/handler logic
-7. write the response
-8. repeat for keep-alive when applicable
+```mermaid
+graph LR
+    A[Accept] --> B{TLS?}
+    B -- Yes --> C[TLS Handshake]
+    C --> D[ALPN Selection]
+    D --> E[Parse Headers]
+    B -- No --> E
+    E --> F[DFA Route]
+    F --> G[Middleware Chain]
+    G --> H[Handler]
+    H --> I[Serialize Response]
+    I --> J[Send Data]
+    J -.->|Keep-Alive| E
+```
+
+### 1. Accept
+The `IoContext` monitors the listening socket. When a connection arrives, it is **moved** into a detached `[[Architecture/Coroutine Model and Task T|Task<void>] ]`.
+
+### 2. TLS & ALPN
+If enabled, the server performs an asynchronous TLS handshake. During this phase, **ALPN (Application-Layer Protocol Negotiation)** determines whether to use HTTP/2 or fallback to HTTP/1.1.
+
+### 3. Parse
+Data is read in chunks until the header terminator (`\r\n\r\n`) is reached. Coroute uses a zero-copy-oriented parser to minimize string allocations.
+
+### 4. Route & Middleware
+The `[[Architecture/DFA Routing and Middleware|DFA Matcher]]` finds the handler in $O(N)$ time. The request then passes through the middleware chain (auth, logging, etc.).
+
+### 5. Handler & Response
+The user-defined `co_await` handler executes business logic. The `Response` is then serialized and sent via native I/O (using `sendfile` or `TransmitFile` for static files).
 
 Relevant files:
 
@@ -62,6 +83,37 @@ Core responsibilities exposed by the interface:
 - schedule delayed work
 - optionally enable multi-accept mode
 
+```mermaid
+graph BT
+    subgraph "Operating System"
+        Linux[Linux: io_uring]
+        macOS[macOS: kqueue]
+        Win[Windows: IOCP]
+    end
+
+    subgraph "Coroute Net Layer"
+        Backend[Backend Implementations]
+        IoC[IoContext Interface]
+        Socket[Socket Abstraction]
+        Listener[Listener Abstraction]
+    end
+
+    subgraph "Core Framework"
+        App[App Instance]
+        Connection[Connection Object]
+        Task[Coroutine Task]
+    end
+
+    Linux -.-> Backend
+    macOS -.-> Backend
+    Win -.-> Backend
+    Backend --> IoC
+    IoC --> App
+    Socket --> Connection
+    Connection --> Task
+    Task --> App
+```
+
 Related files:
 
 - `[[include/coroute/net/io_context.hpp]]`
@@ -74,35 +126,68 @@ The concrete backend is selected in `[[CMakeLists.txt]]`.
 
 ### Linux
 
-- backend: `io_uring`
-- implementation: `[[src/net/io_uring/uring_context.cpp]]`
-- selected when `COROUTE_IO_BACKEND` is `io_uring`
+- **Backend**: `io_uring`
+- **Implementation**: `[[src/net/io_uring/uring_context.cpp]]`
+- **Details**: Read [[Architecture/OS Backends/io_uring]] for per-thread ring details.
 
 ### macOS
 
-- backend: `kqueue`
-- implementation: `[[src/net/kqueue/kqueue_context.cpp]]`
-- selected when `COROUTE_IO_BACKEND` is `kqueue`
+- **Backend**: `kqueue`
+- **Implementation**: `[[src/net/kqueue/kqueue_context.cpp]]`
+- **Details**: Read [[Architecture/OS Backends/kqueue]] for batching and one-shot logic.
 
 ### Windows
 
-- backend: `IOCP`
-- implementation: `[[src/net/iocp/iocp_context.cpp]]`
-- selected when `COROUTE_IO_BACKEND` is `iocp`
+- **Backend**: `IOCP`
+- **Implementation**: `[[src/net/iocp/iocp_context.cpp]]`
+- **Details**: Read [[Architecture/OS Backends/IOCP]] for proactive I/O and AcceptEx.
 
 > [!note]
 > The OS abstraction is a structural design choice, not a portability afterthought. Higher layers depend on `IoContext`, `Listener`, and `Connection` rather than on per-platform APIs.
+
+```mermaid
+graph TD
+    subgraph "Application"
+        App[App Instance]
+        Task[Detached Coroutine]
+    end
+
+    subgraph "IO Abstraction Layer"
+        IoC[IoContext Interface]
+        Conn[Connection Abstraction]
+    end
+
+    subgraph "OS Specific Implementations"
+        Uring[io_uring: Per-thread Rings]
+        Kq[kqueue: Batched Changes]
+        Iocp[IOCP: Proactive Completion]
+    end
+
+    Task --> App
+    App --> IoC
+    IoC --> Uring
+    IoC --> Kq
+    IoC --> Iocp
+    Uring --> Conn
+    Kq --> Conn
+    Iocp --> Conn
+    Conn --> Task
+
+    click Uring "[[Architecture/OS Backends/io_uring]]"
+    click Kq "[[Architecture/OS Backends/kqueue]]"
+    click Iocp "[[Architecture/OS Backends/IOCP]]"
+```
 
 ## Accept loop and connection ownership
 
 In server mode, `App::run()` creates the listener and then starts an accept loop.
 
 Important runtime characteristics:
+- New connections are moved into detached coroutines.
+- Detached coroutines own their connection object (RAII).
+- Memory safety is enforced via move semantics.
 
-- new connections are moved into detached coroutines
-- detached coroutines own their connection object
-- graceful shutdown is tracked through `active_connections_` and cancellation tokens
-- some paths attempt multi-accept for scalability before falling back to a single-listener loop
+Read more in **[[Coroutine Model and Task <T>]]**.
 
 Relevant files:
 
@@ -112,13 +197,12 @@ Relevant files:
 
 ## Middleware and routing in the runtime path
 
-The runtime does not directly invoke handlers after parsing a request. It goes through:
+The runtime does not directly invoke handlers after parsing a request. It goes through a high-performance matching and filtering layer.
 
-- router match
-- middleware chain execution
-- handler invocation or not-found fallback
+- **DFA Matcher**: $O(N)$ path lookup.
+- **Middleware Chain**: Recursive `co_await` onion architecture.
 
-That means authentication, compression, logging, and other cross-cutting behaviors remain outside the transport layer.
+Read more in **[[Architecture/DFA Routing and Middleware]]**.
 
 Relevant files:
 

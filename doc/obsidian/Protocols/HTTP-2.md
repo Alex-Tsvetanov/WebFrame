@@ -28,20 +28,27 @@ Relevant files:
 - `[[src/http2/hpack.cpp]]`
 - `[[src/http2/stream.cpp]]`
 
-## Integration into the runtime
+## Implementation Details
 
-In `App::run()`, the HTTP/2 path is selected after TLS handshake when:
+### 1. ALPN Selection
+Coroute leverages the TLS **ALPN (Application-Layer Protocol Negotiation)** extension to decide between HTTP/1.1 and HTTP/2.
+- **Priority**: If `http2_enabled_` is set, Coroute lists `{"h2", "http/1.1"}` in order of preference.
+- **Branching**: After the TLS handshake, `App` inspects the negotiated protocol. If it is `"h2"`, the connection is wrapped in an `Http2Connection`.
 
-- TLS is enabled
-- HTTP/2 support is compiled in
-- ALPN negotiates `h2`
+### 2. HTTP/2 Connection & Streams
+An `Http2Connection` acts as a multiplexer. 
+- **Binary Frames**: Unlike the text-based HTTP/1.1, HTTP/2 uses binary frames (DATA, HEADERS, SETTINGS, etc.).
+- **Multiplexing**: Multiple streams (requests/responses) can be active simultaneously over a single TCP connection, eliminating Head-of-Line blocking at the application level.
+- **HPACK**: Headers are compressed using the HPACK algorithm, which uses a dynamic table to avoid sending redundant headers.
 
-Then Coroute creates an `Http2Connection` and wires request handling back into the same routing and middleware logic.
+### 3. h2c (Cleartext) Upgrade
+While most production traffic uses HTTPS/h2, Coroute also supports **h2c** (HTTP/2 over cleartext) via the `Upgrade` header mechanism.
+- **Process**: The client sends a special HTTP/1.1 request with `Upgrade: h2c`.
+- **Switching**: If supported, the server responds with `101 Switching Protocols` and immediately begins the HTTP/2 preface exchange.
 
 Relevant files:
-
 - `[[src/core/app.cpp]]`
-- `[[include/coroute/core/app.hpp]]`
+- `[[include/coroute/http2/connection.hpp]]`
 - `[[include/coroute/net/tls.hpp]]`
 
 ## Major feature areas visible in code
