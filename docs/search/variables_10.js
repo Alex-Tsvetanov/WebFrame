@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['range_5frequests_0',['range_requests',['../d7/d78/structcoroute_1_1_static_file_options.html#a4da530f123b77af93d0f8d58200687f7',1,'coroute::StaticFileOptions']]],
+  ['ranges_1',['ranges',['../d1/d51/structcoroute_1_1_range_header.html#ac58d1139872a334f3bd06811fc9ea79a',1,'coroute::RangeHeader']]],
+  ['read_5fbuffer_5f_2',['read_buffer_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#a44b31337189e45b317993feab919a7a7',1,'coroute::http2::Http2Connection::read_buffer_'],['../d5/d03/classcoroute_1_1net_1_1_web_socket_connection_impl.html#a0b965fb56b8cd025f8b76bdc9f048b3f',1,'coroute::net::WebSocketConnectionImpl::read_buffer_']]],
+  ['remote_5fsettings_5f_3',['remote_settings_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#a3383095ad3358ce78eb2893d2937067b',1,'coroute::http2::Http2Connection']]],
+  ['remote_5fwindow_5fsize_5f_4',['remote_window_size_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#a8785e64a8f796bd6ee72a2cd855df18e',1,'coroute::http2::Http2Connection::remote_window_size_'],['../df/d38/classcoroute_1_1http2_1_1_stream.html#ad5e619a0890d42a3efbde5e3360d783c',1,'coroute::http2::Stream::remote_window_size_']]],
+  ['request_5fbody_5f_5',['request_body_',['../df/d38/classcoroute_1_1http2_1_1_stream.html#a75284de3caa6a37a6288170b73b7a011',1,'coroute::http2::Stream']]],
+  ['request_5fduration_6',['request_duration',['../df/dab/structcoroute_1_1_http_metrics.html#a89fc674e6e9d64611c210bd770f58ba2',1,'coroute::HttpMetrics']]],
+  ['request_5fheaders_5f_7',['request_headers_',['../df/d38/classcoroute_1_1http2_1_1_stream.html#abffb001e9635cef32cad0932daec6df9',1,'coroute::http2::Stream']]],
+  ['requests_5fby_5fstatus_8',['requests_by_status',['../df/dab/structcoroute_1_1_http_metrics.html#a72abd40fdbf8ddb6d5dd84045c68b834',1,'coroute::HttpMetrics']]],
+  ['requests_5fin_5fflight_9',['requests_in_flight',['../df/dab/structcoroute_1_1_http_metrics.html#a32c621d0bd8089bebbb7248b8792bd2e',1,'coroute::HttpMetrics']]],
+  ['requests_5ftotal_10',['requests_total',['../df/dab/structcoroute_1_1_http_metrics.html#ae11e0758e0fd23be84d56f73a4dec1bf',1,'coroute::HttpMetrics']]],
+  ['reset_5ffunc_5f_11',['reset_func_',['../d9/d74/classcoroute_1_1_object_pool.html#a80417a378194ffae4eb43f713129ff9f',1,'coroute::ObjectPool']]],
+  ['resetter_5f_12',['resetter_',['../df/dd4/classcoroute_1_1net_1_1_connection_pool.html#af81a10f0e68d03698c96e83070e5661a',1,'coroute::net::ConnectionPool']]],
+  ['response_5fcomplete_5f_13',['response_complete_',['../df/d38/classcoroute_1_1http2_1_1_stream.html#ab97f5940fa0af93b25ce5a0fe2861d28',1,'coroute::http2::Stream']]],
+  ['response_5fheaders_5fsent_5f_14',['response_headers_sent_',['../df/d38/classcoroute_1_1http2_1_1_stream.html#a5b9a3a9b508cb40fbb1bc4f8e09fd3db',1,'coroute::http2::Stream']]],
+  ['rolling_15',['rolling',['../db/d73/structcoroute_1_1_session_options.html#a61c05f36bfd2ca42851b77a17ae0e2fa',1,'coroute::SessionOptions']]],
+  ['root_16',['root',['../d7/d78/structcoroute_1_1_static_file_options.html#a852fa5d391b0be355ca9b355b91ec6b7',1,'coroute::StaticFileOptions']]],
+  ['root_5f_17',['root_',['../d6/dcd/classcoroute_1_1_json_builder.html#a1bb9bc54affac21010073faa384ce388',1,'coroute::JsonBuilder']]],
+  ['route_18',['route',['../d1/d37/structcoroute_1_1_view_execution_context.html#a7e02798886c5f30220b4e4f6e5732b11',1,'coroute::ViewExecutionContext']]],
+  ['route_5fparams_5f_19',['route_params_',['../d7/dd1/classcoroute_1_1_request.html#a7c9e5d1a4ca969a30e4d99f005674b0d',1,'coroute::Request']]],
+  ['router_5f_20',['router_',['../df/d18/classcoroute_1_1_app.html#ad7a0e85811e7845b9540e78384ea17f6',1,'coroute::App']]],
+  ['routes_5f_21',['routes_',['../d3/d38/classcoroute_1_1_router.html#a2f6a7ffe8b7ee5203d565e622f959ebe',1,'coroute::Router']]],
+  ['rsv1_22',['rsv1',['../d6/d7d/websocket_8cpp.html#a0181c49d6a71a3ebc8ce5159c647e5e6',1,'websocket.cpp']]],
+  ['rsv2_23',['rsv2',['../d6/d7d/websocket_8cpp.html#a2345a7ed2fc6fed6a1a2baf1da7c3090',1,'websocket.cpp']]],
+  ['rsv3_24',['rsv3',['../d6/d7d/websocket_8cpp.html#a822bf9c1be370e64b6cd6918b74256bd',1,'websocket.cpp']]]
+];

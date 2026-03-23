@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['same_5fsite_0',['same_site',['../db/d73/structcoroute_1_1_session_options.html#afdb30d687409201c55e8ff34d80cdeeb',1,'coroute::SessionOptions::same_site'],['../db/d42/structcoroute_1_1_cookie.html#aced15a76e47c28e470ddb40755811511',1,'coroute::Cookie::same_site']]],
+  ['secure_1',['secure',['../db/d42/structcoroute_1_1_cookie.html#a359e41059754d9da1b3c361b64891afc',1,'coroute::Cookie::secure'],['../db/d73/structcoroute_1_1_session_options.html#adc513e7227d0b2110dd885c009ebdf12',1,'coroute::SessionOptions::secure']]],
+  ['session_2',['session',['../db/dbe/structcoroute_1_1_memory_session_store_1_1_stored_session.html#a829146fba90d76cd1add54544b9c70c8',1,'coroute::MemorySessionStore::StoredSession']]],
+  ['session_5fkey_3',['SESSION_KEY',['../de/d6f/namespacecoroute.html#ad4199152a4f2ac3576dad620291b90e5',1,'coroute']]],
+  ['sessions_5f_4',['sessions_',['../d9/df5/classcoroute_1_1_memory_session_store.html#a31b78ff60581bba631efff84b146a808',1,'coroute::MemorySessionStore']]],
+  ['settings_5fack_5freceived_5f_5',['settings_ack_received_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#a5d860d642820a4d925979d4fd47238f7',1,'coroute::http2::Http2Connection']]],
+  ['shutting_5fdown_5f_6',['shutting_down_',['../df/d18/classcoroute_1_1_app.html#a5dda862e56d74e38b674fec92832df09',1,'coroute::App']]],
+  ['sinks_5f_7',['sinks_',['../dc/d32/classcoroute_1_1_logger.html#a6cd2688eeca2c72a29c93dbc90d8dfd3',1,'coroute::Logger']]],
+  ['skip_5fif_5fencoded_8',['skip_if_encoded',['../da/dff/structcoroute_1_1_compression_options.html#afd966da4f29cb3b368aba4af811d30e2',1,'coroute::CompressionOptions']]],
+  ['source_5f_9',['source_',['../d2/d59/classcoroute_1_1_cancellation_guard.html#a2bad05c449f3d32bbd25fdf02cc78427',1,'coroute::CancellationGuard']]],
+  ['start_10',['start',['../da/d37/structcoroute_1_1_byte_range.html#a8aae6d5087a28140fc6d15c0773ab3c0',1,'coroute::ByteRange']]],
+  ['start_5f_11',['start_',['../d3/da7/classcoroute_1_1_scoped_timer.html#a7b5be7489107ff17a424e9062fa9fe1c',1,'coroute::ScopedTimer']]],
+  ['state_5f_12',['state_',['../d0/dca/classcoroute_1_1_cancellation_token.html#a93a34198ea632f25be1c27a7978d47de',1,'coroute::CancellationToken::state_'],['../d5/d71/classcoroute_1_1_cancellation_source.html#ab3992151a0f0f61f8eb452e6b095380b',1,'coroute::CancellationSource::state_'],['../df/d38/classcoroute_1_1http2_1_1_stream.html#a36c9f859cd06b7f810e9b38f009f2bea',1,'coroute::http2::Stream::state_']]],
+  ['status_5f_13',['status_',['../d8/d09/classcoroute_1_1_chunked_response.html#a0757e59c60a20d519f2aa6d579a99ccc',1,'coroute::ChunkedResponse::status_'],['../d3/df8/classcoroute_1_1_response.html#a913cae95ebf827d46ea2848bd5290c30',1,'coroute::Response::status_'],['../d8/d21/classcoroute_1_1_response_builder.html#aaa24552fb787707b786590c6213573eb',1,'coroute::ResponseBuilder::status_']]],
+  ['status_5ftext_5f_14',['status_text_',['../d3/df8/classcoroute_1_1_response.html#a07195b828b859220d8986e6a7a7c4b0b',1,'coroute::Response']]],
+  ['store_5f_15',['store_',['../d1/d8b/classcoroute_1_1_session_middleware.html#a0ff4140b2e8baf7065ad4033b4c3a282',1,'coroute::SessionMiddleware']]],
+  ['stream_16',['stream',['../d4/d9d/structcoroute_1_1http2_1_1_stream_1_1_window_awaiter.html#a43e2d12246b99c812acc89598077e205',1,'coroute::http2::Stream::WindowAwaiter']]],
+  ['stream_5fid_17',['stream_id',['../d0/df5/structcoroute_1_1http2_1_1_frame_header.html#abee3347bee025a4d869a6f2453d8653b',1,'coroute::http2::FrameHeader']]],
+  ['streams_5f_18',['streams_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#af5ffe278c2cbe6e948a03b9a70dcf3b2',1,'coroute::http2::Http2Connection']]],
+  ['streams_5fmutex_5f_19',['streams_mutex_',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#a8e2dafbfb975bf4aba2a60e0f8674513',1,'coroute::http2::Http2Connection']]],
+  ['subprotocols_20',['subprotocols',['../d9/d64/structcoroute_1_1net_1_1_web_socket_config.html#addf7d4f964b693f7c6339cdeb0fff82f',1,'coroute::net::WebSocketConfig']]],
+  ['sum_5f_21',['sum_',['../db/d1b/classcoroute_1_1_histogram.html#ac20ca9724129b82659fa1272080cbd5f',1,'coroute::Histogram']]]
+];

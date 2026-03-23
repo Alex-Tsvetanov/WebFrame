@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['unauthorized_0',['Unauthorized',['../de/d6f/namespacecoroute.html#a145731a18e23887427c8e4b97474faadae06d1ba70f1331e9f9a113cc2f887d3f',1,'coroute']]],
+  ['unexpect_1',['unexpect',['../de/d6f/namespacecoroute.html#a7b8e9cf701e0c4ab0faac2ea0bfb66fe',1,'coroute']]],
+  ['unexpect_5ft_2',['unexpect_t',['../d3/d9b/structcoroute_1_1unexpect__t.html#a80053498ba4e7b750d0f692948d997d8',1,'coroute::unexpect_t::unexpect_t()'],['../d3/d9b/structcoroute_1_1unexpect__t.html',1,'coroute::unexpect_t']]],
+  ['unexpected_3',['unexpected',['../db/d07/classcoroute_1_1unexpected.html',1,'coroute::unexpected&lt; E &gt;'],['../de/d6f/namespacecoroute.html#af98980e90f494d750f5e197f3fad8305',1,'coroute::unexpected(E) -&gt; unexpected&lt; E &gt;'],['../db/d07/classcoroute_1_1unexpected.html#a71a787f8d2d08573672d16b7ef69724f',1,'coroute::unexpected::unexpected(Err &amp;&amp;e)'],['../db/d07/classcoroute_1_1unexpected.html#a292dfcfd71b7c4c8e4798facb64b75fe',1,'coroute::unexpected::unexpected(unexpected &amp;&amp;)=default'],['../db/d07/classcoroute_1_1unexpected.html#a3eee0f7090b1518480b758279d56dde1',1,'coroute::unexpected::unexpected(const unexpected &amp;)=default']]],
+  ['unexpected_5ftype_4',['unexpected_type',['../da/dae/classcoroute_1_1expected.html#a4f427046e2f616ca3645cab4b0a3e514',1,'coroute::expected::unexpected_type'],['../d1/d7a/classcoroute_1_1expected_3_01void_00_01_e_01_4.html#a29f0f2de28310f348c146a6a2be04169',1,'coroute::expected&lt; void, E &gt;::unexpected_type']]],
+  ['unhandled_5fexception_5',['unhandled_exception',['../d3/d50/structcoroute_1_1detail_1_1_task_promise_base.html#a5607e522f65eef2472eb7db157cd7fdc',1,'coroute::detail::TaskPromiseBase']]],
+  ['unit_6',['unit',['../d1/d51/structcoroute_1_1_range_header.html#a382d3d11128f8ea4f200527312efe3e8',1,'coroute::RangeHeader']]],
+  ['unknown_7',['unknown',['../de/d6f/namespacecoroute.html#a8770feb0edca912ef3e9054d68401069a88183b946cc5f0e8c96b2e66e1c74a7e',1,'coroute::Unknown'],['../de/d6f/namespacecoroute.html#a2a256116b7d92cd7022660efe27af8b6a696b031073e74bf2cb98e5ef201d4aa3',1,'coroute::UNKNOWN']]],
+  ['unsupporteddata_8',['UnsupportedData',['../d1/db8/namespacecoroute_1_1net.html#a19c4fc490e357ad8fca1cd23a25c6315aa63d4c1207867216c93e257bfa05e818',1,'coroute::net']]],
+  ['unsupportedmediatype_9',['UnsupportedMediaType',['../de/d6f/namespacecoroute.html#a145731a18e23887427c8e4b97474faadaa3219a6843adbb23de79b4df9c307f5d',1,'coroute']]],
+  ['update_5fconnection_5fwindow_10',['update_connection_window',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#ab5ab1f23bacec6b99dee33934bc0e39c',1,'coroute::http2::Http2Connection']]],
+  ['update_5flocal_5fwindow_11',['update_local_window',['../df/d38/classcoroute_1_1http2_1_1_stream.html#ad14ef94dc492e4a5e5941a398d126ef9',1,'coroute::http2::Stream']]],
+  ['update_5fremote_5fwindow_12',['update_remote_window',['../df/d38/classcoroute_1_1http2_1_1_stream.html#a4255178c09b2fc7bb266e348983a339a',1,'coroute::http2::Stream']]],
+  ['upgrade_5fto_5fhttp2_13',['upgrade_to_http2',['../d0/d1c/classcoroute_1_1http2_1_1_http2_connection.html#ad3ee8e15de9a79ab1bed31128a9783f5',1,'coroute::http2::Http2Connection::upgrade_to_http2'],['../d3/d68/namespacecoroute_1_1http2.html#a8b703d8b3bdba1719afb2f3754a628b4',1,'coroute::http2::upgrade_to_http2()']]],
+  ['upgrade_5fto_5fwebsocket_14',['upgrade_to_websocket',['../d1/db8/namespacecoroute_1_1net.html#affe220f1d9b2371990843ea3c402d64d',1,'coroute::net']]],
+  ['uring_5fcontext_2ecpp_15',['uring_context.cpp',['../dc/db7/uring__context_8cpp.html',1,'']]],
+  ['uritoolong_16',['UriTooLong',['../de/d6f/namespacecoroute.html#a145731a18e23887427c8e4b97474faadaf72866c1bbf28a47b9bb1c8846e03313',1,'coroute']]],
+  ['url_5fdecode_17',['url_decode',['../d6/d42/namespacecoroute_1_1form.html#acf1e122998e1d96d246cbb1d3be2f4ce',1,'coroute::form::url_decode()'],['../de/d6f/namespacecoroute.html#ae2eb34b314ec590a0327f8f318103044',1,'coroute::url_decode()']]],
+  ['url_5fencode_18',['url_encode',['../d6/d42/namespacecoroute_1_1form.html#a8e598f03bf091c98e30d30dd13dd87b1',1,'coroute::form']]],
+  ['url_5fprefix_19',['url_prefix',['../d7/d78/structcoroute_1_1_static_file_options.html#aabaf41ffbe94a3d208654bdc4df2d019',1,'coroute::StaticFileOptions']]],
+  ['use_20',['use',['../df/d18/classcoroute_1_1_app.html#a722323068ec7f268f71b462f49edafaa',1,'coroute::App']]],
+  ['use_5ffile_5f_21',['use_file_',['../d3/d7b/classcoroute_1_1_range_response_builder.html#abbbbf05aeb20b372320a8a23cbbead83',1,'coroute::RangeResponseBuilder']]],
+  ['using_5fsimdjson_22',['using_simdjson',['../d2/d94/namespacecoroute_1_1json.html#a67df96aadecae44ef9e57458e07ff200',1,'coroute::json']]]
+];
