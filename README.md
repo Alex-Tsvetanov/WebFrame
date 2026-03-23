@@ -2,9 +2,9 @@
 
 ![C++](https://img.shields.io/badge/c++20-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=white)
 
-[![CI Build](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml) [![Documentation](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml) [![CodeQL](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml)
+[![CI Build](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/ci.yml/badge.svg)](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/ci.yml) [![Documentation](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/documentation.yml/badge.svg)](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/documentation.yml) [![CodeQL](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/codeql.yml/badge.svg)](https://github.com/Alex-Tsvetanov/WebFrame/actions/workflows/codeql.yml)
 
-[![Issues](https://img.shields.io/github/issues/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame/issues) [![Stars](https://img.shields.io/github/stars/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame) [![License](https://img.shields.io/github/license/cpp-for-everything/WebFrame?)](https://github.com/cpp-for-everything/WebFrame/blob/master/LICENSE.md)
+[![Issues](https://img.shields.io/github/issues/Alex-Tsvetanov/WebFrame?)](https://github.com/Alex-Tsvetanov/WebFrame/issues) [![Stars](https://img.shields.io/github/stars/Alex-Tsvetanov/WebFrame?)](https://github.com/Alex-Tsvetanov/WebFrame) [![License](https://img.shields.io/github/license/Alex-Tsvetanov/WebFrame?)](https://github.com/Alex-Tsvetanov/WebFrame/blob/master/LICENSE.md)
 
 **High-performance web framework built on C++20 coroutines with HTTP/2, TLS, and WebSocket support**
 ## ✨ Features
@@ -31,9 +31,9 @@
 | **Platform** | Linux (kernel 5.1+ for io_uring), macOS 10.13+, Windows 10+ |
 ## 📚 Documentation & Resources
 
-- 📖 **[API Documentation](https://cpp-for-everything.github.io/WebFrame/docs/)** - Full Doxygen documentation
-- 🔍 **[CodeQL Analysis](https://cpp-for-everything.github.io/WebFrame/codeql_report/)** - Security and code quality reports
-- 📊 **[Performance Benchmarks](https://cpp-for-everything.github.io/WebFrame/benchmark/)** - Latest benchmark results
+- 📖 **[API Documentation](https://Alex-Tsvetanov.github.io/WebFrame/docs/)** - Full Doxygen documentation
+- 🔍 **[CodeQL Analysis](https://Alex-Tsvetanov.github.io/WebFrame/codeql_report/)** - Security and code quality reports
+- 📊 **[Performance Benchmarks](https://Alex-Tsvetanov.github.io/WebFrame/benchmark/)** - Latest benchmark results
 - 💡 **[Examples](./examples/)** - Complete working examples
 ## 🚀 Quick Start
 
@@ -41,7 +41,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/cpp-for-everything/WebFrame.git
+git clone https://github.com/Alex-Tsvetanov/WebFrame.git
 cd WebFrame
 
 # Build with CMake
@@ -366,7 +366,7 @@ Coroute achieves high performance through:
 - **Object pooling** for reduced allocations
 - **HTTP/2 multiplexing** for concurrent requests
 
-See [benchmark results](https://cpp-for-everything.github.io/WebFrame/benchmark/) for detailed performance metrics.
+See [benchmark results](https://Alex-Tsvetanov.github.io/WebFrame/benchmark/) for detailed performance metrics.
 
 ## 🤝 Contributing
 
@@ -384,9 +384,9 @@ This project is licensed under the terms specified in [LICENSE.md](LICENSE.md).
 
 ## 🔗 Links
 
-- **Documentation**: https://cpp-for-everything.github.io/WebFrame/docs/
+- **Documentation**: https://Alex-Tsvetanov.github.io/WebFrame/docs/
 - **Examples**: [./examples/](./examples/)
-- **Issue Tracker**: https://github.com/cpp-for-everything/WebFrame/issues
+- **Issue Tracker**: https://github.com/Alex-Tsvetanov/WebFrame/issues
 ## 👤 Author
 
 **Alex Tsvetanov**

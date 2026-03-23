@@ -9,4 +9,4 @@
 
 ## Reporting a Vulnerability
 
-In case you find vulnerability, please make sure to open an [issue](https://github.com/WebFrame/Core/issues) so we can fix it as soon as possible.
+In case you find vulnerability, please make sure to open an [issue](https://github.com/Alex-Tsvetanov/WebFrame/issues) so we can fix it as soon as possible.
