@@ -1,0 +1,12 @@
+{
+  "name": "coroute",
+  "version": "2.0.0",
+  "dependencies": [
+    "openssl",
+    {
+      "name": "ngtcp2",
+      "features": ["openssl"]
+    },
+    "nghttp3"
+  ]
+}

@@ -16,6 +16,7 @@ option(COROUTE_ENABLE_BROTLI "Enable Brotli compression support" OFF)
 option(COROUTE_ENABLE_SIMDJSON "Enable simdjson for fast JSON parsing" ON)
 option(COROUTE_ENABLE_TLS "Enable TLS/SSL support via OpenSSL" ON)
 option(COROUTE_ENABLE_HTTP2 "Enable HTTP/2 support via nghttp2" ON)
+option(COROUTE_ENABLE_HTTP3 "Enable HTTP/3 support via ngtcp2 and nghttp3" OFF)
 
 # Detect platform and set I/O backend
 if(WIN32)
@@ -86,6 +87,7 @@ add_library(coroute STATIC
     src/net/socket.cpp
     src/net/event_loop.cpp
     src/net/websocket.cpp
+    src/net/udp_server.cpp
 
     # View system
     src/view/web_renderer.cpp
@@ -258,6 +260,53 @@ if(COROUTE_ENABLE_HTTP2)
     message(STATUS "HTTP/2: enabled (nghttp2)")
 else()
     message(STATUS "HTTP/2: disabled (use -DCOROUTE_ENABLE_HTTP2=ON to enable)")
+endif()
+
+# Optional HTTP/3 support via ngtcp2 and nghttp3 (provisioned by vcpkg manifest)
+if(COROUTE_ENABLE_HTTP3 AND COROUTE_ENABLE_TLS)
+    find_package(ngtcp2  CONFIG QUIET)
+    find_package(nghttp3 CONFIG QUIET)
+    set(HTTP3_ENABLED FALSE)
+
+    if(NOT ngtcp2_FOUND)
+        message(WARNING
+            "HTTP/3 requested but ngtcp2 could not be located. "
+            "Pass -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake so the "
+            "vcpkg manifest installs ngtcp2 automatically.")
+    elseif(NOT nghttp3_FOUND)
+        message(WARNING "HTTP/3 requested but nghttp3 could not be located via find_package(CONFIG).")
+    elseif(NOT TARGET ngtcp2::ngtcp2_crypto_ossl)
+        message(WARNING
+            "HTTP/3 requested but ngtcp2::ngtcp2_crypto_ossl target is missing. "
+            "Rebuild the ngtcp2 vcpkg port with the 'openssl' feature enabled.")
+    else()
+        set(HTTP3_ENABLED TRUE)
+    endif()
+
+    if(HTTP3_ENABLED)
+        target_compile_definitions(coroute PUBLIC COROUTE_HAS_HTTP3)
+
+        target_sources(coroute PRIVATE
+            src/http3/quic_server.cpp
+            src/http3/connection.cpp
+            src/http3/stream.cpp
+            src/http3/retry_token.cpp
+            src/http3/zero_rtt_replay_cache.cpp
+        )
+
+        target_link_libraries(coroute PUBLIC
+            ngtcp2::ngtcp2
+            ngtcp2::ngtcp2_crypto_ossl
+            nghttp3::nghttp3
+            OpenSSL::SSL OpenSSL::Crypto)
+
+        set(HTTP3_ENABLED TRUE CACHE INTERNAL "HTTP/3 build active")
+        message(STATUS "HTTP/3: enabled (vcpkg)")
+    endif()
+elseif(COROUTE_ENABLE_HTTP3)
+    message(WARNING "HTTP/3 requested but TLS is disabled. HTTP/3 MUST be used with TLS/QUIC. Disabling HTTP/3.")
+else()
+    message(STATUS "HTTP/3: disabled (use -DCOROUTE_ENABLE_HTTP3=ON to enable)")
 endif()
 
 # Examples
