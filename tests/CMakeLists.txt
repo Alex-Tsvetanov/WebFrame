@@ -28,9 +28,27 @@ add_executable(unit_tests
     test_view.cpp
     test_task.cpp
     test_http2_advanced.cpp
+    test_udp_socket.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE coroute Catch2::Catch2WithMain)
+
+# HTTP/3 tests and in-process test client (only when HTTP/3 is enabled)
+if(HTTP3_ENABLED)
+    target_sources(unit_tests PRIVATE
+        test_http3.cpp
+        test_http3_e2e.cpp
+        test_http3_retry_token_hmac.cpp
+        test_http3_replay_token.cpp
+        test_http3_hardening.cpp
+        test_http3_datagrams.cpp
+        http3/quic_test_client.cpp)
+    target_include_directories(unit_tests PRIVATE http3)
+    # Path to a pre-generated self-signed test cert (used by E2E tests).
+    target_compile_definitions(unit_tests PRIVATE
+        COROUTE_TEST_CERT_FILE="${CMAKE_SOURCE_DIR}/examples/Samples/https_server/certs/cert.pem"
+        COROUTE_TEST_KEY_FILE="${CMAKE_SOURCE_DIR}/examples/Samples/https_server/certs/key.pem")
+endif()
 
 # Register tests with CTest
 include(CTest)
