@@ -31,22 +31,6 @@ jobs:
           wrk \
           apache2-utils
 
-    - name: Enable io_uring
-      run: |
-        # Ubuntu hardens io_uring off by default (kernel.io_uring_disabled=1,
-        # restricted to CAP_SYS_ADMIN) since 24.04. coroute's Linux I/O backend
-        # is io_uring-only (see CMakeLists.txt COROUTE_IO_BACKEND), so with the
-        # default setting io_uring_queue_init_params() returns -EPERM, the
-        # server throws in its constructor, and the process dies before it
-        # ever binds :8080. Loosen it for this job only.
-        if [ -f /proc/sys/kernel/io_uring_disabled ]; then
-          echo "kernel.io_uring_disabled before: $(cat /proc/sys/kernel/io_uring_disabled)"
-          sudo sysctl -w kernel.io_uring_disabled=0
-          echo "kernel.io_uring_disabled after: $(cat /proc/sys/kernel/io_uring_disabled)"
-        else
-          echo "kernel.io_uring_disabled sysctl not present on this kernel, nothing to do"
-        fi
-
     - name: Configure CMake (Release with optimizations)
       run: |
         cmake -B build -G Ninja \
@@ -66,6 +50,18 @@ jobs:
     - name: Run Benchmark Server
       run: |
         set -eo pipefail
+        # io_uring locks kernel memory for each ring's SQ/CQ buffers. The
+        # benchmark server defaults to 12 worker threads, one ring each, at
+        # queue depth 8192 (src/net/io_uring/uring_context.cpp). That is more
+        # locked memory than the runner's default RLIMIT_MEMLOCK allows, so
+        # ring init starts failing partway through startup with ENOMEM
+        # ("Failed to initialize io_uring ring 10" - the 11th ring). Raise the
+        # limit for this shell so the server process launched below inherits it.
+        echo "ulimit -l (memlock, KB) before: $(ulimit -l)"
+        sudo prlimit --pid $$ --memlock=unlimited:unlimited 2>/dev/null || true
+        ulimit -l unlimited 2>/dev/null || true
+        echo "ulimit -l (memlock, KB) after: $(ulimit -l)"
+
         # Redirected to a file and disowned: without this, the server's stdout is
         # inherited from this step's shell. When the step ends the shell exits, and
         # a process that later writes to a closed inherited pipe gets SIGPIPE. It is
