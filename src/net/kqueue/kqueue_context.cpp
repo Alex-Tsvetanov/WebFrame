@@ -32,7 +32,9 @@ namespace coroute::net
 		Accept,
 		Read,
 		Write,
-		Connect
+		Connect,
+		UdpRecv,
+		UdpSend
 	};
 
 	struct KqueueOperation
@@ -42,7 +44,8 @@ namespace coroute::net
 		Error error;
 		int result = 0;
 
-		// For accept operations
+		// For accept operations, and (reused) for UDP recvfrom/sendto peer
+		// address — an op is never both an Accept and a Udp* op at once.
 		int accept_fd = -1;
 		sockaddr_in client_addr{};
 		socklen_t client_addr_len = sizeof(sockaddr_in);
@@ -180,6 +183,9 @@ namespace coroute::net
 				.detach();
 		}
 
+		// Bind a UDP socket to `port`. Defined out-of-line, after KqueueUdpSocket.
+		expected<std::unique_ptr<UdpSocket>, Error> bind_udp(uint16_t port) override;
+
 	private:
 		void worker_thread()
 		{
@@ -230,6 +236,22 @@ namespace coroute::net
 							op->result = op->accept_fd;
 						}
 					}
+					else if (op->type == KqueueOpType::UdpRecv)
+					{
+						op->client_addr_len = sizeof(sockaddr_in);
+						ssize_t bytes = recvfrom(fd, op->buffer, op->length, 0,
+						                         reinterpret_cast<sockaddr*>(&op->client_addr),
+						                         &op->client_addr_len);
+						if (bytes < 0)
+						{
+							op->error = Error::system(std::error_code(errno, std::system_category()));
+							op->result = -1;
+						}
+						else
+						{
+							op->result = static_cast<int>(bytes);
+						}
+					}
 					else
 					{
 						// Regular read operation
@@ -247,16 +269,34 @@ namespace coroute::net
 				}
 				else if (ev.filter == EVFILT_WRITE)
 				{
-					// Perform write
-					ssize_t bytes = send(fd, op->buffer, op->length, 0);
-					if (bytes < 0)
+					if (op->type == KqueueOpType::UdpSend)
 					{
-						op->error = Error::system(std::error_code(errno, std::system_category()));
-						op->result = -1;
+						ssize_t bytes = sendto(fd, op->buffer, op->length, 0,
+						                       reinterpret_cast<sockaddr*>(&op->client_addr),
+						                       op->client_addr_len);
+						if (bytes < 0)
+						{
+							op->error = Error::system(std::error_code(errno, std::system_category()));
+							op->result = -1;
+						}
+						else
+						{
+							op->result = static_cast<int>(bytes);
+						}
 					}
 					else
 					{
-						op->result = static_cast<int>(bytes);
+						// Perform write
+						ssize_t bytes = send(fd, op->buffer, op->length, 0);
+						if (bytes < 0)
+						{
+							op->error = Error::system(std::error_code(errno, std::system_category()));
+							op->result = -1;
+						}
+						else
+						{
+							op->result = static_cast<int>(bytes);
+						}
 					}
 				}
 
@@ -601,6 +641,208 @@ namespace coroute::net
 		}
 
 		co_return total_sent;
+	}
+
+	// ============================================================================
+	// kqueue UdpSocket Implementation
+	// ============================================================================
+
+	class KqueueUdpSocket : public UdpSocket
+	{
+		KqueueContext& ctx_;
+		int fd_ = -1;
+		uint16_t port_ = 0;
+		CancellationToken cancel_token_;
+
+	public:
+		explicit KqueueUdpSocket(KqueueContext& ctx) : ctx_(ctx) { }
+
+		~KqueueUdpSocket() override { close(); }
+
+		void set_cancellation_token(CancellationToken token) override
+		{
+			cancel_token_ = std::move(token);
+		}
+
+		expected<void, Error> bind(uint16_t port) override
+		{
+			fd_ = socket(AF_INET, SOCK_DGRAM, 0);
+			if (fd_ < 0)
+			{
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			int flags = fcntl(fd_, F_GETFL, 0);
+			fcntl(fd_, F_SETFL, flags | O_NONBLOCK);
+
+			int opt = 1;
+			setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+			setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+
+			sockaddr_in addr{};
+			addr.sin_family = AF_INET;
+			addr.sin_addr.s_addr = INADDR_ANY;
+			addr.sin_port = htons(port);
+
+			if (::bind(fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			sockaddr_in bound_addr{};
+			socklen_t addr_len = sizeof(bound_addr);
+			getsockname(fd_, reinterpret_cast<sockaddr*>(&bound_addr), &addr_len);
+			port_ = ntohs(bound_addr.sin_port);
+
+			return {};
+		}
+
+		expected<void, Error> bind(const std::string& address, uint16_t port) override
+		{
+			fd_ = socket(AF_INET, SOCK_DGRAM, 0);
+			if (fd_ < 0)
+			{
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			int flags = fcntl(fd_, F_GETFL, 0);
+			fcntl(fd_, F_SETFL, flags | O_NONBLOCK);
+
+			int opt = 1;
+			setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+			setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+
+			sockaddr_in addr{};
+			addr.sin_family = AF_INET;
+			if (inet_pton(AF_INET, address.c_str(), &addr.sin_addr) <= 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+				return unexpected(Error::io(IoError::InvalidArgument, "Invalid bind address"));
+			}
+			addr.sin_port = htons(port);
+
+			if (::bind(fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			sockaddr_in bound_addr{};
+			socklen_t addr_len = sizeof(bound_addr);
+			if (getsockname(fd_, reinterpret_cast<sockaddr*>(&bound_addr), &addr_len) == 0)
+			{
+				port_ = ntohs(bound_addr.sin_port);
+			}
+			else
+			{
+				port_ = port;
+			}
+			return {};
+		}
+
+		Task<UdpReceiveResult> async_recv_from(void* buffer, size_t len) override
+		{
+			if (!is_open())
+			{
+				co_return unexpected(Error::io(IoError::ConnectionReset, "Socket closed"));
+			}
+			if (cancel_token_.valid() && cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			KqueueOperation op{KqueueOpType::UdpRecv};
+			op.buffer = buffer;
+			op.length = len;
+			op.client_addr_len = sizeof(sockaddr_in);
+
+			ctx_.register_read_op(fd_, &op);
+			co_await KqueueAwaiter{op};
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+
+			UdpEndpoint peer;
+			char ip[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &op.client_addr.sin_addr, ip, sizeof(ip));
+			peer.address = ip;
+			peer.port    = ntohs(op.client_addr.sin_port);
+
+			co_return std::make_pair(static_cast<size_t>(op.result), std::move(peer));
+		}
+
+		Task<UdpSendResult> async_send_to(const void* buffer, size_t len, const UdpEndpoint& peer) override
+		{
+			if (!is_open())
+			{
+				co_return unexpected(Error::io(IoError::ConnectionReset, "Socket closed"));
+			}
+			if (cancel_token_.valid() && cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			KqueueOperation op{KqueueOpType::UdpSend};
+			op.buffer = const_cast<void*>(buffer);
+			op.length = len;
+
+			op.client_addr = sockaddr_in{};
+			op.client_addr.sin_family = AF_INET;
+			op.client_addr.sin_port = htons(peer.port);
+			if (inet_pton(AF_INET, peer.address.c_str(), &op.client_addr.sin_addr) != 1)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid peer address"));
+			}
+			op.client_addr_len = sizeof(sockaddr_in);
+
+			ctx_.register_write_op(fd_, &op);
+			co_await KqueueAwaiter{op};
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+
+			co_return static_cast<size_t>(op.result);
+		}
+
+		void close() override
+		{
+			if (fd_ >= 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+			}
+		}
+
+		bool is_open() const noexcept override { return fd_ >= 0; }
+		uint16_t local_port() const noexcept override { return port_; }
+	};
+
+	expected<std::unique_ptr<UdpSocket>, Error> KqueueContext::bind_udp(uint16_t port)
+	{
+		auto sock = UdpSocket::create(*this);
+		if (!sock)
+		{
+			return unexpected(Error::io(IoError::Unknown, "KqueueUdpSocket::create returned nullptr"));
+		}
+		auto bound = sock->bind(port);
+		if (!bound)
+		{
+			return unexpected(bound.error());
+		}
+		return sock;
+	}
+
+	std::unique_ptr<UdpSocket> UdpSocket::create(IoContext& ctx)
+	{
+		return std::make_unique<KqueueUdpSocket>(static_cast<KqueueContext&>(ctx));
 	}
 
 	// Definition of thread_local member

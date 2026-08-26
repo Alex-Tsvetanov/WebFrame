@@ -209,6 +209,10 @@ namespace coroute::net
 			timer_cv_.notify_all();
 		}
 
+		// Bind a UDP socket to `port` and associate it with this completion
+		// port. Defined out-of-line, after IocpUdpSocket.
+		expected<std::unique_ptr<UdpSocket>, Error> bind_udp(uint16_t port) override;
+
 	private:
 		void timer_thread_proc()
 		{
@@ -862,6 +866,363 @@ namespace coroute::net
 		}
 
 		co_return co_await TransmitFileAwaiter(socket_, hFile, offset, length);
+	}
+
+	// ============================================================================
+	// IOCP UDP Socket Implementation
+	//
+	// Additive to the existing TCP path above; mirrors ReadAwaiter/WriteAwaiter's
+	// simpler style (pre-check cancellation, no live CancelIoEx of an in-flight
+	// op — coroute's CancellationToken has no on-cancel unregister handle here).
+	// ============================================================================
+
+	// Awaiter for WSARecvFrom.
+	struct RecvFromAwaiter
+	{
+		std::unique_ptr<IocpOperation> op_;
+		SOCKET socket_;
+		WSABUF wsabuf_;
+		DWORD flags_ = 0;
+		sockaddr_storage src_addr_{};
+		INT src_addr_len_ = sizeof(src_addr_);
+
+		RecvFromAwaiter(SOCKET socket, void* buffer, size_t len)
+			: op_(std::make_unique<IocpOperation>(IocpOpType::Read)), socket_(socket)
+		{
+			wsabuf_.buf = static_cast<char*>(buffer);
+			wsabuf_.len = static_cast<ULONG>(len);
+		}
+
+		RecvFromAwaiter(const RecvFromAwaiter&) = delete;
+		RecvFromAwaiter& operator=(const RecvFromAwaiter&) = delete;
+		RecvFromAwaiter(RecvFromAwaiter&&) = delete;
+		RecvFromAwaiter& operator=(RecvFromAwaiter&&) = delete;
+
+		bool await_ready() const noexcept { return false; }
+
+		bool await_suspend(std::coroutine_handle<> h)
+		{
+			op_->continuation = h;
+
+			int result = WSARecvFrom(socket_, &wsabuf_, 1, nullptr, &flags_,
+			                         reinterpret_cast<sockaddr*>(&src_addr_), &src_addr_len_,
+			                         op_.get(), nullptr);
+
+			if (result == SOCKET_ERROR)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != WSA_IO_PENDING)
+				{
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		UdpReceiveResult await_resume()
+		{
+			if (op_->error)
+			{
+				return unexpected(op_->error);
+			}
+
+			UdpEndpoint source;
+			char ip[INET6_ADDRSTRLEN] = {};
+			if (src_addr_.ss_family == AF_INET)
+			{
+				auto* s4 = reinterpret_cast<sockaddr_in*>(&src_addr_);
+				inet_ntop(AF_INET, &s4->sin_addr, ip, sizeof(ip));
+				source.address = ip;
+				source.port = ntohs(s4->sin_port);
+			}
+			else if (src_addr_.ss_family == AF_INET6)
+			{
+				auto* s6 = reinterpret_cast<sockaddr_in6*>(&src_addr_);
+				inet_ntop(AF_INET6, &s6->sin6_addr, ip, sizeof(ip));
+				source.address = ip;
+				source.port = ntohs(s6->sin6_port);
+			}
+
+			return std::make_pair(static_cast<size_t>(op_->bytes_transferred), source);
+		}
+	};
+
+	// Awaiter for WSASendTo.
+	struct SendToAwaiter
+	{
+		std::unique_ptr<IocpOperation> op_;
+		SOCKET socket_;
+		WSABUF wsabuf_;
+		sockaddr_storage dest_addr_{};
+		int dest_addr_len_{};
+
+		SendToAwaiter(SOCKET socket, const void* buffer, size_t len, const UdpEndpoint& dest)
+			: op_(std::make_unique<IocpOperation>(IocpOpType::Write)), socket_(socket)
+		{
+			wsabuf_.buf = const_cast<char*>(static_cast<const char*>(buffer));
+			wsabuf_.len = static_cast<ULONG>(len);
+
+			// Match the destination's address family to the SOCKET's family. A
+			// pure-IPv4 sockaddr_in passed to WSASendTo on an IPv6 (dual-stack)
+			// socket is rejected with WSAEINVAL — bind_udp() below creates
+			// IPv6-with-V6ONLY=0 sockets, so an IPv4 literal destination has to
+			// be sent as a v4-mapped IPv6 address.
+			sockaddr_storage self{};
+			int self_len = sizeof(self);
+			::getsockname(socket_, reinterpret_cast<sockaddr*>(&self), &self_len);
+			const bool sock_is_ipv6 = (self.ss_family == AF_INET6);
+			const bool dest_is_ipv6 = (dest.address.find(':') != std::string::npos);
+
+			if (dest_is_ipv6 || sock_is_ipv6)
+			{
+				auto& a6 = reinterpret_cast<sockaddr_in6&>(dest_addr_);
+				a6.sin6_family = AF_INET6;
+				a6.sin6_port   = htons(dest.port);
+				if (dest_is_ipv6)
+				{
+					inet_pton(AF_INET6, dest.address.c_str(), &a6.sin6_addr);
+				}
+				else
+				{
+					in_addr v4{};
+					inet_pton(AF_INET, dest.address.c_str(), &v4);
+					std::memset(&a6.sin6_addr, 0, sizeof(a6.sin6_addr));
+					a6.sin6_addr.s6_addr[10] = 0xFF;
+					a6.sin6_addr.s6_addr[11] = 0xFF;
+					std::memcpy(&a6.sin6_addr.s6_addr[12], &v4.s_addr, 4);
+				}
+				dest_addr_len_ = sizeof(sockaddr_in6);
+			}
+			else
+			{
+				auto& a4 = reinterpret_cast<sockaddr_in&>(dest_addr_);
+				a4.sin_family = AF_INET;
+				a4.sin_port   = htons(dest.port);
+				inet_pton(AF_INET, dest.address.c_str(), &a4.sin_addr);
+				dest_addr_len_ = sizeof(sockaddr_in);
+			}
+		}
+
+		SendToAwaiter(const SendToAwaiter&) = delete;
+		SendToAwaiter& operator=(const SendToAwaiter&) = delete;
+		SendToAwaiter(SendToAwaiter&&) = delete;
+		SendToAwaiter& operator=(SendToAwaiter&&) = delete;
+
+		bool await_ready() const noexcept { return false; }
+
+		bool await_suspend(std::coroutine_handle<> h)
+		{
+			op_->continuation = h;
+
+			int result = WSASendTo(socket_, &wsabuf_, 1, nullptr, 0,
+			                       reinterpret_cast<const sockaddr*>(&dest_addr_), dest_addr_len_,
+			                       op_.get(), nullptr);
+
+			if (result == SOCKET_ERROR)
+			{
+				DWORD err = WSAGetLastError();
+				if (err != WSA_IO_PENDING)
+				{
+					op_->error = Error::system(std::error_code(static_cast<int>(err), std::system_category()));
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		UdpSendResult await_resume()
+		{
+			if (op_->error)
+			{
+				return unexpected(op_->error);
+			}
+			return static_cast<size_t>(op_->bytes_transferred);
+		}
+	};
+
+	class IocpUdpSocket : public UdpSocket
+	{
+		IocpContext& ctx_;
+		SOCKET socket_ = INVALID_SOCKET;
+		uint16_t local_port_ = 0;
+		CancellationToken cancel_token_;
+
+	public:
+		// Two-phase: construct empty, then `bind()` allocates + associates the
+		// SOCKET. Mirrors `UdpSocket::create(ctx); sock->bind(0);`.
+		explicit IocpUdpSocket(IocpContext& ctx) : ctx_(ctx) { }
+
+		// Direct-bound constructor (used by `IocpContext::bind_udp`).
+		IocpUdpSocket(IocpContext& ctx, SOCKET socket, uint16_t port)
+			: ctx_(ctx), socket_(socket), local_port_(port)
+		{
+			ctx_.associate(reinterpret_cast<HANDLE>(socket_));
+		}
+
+		~IocpUdpSocket() override { close(); }
+
+		void set_cancellation_token(CancellationToken token) override
+		{
+			cancel_token_ = std::move(token);
+		}
+
+		Task<UdpReceiveResult> async_recv_from(void* buffer, size_t length) override
+		{
+			if (socket_ == INVALID_SOCKET)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Socket closed"));
+			}
+			if (cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			co_return co_await RecvFromAwaiter(socket_, buffer, length);
+		}
+
+		Task<UdpSendResult> async_send_to(const void* buffer, size_t length, const UdpEndpoint& dest) override
+		{
+			if (socket_ == INVALID_SOCKET)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Socket closed"));
+			}
+			if (cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			co_return co_await SendToAwaiter(socket_, buffer, length, dest);
+		}
+
+		expected<void, Error> bind(uint16_t port) override
+		{
+			if (socket_ != INVALID_SOCKET)
+				return unexpected(Error::io(IoError::InvalidArgument, "Socket already bound"));
+
+			socket_ = WSASocketW(AF_INET, SOCK_DGRAM, IPPROTO_UDP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+			if (socket_ == INVALID_SOCKET)
+			{
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
+
+			BOOL yes = TRUE;
+			setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
+
+			sockaddr_in addr{};
+			addr.sin_family      = AF_INET;
+			addr.sin_addr.s_addr = INADDR_ANY;
+			addr.sin_port        = htons(port);
+			if (::bind(socket_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
+			{
+				const int err = WSAGetLastError();
+				closesocket(socket_);
+				socket_ = INVALID_SOCKET;
+				return unexpected(Error::system(std::error_code(err, std::system_category())));
+			}
+
+			sockaddr_in bound{};
+			int blen = sizeof(bound);
+			::getsockname(socket_, reinterpret_cast<sockaddr*>(&bound), &blen);
+			local_port_ = ntohs(bound.sin_port);
+
+			ctx_.associate(reinterpret_cast<HANDLE>(socket_));
+			return {};
+		}
+
+		expected<void, Error> bind(const std::string& address, uint16_t port) override
+		{
+			if (socket_ != INVALID_SOCKET)
+				return unexpected(Error::io(IoError::InvalidArgument, "Socket already bound"));
+
+			socket_ = WSASocketW(AF_INET, SOCK_DGRAM, IPPROTO_UDP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+			if (socket_ == INVALID_SOCKET)
+			{
+				return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+			}
+
+			BOOL yes = TRUE;
+			setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
+
+			sockaddr_in addr{};
+			addr.sin_family = AF_INET;
+			addr.sin_port   = htons(port);
+			if (inet_pton(AF_INET, address.c_str(), &addr.sin_addr) != 1)
+			{
+				closesocket(socket_);
+				socket_ = INVALID_SOCKET;
+				return unexpected(Error::io(IoError::InvalidArgument, "invalid IPv4 address: " + address));
+			}
+
+			if (::bind(socket_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
+			{
+				const int err = WSAGetLastError();
+				closesocket(socket_);
+				socket_ = INVALID_SOCKET;
+				return unexpected(Error::system(std::error_code(err, std::system_category())));
+			}
+
+			sockaddr_in bound{};
+			int blen = sizeof(bound);
+			::getsockname(socket_, reinterpret_cast<sockaddr*>(&bound), &blen);
+			local_port_ = ntohs(bound.sin_port);
+
+			ctx_.associate(reinterpret_cast<HANDLE>(socket_));
+			return {};
+		}
+
+		void close() override
+		{
+			if (socket_ != INVALID_SOCKET)
+			{
+				closesocket(socket_);
+				socket_ = INVALID_SOCKET;
+			}
+		}
+
+		bool is_open() const noexcept override { return socket_ != INVALID_SOCKET; }
+
+		uint16_t local_port() const noexcept override { return local_port_; }
+	};
+
+	expected<std::unique_ptr<UdpSocket>, Error> IocpContext::bind_udp(uint16_t port)
+	{
+		// Dual-stack (IPv6, V6ONLY=0) so both IPv4 and IPv6 peers can reach it,
+		// matching the TCP listener's dual-stack setup above.
+		SOCKET sock = WSASocketW(AF_INET6, SOCK_DGRAM, IPPROTO_UDP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+		if (sock == INVALID_SOCKET)
+		{
+			return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+		}
+
+		int opt = 1;
+		setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
+		DWORD v6only = 0;
+		setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&v6only), sizeof(v6only));
+
+		sockaddr_in6 addr{};
+		addr.sin6_family = AF_INET6;
+		addr.sin6_addr = in6addr_any;
+		addr.sin6_port = htons(port);
+
+		if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
+		{
+			closesocket(sock);
+			return unexpected(Error::system(std::error_code(WSAGetLastError(), std::system_category())));
+		}
+
+		sockaddr_in6 bound_addr{};
+		int addr_len = sizeof(bound_addr);
+		getsockname(sock, reinterpret_cast<sockaddr*>(&bound_addr), &addr_len);
+
+		return std::make_unique<IocpUdpSocket>(*this, sock, ntohs(bound_addr.sin6_port));
+	}
+
+	std::unique_ptr<UdpSocket> UdpSocket::create(IoContext& ctx)
+	{
+		return std::make_unique<IocpUdpSocket>(static_cast<IocpContext&>(ctx));
 	}
 
 	// ============================================================================

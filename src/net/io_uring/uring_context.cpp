@@ -344,6 +344,9 @@ namespace coroute::net
 				.detach();
 		}
 
+		// Bind a UDP socket to `port`. Defined out-of-line, after UringUdpSocket.
+		expected<std::unique_ptr<UdpSocket>, Error> bind_udp(uint16_t port) override;
+
 	private:
 		// Accept loop coroutine for multi-accept mode
 		Task<void> accept_loop(size_t ring_index);
@@ -840,6 +843,198 @@ namespace coroute::net
 				conn->close();
 			}
 		}
+	}
+
+	// ============================================================================
+	// io_uring UDP Socket Implementation
+	// ============================================================================
+
+	class UringUdpSocket : public UdpSocket
+	{
+		UringContext& ctx_;
+		int fd_ = -1;
+		uint16_t local_port_ = 0;
+		CancellationToken cancel_token_;
+
+	public:
+		UringUdpSocket(UringContext& ctx, int fd, uint16_t port)
+			: ctx_(ctx), fd_(fd), local_port_(port)
+		{
+		}
+
+		~UringUdpSocket() override { close(); }
+
+		void set_cancellation_token(CancellationToken token) override
+		{
+			cancel_token_ = std::move(token);
+		}
+
+		Task<UdpReceiveResult> async_recv_from(void* buffer, size_t length) override
+		{
+			if (fd_ < 0)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Socket closed"));
+			}
+			if (cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			UringOperation op{UringOpType::Read};
+			sockaddr_in src_addr{};
+
+			msghdr msg{};
+			iovec iov{};
+			iov.iov_base = buffer;
+			iov.iov_len = length;
+			msg.msg_name = &src_addr;
+			msg.msg_namelen = sizeof(src_addr);
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+
+			int fd = fd_;
+			bool submitted = ctx_.submit_sqe(
+				0, &op, [fd, &msg](io_uring_sqe* sqe) { io_uring_prep_recvmsg(sqe, fd, &msg, 0); });
+
+			if (!submitted)
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+			}
+
+			co_await UringAwaiter{op};
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+			if (op.result < 0)
+			{
+				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+			}
+
+			UdpEndpoint source;
+			char ip[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &src_addr.sin_addr, ip, sizeof(ip));
+			source.address = ip;
+			source.port = ntohs(src_addr.sin_port);
+
+			co_return std::make_pair(static_cast<size_t>(op.result), source);
+		}
+
+		Task<UdpSendResult> async_send_to(const void* buffer, size_t length, const UdpEndpoint& dest) override
+		{
+			if (fd_ < 0)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Socket closed"));
+			}
+			if (cancel_token_.is_cancelled())
+			{
+				co_return unexpected(Error::cancelled());
+			}
+
+			UringOperation op{UringOpType::Write};
+			sockaddr_in dest_addr{};
+			dest_addr.sin_family = AF_INET;
+			dest_addr.sin_port = htons(dest.port);
+			if (inet_pton(AF_INET, dest.address.c_str(), &dest_addr.sin_addr) != 1)
+			{
+				co_return unexpected(Error::io(IoError::InvalidArgument, "Invalid peer address"));
+			}
+
+			msghdr msg{};
+			iovec iov{};
+			iov.iov_base = const_cast<void*>(buffer);
+			iov.iov_len = length;
+			msg.msg_name = &dest_addr;
+			msg.msg_namelen = sizeof(dest_addr);
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+
+			int fd = fd_;
+			bool submitted = ctx_.submit_sqe(
+				0, &op, [fd, &msg](io_uring_sqe* sqe) { io_uring_prep_sendmsg(sqe, fd, &msg, 0); });
+
+			if (!submitted)
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+			}
+
+			co_await UringAwaiter{op};
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+			if (op.result < 0)
+			{
+				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+			}
+
+			co_return static_cast<size_t>(op.result);
+		}
+
+		expected<void, Error> bind(uint16_t) override
+		{
+			return unexpected(Error::io(IoError::InvalidArgument,
+				"UringUdpSocket already bound; use IoContext::bind_udp instead of UdpSocket::create+bind"));
+		}
+
+		expected<void, Error> bind(const std::string&, uint16_t) override
+		{
+			return unexpected(Error::io(IoError::InvalidArgument,
+				"UringUdpSocket already bound; use IoContext::bind_udp instead of UdpSocket::create+bind"));
+		}
+
+		bool is_open() const noexcept override { return fd_ >= 0; }
+
+		void close() override
+		{
+			if (fd_ >= 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+			}
+		}
+
+		uint16_t local_port() const noexcept override { return local_port_; }
+	};
+
+	expected<std::unique_ptr<UdpSocket>, Error> UringContext::bind_udp(uint16_t port)
+	{
+		int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+		if (fd < 0)
+		{
+			return unexpected(Error::system(std::error_code(errno, std::system_category())));
+		}
+
+		int opt = 1;
+		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+		setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+
+		sockaddr_in addr{};
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = INADDR_ANY;
+		addr.sin_port = htons(port);
+
+		if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+		{
+			::close(fd);
+			return unexpected(Error::system(std::error_code(errno, std::system_category())));
+		}
+
+		sockaddr_in bound_addr{};
+		socklen_t addr_len = sizeof(bound_addr);
+		getsockname(fd, reinterpret_cast<sockaddr*>(&bound_addr), &addr_len);
+
+		return std::make_unique<UringUdpSocket>(*this, fd, ntohs(bound_addr.sin_port));
+	}
+
+	std::unique_ptr<UdpSocket> UdpSocket::create(IoContext&)
+	{
+		// UringUdpSocket is always constructed already-bound by
+		// UringContext::bind_udp(); the two-phase create()+bind() pattern
+		// isn't wired up for this backend.
+		return nullptr;
 	}
 
 	// ============================================================================
