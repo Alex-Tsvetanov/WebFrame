@@ -53,6 +53,7 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 static_assert(sizeof(sockaddr_storage) <= 128,
@@ -290,7 +291,26 @@ QuicServer::QuicServer(net::IoContext& ctx, net::TlsContext* tls_ctx)
 
 QuicServer::~QuicServer()
 {
+	// run() is normally started via `[...]() -> Task<void> { co_await
+	// server.run(); }().start_detached()`, i.e. it keeps executing on
+	// whatever IoContext worker thread(s) service it, independent of this
+	// object's stack frame. Setting stopped_ alone doesn't stop it: run()'s
+	// loop only re-checks stopped_ after its current `co_await
+	// socket_->async_recv_from(...)` completes, and nothing completes that
+	// until a datagram arrives or the socket closes. Closing socket_ here
+	// (before the implicit member destruction below re-closes it, which is
+	// a harmless no-op) forces that pending recv to complete with an error
+	// right away, and the subsequent spin-wait blocks this destructor until
+	// run() has actually observed stopped_ and returned -- so a detached
+	// run() on another thread can never dereference `this` (or the members
+	// about to be destroyed after this constructor body finishes) once
+	// ~QuicServer() has returned.
 	stopped_ = true;
+	if (socket_) socket_->close();
+	while (running_.load(std::memory_order_acquire))
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 }
 
 expected<void, Error> QuicServer::listen(uint16_t port)
@@ -319,6 +339,17 @@ expected<void, Error> QuicServer::listen(uint16_t port)
 
 Task<void> QuicServer::run()
 {
+	// Marks this coroutine's lifetime for ~QuicServer() (see the comment
+	// there). Runs on every exit path -- co_return below, or the loop
+	// simply ending -- exactly like a regular RAII guard in a normal
+	// function body.
+	running_.store(true, std::memory_order_release);
+	struct RunningGuard
+	{
+		std::atomic<bool>& running;
+		~RunningGuard() { running.store(false, std::memory_order_release); }
+	} running_guard{running_};
+
 	if (!socket_) co_return;
 
 	std::vector<uint8_t> buffer(65535);
@@ -503,15 +534,27 @@ void QuicServer::add_cid_alias(std::string cid_key,
 
 void QuicServer::track_additional_cid(QuicConnection* conn, std::string cid_key)
 {
-	// Find any existing shared_ptr whose raw pointer matches `conn`, and
-	// register the same shared_ptr under the new cid_key.
+	// Find any existing shared_ptr whose raw pointer matches `conn` FIRST,
+	// finishing the scan over connections_ completely, before inserting.
+	// ngtcp2 issues a burst of NEW_CONNECTION_ID frames right after the
+	// handshake completes (several per connection), each triggering one
+	// call here — inserting into connections_ via operator[] *during* the
+	// range-for below (as this used to do, `return`ing out of the loop on
+	// the same statement that inserted) can rehash the table mid-iteration,
+	// invalidating the loop's own iterator: undefined behaviour, observed
+	// as a SIGSEGV shortly after a real handshake in the E2E test.
+	std::shared_ptr<QuicConnection> found;
 	for (auto& [k, v] : connections_)
 	{
 		if (v.get() == conn)
 		{
-			connections_[std::move(cid_key)] = v;
-			return;
+			found = v;
+			break;
 		}
+	}
+	if (found)
+	{
+		connections_[std::move(cid_key)] = std::move(found);
 	}
 }
 
@@ -815,10 +858,15 @@ void QuicConnection::schedule_write()
 {
 	if (!conn_ || closed_ || write_scheduled_) return;
 	write_scheduled_ = true;
-	server_->io_context().post([this]
+	// weak_from_this(), not `this`: by the time this runs, QuicServer may
+	// already have erased its shared_ptr for this connection (peer closed,
+	// idle timeout, ...), freeing it before the posted callback executes.
+	server_->io_context().post([weak = weak_from_this()]
 	{
-		write_scheduled_ = false;
-		if (!closed_) do_write();
+		auto self = weak.lock();
+		if (!self) return;
+		self->write_scheduled_ = false;
+		if (!self->closed_) self->do_write();
 	});
 }
 
@@ -947,18 +995,27 @@ void QuicConnection::arm_timer()
 
 	// Bump generation so any previously scheduled fire is ignored.
 	uint64_t my_gen = ++timer_generation_;
-	server_->io_context().schedule(delay, [this, my_gen]
+	// weak_from_this(): the generation check alone only guards against a
+	// STALE-but-still-alive timer (an older arm_timer() firing after a
+	// newer one superseded it on the same live object) -- it doesn't help
+	// once the QuicConnection itself has been erased from
+	// QuicServer::connections_ and freed, since reading timer_generation_
+	// off a destroyed object is itself a use-after-free. Idle/retransmit
+	// timers routinely outlive a connection that closes in the meantime.
+	server_->io_context().schedule(delay, [weak = weak_from_this(), my_gen]
 	{
-		if (closed_) return;
-		if (my_gen != timer_generation_) return;  // stale
-		if (!conn_) return;
-		int rv = ngtcp2_conn_handle_expiry(conn_, monotonic_nanos());
+		auto self = weak.lock();
+		if (!self) return;
+		if (self->closed_) return;
+		if (my_gen != self->timer_generation_) return;  // stale
+		if (!self->conn_) return;
+		int rv = ngtcp2_conn_handle_expiry(self->conn_, monotonic_nanos());
 		if (rv != 0)
 		{
-			closed_ = true;
+			self->closed_ = true;
 			return;
 		}
-		do_write();
+		self->do_write();
 	});
 }
 

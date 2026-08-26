@@ -20,9 +20,9 @@
 #include "coroute/http3/zero_rtt_replay_cache.hpp"
 
 #include <algorithm>
-#include <cstring>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace coroute::http3
 {
@@ -103,61 +103,14 @@ void Http3Stream::on_header(std::string name, std::string value)
 
 void Http3Stream::on_body(const uint8_t* data, size_t len)
 {
-	// Delegate to the chunked arena. Avoids O(n²) copies from repeated
-	// std::string::append-with-realloc on large uploads.
-	append_body_chunk(data, len);
-}
-
-void Http3Stream::append_body_chunk(const uint8_t* data, size_t len)
-{
-	// Fill the current partial page, then allocate new pages as needed.
-	// No existing data is ever moved — each page is independent.
-	while (len > 0)
-	{
-		const bool need_new_page =
-		    body_chunks_.empty() || body_last_chunk_used_ == kBodyChunkSize;
-
-		if (need_new_page)
-		{
-			body_chunks_.emplace_back();
-			body_last_chunk_used_ = 0;
-		}
-
-		const std::size_t space    = kBodyChunkSize - body_last_chunk_used_;
-		const std::size_t to_copy  = std::min(len, space);
-		std::memcpy(body_chunks_.back().data() + body_last_chunk_used_, data, to_copy);
-		body_last_chunk_used_ += to_copy;
-		data += to_copy;
-		len  -= to_copy;
-	}
-}
-
-void Http3Stream::coalesce_body_to_request()
-{
-	if (body_chunks_.empty()) return;
-
-	// Compute total byte count to reserve once — avoids repeated string growth.
-	std::size_t total = 0;
-	for (std::size_t i = 0; i < body_chunks_.size(); ++i)
-	{
-		total += (i + 1 < body_chunks_.size()) ? kBodyChunkSize : body_last_chunk_used_;
-	}
-
-	std::string body;
-	body.reserve(total);
-
-	for (std::size_t i = 0; i < body_chunks_.size(); ++i)
-	{
-		const std::size_t n =
-		    (i + 1 < body_chunks_.size()) ? kBodyChunkSize : body_last_chunk_used_;
-		body.append(reinterpret_cast<const char*>(body_chunks_[i].data()), n);
-	}
-
-	req_.set_body(std::move(body));
-
-	// Release arena memory — coalesced into req_ which owns the data now.
-	body_chunks_.clear();
-	body_last_chunk_used_ = 0;
+	if (len == 0) return;
+	// Append in place — amortized O(1) per call via std::string's geometric
+	// growth (the same reasoning that makes repeated vector::push_back
+	// O(n) total, not O(n²)). Immediately visible through request(), unlike
+	// a scheme that buffers separately and only writes into req_ at
+	// on_end_stream — which unit tests constructing an Http3Stream with no
+	// connection have no safe way to trigger.
+	req_.append_body(std::string_view{reinterpret_cast<const char*>(data), len});
 }
 
 void Http3Stream::on_end_headers()
@@ -167,11 +120,6 @@ void Http3Stream::on_end_headers()
 
 void Http3Stream::on_end_stream()
 {
-	// Coalesce the chunked request-body arena into req_ exactly once, before
-	// we inspect req_.body() for the replay-token check or hand the Request
-	// to the application handler.
-	coalesce_body_to_request();
-
 	auto* quic = conn_->quic_conn();
 	auto* server = quic ? quic->server() : nullptr;
 	if (!server) return;
@@ -206,14 +154,24 @@ void Http3Stream::on_end_stream()
 
 	auto handler = server->handler();
 	int64_t sid = stream_id_;
-	auto* h3conn = conn_;
+	// weak_ptr to the owning QuicConnection, not a raw Http3Connection* --
+	// `handler` is arbitrary app code and may co_await for an unbounded
+	// time (a DB call, another network round-trip, ...). If the QUIC
+	// connection closes/idles-out while this detached coroutine is still
+	// suspended in `co_await handler(...)`, QuicServer::drop_connection()
+	// erases the last shared_ptr and destroys the QuicConnection -- and
+	// its owned Http3Connection along with it. A captured raw Http3Connection*
+	// would then be a dangling pointer the moment the handler resolves;
+	// re-deriving both pointers through a lock()ed shared_ptr after the
+	// co_await turns that into a clean no-op instead of a use-after-free.
+	auto quic_weak = conn_->quic_conn()->weak_from_this();
 	Request req = std::move(req_);
 
 	// Detached coroutine: awaits the app handler, then submits the response.
 	// When it resolves we look up the stream again — it may have been closed
 	// concurrently (e.g. client RST_STREAM), in which case we just drop the
 	// result.
-	[h3conn, sid, handler = std::move(handler), req = std::move(req)]() mutable -> Task<void>
+	[quic_weak = std::move(quic_weak), sid, handler = std::move(handler), req = std::move(req)]() mutable -> Task<void>
 	{
 		Response resp;
 		try
@@ -224,9 +182,15 @@ void Http3Stream::on_end_stream()
 		{
 			resp = Response::internal_error();
 		}
-		if (auto* s = h3conn->find_stream(sid))
+		if (auto quic = quic_weak.lock())
 		{
-			s->send_response(resp);
+			if (auto* h3conn = quic->http3())
+			{
+				if (auto* s = h3conn->find_stream(sid))
+				{
+					s->send_response(resp);
+				}
+			}
 		}
 		co_return;
 	}()

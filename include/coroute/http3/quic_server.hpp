@@ -19,6 +19,7 @@
 #include "coroute/util/expected.hpp"
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -113,29 +114,14 @@ private:
 	int64_t stream_id_;
 
 	// Request being accumulated from incoming HEADERS + DATA frames.
+	// on_body() appends each chunk to req_'s body in place via
+	// Request::append_body() (amortized O(1) per call, immediately visible
+	// through request()) rather than buffering separately and coalescing
+	// later — the request/body split only matters at on_end_stream time for
+	// production traffic, but unit tests construct an Http3Stream directly
+	// and inspect request().body() after on_body() alone, with no connection
+	// to drive an on_end_stream() call.
 	coroute::Request req_;
-
-	// Incoming request-body arena.
-	//
-	// Using a chunked deque of fixed-size pages instead of a single
-	// growing std::string eliminates O(n²) copy behaviour on large uploads:
-	// std::string::append can trigger a full-buffer copy when capacity is
-	// exceeded; the chunked layout never moves existing data.
-	//
-	// Each page holds kBodyChunkSize bytes. The last page is partially
-	// filled; `body_last_chunk_used_` tracks how many bytes of it are live.
-	// At on_end_stream time, all pages are coalesced into req_ exactly once.
-	static constexpr std::size_t kBodyChunkSize = 8192;
-	std::deque<std::array<uint8_t, kBodyChunkSize>> body_chunks_;
-	std::size_t body_last_chunk_used_ = 0;
-
-	// Append `len` bytes from `data` to the chunked request-body arena.
-	// O(n) total over all calls for a given stream — no full-buffer copies.
-	void append_body_chunk(const uint8_t* data, size_t len);
-
-	// Coalesce the chunked arena into req_.body() once (called from
-	// on_end_stream). After this call the arena is no longer needed.
-	void coalesce_body_to_request();
 
 	// Response state. Kept alive for the duration of the stream (destroyed
 	// only when Http3Connection removes the stream after stream_close).
@@ -193,8 +179,15 @@ private:
 
 // ---------------------------------------------------------------------------
 // QuicConnection
+//
+// Always owned via std::shared_ptr (QuicServer::connections_, keyed by every
+// active CID). Inherits enable_shared_from_this so schedule_write() and
+// arm_timer() can post/schedule callbacks that survive the connection being
+// erased from that map (and thus destroyed) before the callback runs --
+// weak_from_this().lock() turns "dereference a freed QuicConnection" into a
+// clean no-op instead of a use-after-free.
 // ---------------------------------------------------------------------------
-class QuicConnection
+class QuicConnection : public std::enable_shared_from_this<QuicConnection>
 {
 public:
 	QuicConnection(QuicServer* server,
@@ -344,6 +337,13 @@ private:
 	std::unique_ptr<net::UdpSocket> socket_;
 	bool stopped_ = false;
 	uint16_t port_ = 0;
+
+	// Set for the lifetime of the run() coroutine (from first suspension to
+	// its final co_return). The destructor spin-waits on this after closing
+	// socket_, so a detached run() that's mid-flight on another thread can
+	// never touch this object's members after ~QuicServer() returns -- see
+	// the comment above the destructor definition for why that matters.
+	std::atomic<bool> running_{false};
 
 	Http3ServerSettings settings_;
 	Handler handler_;
