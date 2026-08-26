@@ -29,6 +29,10 @@
 #include "coroute/http2/connection.hpp"
 #endif
 
+#ifdef COROUTE_HAS_HTTP3
+#include "coroute/http3/quic_server.hpp"
+#endif
+
 #ifdef COROUTE_HAS_TEMPLATES
 #include "coroute/view/view_middleware.hpp"
 #include "coroute/view/view_types.hpp"
@@ -174,6 +178,12 @@ namespace coroute
 		// HTTP/2 support
 #ifdef COROUTE_HAS_HTTP2
 		bool http2_enabled_ = true;  // Enable by default when available
+#endif
+
+		// HTTP/3 support
+#ifdef COROUTE_HAS_HTTP3
+		bool http3_enabled_ = true;  // Enable by default when available
+		std::unique_ptr<http3::QuicServer> quic_server_;
 #endif
 
 		// WebSocket handlers
@@ -576,6 +586,17 @@ namespace coroute
 			return *this;
 		}
 		bool http2_enabled() const noexcept { return http2_enabled_; }
+#endif
+
+		// HTTP/3 configuration. Requires TLS: run() only starts the QUIC/UDP
+		// listener when enable_tls() has also been called.
+#ifdef COROUTE_HAS_HTTP3
+		App& enable_http3(bool enable = true)
+		{
+			http3_enabled_ = enable;
+			return *this;
+		}
+		bool http3_enabled() const noexcept { return http3_enabled_; }
 #endif
 
 		// ========================================================================
