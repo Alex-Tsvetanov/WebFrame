@@ -60,7 +60,15 @@ namespace coroute
 										{
 											r.set_route_params(std::move(match.params));
 										}
-										co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
+										Response resp = co_await middleware_chain_.execute_or_not_found(r, match.handler);
+#ifdef COROUTE_HAS_HTTP3
+										if (quic_server_)
+										{
+											resp.set_header("Alt-Svc", "h3=\":" + std::to_string(quic_server_->port()) +
+											                                "\"; ma=86400");
+										}
+#endif
+										co_return resp;
 									});
 								handle_http2_connection(h2_conn).start_detached();
 								continue;
@@ -117,6 +125,28 @@ namespace coroute
 								.start_detached();
 			}
 		}
+
+#ifdef COROUTE_HAS_HTTP3
+		// HTTP/3 requires TLS (QUIC carries its own TLS 1.3 handshake); only
+		// start the UDP/QUIC listener when TLS is configured. It listens on
+		// the same numeric port as the TCP listener above, per the Alt-Svc
+		// headers advertised below.
+		if (http3_enabled_ && tls_enabled_)
+		{
+			quic_server_ = std::make_unique<http3::QuicServer>(*io_ctx_, tls_ctx_.get());
+			auto quic_res = quic_server_->listen(port);
+			if (quic_res)
+			{
+				std::cout << "HTTP/3 UDP server listening on port " << port << std::endl;
+				[this]() -> Task<void> { co_await quic_server_->run(); }().start_detached();
+			}
+			else
+			{
+				std::cerr << "Failed to start HTTP/3: " << quic_res.error().to_string() << std::endl;
+				quic_server_.reset();
+			}
+		}
+#endif
 
 		// Run the event loop
 		io_ctx_->run();
@@ -228,21 +258,26 @@ namespace coroute
 		tls_config.chain_file = config.chain_file;
 		tls_config.verify_client = config.verify_client;
 
-		// Set ALPN protocols - if not specified, use defaults based on HTTP/2 support
+		// Set ALPN protocols - if not specified, use defaults based on HTTP/2
+		// and HTTP/3 support. "h3" is listed first so a client that supports
+		// it prefers upgrading to QUIC.
 		if (config.alpn_protocols.empty())
 		{
+			std::vector<std::string> alpn;
+#ifdef COROUTE_HAS_HTTP3
+			if (http3_enabled_)
+			{
+				alpn.push_back("h3");
+			}
+#endif
 #ifdef COROUTE_HAS_HTTP2
 			if (http2_enabled_)
 			{
-				tls_config.alpn_protocols = {"h2", "http/1.1"};
+				alpn.push_back("h2");
 			}
-			else
-			{
-				tls_config.alpn_protocols = {"http/1.1"};
-			}
-#else
-			tls_config.alpn_protocols = {"http/1.1"};
 #endif
+			alpn.push_back("http/1.1");
+			tls_config.alpn_protocols = alpn;
 		}
 		else
 		{
@@ -371,6 +406,13 @@ namespace coroute
 						resp = Response::internal_error("Unknown error");
 					}
 
+#ifdef COROUTE_HAS_HTTP3
+					if (quic_server_)
+					{
+						resp.set_header("Alt-Svc", "h3=\":" + std::to_string(quic_server_->port()) + "\"; ma=86400");
+					}
+#endif
+
 					// Add Connection header based on keep-alive status
 					bool should_close = !keep_alive || request_count >= MAX_REQUESTS_PER_CONNECTION;
 					if (should_close)
@@ -421,6 +463,13 @@ namespace coroute
 			{
 				resp = Response::internal_error("Unknown error");
 			}
+
+#ifdef COROUTE_HAS_HTTP3
+			if (quic_server_)
+			{
+				resp.set_header("Alt-Svc", "h3=\":" + std::to_string(quic_server_->port()) + "\"; ma=86400");
+			}
+#endif
 
 			// Add Connection header based on keep-alive status
 			bool should_close = !keep_alive || request_count >= MAX_REQUESTS_PER_CONNECTION;
@@ -812,7 +861,14 @@ namespace coroute
 				{
 					r.set_route_params(std::move(match.params));
 				}
-				co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
+				Response resp = co_await middleware_chain_.execute_or_not_found(r, match.handler);
+#ifdef COROUTE_HAS_HTTP3
+				if (quic_server_)
+				{
+					resp.set_header("Alt-Svc", "h3=\":" + std::to_string(quic_server_->port()) + "\"; ma=86400");
+				}
+#endif
+				co_return resp;
 			});
 
 		// Handle the HTTP/2 connection

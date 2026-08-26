@@ -15,3 +15,4 @@ build*/
 benchmark/benchmark.sh
 debug.log
 .cache/
+vcpkg_installed/

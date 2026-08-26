@@ -80,6 +80,11 @@ namespace coroute
 		void set_http_version(std::string v) { http_version_ = std::move(v); }
 		void set_body(std::string b) { body_ = std::move(b); }
 
+		// Append a chunk to the body in place (amortized O(1) per call via
+		// std::string's geometric growth), for parsers that receive the body
+		// as a stream of fragments rather than all at once.
+		void append_body(std::string_view chunk) { body_.append(chunk); }
+
 		void add_header(std::string key, std::string value) { headers_[std::move(key)] = std::move(value); }
 
 		void add_query_param(std::string key, std::string value) { query_params_[std::move(key)] = std::move(value); }
