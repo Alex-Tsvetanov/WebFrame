@@ -30,7 +30,23 @@ jobs:
           g++-12 \
           wrk \
           apache2-utils
-    
+
+    - name: Enable io_uring
+      run: |
+        # Ubuntu hardens io_uring off by default (kernel.io_uring_disabled=1,
+        # restricted to CAP_SYS_ADMIN) since 24.04. coroute's Linux I/O backend
+        # is io_uring-only (see CMakeLists.txt COROUTE_IO_BACKEND), so with the
+        # default setting io_uring_queue_init_params() returns -EPERM, the
+        # server throws in its constructor, and the process dies before it
+        # ever binds :8080. Loosen it for this job only.
+        if [ -f /proc/sys/kernel/io_uring_disabled ]; then
+          echo "kernel.io_uring_disabled before: $(cat /proc/sys/kernel/io_uring_disabled)"
+          sudo sysctl -w kernel.io_uring_disabled=0
+          echo "kernel.io_uring_disabled after: $(cat /proc/sys/kernel/io_uring_disabled)"
+        else
+          echo "kernel.io_uring_disabled sysctl not present on this kernel, nothing to do"
+        fi
+
     - name: Configure CMake (Release with optimizations)
       run: |
         cmake -B build -G Ninja \
