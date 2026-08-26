@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <functional>
 #include <thread>
 #include <vector>
@@ -940,7 +941,21 @@ namespace coroute::net
 			else if (src_addr_.ss_family == AF_INET6)
 			{
 				auto* s6 = reinterpret_cast<sockaddr_in6*>(&src_addr_);
-				inet_ntop(AF_INET6, &s6->sin6_addr, ip, sizeof(ip));
+				if (IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+				{
+					// bind_udp() creates a dual-stack (V6ONLY=0) socket, so an IPv4
+					// peer's source address arrives as an IPv4-mapped IPv6 address
+					// (::ffff:a.b.c.d). Report it in its plain IPv4 form so callers
+					// comparing against a literal IPv4 address (e.g. "127.0.0.1")
+					// see what they expect instead of the mapped form.
+					in_addr v4{};
+					std::memcpy(&v4, &s6->sin6_addr.s6_addr[12], sizeof(v4));
+					inet_ntop(AF_INET, &v4, ip, sizeof(ip));
+				}
+				else
+				{
+					inet_ntop(AF_INET6, &s6->sin6_addr, ip, sizeof(ip));
+				}
 				source.address = ip;
 				source.port = ntohs(s6->sin6_port);
 			}
