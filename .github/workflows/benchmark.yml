@@ -49,56 +49,89 @@ jobs:
     
     - name: Run Benchmark Server
       run: |
-        # Start the benchmark server in the background
+        set -eo pipefail
+        # Redirected to a file and disowned: without this, the server's stdout is
+        # inherited from this step's shell. When the step ends the shell exits, and
+        # a process that later writes to a closed inherited pipe gets SIGPIPE. It is
+        # also disowned so it is not a job-controlled child of a shell that is about
+        # to exit, which some runner images clean up between steps.
         if [ -f build/examples/Samples/benchmark_server/benchmark_server ]; then
-          ./build/examples/Samples/benchmark_server/benchmark_server &
-          BENCH_PID=$!
-          echo "BENCH_PID=$BENCH_PID" >> $GITHUB_ENV
-          sleep 3
+          BIN=build/examples/Samples/benchmark_server/benchmark_server
         else
           echo "Benchmark server not found, using hello_world"
-          ./build/examples/Samples/hello_world/hello_world &
-          BENCH_PID=$!
-          echo "BENCH_PID=$BENCH_PID" >> $GITHUB_ENV
-          sleep 3
+          BIN=build/examples/Samples/hello_world/hello_world
         fi
-    
+        "./$BIN" > server.log 2>&1 &
+        BENCH_PID=$!
+        disown
+        echo "BENCH_PID=$BENCH_PID" >> $GITHUB_ENV
+
     - name: Wait for server to start
       run: |
-        for i in {1..10}; do
-          if curl -s http://localhost:8080/ > /dev/null; then
-            echo "Server is ready"
+        set -eo pipefail
+        # The previous version of this loop had no failure path: if the server never
+        # answered, the loop just ended and the step still exited 0. Every later step
+        # then ran wrk and ab against a dead port, which is exactly why a "successful"
+        # run once produced an artifact with two empty wrk sections and ab hung on its
+        # first connection. A dead server must fail the job here, not downstream.
+        ready=0
+        for i in $(seq 1 30); do
+          if curl -sf --max-time 2 http://localhost:8080/ > /dev/null; then
+            echo "Server is ready after ${i}s"
+            ready=1
             break
           fi
-          echo "Waiting for server... ($i/10)"
+          if ! kill -0 "$BENCH_PID" 2>/dev/null; then
+            echo "::error::Benchmark server process (pid $BENCH_PID) died before becoming ready."
+            echo "--- server.log ---"
+            cat server.log || true
+            exit 1
+          fi
           sleep 1
         done
-    
+        if [ "$ready" -ne 1 ]; then
+          echo "::error::Server never answered on :8080 after 30s."
+          echo "--- server.log ---"
+          cat server.log || true
+          exit 1
+        fi
+
     - name: Run wrk benchmark
       run: |
+        set -eo pipefail
         mkdir -p benchmark-results
-        
+
         echo "=== Simple GET Benchmark ===" | tee benchmark-results/results.txt
         wrk -t4 -c100 -d30s http://localhost:8080/ | tee -a benchmark-results/results.txt
-        
+
         echo -e "\n=== Keep-Alive Benchmark ===" | tee -a benchmark-results/results.txt
         wrk -t4 -c100 -d30s -H "Connection: keep-alive" http://localhost:8080/ | tee -a benchmark-results/results.txt
-        
+
         echo -e "\n=== Apache Bench Results ===" | tee -a benchmark-results/results.txt
         ab -n 10000 -c 100 -k http://localhost:8080/ | tee -a benchmark-results/results.txt
-    
+
     - name: Stop benchmark server
       if: always()
       run: |
-        if [ ! -z "$BENCH_PID" ]; then
-          kill $BENCH_PID || true
+        if [ -n "$BENCH_PID" ]; then
+          kill "$BENCH_PID" 2>/dev/null || true
         fi
-    
+
     - name: Upload benchmark results
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
         path: benchmark-results/
+        if-no-files-found: warn
+
+    - name: Upload server log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-server-log
+        path: server.log
+        if-no-files-found: warn
     
     - name: Performance Summary
       run: |
