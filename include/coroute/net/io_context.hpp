@@ -1,9 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <functional>
 #include <chrono>
+#include <string>
+#include <utility>
 
 #include "coroute/util/expected.hpp"
 #include "coroute/core/error.hpp"
@@ -16,6 +19,7 @@ namespace coroute::net
 	// Forward declarations
 	class Socket;
 	class Connection;
+	class UdpSocket;
 
 	// ============================================================================
 	// IoContext - Abstract I/O event loop
@@ -61,6 +65,13 @@ namespace coroute::net
 		// Check if multi-accept is enabled
 		virtual bool is_multi_accept_enabled() const noexcept { return false; }
 
+		// Bind a UDP socket to a port. Each backend (io_uring, kqueue, iocp)
+		// provides its own implementation. Pure virtual (rather than an
+		// inline default) because UdpSocket is only forward-declared here;
+		// giving this an inline body would require a complete UdpSocket type
+		// at this point for the returned unique_ptr's destructor.
+		virtual expected<std::unique_ptr<UdpSocket>, Error> bind_udp(uint16_t port) = 0;
+
 		// Factory method - creates platform-appropriate context
 		static std::unique_ptr<IoContext> create(size_t thread_count = 1);
 	};
@@ -75,6 +86,16 @@ namespace coroute::net
 	using WriteResult = expected<size_t, Error>;
 	using ConnectResult = expected<void, Error>;
 	using TransmitResult = expected<size_t, Error>;
+
+	// UDP peer address (dotted-decimal / textual IP, plus port).
+	struct UdpEndpoint
+	{
+		std::string address;
+		uint16_t port = 0;
+	};
+
+	using UdpReceiveResult = expected<std::pair<size_t, UdpEndpoint>, Error>;
+	using UdpSendResult = expected<size_t, Error>;
 
 // Platform-specific file handle type
 #ifdef _WIN32
@@ -153,6 +174,45 @@ namespace coroute::net
 
 		// Set cancellation token for this connection
 		virtual void set_cancellation_token(CancellationToken token) = 0;
+	};
+
+	// ============================================================================
+	// UdpSocket - Async UDP datagrams
+	// ============================================================================
+
+	class UdpSocket
+	{
+	public:
+		virtual ~UdpSocket() = default;
+
+		// Bind the socket to a local port (0 for random)
+		virtual expected<void, Error> bind(uint16_t port) = 0;
+
+		// Bind the socket to a specific address and port
+		virtual expected<void, Error> bind(const std::string& address, uint16_t port) = 0;
+
+		// Async receive datagram
+		virtual Task<UdpReceiveResult> async_recv_from(void* buffer, size_t len) = 0;
+
+		// Async send datagram
+		virtual Task<UdpSendResult> async_send_to(const void* buffer, size_t len, const UdpEndpoint& peer) = 0;
+
+		// Close the socket
+		virtual void close() = 0;
+
+		// Check if open
+		virtual bool is_open() const noexcept = 0;
+
+		// Get local port
+		virtual uint16_t local_port() const noexcept = 0;
+
+		// Set cancellation token for pending async_recv_from / async_send_to calls.
+		virtual void set_cancellation_token(CancellationToken) {}
+
+		// Factory. Returns an unbound socket for backends that support the
+		// two-phase create()+bind() pattern; callers should prefer
+		// IoContext::bind_udp(), which allocates and binds in one step.
+		static std::unique_ptr<UdpSocket> create(IoContext& ctx);
 	};
 
 }  // namespace coroute::net
