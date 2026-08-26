@@ -115,6 +115,13 @@ namespace coroute::net
 		: ctx_(other.ctx_), sni_callback_(std::move(other.sni_callback_))
 	{
 		other.ctx_ = nullptr;
+		// create() unconditionally does SSL_CTX_set_tlsext_servername_arg(ctx_, &result)
+		// on the not-yet-moved object. Without re-pointing it here, that arg is left
+		// dangling at the pre-move object's address the moment this constructor runs
+		// (e.g. TlsContext::create() moving its local into the expected<> it returns) --
+		// sni_callback_wrapper() then dereferences a stale/out-of-scope pointer on the
+        // very next TLS handshake that sends SNI, which is effectively every real client.
+		if (ctx_) SSL_CTX_set_tlsext_servername_arg(ctx_, this);
 	}
 
 	TlsContext& TlsContext::operator=(TlsContext&& other) noexcept
@@ -125,6 +132,9 @@ namespace coroute::net
 			ctx_ = other.ctx_;
 			sni_callback_ = std::move(other.sni_callback_);
 			other.ctx_ = nullptr;
+			// See the move constructor above: keep the SNI callback's arg pointing at
+			// whichever TlsContext instance currently owns ctx_.
+			if (ctx_) SSL_CTX_set_tlsext_servername_arg(ctx_, this);
 		}
 		return *this;
 	}
