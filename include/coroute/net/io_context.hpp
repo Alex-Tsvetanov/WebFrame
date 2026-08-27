@@ -50,6 +50,33 @@ namespace coroute::net
 		// Number of worker threads this context will run.
 		virtual size_t worker_count() const noexcept { return 1; }
 
+		// Whether a callback can be directed at one specific worker thread.
+		//
+		// Asked once at setup rather than per operation, because the answer decides an
+		// architecture rather than a detail. QUIC connection state is owned by exactly
+		// one thread, since ngtcp2 is not reentrant, so a design that hands a
+		// misdirected packet to the owning worker is only available on a backend that
+		// can name that worker. Where this is false the caller has to keep everything on
+		// one thread or take a lock, and both are worse than being told up front.
+		//
+		// True for backends where each worker has its own queue to poll (io_uring, one
+		// ring per thread; epoll, one slot per thread). False where every worker pulls
+		// from a shared completion queue and no thread has an identity, which is how
+		// IOCP and kqueue are used here.
+		[[nodiscard]] virtual bool supports_worker_affinity() const noexcept { return false; }
+
+		// Runs `fn` on the given worker thread.
+		//
+		// The index is taken modulo worker_count(). Without affinity support this
+		// degrades to post(), so the work still happens, just not anywhere in
+		// particular: check supports_worker_affinity() first if that distinction
+		// matters, and it usually does.
+		virtual void run_on_worker(size_t index, std::function<void()> fn)
+		{
+			(void)index;
+			post(std::move(fn));
+		}
+
 		// Accept on `port` across all workers, handing each connection to `handler`.
 		// Returns false if the backend cannot do it, in which case the caller should
 		// fall back to a single accept loop.

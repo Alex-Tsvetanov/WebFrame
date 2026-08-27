@@ -150,6 +150,13 @@ namespace coroute::net
 		// been caught misbehaving yet.
 		std::mutex sq_mutex;
 
+		// Work directed at this specific thread. Per ring rather than shared because a
+		// QUIC connection belongs to exactly one worker, so a packet that lands on the
+		// wrong one has to be handed to a named thread and not merely to whoever is
+		// free.
+		std::mutex callback_mutex;
+		std::queue<std::function<void()>> callbacks;
+
 		WorkerRing() = default;
 
 		~WorkerRing()
@@ -259,9 +266,6 @@ namespace coroute::net
 		uint16_t listen_port_ = 0;
 		bool multi_accept_enabled_ = false;
 
-		// Posted callbacks
-		std::mutex callback_mutex_;
-		std::queue<std::function<void()>> callbacks_;
 
 	public:
 		explicit UringContext(size_t thread_count) : thread_count_(thread_count > 0 ? thread_count : 1)
@@ -422,16 +426,16 @@ namespace coroute::net
 
 		void post(std::function<void()> callback) override
 		{
-			{
-				std::lock_guard lock(callback_mutex_);
-				callbacks_.push(std::move(callback));
-			}
+			// Ring 0 by convention: post() promises only that the work runs on the
+			// event loop, not where.
+			enqueue_on(0, std::move(callback));
+		}
 
-			// Wake up ring 0 to process callbacks
-			if (!rings_.empty())
-			{
-				rings_[0]->wake();
-			}
+		bool supports_worker_affinity() const noexcept override { return true; }
+
+		void run_on_worker(size_t index, std::function<void()> fn) override
+		{
+			enqueue_on(index, std::move(fn));
 		}
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
@@ -461,11 +465,9 @@ namespace coroute::net
 			{
 				poll_and_resume(ring_index);
 
-				// Only ring 0 processes callbacks
-				if (ring_index == 0)
-				{
-					process_callbacks();
-				}
+				// Its own queue, not a shared one. A callback directed here has been
+				// directed here on purpose.
+				process_callbacks(ring_index);
 			}
 		}
 
@@ -535,16 +537,35 @@ namespace coroute::net
 			io_uring_cq_advance(&worker_ring->ring, processed);
 		}
 
-		void process_callbacks()
+		void enqueue_on(size_t index, std::function<void()> callback)
 		{
+			if (rings_.empty())
+			{
+				return;
+			}
+			auto* ring = rings_[index % rings_.size()].get();
+			{
+				std::lock_guard lock(ring->callback_mutex);
+				ring->callbacks.push(std::move(callback));
+			}
+			// Woken because the worker may be parked in a wait with nothing else due.
+			ring->wake();
+		}
+
+		void process_callbacks(size_t ring_index)
+		{
+			auto* ring = rings_[ring_index].get();
+
+			// Bounded so a steady stream of callbacks cannot starve the completions this
+			// worker is also responsible for.
 			for (int i = 0; i < 32; ++i)
 			{
 				std::function<void()> callback;
 				{
-					std::lock_guard lock(callback_mutex_);
-					if (callbacks_.empty()) return;
-					callback = std::move(callbacks_.front());
-					callbacks_.pop();
+					std::lock_guard lock(ring->callback_mutex);
+					if (ring->callbacks.empty()) return;
+					callback = std::move(ring->callbacks.front());
+					ring->callbacks.pop();
 				}
 				if (callback)
 				{
