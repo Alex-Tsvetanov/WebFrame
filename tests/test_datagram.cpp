@@ -24,6 +24,18 @@ using namespace coroute::net;
 namespace
 {
 
+	// A bare REQUIRE(result.has_value()) reports "false" and nothing else, which turns
+	// an intermittent I/O failure into a guessing game. The reason is right there in
+	// the error, so it belongs in the output.
+	template <typename T>
+	void require_ok(const expected<T, Error>& result, std::string_view what)
+	{
+		if (!result)
+		{
+			FAIL(what << " failed: " << std::string(result.error().message()));
+		}
+	}
+
 	// Built here rather than exposed on the public interface: nothing outside a test
 	// needs to invent an address, since real callers reply to the peer Endpoint that
 	// arrived with the datagram.
@@ -109,7 +121,7 @@ TEST_CASE("UDP datagram round trip", "[datagram]")
 		REQUIRE(*sent == payload.size());
 
 		auto batch = receiver->async_recv_batch().sync_wait();
-		REQUIRE(batch.has_value());
+		require_ok(batch, "recv");
 		REQUIRE(batch->size() == 1);
 
 		const Datagram& dg = (*batch)[0];
@@ -132,10 +144,10 @@ TEST_CASE("UDP datagram round trip", "[datagram]")
 	SECTION("a reply can be addressed from the received peer and local addresses")
 	{
 		auto sent = sender->async_send(bytes_of("ping"), loopback(receiver->local_port()), Endpoint{}).sync_wait();
-		REQUIRE(sent.has_value());
+		require_ok(sent, "send");
 
 		auto batch = receiver->async_recv_batch().sync_wait();
-		REQUIRE(batch.has_value());
+		require_ok(batch, "recv");
 		REQUIRE(batch->size() == 1);
 
 		// This is the shape a QUIC server uses: never construct an address, just
@@ -144,10 +156,10 @@ TEST_CASE("UDP datagram round trip", "[datagram]")
 		const Endpoint local = (*batch)[0].local;
 
 		auto replied = receiver->async_send(bytes_of("pong"), peer, local).sync_wait();
-		REQUIRE(replied.has_value());
+		require_ok(replied, "reply");
 
 		auto back = sender->async_recv_batch().sync_wait();
-		REQUIRE(back.has_value());
+		require_ok(back, "recv back");
 		REQUIRE(back->size() == 1);
 		REQUIRE(to_string((*back)[0].data) == "pong");
 	}
@@ -160,9 +172,8 @@ TEST_CASE("UDP datagram round trip", "[datagram]")
 		const std::vector<std::string> payloads{"alpha", "bravo", "charlie", "delta"};
 		for (const auto& text : payloads)
 		{
-			REQUIRE(sender->async_send(bytes_of(text), loopback(receiver->local_port()), Endpoint{})
-			            .sync_wait()
-			            .has_value());
+			auto one = sender->async_send(bytes_of(text), loopback(receiver->local_port()), Endpoint{}).sync_wait();
+			require_ok(one, "send " + text);
 		}
 
 		std::vector<std::string> received;

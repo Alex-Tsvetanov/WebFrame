@@ -92,10 +92,30 @@ namespace coroute::net
 		bool await_suspend(std::coroutine_handle<> h)
 		{
 			op.continuation = h;
-			submitted = submit();
-			// Returning false resumes immediately, which is what a failed submission
-			// wants: there will never be a completion to wake us.
-			return submitted;
+
+			// Set before submitting, not after.
+			//
+			// A submitted operation can complete on a worker thread and resume this
+			// coroutine while submit() is still returning. Writing the result afterwards
+			// is a race against that resumption, and it is a race the writer loses: the
+			// coroutine reads the flag while it is still false and reports a submission
+			// failure for an operation that was submitted perfectly well. Worse, the
+			// assignment then lands in a frame that may already have been destroyed.
+			//
+			// So the optimistic value is published first, while this thread still owns
+			// the frame, and only the failure path writes again. That path is safe by
+			// construction: nothing was submitted, so nothing can be resuming us.
+			submitted = true;
+			if (!submit())
+			{
+				submitted = false;
+				// Resume immediately. There will never be a completion to wake us.
+				return false;
+			}
+
+			// Deliberately a literal rather than `return submitted`. The frame may
+			// already be gone, so reading a member here would be a use-after-free.
+			return true;
 		}
 
 		bool await_resume() const noexcept { return submitted; }
@@ -114,6 +134,21 @@ namespace coroute::net
 		int eventfd = -1;
 		int listen_fd = -1;  // SO_REUSEPORT listener for this ring
 		std::atomic<bool> initialized{false};
+
+		// io_uring's submission queue is single-producer. Nothing in liburing
+		// serialises it, and two threads calling io_uring_get_sqe on one ring will
+		// either be handed the same entry or corrupt the tail index.
+		//
+		// This ring has at least two producers whenever the context is running: the
+		// worker thread polling it, and whichever thread submitted the I/O. The worker
+		// counts as a producer because io_uring_wait_cqe_timeout takes an SQE for its
+		// timeout on kernels without IORING_FEAT_EXT_ARG.
+		//
+		// No observed failure has been traced to this lock being absent, so it is
+		// insurance rather than a fix. The contract is still the contract, and a data
+		// race on a ring index is not something to leave in place because it has not
+		// been caught misbehaving yet.
+		std::mutex sq_mutex;
 
 		WorkerRing() = default;
 
@@ -304,16 +339,38 @@ namespace coroute::net
 		bool submit_sqe(size_t ring_index, UringOperation* op, PrepFunc prep_func)
 		{
 			auto* worker_ring = rings_[ring_index % rings_.size()].get();
+
+			// Held across the whole sequence, not just the get: an SQE is only reserved
+			// once it has been prepared and the tail advanced by submit.
+			std::lock_guard lock(worker_ring->sq_mutex);
+
 			io_uring_sqe* sqe = io_uring_get_sqe(&worker_ring->ring);
-			if (!sqe)
+			if (sqe == nullptr)
 			{
-				return false;
+				// A null entry means the submission queue is full of entries that have
+				// been prepared but not yet accepted by the kernel. That is a state to
+				// clear, not an error: submitting hands them over and frees the space.
+				// Failing here instead was reporting a transient queue condition as if
+				// the operation itself were impossible.
+				if (io_uring_submit(&worker_ring->ring) < 0)
+				{
+					return false;
+				}
+				sqe = io_uring_get_sqe(&worker_ring->ring);
+				if (sqe == nullptr)
+				{
+					return false;
+				}
 			}
+
 			prep_func(sqe);
 			io_uring_sqe_set_data(sqe, op);
 			op->ring_index = ring_index;
-			io_uring_submit(&worker_ring->ring);
-			return true;
+
+			// Checked rather than discarded. A failed submit leaves the entry sitting in
+			// the queue, so ignoring it turns one refused submission into a queue that
+			// fills up and starts refusing everything.
+			return io_uring_submit(&worker_ring->ring) >= 0;
 		}
 
 		// Submit to ring 0 (default)
@@ -422,8 +479,32 @@ namespace coroute::net
 			ts.tv_sec = 0;
 			ts.tv_nsec = 1000;  // 1µs timeout for low latency
 
-			int ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
-			if (ret == -ETIME || ret < 0)
+			// The wait needs the submission lock because it takes an SQE for its timeout,
+			// but it must not still hold it below: completions are resumed inline, and a
+			// resumed coroutine's next act is usually to submit again. Holding the lock
+			// across that would deadlock the worker against itself.
+			//
+			// The completion queue needs no lock. It has exactly one consumer, this
+			// worker, which is what makes releasing here safe rather than merely
+			// convenient.
+			int ret = 0;
+			{
+				std::lock_guard lock(worker_ring->sq_mutex);
+				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
+			}
+
+			// Deliberately no early return on -ETIME.
+			//
+			// A wait that times out can still have completions sitting behind it: the
+			// timeout only says none arrived before the deadline, not that the queue is
+			// empty. Returning early skipped the drain and left them for the next turn,
+			// which on a kernel that implements the timeout as a real operation also
+			// meant leaving that operation's own completion behind every time.
+			//
+			// The drain below copes with an empty queue, so falling through costs
+			// nothing when there is genuinely nothing to do, and costs one turn of
+			// latency less when there is.
+			if (ret < 0 && ret != -ETIME)
 			{
 				return;
 			}
