@@ -144,7 +144,12 @@ namespace coroute::net
 
 		void run() override
 		{
-			stopped_ = false;
+		// Deliberately does NOT reset stopped_.
+		//
+		// It used to, which made stop() racy: a stop arriving before run() had been
+		// scheduled was erased here, and the workers then spun forever. Restarting a
+		// stopped context is not a supported operation anywhere, so clearing the flag
+		// bought nothing and cost a hang.
 
 			for (size_t i = 0; i < thread_count_; ++i)
 			{

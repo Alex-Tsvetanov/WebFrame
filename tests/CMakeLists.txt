@@ -17,6 +17,7 @@ add_executable(unit_tests
     test_sha1.cpp
     test_protocol_detect.cpp
     test_datagram.cpp
+    test_io_context.cpp
     test_time.cpp
     test_router.cpp
     test_response.cpp

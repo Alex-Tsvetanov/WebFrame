@@ -1,4 +1,5 @@
 #include "coroute/net/io_context.hpp"
+#include "coroute/net/datagram.hpp"
 
 #if defined(COROUTE_PLATFORM_LINUX)
 
@@ -7,12 +8,14 @@
 #include <sys/eventfd.h>
 #include <sys/sendfile.h>
 #include <netinet/in.h>
+#include <linux/udp.h>  // UDP_SEGMENT; netinet/udp.h clashes with it over struct udphdr
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 
 #include <thread>
+#include <array>
 #include <vector>
 #include <queue>
 #include <mutex>
@@ -66,6 +69,40 @@ namespace coroute::net
 
 		void await_resume() const noexcept { }
 	};
+
+	// Submits only once the continuation has been recorded.
+	//
+	// UringAwaiter sets op.continuation in await_suspend, which runs after the caller
+	// has already submitted the SQE. If the kernel completes the operation inside that
+	// window, and for a datagram already sitting in the socket queue it routinely
+	// does, the CQE handler finds a null continuation, consumes the completion with
+	// cq_advance, and the coroutine is never resumed. The operation hangs forever.
+	//
+	// Doing the submission from inside await_suspend closes the window: the
+	// continuation is in place before the kernel can possibly report completion.
+	template <typename Submit>
+	struct UringSubmitAwaiter
+	{
+		UringOperation& op;
+		Submit submit;
+		bool submitted = false;
+
+		bool await_ready() const noexcept { return false; }
+
+		bool await_suspend(std::coroutine_handle<> h)
+		{
+			op.continuation = h;
+			submitted = submit();
+			// Returning false resumes immediately, which is what a failed submission
+			// wants: there will never be a completion to wake us.
+			return submitted;
+		}
+
+		bool await_resume() const noexcept { return submitted; }
+	};
+
+	template <typename Submit>
+	UringSubmitAwaiter(UringOperation&, Submit) -> UringSubmitAwaiter<Submit>;
 
 	// ============================================================================
 	// Per-Thread Ring - Each worker has its own io_uring instance and listener
@@ -231,8 +268,8 @@ namespace coroute::net
 		size_t next_ring_index() noexcept { return next_ring_.fetch_add(1, std::memory_order_relaxed) % rings_.size(); }
 
 		// Enable SO_REUSEPORT multi-accept: each worker accepts on its own listener
-		size_t worker_count() const noexcept override { return thread_count_; }
-
+		size_t worker_count() const noexcept override { return thread_count_; }
+
 		bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog = 1024) override
 		{
 			// Create SO_REUSEPORT listeners on all rings
@@ -288,7 +325,12 @@ namespace coroute::net
 
 		void run() override
 		{
-			stopped_ = false;
+			// Deliberately does NOT reset stopped_.
+			//
+			// It used to, which made stop() racy: a stop arriving before run() had been
+			// scheduled was erased here, and the workers then spun forever. Restarting a
+			// stopped context is not a supported operation anywhere, so clearing the flag
+			// bought nothing and cost a hang.
 
 			// Start one worker thread per ring
 			for (size_t i = 0; i < thread_count_; ++i)
@@ -577,18 +619,22 @@ namespace coroute::net
 		UringOperation op{UringOpType::Accept};
 		int fd = listen_fd_;
 
-		// Submit accept to ring 0
-		bool submitted = ctx_.submit_sqe(
-			0, &op, [fd, &op](io_uring_sqe* sqe)
-			{ io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr), &op.client_addr_len, 0); });
-
-		if (!submitted)
+		// Submit accept to ring 0. Submission happens inside the awaiter so the
+		// continuation is recorded before the kernel can report completion.
+		if (!co_await UringSubmitAwaiter{op, [&]
+		                                 {
+											 return ctx_.submit_sqe(
+												 0, &op,
+												 [fd, &op](io_uring_sqe* sqe)
+												 {
+													 io_uring_prep_accept(sqe, fd,
+				                                                          reinterpret_cast<sockaddr*>(&op.client_addr),
+				                                                          &op.client_addr_len, 0);
+												 });
+										 }})
 		{
 			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
 		}
-
-		// Suspend and wait for completion
-		co_await UringAwaiter{op};
 
 		if (op.error)
 		{
@@ -619,15 +665,15 @@ namespace coroute::net
 		UringOperation op{UringOpType::Read};
 		int fd = fd_;
 
-		bool submitted = ctx_.submit_sqe(
-			ring_index_, &op, [fd, buffer, len](io_uring_sqe* sqe) { io_uring_prep_recv(sqe, fd, buffer, len, 0); });
-
-		if (!submitted)
+		if (!co_await UringSubmitAwaiter{op, [&]
+		                                 {
+											 return ctx_.submit_sqe(ring_index_, &op,
+			                                                        [fd, buffer, len](io_uring_sqe* sqe)
+			                                                        { io_uring_prep_recv(sqe, fd, buffer, len, 0); });
+										 }})
 		{
 			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
 		}
-
-		co_await UringAwaiter{op};
 
 		if (op.error)
 		{
@@ -685,15 +731,15 @@ namespace coroute::net
 		UringOperation op{UringOpType::Write};
 		int fd = fd_;
 
-		bool submitted = ctx_.submit_sqe(
-			ring_index_, &op, [fd, buffer, len](io_uring_sqe* sqe) { io_uring_prep_send(sqe, fd, buffer, len, 0); });
-
-		if (!submitted)
+		if (!co_await UringSubmitAwaiter{op, [&]
+		                                 {
+											 return ctx_.submit_sqe(ring_index_, &op,
+			                                                        [fd, buffer, len](io_uring_sqe* sqe)
+			                                                        { io_uring_prep_send(sqe, fd, buffer, len, 0); });
+										 }})
 		{
 			co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
 		}
-
-		co_await UringAwaiter{op};
 
 		if (op.error)
 		{
@@ -754,17 +800,20 @@ namespace coroute::net
 					// Socket buffer full, need to wait for writability
 					UringOperation wait_op{UringOpType::Write};
 					int fd = fd_;
-					bool submitted = ctx_.submit_sqe(ring_index_, &wait_op,
-					                                 [fd](io_uring_sqe* sqe)
+					if (!co_await UringSubmitAwaiter{wait_op, [&]
 					                                 {
-														 // Use a zero-length send to wait for socket writability
-														 io_uring_prep_send(sqe, fd, nullptr, 0, MSG_NOSIGNAL);
-													 });
-					if (!submitted)
+														 return ctx_.submit_sqe(ring_index_, &wait_op,
+						                                                        [fd](io_uring_sqe* sqe)
+						                                                        {
+																					// Zero-length send: waits for
+							                                                        // socket writability
+																					io_uring_prep_send(sqe, fd, nullptr,
+							                                                                           0, MSG_NOSIGNAL);
+																				});
+													 }})
 					{
 						co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
 					}
-					co_await UringAwaiter{wait_op};
 					continue;
 				}
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
@@ -805,18 +854,20 @@ namespace coroute::net
 			UringOperation op{UringOpType::Accept};
 			int fd = worker_ring->listen_fd;
 
-			bool submitted = submit_sqe(ring_index, &op,
-			                            [fd, &op](io_uring_sqe* sqe) {
-											io_uring_prep_accept(sqe, fd, reinterpret_cast<sockaddr*>(&op.client_addr),
-				                                                 &op.client_addr_len, SOCK_NONBLOCK);
-										});
-
-			if (!submitted)
+			if (!co_await UringSubmitAwaiter{op, [&]
+			                                 {
+												 return submit_sqe(ring_index, &op,
+				                                                   [fd, &op](io_uring_sqe* sqe)
+				                                                   {
+																	   io_uring_prep_accept(
+																		   sqe, fd,
+																		   reinterpret_cast<sockaddr*>(&op.client_addr),
+																		   &op.client_addr_len, SOCK_NONBLOCK);
+																   });
+											 }})
 			{
 				continue;
 			}
-
-			co_await UringAwaiter{op};
 
 			if (stopped_) break;
 
@@ -845,6 +896,363 @@ namespace coroute::net
 	}
 
 	// ============================================================================
+	// Datagram socket
+	// ============================================================================
+	//
+	// Receive is completion-based for the packet that is waited on: io_uring_prep_recvmsg
+	// submits the receive and the kernel performs it, which is the whole point of the
+	// backend. Once that completes, any further datagrams already queued are drained
+	// with a non-blocking recvmmsg so a busy socket still returns a full batch rather
+	// than one packet per round trip.
+	//
+	// Multishot receive with a provided-buffer ring would remove the drain syscall
+	// entirely, but it delivers many completions per submission, which the operation
+	// model here (one UringOperation per awaited completion, living on the coroutine
+	// frame) cannot express. That is a change to the operation lifetime, not to this
+	// interface, and it is worth making only once a benchmark asks for it.
+
+	namespace
+	{
+		constexpr size_t kDatagramBatch = 32;
+		constexpr size_t kDatagramBufSize = 2048;  // comfortably over any QUIC MTU
+
+		const sockaddr* as_sockaddr(const Endpoint& ep) noexcept
+		{
+			return reinterpret_cast<const sockaddr*>(ep.bytes.data());
+		}
+
+		void store_endpoint(Endpoint& ep, const sockaddr* addr, socklen_t len) noexcept
+		{
+			if (addr == nullptr || len <= 0 || static_cast<size_t>(len) > Endpoint::capacity)
+			{
+				ep.len = 0;
+				return;
+			}
+			std::memcpy(ep.bytes.data(), addr, static_cast<size_t>(len));
+			ep.len = static_cast<std::uint32_t>(len);
+		}
+
+		// Pulls the local address and ECN codepoint out of the control messages.
+		// Without IP_PKTINFO a wildcard-bound server cannot reply from the address the
+		// client sent to, and a QUIC client discards a reply from anywhere else.
+		void read_control(msghdr& hdr, Datagram& out, uint16_t port)
+		{
+			out.local = Endpoint{};
+			out.ecn = 0;
+
+			for (cmsghdr* cm = CMSG_FIRSTHDR(&hdr); cm != nullptr; cm = CMSG_NXTHDR(&hdr, cm))
+			{
+				if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_PKTINFO)
+				{
+					in_pktinfo info{};
+					std::memcpy(&info, CMSG_DATA(cm), sizeof(info));
+					sockaddr_in local{};
+					local.sin_family = AF_INET;
+					local.sin_addr = info.ipi_addr;
+					local.sin_port = htons(port);
+					store_endpoint(out.local, reinterpret_cast<const sockaddr*>(&local), sizeof(local));
+				}
+				else if (cm->cmsg_level == IPPROTO_IP && cm->cmsg_type == IP_TOS)
+				{
+					std::uint8_t tos = 0;
+					std::memcpy(&tos, CMSG_DATA(cm), sizeof(tos));
+					out.ecn = tos & 0x03;
+				}
+			}
+		}
+	}  // namespace
+
+	class UringDatagramSocket : public DatagramSocket
+	{
+		using RecvControl = std::array<std::uint8_t, CMSG_SPACE(sizeof(in_pktinfo)) + CMSG_SPACE(sizeof(int))>;
+
+		UringContext& ctx_;
+		int fd_ = -1;
+		uint16_t port_ = 0;
+		bool gso_ = false;
+
+		// Receive scratch, reused across calls. The Datagram spans handed back point
+		// straight into buffers_, so they are valid only until the next receive.
+		std::vector<std::array<std::uint8_t, kDatagramBufSize>> buffers_{kDatagramBatch};
+		std::vector<RecvControl> control_{kDatagramBatch};
+		std::vector<mmsghdr> msgs_{kDatagramBatch};
+		std::vector<iovec> iovs_{kDatagramBatch};
+		std::vector<sockaddr_storage> peers_{kDatagramBatch};
+		std::vector<Datagram> out_{kDatagramBatch};
+
+	public:
+		explicit UringDatagramSocket(UringContext& ctx) : ctx_(ctx) { }
+
+		~UringDatagramSocket() override { close(); }
+
+		expected<void, Error> bind(uint16_t port, bool reuse_port) override
+		{
+			fd_ = ::socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+			if (fd_ < 0)
+			{
+				return unexpected(Error::system(std::error_code(errno, std::system_category())));
+			}
+
+			int opt = 1;
+			::setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+			if (reuse_port && ::setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0)
+			{
+				auto err = Error::system(std::error_code(errno, std::system_category()));
+				close();
+				return unexpected(err);
+			}
+
+			if (::setsockopt(fd_, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt)) < 0)
+			{
+				auto err = Error::system(std::error_code(errno, std::system_category()));
+				close();
+				return unexpected(err);
+			}
+
+			::setsockopt(fd_, IPPROTO_IP, IP_RECVTOS, &opt, sizeof(opt));
+
+			sockaddr_in addr{};
+			addr.sin_family = AF_INET;
+			addr.sin_addr.s_addr = INADDR_ANY;
+			addr.sin_port = htons(port);
+
+			if (::bind(fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+			{
+				auto err = Error::system(std::error_code(errno, std::system_category()));
+				close();
+				return unexpected(err);
+			}
+
+			sockaddr_in bound{};
+			socklen_t bound_len = sizeof(bound);
+			if (::getsockname(fd_, reinterpret_cast<sockaddr*>(&bound), &bound_len) == 0)
+			{
+				port_ = ntohs(bound.sin_port);
+			}
+
+			int seg = 0;
+			gso_ = ::setsockopt(fd_, IPPROTO_UDP, UDP_SEGMENT, &seg, sizeof(seg)) == 0;
+
+			return {};
+		}
+
+		Task<expected<std::span<const Datagram>, Error>> async_recv_batch() override;
+		Task<expected<size_t, Error>> async_send(std::span<const std::uint8_t> data, const Endpoint& peer,
+		                                         const Endpoint& local, size_t gso_size) override;
+
+		void close() override
+		{
+			if (fd_ >= 0)
+			{
+				::close(fd_);
+				fd_ = -1;
+			}
+		}
+
+		bool is_open() const noexcept override { return fd_ >= 0; }
+		uint16_t local_port() const noexcept override { return port_; }
+		bool has_segmentation_offload() const noexcept override { return gso_; }
+
+	private:
+		void prepare_slot(size_t i)
+		{
+			iovs_[i].iov_base = buffers_[i].data();
+			iovs_[i].iov_len = buffers_[i].size();
+
+			auto& hdr = msgs_[i].msg_hdr;
+			hdr = {};
+			hdr.msg_name = &peers_[i];
+			hdr.msg_namelen = sizeof(sockaddr_storage);
+			hdr.msg_iov = &iovs_[i];
+			hdr.msg_iovlen = 1;
+			hdr.msg_control = control_[i].data();
+			hdr.msg_controllen = control_[i].size();
+			msgs_[i].msg_len = 0;
+		}
+	};
+
+	Task<expected<std::span<const Datagram>, Error>> UringDatagramSocket::async_recv_batch()
+	{
+		if (!is_open())
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "socket is closed"));
+		}
+
+		for (;;)
+		{
+			prepare_slot(0);
+
+			UringOperation op{UringOpType::Read};
+			int fd = fd_;
+			msghdr* hdr0 = &msgs_[0].msg_hdr;
+
+			if (!co_await UringSubmitAwaiter{op, [&]
+			                                 {
+												 return ctx_.submit_sqe(&op, [fd, hdr0](io_uring_sqe* sqe)
+				                                                        { io_uring_prep_recvmsg(sqe, fd, hdr0, 0); });
+											 }})
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+			}
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+			if (op.result < 0)
+			{
+				const int err = -op.result;
+				if (err == EAGAIN || err == EINTR)
+				{
+					continue;
+				}
+				co_return unexpected(Error::system(std::error_code(err, std::system_category())));
+			}
+
+			out_[0].data = std::span<const std::uint8_t>(buffers_[0].data(), static_cast<size_t>(op.result));
+			store_endpoint(out_[0].peer, reinterpret_cast<const sockaddr*>(msgs_[0].msg_hdr.msg_name),
+			               static_cast<socklen_t>(msgs_[0].msg_hdr.msg_namelen));
+			read_control(msgs_[0].msg_hdr, out_[0], port_);
+
+			// Drain whatever else is already queued. The socket is non-blocking, so
+			// this returns immediately when there is nothing more.
+			size_t count = 1;
+			for (size_t i = 1; i < kDatagramBatch; ++i)
+			{
+				prepare_slot(i);
+			}
+
+			int extra = ::recvmmsg(fd_, msgs_.data() + 1, static_cast<unsigned>(kDatagramBatch - 1), 0, nullptr);
+			if (extra > 0)
+			{
+				for (size_t i = 1; i <= static_cast<size_t>(extra); ++i)
+				{
+					out_[i].data = std::span<const std::uint8_t>(buffers_[i].data(), msgs_[i].msg_len);
+					store_endpoint(out_[i].peer, reinterpret_cast<const sockaddr*>(msgs_[i].msg_hdr.msg_name),
+					               static_cast<socklen_t>(msgs_[i].msg_hdr.msg_namelen));
+					read_control(msgs_[i].msg_hdr, out_[i], port_);
+				}
+				count += static_cast<size_t>(extra);
+			}
+
+			co_return std::span<const Datagram>(out_.data(), count);
+		}
+	}
+
+	Task<expected<size_t, Error>> UringDatagramSocket::async_send(std::span<const std::uint8_t> data,
+	                                                              const Endpoint& peer, const Endpoint& local,
+	                                                              size_t gso_size)
+	{
+		if (!is_open())
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "socket is closed"));
+		}
+		if (peer.empty())
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument, "no destination"));
+		}
+
+		const bool segment = gso_size > 0 && data.size() > gso_size;
+
+		// Without offload, segmentation is emulated so callers observe one behaviour
+		// whichever backend they are on.
+		if (segment && !gso_)
+		{
+			size_t sent = 0;
+			while (sent < data.size())
+			{
+				const size_t chunk = std::min(gso_size, data.size() - sent);
+				auto one = co_await async_send(data.subspan(sent, chunk), peer, local, 0);
+				if (!one)
+				{
+					co_return unexpected(one.error());
+				}
+				sent += chunk;
+			}
+			co_return sent;
+		}
+
+		std::array<std::uint8_t, CMSG_SPACE(sizeof(in_pktinfo)) + CMSG_SPACE(sizeof(std::uint16_t))> control{};
+
+		iovec iov{};
+		iov.iov_base = const_cast<std::uint8_t*>(data.data());
+		iov.iov_len = data.size();
+
+		msghdr hdr{};
+		hdr.msg_name = const_cast<sockaddr*>(as_sockaddr(peer));
+		hdr.msg_namelen = peer.len;
+		hdr.msg_iov = &iov;
+		hdr.msg_iovlen = 1;
+		hdr.msg_control = control.data();
+		hdr.msg_controllen = control.size();
+
+		size_t used = 0;
+		cmsghdr* cm = nullptr;
+
+		if (!local.empty())
+		{
+			cm = CMSG_FIRSTHDR(&hdr);
+			cm->cmsg_level = IPPROTO_IP;
+			cm->cmsg_type = IP_PKTINFO;
+			cm->cmsg_len = CMSG_LEN(sizeof(in_pktinfo));
+
+			in_pktinfo info{};
+			const auto* src = reinterpret_cast<const sockaddr_in*>(as_sockaddr(local));
+			info.ipi_spec_dst = src->sin_addr;
+			std::memcpy(CMSG_DATA(cm), &info, sizeof(info));
+			used += CMSG_SPACE(sizeof(in_pktinfo));
+		}
+
+		if (segment)
+		{
+			cm = (cm == nullptr) ? CMSG_FIRSTHDR(&hdr) : CMSG_NXTHDR(&hdr, cm);
+			if (cm != nullptr)
+			{
+				cm->cmsg_level = IPPROTO_UDP;
+				cm->cmsg_type = UDP_SEGMENT;
+				cm->cmsg_len = CMSG_LEN(sizeof(std::uint16_t));
+				auto seg = static_cast<std::uint16_t>(gso_size);
+				std::memcpy(CMSG_DATA(cm), &seg, sizeof(seg));
+				used += CMSG_SPACE(sizeof(std::uint16_t));
+			}
+		}
+
+		hdr.msg_controllen = used;
+
+		for (;;)
+		{
+			UringOperation op{UringOpType::Write};
+			int fd = fd_;
+			msghdr* out = &hdr;
+
+			if (!co_await UringSubmitAwaiter{op, [&]
+			                                 {
+												 return ctx_.submit_sqe(
+													 &op, [fd, out](io_uring_sqe* sqe)
+													 { io_uring_prep_sendmsg(sqe, fd, out, MSG_NOSIGNAL); });
+											 }})
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
+			}
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+			if (op.result >= 0)
+			{
+				co_return static_cast<size_t>(op.result);
+			}
+
+			const int err = -op.result;
+			if (err != EAGAIN && err != EINTR)
+			{
+				co_return unexpected(Error::system(std::error_code(err, std::system_category())));
+			}
+		}
+	}
+
+	// ============================================================================
 	// Factory Functions
 	// ============================================================================
 
@@ -856,6 +1264,11 @@ namespace coroute::net
 	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
 	{
 		return std::make_unique<UringListener>(static_cast<UringContext&>(ctx));
+	}
+
+	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx)
+	{
+		return std::make_unique<UringDatagramSocket>(static_cast<UringContext&>(ctx));
 	}
 
 }  // namespace coroute::net
