@@ -82,15 +82,55 @@ namespace coroute::net
 		explicit EpollOperation(EpollOpType t) : type(t) { }
 	};
 
-	// Captures the continuation before suspending so the event loop can resume it.
-	struct EpollAwaiter
+	// Arms the descriptor only once the continuation has been recorded.
+	//
+	// The obvious arrangement, arm the fd and then co_await, has a hole in it. Arming
+	// makes the operation eligible immediately, and for a socket that already has data
+	// waiting, which on loopback is the normal case rather than the rare one, epoll_wait
+	// reports it on another thread before the caller has reached the suspend point. The
+	// event loop then finds a null continuation, and because the interest is registered
+	// with EPOLLONESHOT the descriptor is disarmed by that same delivery. Nothing will
+	// ever fire again and the coroutine waits forever.
+	//
+	// Doing the arming from inside await_suspend closes the window: the continuation is
+	// in place before the descriptor can possibly become eligible.
+	template <typename Arm>
+	struct EpollArmAwaiter
 	{
 		EpollOperation& op;
+		Arm arm;
+		bool armed = false;
 
 		bool await_ready() const noexcept { return false; }
-		void await_suspend(std::coroutine_handle<> h) noexcept { op.continuation = h; }
-		void await_resume() const noexcept { }
+
+		bool await_suspend(std::coroutine_handle<> h)
+		{
+			op.continuation = h;
+
+			// Published before arming, while this thread still owns the frame. Once the
+			// descriptor is armed the event loop may resume this coroutine at any
+			// moment, and a write landing after that races the resumption it caused,
+			// into a frame that may already be gone. Only the failure path writes
+			// again, and that path is safe by construction: nothing was armed, so
+			// nothing can be resuming us.
+			armed = true;
+			if (!arm())
+			{
+				armed = false;
+				// Resume immediately. No event will ever arrive to wake us.
+				return false;
+			}
+
+			// A literal, not `return armed`. The frame may already be destroyed, so
+			// reading a member here would be a use-after-free.
+			return true;
+		}
+
+		bool await_resume() const noexcept { return armed; }
 	};
+
+	template <typename Arm>
+	EpollArmAwaiter(EpollOperation&, Arm) -> EpollArmAwaiter<Arm>;
 
 	// ============================================================================
 	// Context
@@ -538,12 +578,10 @@ namespace coroute::net
 		EpollOperation op{EpollOpType::Accept};
 		op.fd = listen_fd_;
 
-		if (!ctx_.arm_read(listen_fd_, &op))
+		if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_read(listen_fd_, &op); }})
 		{
 			co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 		}
-
-		co_await EpollAwaiter{op};
 
 		if (op.error)
 		{
@@ -573,12 +611,10 @@ namespace coroute::net
 		op.length = len;
 		op.fd = fd_;
 
-		if (!ctx_.arm_read(fd_, &op))
+		if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_read(fd_, &op); }})
 		{
 			co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 		}
-
-		co_await EpollAwaiter{op};
 
 		if (op.error)
 		{
@@ -634,12 +670,10 @@ namespace coroute::net
 		op.length = len;
 		op.fd = fd_;
 
-		if (!ctx_.arm_write(fd_, &op))
+		if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_write(fd_, &op); }})
 		{
 			co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 		}
-
-		co_await EpollAwaiter{op};
 
 		if (op.error)
 		{
@@ -700,11 +734,10 @@ namespace coroute::net
 					EpollOperation op{EpollOpType::Write};
 					op.fd = fd_;
 					op.length = 0;
-					if (!ctx_.arm_write(fd_, &op))
+					if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_write(fd_, &op); }})
 					{
 						co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 					}
-					co_await EpollAwaiter{op};
 					continue;
 				}
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
@@ -925,11 +958,10 @@ namespace coroute::net
 			EpollOperation op{EpollOpType::Read};
 			op.fd = fd_;
 			op.length = 0;  // readiness only
-			if (!ctx_.arm_read(fd_, &op))
+			if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_read(fd_, &op); }})
 			{
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 			}
-			co_await EpollAwaiter{op};
 
 			if (op.error)
 			{
@@ -1033,11 +1065,10 @@ namespace coroute::net
 			EpollOperation op{EpollOpType::Write};
 			op.fd = fd_;
 			op.length = 0;
-			if (!ctx_.arm_write(fd_, &op))
+			if (!co_await EpollArmAwaiter{op, [&] { return ctx_.arm_write(fd_, &op); }})
 			{
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
 			}
-			co_await EpollAwaiter{op};
 
 			if (op.error)
 			{

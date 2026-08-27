@@ -56,17 +56,41 @@ namespace coroute::net
 		KqueueOperation(KqueueOpType t) : type(t) { }
 	};
 
-	// Custom awaiter that captures the continuation handle before suspending
-	struct KqueueAwaiter
+	// Registers the operation only once the continuation has been recorded.
+	//
+	// Registering first and awaiting second has a hole in it. Registration makes the
+	// operation eligible immediately, and for a socket that already has data waiting,
+	// which on loopback is the normal case rather than the rare one, kevent reports it
+	// on another thread before the caller has reached the suspend point. The event loop
+	// then finds a null continuation, and because the filter is registered EV_ONESHOT
+	// that same delivery removes it. Nothing fires again and the coroutine waits
+	// forever.
+	//
+	// Doing the registration from inside await_suspend closes the window: the
+	// continuation is in place before the operation can possibly become eligible.
+	//
+	// await_suspend returns void on purpose. Registration cannot fail here, so there is
+	// no result to report back, and returning nothing means no member of this awaiter
+	// is read after the frame may already have been resumed and destroyed.
+	template <typename Register>
+	struct KqueueRegisterAwaiter
 	{
 		KqueueOperation& op;
+		Register register_op;
 
 		bool await_ready() const noexcept { return false; }
 
-		void await_suspend(std::coroutine_handle<> h) noexcept { op.continuation = h; }
+		void await_suspend(std::coroutine_handle<> h)
+		{
+			op.continuation = h;
+			register_op();
+		}
 
 		void await_resume() const noexcept { }
 	};
+
+	template <typename Register>
+	KqueueRegisterAwaiter(KqueueOperation&, Register) -> KqueueRegisterAwaiter<Register>;
 
 	// ============================================================================
 	// kqueue Context Implementation
@@ -479,10 +503,7 @@ namespace coroute::net
 		int fd = listen_fd_;
 
 		// Register the accept operation
-		ctx_.register_accept_op(fd, &op);
-
-		// Suspend and wait for the event
-		co_await KqueueAwaiter{op};
+		co_await KqueueRegisterAwaiter{op, [&] { ctx_.register_accept_op(fd, &op); }};
 
 		if (op.error)
 		{
@@ -515,10 +536,7 @@ namespace coroute::net
 		int fd = fd_;
 
 		// Register the read operation
-		ctx_.register_read_op(fd, &op);
-
-		// Suspend and wait for the event
-		co_await KqueueAwaiter{op};
+		co_await KqueueRegisterAwaiter{op, [&] { ctx_.register_read_op(fd, &op); }};
 
 		if (op.error)
 		{
@@ -579,10 +597,7 @@ namespace coroute::net
 		int fd = fd_;
 
 		// Register the write operation
-		ctx_.register_write_op(fd, &op);
-
-		// Suspend and wait for the event
-		co_await KqueueAwaiter{op};
+		co_await KqueueRegisterAwaiter{op, [&] { ctx_.register_write_op(fd, &op); }};
 
 		if (op.error)
 		{
@@ -638,8 +653,7 @@ namespace coroute::net
 				{
 					// If would block or interrupted, wait for the socket to become writable
 					KqueueOperation op{KqueueOpType::Write};
-					ctx_.register_write_op(fd_, &op);
-					co_await KqueueAwaiter{op};
+					co_await KqueueRegisterAwaiter{op, [&] { ctx_.register_write_op(fd_, &op); }};
 					continue;
 				}
 				co_return unexpected(Error::system(std::error_code(errno, std::system_category())));
