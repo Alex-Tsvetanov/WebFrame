@@ -169,6 +169,10 @@ namespace coroute
 		size_t thread_count_ = 1;
 		CompiledMiddlewareChain middleware_chain_;
 
+		// See backlog() and enable_protocol_detection() for why these are here.
+		int backlog_ = 1024;
+		bool protocol_detection_ = true;
+
 		// Connection tracking for graceful shutdown
 		std::atomic<size_t> active_connections_{0};
 		std::atomic<bool> shutting_down_{false};
@@ -250,6 +254,48 @@ namespace coroute
 			thread_count_ = count;
 			return *this;
 		}
+
+		// The listen backlog, used by both accept paths.
+		//
+		// One value on purpose. The two paths used to disagree: multi-accept defaulted
+		// to 1024 and the single-listener fallback to 128, so a server that quietly took
+		// the fallback got an eighth of the queue. Under load that difference shows up
+		// as accept behaviour and gets attributed to the accept model, which is exactly
+		// the confound a comparison between those two models must not have.
+		//
+		// It is also a variable worth sweeping rather than a constant worth picking.
+		// At several thousand concurrent connections the default is small enough to
+		// matter, and a measurement that does not vary it cannot say whether it did.
+		App& backlog(int entries)
+		{
+			backlog_ = entries;
+			return *this;
+		}
+
+		[[nodiscard]] int backlog() const noexcept { return backlog_; }
+
+		// Turns first-octet protocol classification off.
+		//
+		// Exists for one experiment: the cost of the demultiplexer is claimed to be
+		// undetectable, and claiming that requires an arm without it. With detection off
+		// every accepted connection is handed straight to the HTTP/1.1 path, so the
+		// endpoint serves cleartext HTTP/1.1 and nothing else. TLS, HTTP/2 over TLS and
+		// prior-knowledge h2c all stop working, which is the point: this is the
+		// before picture, not a supported configuration.
+		//
+		// A runtime flag rather than a build option, deliberately. Build-to-build
+		// variation from code layout and link order is documented at 5 to 10 percent,
+		// while run-to-run variation on a controlled machine is 1 to 2 percent. A 3
+		// percent difference between two separately compiled binaries is
+		// indistinguishable from having linked the objects in a different order, so both
+		// arms have to come out of the same binary.
+		App& enable_protocol_detection(bool enable)
+		{
+			protocol_detection_ = enable;
+			return *this;
+		}
+
+		[[nodiscard]] bool protocol_detection() const noexcept { return protocol_detection_; }
 
 		// Route registration (simple form)
 		App& route(HttpMethod method, std::string pattern, Handler handler)

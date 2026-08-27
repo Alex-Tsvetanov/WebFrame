@@ -41,6 +41,15 @@ namespace coroute
 		// One octet decides TLS versus cleartext. read_prefix hands back both the bytes
 		// and a connection that replays them, so whichever protocol handler runs next
 		// sees the stream exactly as if nothing had looked at it.
+		if (!protocol_detection_)
+		{
+			// The arm with the demultiplexer switched off. Straight to HTTP/1.1 without
+			// reading a byte to decide, which is what the cost of classification is
+			// measured against. See App::enable_protocol_detection.
+			co_await handle_connection(std::move(conn));
+			co_return;
+		}
+
 		auto prefix = co_await net::read_prefix(std::move(conn), 1);
 		if (!prefix)
 		{
@@ -256,14 +265,16 @@ namespace coroute
 
 		start_http3(port);
 
-		if (io_ctx_->enable_multi_accept(port, on_connection))
+		if (io_ctx_->enable_multi_accept(port, on_connection, backlog_))
 		{
 			std::cout << "Server listening on port " << port << " (multi-accept)" << '\n' << std::flush;
 		}
 		else
 		{
 			listener_ = net::Listener::create(*io_ctx_);
-			auto result = listener_->listen(port);
+			// Same backlog as the multi-accept path above. These used to differ, 1024
+			// against 128, so falling back quietly cost seven eighths of the queue.
+			auto result = listener_->listen(port, backlog_);
 			if (!result)
 			{
 				throw std::runtime_error("Failed to listen: " + result.error().to_string());

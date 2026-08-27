@@ -26,10 +26,19 @@ namespace
 
 	void print_usage(const char* argv0)
 	{
-		std::cout << "usage: " << argv0 << " [--workers N] [--port N] [--payload BYTES]\n"
+		std::cout << "usage: " << argv0 << " [options]\n"
 				  << "  --workers N       worker threads (default: hardware concurrency)\n"
 				  << "  --port N          listen port (default: 8080)\n"
 				  << "  --payload BYTES   response body size (default: 13, \"Hello, World!\")\n"
+				  << "  --backlog N       listen backlog (default: 1024)\n"
+				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
+				  << "  --tls CERT KEY    serve TLS on the same port\n"
+				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
+				  << "\n"
+				  << "The flags exist so that both sides of a comparison come from one binary.\n"
+				  << "--no-detect is the arm the demultiplexer is measured against, and --backlog\n"
+				  << "is a swept variable rather than a constant: at several thousand concurrent\n"
+				  << "connections the queue depth is large enough to matter.\n"
 				  << "\n"
 				  << "Legacy positional form <workers> <port> is still accepted.\n";
 	}
@@ -53,6 +62,11 @@ int main(int argc, char** argv)
 
 	size_t port = 8080;
 	size_t payload = 0;  // 0 means the default greeting
+	size_t backlog = 1024;
+	bool detect = true;
+	bool http3 = false;
+	std::string cert_file;
+	std::string key_file;
 
 	// Legacy positional form: <workers> [port], kept so existing scripts still work.
 	int positional = 0;
@@ -100,6 +114,32 @@ int main(int argc, char** argv)
 				return 2;
 			}
 		}
+		else if (arg == "--backlog")
+		{
+			if (!parse_size(value_for("--backlog"), backlog) || backlog == 0)
+			{
+				std::cerr << "invalid --backlog\n";
+				return 2;
+			}
+		}
+		else if (arg == "--no-detect")
+		{
+			detect = false;
+		}
+		else if (arg == "--tls")
+		{
+			cert_file = std::string(value_for("--tls"));
+			if (i + 1 >= argc)
+			{
+				std::cerr << "--tls requires CERT and KEY\n";
+				return 2;
+			}
+			key_file = argv[++i];
+		}
+		else if (arg == "--http3")
+		{
+			http3 = true;
+		}
 		else if (!arg.empty() && arg.front() == '-')
 		{
 			std::cerr << "unknown option: " << arg << "\n";
@@ -118,16 +158,59 @@ int main(int argc, char** argv)
 		}
 	}
 
+	// Refused rather than quietly ignored. A run configured for HTTP/3 that silently
+	// served only TCP would produce a full set of plausible numbers for an experiment
+	// that never happened, which is worse than no numbers at all.
+	if (http3 && cert_file.empty())
+	{
+		std::cerr << "--http3 requires --tls CERT KEY (QUIC has no cleartext mode)\n";
+		return 2;
+	}
+	if (!detect && !cert_file.empty())
+	{
+		std::cerr << "--no-detect serves cleartext HTTP/1.1 only and cannot be combined with --tls\n";
+		return 2;
+	}
+
 	// Built once at startup, not per request: the point of this server is to measure
 	// the framework, not std::string construction.
 	const std::string body = (payload == 0) ? std::string("Hello, World!") : std::string(payload, 'x');
 
 	App app;
 	app.threads(workers);
+	app.backlog(static_cast<int>(backlog));
+	app.enable_protocol_detection(detect);
 	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
 
+#ifdef COROUTE_HAS_TLS
+	if (!cert_file.empty())
+	{
+		AppTlsConfig tls;
+		tls.cert_file = cert_file;
+		tls.key_file = key_file;
+		app.enable_tls(tls);
+	}
+#else
+	if (!cert_file.empty())
+	{
+		std::cerr << "--tls was requested but this build has TLS disabled\n";
+		return 2;
+	}
+#endif
+
+	if (http3)
+	{
+		// Throws on a build without HTTP/3, which is the intended behaviour: see above
+		// on configured-but-not-served.
+		app.enable_http3();
+	}
+
+	// Printed so the run's configuration is recoverable from its own log rather than
+	// from whatever the driver believes it launched.
 	std::cout << "Benchmark server on port " << port << " (" << workers << " workers, " << body.size()
-			  << " byte body)" << std::endl;
+			  << " byte body, backlog " << backlog << ", detect " << (detect ? "on" : "off")
+			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
+			  << ")" << std::endl;
 
 	app.run(static_cast<uint16_t>(port));
 
