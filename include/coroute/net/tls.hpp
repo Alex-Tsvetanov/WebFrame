@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include "coroute/net/io_context.hpp"
 #include "coroute/coro/task.hpp"
@@ -92,12 +93,25 @@ namespace coroute::net
 		// Set SNI callback for virtual hosting
 		void set_sni_callback(SniCallback callback);
 
-		const SniCallback& sni_callback() const { return sni_callback_; }
+		const SniCallback& sni_callback() const { return state_->sni_callback; }
+
+		// Callback state held behind a stable address.
+		//
+		// OpenSSL stores raw pointers to the ALPN list and the SNI argument inside the
+		// SSL_CTX and dereferences them on every handshake. Neither can live directly in
+		// TlsContext: create() builds a local and returns it by value, so a member's
+		// address is not the address the caller ends up with. Holding them indirectly
+		// keeps the registered pointers valid across moves.
+		struct CallbackState
+		{
+			std::vector<std::string> alpn_protocols;
+			SniCallback sni_callback;
+		};
 
 	private:
-		TlsContext() = default;
+		TlsContext();
 		SSL_CTX* ctx_ = nullptr;
-		SniCallback sni_callback_;
+		std::unique_ptr<CallbackState> state_;
 	};
 
 	// ============================================================================

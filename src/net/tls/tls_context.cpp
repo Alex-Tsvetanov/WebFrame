@@ -38,11 +38,12 @@ namespace coroute::net
 		                         unsigned int inlen, void* arg)
 		{
 			(void)ssl;
-			auto* config_protocols = static_cast<std::vector<std::string>*>(arg);
-			if (!config_protocols || config_protocols->empty())
+			auto* state = static_cast<TlsContext::CallbackState*>(arg);
+			if (!state || state->alpn_protocols.empty())
 			{
 				return SSL_TLSEXT_ERR_NOACK;
 			}
+			const auto* config_protocols = &state->alpn_protocols;
 
 			// Parse client protocols
 			const unsigned char* client = in;
@@ -77,12 +78,12 @@ namespace coroute::net
 		int sni_callback_wrapper(SSL* ssl, int* al, void* arg)
 		{
 			(void)al;
-			auto* ctx = static_cast<TlsContext*>(arg);
+			auto* state = static_cast<TlsContext::CallbackState*>(arg);
 			const char* servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
-			if (servername && ctx)
+			if (servername && state)
 			{
-				const auto& cb = ctx->sni_callback();
+				const auto& cb = state->sni_callback;
 				if (cb)
 				{
 					TlsContext* new_ctx = cb(servername);
@@ -103,16 +104,19 @@ namespace coroute::net
 	// TlsContext Implementation
 	// ============================================================================
 
+	TlsContext::TlsContext() : state_(std::make_unique<CallbackState>()) { }
+
 	TlsContext::~TlsContext()
 	{
+		// Free the SSL_CTX before state_ goes away: OpenSSL holds raw pointers into
+		// state_ and must not outlive it.
 		if (ctx_)
 		{
 			SSL_CTX_free(ctx_);
 		}
 	}
 
-	TlsContext::TlsContext(TlsContext&& other) noexcept
-		: ctx_(other.ctx_), sni_callback_(std::move(other.sni_callback_))
+	TlsContext::TlsContext(TlsContext&& other) noexcept : ctx_(other.ctx_), state_(std::move(other.state_))
 	{
 		other.ctx_ = nullptr;
 	}
@@ -123,7 +127,7 @@ namespace coroute::net
 		{
 			if (ctx_) SSL_CTX_free(ctx_);
 			ctx_ = other.ctx_;
-			sni_callback_ = std::move(other.sni_callback_);
+			state_ = std::move(other.state_);
 			other.ctx_ = nullptr;
 		}
 		return *this;
@@ -229,17 +233,18 @@ namespace coroute::net
 			SSL_CTX_set_session_cache_mode(result.ctx_, SSL_SESS_CACHE_OFF);
 		}
 
-		// Set ALPN protocols
+		// Set ALPN protocols. The callback argument is state_, whose address survives
+		// the move out of this function; the previous code leaked a heap vector here.
 		if (!config.alpn_protocols.empty())
 		{
-			// Store protocols in context for callback
-			auto* protocols = new std::vector<std::string>(config.alpn_protocols);
-			SSL_CTX_set_alpn_select_cb(result.ctx_, alpn_select_callback, protocols);
+			result.state_->alpn_protocols = config.alpn_protocols;
+			SSL_CTX_set_alpn_select_cb(result.ctx_, alpn_select_callback, result.state_.get());
 		}
 
-		// Enable SNI
+		// Enable SNI. Registering &result here would dangle: result is returned by
+		// value and moved, so the TlsContext the caller holds is at another address.
 		SSL_CTX_set_tlsext_servername_callback(result.ctx_, sni_callback_wrapper);
-		SSL_CTX_set_tlsext_servername_arg(result.ctx_, &result);
+		SSL_CTX_set_tlsext_servername_arg(result.ctx_, result.state_.get());
 
 		return result;
 	}
@@ -257,7 +262,7 @@ namespace coroute::net
 		return std::nullopt;
 	}
 
-	void TlsContext::set_sni_callback(SniCallback callback) { sni_callback_ = std::move(callback); }
+	void TlsContext::set_sni_callback(SniCallback callback) { state_->sni_callback = std::move(callback); }
 
 	// ============================================================================
 	// TlsConnection Implementation
