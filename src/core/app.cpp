@@ -140,7 +140,7 @@ namespace coroute
 
 		if (io_ctx_->enable_multi_accept(port, on_connection))
 		{
-			std::cout << "Server listening on port " << port << " (multi-accept)" << '\n';
+			std::cout << "Server listening on port " << port << " (multi-accept)" << '\n' << std::flush;
 		}
 		else
 		{
@@ -151,7 +151,7 @@ namespace coroute
 				throw std::runtime_error("Failed to listen: " + result.error().to_string());
 			}
 
-			std::cout << "Server listening on port " << listener_->local_port() << '\n';
+			std::cout << "Server listening on port " << listener_->local_port() << '\n' << std::flush;
 
 			[this, on_connection]() -> Task<void>
 			{
@@ -185,7 +185,7 @@ namespace coroute
 			throw std::runtime_error("Failed to listen: " + result.error().to_string());
 		}
 
-		std::cout << "Server listening on port " << listener_->local_port() << '\n';
+		std::cout << "Server listening on port " << listener_->local_port() << '\n' << std::flush;
 
 		while (!cancel_source_.is_cancelled())
 		{
@@ -221,7 +221,7 @@ namespace coroute
 
 	void App::shutdown(ShutdownOptions options)
 	{
-		std::cout << "Initiating graceful shutdown..." << '\n';
+		std::cout << "Initiating graceful shutdown..." << '\n' << std::flush;
 
 		// Mark as shutting down
 		shutting_down_.store(true, std::memory_order_relaxed);
@@ -251,7 +251,7 @@ namespace coroute
 		// Force close if configured and connections remain
 		if (options.force_close_after_timeout && active_connections_.load(std::memory_order_relaxed) > 0)
 		{
-			std::cout << "Force closing remaining connections..." << '\n';
+			std::cout << "Force closing remaining connections..." << '\n' << std::flush;
 			cancel_source_.cancel();
 		}
 
@@ -261,7 +261,7 @@ namespace coroute
 			io_ctx_->stop();
 		}
 
-		std::cout << "Shutdown complete" << '\n';
+		std::cout << "Shutdown complete" << '\n' << std::flush;
 	}
 
 #ifdef COROUTE_HAS_TLS

@@ -231,6 +231,8 @@ namespace coroute::net
 		size_t next_ring_index() noexcept { return next_ring_.fetch_add(1, std::memory_order_relaxed) % rings_.size(); }
 
 		// Enable SO_REUSEPORT multi-accept: each worker accepts on its own listener
+		size_t worker_count() const noexcept override { return thread_count_; }
+
 		bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog = 1024) override
 		{
 			// Create SO_REUSEPORT listeners on all rings

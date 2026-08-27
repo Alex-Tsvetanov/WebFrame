@@ -20,6 +20,7 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -92,6 +93,11 @@ namespace coroute::net
 		// Posted callbacks
 		std::mutex callback_mutex_;
 		std::queue<std::function<void()>> callbacks_;
+
+		// Multi-accept state. One shared listening socket, several concurrent AcceptEx
+		// operations against it.
+		std::unique_ptr<Listener> multi_listener_;
+		bool multi_accept_ = false;
 
 	public:
 		explicit IocpContext(size_t thread_count) : thread_count_(thread_count)
@@ -188,6 +194,13 @@ namespace coroute::net
 		}
 
 		bool stopped() const noexcept override { return stopped_; }
+
+		size_t worker_count() const noexcept override { return thread_count_; }
+
+		// Defined below IocpListener, which this needs to construct.
+		bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog) override;
+
+		bool is_multi_accept_enabled() const noexcept override { return multi_accept_; }
 
 		void post(std::function<void()> callback) override
 		{
@@ -573,6 +586,39 @@ namespace coroute::net
 			return std::make_unique<IocpConnection>(ctx_, op_->accept_socket);
 		}
 	};
+
+	// ============================================================================
+	// Multi-accept: one socket, a pool of concurrent AcceptEx operations
+	// ============================================================================
+	//
+	// Windows has no SO_REUSEPORT, so the Linux model of one listening socket per
+	// worker is not available. Instead a single socket carries several outstanding
+	// AcceptEx operations at once. Every completion lands on the shared completion
+	// port and is taken by whichever worker thread is free, which is what gives the
+	// concurrency; the pool depth is what stops a burst of connections from queuing
+	// behind a single outstanding accept.
+	//
+	// The consequence, and it is worth stating rather than hiding: connections are not
+	// pinned to a worker the way the kernel's 4-tuple hash pins them on Linux. IOCP
+	// wakes threads LIFO. The upside is that this uses one descriptor where Linux uses
+	// one per worker.
+	bool IocpContext::enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog)
+	{
+		auto listener = std::make_unique<IocpListener>(*this);
+		auto listening = listener->listen(port, backlog);
+		if (!listening)
+		{
+			return false;
+		}
+
+		multi_listener_ = std::move(listener);
+		multi_accept_ = true;
+
+		// Depth above the worker count: see start_accept_pool.
+		start_accept_pool(*this, *multi_listener_, handler, std::max<size_t>(thread_count_ * 2, 4));
+
+		return true;
+	}
 
 	Task<AcceptResult> IocpListener::async_accept()
 	{

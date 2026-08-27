@@ -47,9 +47,29 @@ namespace coroute::net
 		// Schedule a callback after a delay
 		virtual void schedule(std::chrono::milliseconds delay, std::function<void()> callback) = 0;
 
-		// Enable multi-accept mode (SO_REUSEPORT on Linux)
-		// Each worker thread accepts on its own listener for better scalability
-		// Returns false if not supported or failed
+		// Number of worker threads this context will run.
+		virtual size_t worker_count() const noexcept { return 1; }
+
+		// Accept on `port` across all workers, handing each connection to `handler`.
+		// Returns false if the backend cannot do it, in which case the caller should
+		// fall back to a single accept loop.
+		//
+		// How the work is spread differs per platform, and the difference is visible
+		// in both the descriptor count and the locality of a connection:
+		//
+		//   Linux    SO_REUSEPORT, one listening socket per worker.   N descriptors.
+		//            The kernel hashes the 4-tuple, so a connection is pinned to a
+		//            worker for its whole life.
+		//   macOS    One shared socket, one accept operation per worker. 1 descriptor.
+		//            SO_REUSEPORT exists but does not load-balance the way Linux's
+		//            does, so it is deliberately not used. FreeBSD has
+		//            SO_REUSEPORT_LB, which does.
+		//   Windows  One shared socket, a pool of concurrent AcceptEx operations.
+		//            1 descriptor. IOCP wakes threads LIFO, so connections are not
+		//            pinned to a worker.
+		//
+		// Windows and macOS therefore use fewer descriptors than Linux for the same
+		// worker count, at the cost of weaker locality.
 		virtual bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog = 1024)
 		{
 			(void)port;
@@ -110,6 +130,22 @@ namespace coroute::net
 		// Factory method
 		static std::unique_ptr<Listener> create(IoContext& ctx);
 	};
+
+	// ============================================================================
+	// start_accept_pool
+	// ============================================================================
+	//
+	// Runs `depth` concurrent accept operations against one listener, handing each
+	// connection to `handler`, until the context stops.
+	//
+	// Shared by the backends that cannot give each worker its own listening socket
+	// (IOCP, kqueue). Both had the identical loop, and keeping it here means the logic
+	// is compiled on every platform rather than only on the one being built.
+	//
+	// `listener` must outlive the context; backends keep it as a member.
+	// `depth` above the worker count matters: a worker busy handling a connection
+	// should not also be the reason a new one is waiting to be accepted.
+	void start_accept_pool(IoContext& ctx, Listener& listener, const ConnectionHandler& handler, size_t depth);
 
 	// ============================================================================
 	// Connection - Async read/write on a socket

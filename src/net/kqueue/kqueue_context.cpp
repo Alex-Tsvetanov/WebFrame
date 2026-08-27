@@ -15,6 +15,7 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <algorithm>
 #include <memory>
 #include <cstring>
 #include <stdexcept>
@@ -79,6 +80,11 @@ namespace coroute::net
 
 		std::mutex callback_mutex_;
 		std::queue<std::function<void()>> callbacks_;
+
+		// Multi-accept state: one shared listening socket, several concurrent accept
+		// operations against it.
+		std::unique_ptr<Listener> multi_listener_;
+		bool multi_accept_ = false;
 
 		// Thread-local buffer for batching kqueue registrations
 		static thread_local std::vector<struct kevent> pending_changes_;
@@ -162,6 +168,13 @@ namespace coroute::net
 		void stop() override { stopped_ = true; }
 
 		bool stopped() const noexcept override { return stopped_; }
+
+		size_t worker_count() const noexcept override { return thread_count_; }
+
+		// Defined below KqueueListener, which this needs to construct.
+		bool enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog) override;
+
+		bool is_multi_accept_enabled() const noexcept override { return multi_accept_; }
 
 		void post(std::function<void()> callback) override
 		{
@@ -415,6 +428,39 @@ namespace coroute::net
 	// ============================================================================
 	// Async Operation Implementations
 	// ============================================================================
+
+	// ============================================================================
+	// Multi-accept: one shared socket, several concurrent accept operations
+	// ============================================================================
+	//
+	// Deliberately NOT SO_REUSEPORT. macOS has the option, but unlike Linux it does
+	// not load-balance across the bound sockets: it gives the connection to the most
+	// recently bound listener, so N sockets would leave N-1 of them idle. That is a
+	// silent performance bug rather than a build failure, which is the worst kind.
+	//
+	// FreeBSD added SO_REUSEPORT_LB for exactly this and does balance, so it takes the
+	// Linux-style path where available.
+	//
+	// The shared-socket model uses one descriptor regardless of worker count. Which
+	// worker services a connection is decided by whichever one's kevent fires, so
+	// connections are not pinned the way Linux's 4-tuple hash pins them.
+	bool KqueueContext::enable_multi_accept(uint16_t port, ConnectionHandler handler, int backlog)
+	{
+		auto listener = std::make_unique<KqueueListener>(*this);
+		auto listening = listener->listen(port, backlog);
+		if (!listening)
+		{
+			return false;
+		}
+
+		multi_listener_ = std::move(listener);
+		multi_accept_ = true;
+
+		// Depth above the worker count: see start_accept_pool.
+		start_accept_pool(*this, *multi_listener_, handler, std::max<size_t>(thread_count_ * 2, 4));
+
+		return true;
+	}
 
 	Task<AcceptResult> KqueueListener::async_accept()
 	{

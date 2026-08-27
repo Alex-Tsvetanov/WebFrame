@@ -21,6 +21,8 @@ PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 # SETTINGS frame: length 0, type 0x04, flags 0, stream id 0.
 SETTINGS = bytes([0, 0, 0, 4, 0, 0, 0, 0, 0])
 
+GET_CLOSE = b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+
 HOST = "127.0.0.1"
 TIMEOUT = 4.0
 
@@ -56,7 +58,7 @@ def check(name, condition, detail=""):
 
 def test_http11(port):
     with connect(port) as sock:
-        sock.sendall(b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        sock.sendall(GET_CLOSE)
         data = recv(sock)
         check("HTTP/1.1 request is served", data.startswith(b"HTTP/1.1 200"), repr(data[:40]))
 
@@ -131,6 +133,31 @@ def test_silent_client(port):
         quiet.close()
 
 
+def test_concurrent_accepts(port, count=24):
+    """Many connections opened before any is served.
+
+    With a single outstanding accept these queue behind one another; with the
+    accept pool they are picked up concurrently. Either way they must all be
+    served, so this catches a regression to a single accept loop only by
+    failing outright if one of them is dropped.
+    """
+    socks = []
+    try:
+        for _ in range(count):
+            sock = connect(port)
+            sock.sendall(GET_CLOSE)
+            socks.append(sock)
+
+        served = 0
+        for sock in socks:
+            if recv(sock).startswith(b"HTTP/1.1 200"):
+                served += 1
+        check(f"{count} concurrent connections are all served", served == count, f"served {served}")
+    finally:
+        for sock in socks:
+            sock.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("server", help="path to a server binary accepting --port/--workers")
@@ -172,6 +199,7 @@ def main():
         ("lowercase_method", lambda: test_lowercase_method_rejected(args.port)),
         ("tls_byte", lambda: test_tls_byte(args.port, args.tls)),
         ("silent_client", lambda: test_silent_client(args.port)),
+        ("concurrent_accepts", lambda: test_concurrent_accepts(args.port)),
     ]
 
     try:
