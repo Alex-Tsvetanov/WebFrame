@@ -63,24 +63,33 @@ def test_http11(port):
         check("HTTP/1.1 request is served", data.startswith(b"HTTP/1.1 200"), repr(data[:40]))
 
 
-def test_prior_knowledge_h2(port):
+def test_prior_knowledge_h2(port, http2_enabled):
     # Before the unified listener this path was unreachable: is_http2_preface existed
     # but nothing on the accept path ever called it, so a prior-knowledge client got
     # an HTTP/1.1 400 instead of a SETTINGS frame.
     with connect(port) as sock:
         sock.sendall(PREFACE + SETTINGS)
         data = recv(sock)
-        check("prior-knowledge HTTP/2 gets a SETTINGS frame", is_settings_frame(data), repr(data[:40]))
+        if http2_enabled:
+            check("prior-knowledge HTTP/2 gets a SETTINGS frame", is_settings_frame(data), repr(data[:40]))
+        else:
+            # Without HTTP/2 compiled in, PRI is just an unknown method and the
+            # request is routed like any other. Answering it as HTTP/1.1 is correct;
+            # what would be wrong is closing or hanging.
+            check("preface handled as HTTP/1.1 when HTTP/2 is off", data.startswith(b"HTTP/1.1"), repr(data[:40]))
 
 
-def test_preface_dribbled(port):
+def test_preface_dribbled(port, http2_enabled):
     # The classic first-octet classifier bug: read once, see three bytes, decide.
     with connect(port) as sock:
         for byte in PREFACE:
             sock.sendall(bytes([byte]))
         sock.sendall(SETTINGS)
         data = recv(sock)
-        check("preface split one byte per segment still detected", is_settings_frame(data), repr(data[:40]))
+        if http2_enabled:
+            check("preface split one byte per segment still detected", is_settings_frame(data), repr(data[:40]))
+        else:
+            check("dribbled preface handled when HTTP/2 is off", data.startswith(b"HTTP/1.1"), repr(data[:40]))
 
 
 def test_request_line_split(port):
@@ -163,6 +172,7 @@ def main():
     parser.add_argument("server", help="path to a server binary accepting --port/--workers")
     parser.add_argument("--port", type=int, default=18080)
     parser.add_argument("--tls", action="store_true", help="server was built with TLS enabled")
+    parser.add_argument("--http2", action="store_true", help="server was built with HTTP/2 enabled")
     args = parser.parse_args()
 
     proc = subprocess.Popen(
@@ -192,8 +202,8 @@ def main():
     failed = 0
     tests = [
         ("http11", lambda: test_http11(args.port)),
-        ("prior_knowledge_h2", lambda: test_prior_knowledge_h2(args.port)),
-        ("preface_dribbled", lambda: test_preface_dribbled(args.port)),
+        ("prior_knowledge_h2", lambda: test_prior_knowledge_h2(args.port, args.http2)),
+        ("preface_dribbled", lambda: test_preface_dribbled(args.port, args.http2)),
         ("request_line_split", lambda: test_request_line_split(args.port)),
         ("junk_rejected", lambda: test_junk_rejected(args.port)),
         ("lowercase_method", lambda: test_lowercase_method_rejected(args.port)),

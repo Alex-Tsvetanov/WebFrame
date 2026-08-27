@@ -68,6 +68,9 @@ if(COROUTE_BUILD_EXAMPLES)
         if(COROUTE_ENABLE_TLS)
             list(APPEND _demux_args --tls)
         endif()
+        if(COROUTE_ENABLE_HTTP2)
+            list(APPEND _demux_args --http2)
+        endif()
 
         add_test(NAME protocol_demux
             COMMAND ${Python3_EXECUTABLE}
