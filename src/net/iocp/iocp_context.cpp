@@ -9,6 +9,7 @@
 #endif
 
 #include "coroute/net/io_context.hpp"
+#include "coroute/net/datagram.hpp"
 
 #if defined(COROUTE_PLATFORM_WINDOWS)
 
@@ -922,6 +923,15 @@ namespace coroute::net
 	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
 	{
 		return std::make_unique<IocpListener>(static_cast<IocpContext&>(ctx));
+	}
+
+	// Datagrams are not implemented on this backend yet. HTTP/3 is being landed on
+	// Linux first, and a nullptr here is honest: the header documents it, and callers
+	// fall back rather than link against a socket that silently drops packets.
+	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx)
+	{
+		(void)ctx;
+		return nullptr;
 	}
 
 }  // namespace coroute::net
