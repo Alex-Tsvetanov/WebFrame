@@ -1,6 +1,6 @@
-# Coroute v2 - Modern C++20 Web Framework
+# Coroute v2 - Modern C++23 Web Framework
 
-![C++](https://img.shields.io/badge/c++20-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=white)
+![C++](https://img.shields.io/badge/c++23-%2300599C.svg?&logo=c%2B%2B&logoColor=white) ![CMake](https://img.shields.io/badge/CMake-%23008FBA.svg?&logo=cmake&logoColor=white)
 
 [![CI Build](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/ci.yml) [![Documentation](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/documentation.yml) [![CodeQL](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml/badge.svg)](https://github.com/cpp-for-everything/WebFrame/actions/workflows/codeql.yml)
 
@@ -12,7 +12,7 @@
 - 🚀 **C++20 Coroutines** - Natural async/await syntax with `co_await` and `Task<T>`
 - ⚡ **Platform-Optimized I/O** - io_uring (Linux), kqueue (macOS), IOCP (Windows)
 - 🔒 **TLS/SSL Support** - Secure HTTPS via OpenSSL with ALPN
-- 📡 **HTTP/2** - Full HTTP/2 support with server push and stream multiplexing
+- 📡 **HTTP/2** - Stream multiplexing and HPACK header compression. Server push is not implemented: a PUSH_PROMISE is answered with GOAWAY
 - 🔌 **WebSocket** - Bidirectional real-time communication
 - 📝 **Template Engine** - Inja (Jinja2-style) for dynamic HTML rendering
 - 🗜️ **Compression** - Built-in gzip, deflate, and optional Brotli
@@ -24,10 +24,10 @@
 
 | Component | Version |
 |-----------|----------|
-| **Compiler** | GCC 11+, Clang 14+, or MSVC 2022+ |
-| **C++ Standard** | C++20 with coroutine support |
-| **CMake** | 3.20 or higher |
-| **OpenSSL** | 1.1.1+ or 3.0+ (for TLS) |
+| **Compiler** | GCC 13+, Clang 17+, or MSVC 2022+ |
+| **C++ Standard** | C++23 (coroutines are C++20) |
+| **CMake** | 3.25 or higher for presets, 3.20 without |
+| **OpenSSL** | 1.1.1+ or 3.0+, required only when `COROUTE_ENABLE_TLS=ON` |
 | **Platform** | Linux (kernel 5.1+ for io_uring), macOS 10.13+, Windows 10+ |
 ## 📚 Documentation & Resources
 
@@ -276,7 +276,40 @@ app.shutdown(opts);
 
 ## 🏗️ Building from Source
 
-### CMake Options
+### CMake Presets (preferred)
+
+`CMakePresets.json` selects the platform I/O backend and the build gates by name, so
+sanitizer and lint configurations are reproducible locally rather than living only in
+CI shell lines.
+
+```bash
+cmake --list-presets
+cmake --preset linux-release && cmake --build --preset linux-release
+```
+
+| Preset | What it builds |
+|--------|----------------|
+| `linux-debug` / `linux-release` | io_uring backend |
+| `macos-debug` / `macos-release` | kqueue backend |
+| `windows-debug` / `windows-release` | IOCP backend |
+| `asan` | AddressSanitizer + UBSan, examples included |
+| `tsan` | ThreadSanitizer |
+| `msan` | MemorySanitizer, core only (see note below) |
+| `tidy` | clang-tidy over the library sources |
+| `coverage` | llvm-cov instrumentation |
+| `bench` | Release, tests off. Benchmarks are never run against Debug |
+
+Configure, build and test a gate in one step:
+
+```bash
+cmake --workflow --preset asan
+```
+
+MemorySanitizer needs every dependency instrumented. The `msan` preset therefore turns
+TLS, HTTP/2 and simdjson off; with them on, uninstrumented library code produces false
+positives that bury the real findings.
+
+### Manual configuration
 
 ```bash
 cmake -B build \
@@ -295,16 +328,19 @@ cmake --build build --parallel
 |--------|---------|-------------|
 | `COROUTE_BUILD_EXAMPLES` | ON | Build example applications |
 | `COROUTE_BUILD_TESTS` | ON | Build unit tests |
-| `COROUTE_ENABLE_TLS` | ON | Enable TLS/SSL support |
+| `COROUTE_ENABLE_TLS` | ON | TLS/SSL support. OpenSSL is required only when this is ON |
 | `COROUTE_ENABLE_HTTP2` | ON | Enable HTTP/2 support |
 | `COROUTE_ENABLE_SIMDJSON` | ON | Fast JSON parsing |
 | `COROUTE_ENABLE_BROTLI` | OFF | Brotli compression |
+| `COROUTE_SANITIZER` | (none) | `address`, `undefined`, `address+undefined`, `thread`, `memory` |
+| `COROUTE_ENABLE_COVERAGE` | OFF | Coverage instrumentation |
+| `COROUTE_ENABLE_CLANG_TIDY` | OFF | Run clang-tidy over the library target |
+| `COROUTE_USE_STD_EXPECTED` | OFF | Use `std::expected` instead of the bundled implementation |
 
 ### Running Tests
 
 ```bash
-cd build
-ctest --output-on-failure
+ctest --test-dir build --output-on-failure --parallel
 ```
 
 ## 📊 Performance
