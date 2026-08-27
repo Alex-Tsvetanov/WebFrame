@@ -8,14 +8,13 @@
 *.fdb_latexmk
 *.synctex.gz
 
-# Регенерируеми — НЕ се комитват (tools/gen_tex.py ги възстановява от борда):
-# build/     — изходен PDF + помощните файлове на latexmk
-# generated/ — таблиците, извлечени от comparison.json / measurements.json
-# evidence/  — 4816 СИМВОЛНИ ВРЪЗКИ към captures/, безсмислени извън тази машина
-# (git не поддържа коментар СЛЕД шаблон на същия ред — затова са отделни редове)
-# build/ се игнорира ЦЯЛА с изключение на готовия PDF — той е крайният резултат
-# и се предава, затова се версионира заедно с източника си.
-build/*
-!build/Main.pdf
+# build/ is latexmk's working directory and the PDF is rebuilt from source, so none
+# of it is committed. This differs from the tree the preamble came from, which
+# versioned its finished PDF because that PDF was the thing being submitted. Here the
+# document is still being written, and a 15 MB binary changing on every build would
+# dominate the history of a repository whose point is the source.
+build/
+
+# Written by tools/results2tex.py from the measurement output. Regenerable by
+# definition, and committing it would let a stale number outlive the run it came from.
 generated/
-evidence/

@@ -1,0 +1,5 @@
+# pdfLaTeX, НЕ XeLaTeX — вж. REQUIREMENTS.md Б.0 (T2A + tempora).
+$pdf_mode = 1;
+$bibtex_use = 2;
+$out_dir = 'build';
+$clean_ext = 'bbl nav out snm synctex.gz run.xml';

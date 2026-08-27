@@ -1,0 +1,20 @@
+% ============================================================================
+% Language of the dissertation
+% ============================================================================
+%
+% The entire switch. \bgtrue builds Bulgarian, \bgfalse builds English.
+%
+% Both languages stay loaded either way, so T2A and the Cyrillic fonts remain live
+% in the English build and \foreignlanguage{bulgarian}{...} works for the title
+% page and for quoted terminology. Only the main language moves.
+%
+% What actually depends on this: captions, the four reference macros, the listing
+% names, and the unnumbered headings. Geometry, fonts, spacing, titlesec, tocloft,
+% fancyhdr and the whole \lstset are untouched, so a page count agreed in one
+% language holds in the other.
+%
+% Both directions are known to build: 15 pages, no errors, no overfull boxes, and a
+% table of contents that switches with it.
+
+\newif\ifbg
+\bgfalse

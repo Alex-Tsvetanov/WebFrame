@@ -1,0 +1,59 @@
+% ============================================================================
+% Дисертационен труд
+% ============================================================================
+%
+% Build: latexmk -pdf Main.tex   (pdfLaTeX, not XeLaTeX: T2A + tempora)
+%
+% Language is set in lang.tex and nowhere else.
+%
+% Chapters go through \chapdir so a second language is a git mv and one line here,
+% with no duplicated preamble.
+% ============================================================================
+
+\documentclass[12pt,a4paper]{article}
+
+\input{lang}
+\input{preamble}
+
+\newcommand{\chapdir}{chapters}
+
+% ----------------------------------------------------------------------------
+% Section numbering
+%
+% Open question, isolated here so switching is three lines rather than a search.
+% The ФКСТ diploma sheet mandates Roman numerals for sections, which is what
+% preamble.tex currently sets. Bulgarian dissertations conventionally use
+% "ГЛАВА 1" with Arabic numbering instead. Confirm which applies before submission.
+% ----------------------------------------------------------------------------
+
+\begin{document}
+
+\input{\chapdir/front_titlepage}
+
+\pagenumbering{arabic}
+
+\tableofcontents
+\clearpage
+
+\input{\chapdir/front_abbreviations}
+\input{\chapdir/front_introduction}
+
+\input{\chapdir/01_state_of_the_art}
+\input{\chapdir/02_theoretical_foundations}
+\input{\chapdir/03_architecture}
+\input{\chapdir/04_implementation}
+\input{\chapdir/05_methodology}
+\input{\chapdir/06_results}
+\input{\chapdir/07_application}
+
+\input{\chapdir/back_conclusion}
+\input{\chapdir/back_contributions}
+\input{\chapdir/back_publications}
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{\bgen{ЛИТЕРАТУРА}{BIBLIOGRAPHY}}
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

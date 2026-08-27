@@ -1,0 +1,271 @@
+% ============================================================================
+% preamble.tex — форматиране по изискванията на ФКСТ.
+%
+% Всяка секция тук съответства на правило от REQUIREMENTS.md (Част А) и на
+% реда му в таблицата на превода (Част Б). Не пипай стойностите без да
+% провериш срещу REQUIREMENTS.md — те са нормативни, не са вкус.
+%
+% Двигател: pdfLaTeX (T2A + tempora). НЕ XeLaTeX — вж. REQUIREMENTS.md Б.0.
+% ============================================================================
+
+\usepackage{cmap}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% --- Language ------------------------------------------------------------
+% Both languages are loaded whichever way lang.tex is set; only the main one moves.
+% That keeps T2A and the Cyrillic fonts live in the English build, so the title page
+% and quoted terminology can still use \foreignlanguage{bulgarian}{...}.
+\ifbg
+  \usepackage[main=bulgarian,english]{babel}
+\else
+  \usepackage[main=english,bulgarian]{babel}
+\fi
+
+% \bgen{bulgarian}{english} picks a string for the current language.
+%
+% Defined by branching HERE, at load time, rather than as
+%   \newcommand{\bgen}[2]{\ifbg#1\else#2\fi}
+% The second form leaves a live conditional inside the macro body, which breaks when
+% the macro is expanded during a write into .toc or .aux. This form is fully
+% expandable and is therefore safe inside \MakeUppercase and \addcontentsline.
+\ifbg
+  \newcommand{\bgen}[2]{#1}
+\else
+  \newcommand{\bgen}[2]{#2}
+\fi
+
+% --- Типография (А.4) ---------------------------------------------------
+% tempora = Times-метрично съвместим шрифт с пълна кирилица под T2A.
+\usepackage{tempora}
+\usepackage[top=2.5cm, bottom=2.5cm, left=3.0cm, right=2.0cm, a4paper]{geometry}
+\usepackage{setspace}
+\setstretch{1.5}                     % „междуредие 1.5 lines“ — калибруем, вж. Б.2
+% „без пренасяния на срички“ (А.4) — чрез ЗАБРАНИТЕЛНИ НАКАЗАНИЯ, не чрез
+% \usepackage[none]{hyphenat}. Разликата е съществена: `hyphenat[none]` задава
+% \hyphenchar=-1 и така изключва самия механизъм за прекъсване, от който зависи
+% `breaklines` на listings — дългите редове в листингите тогава НЕ се пренасят и
+% излизат извън полето (1227 препълвания дойдоха оттам). Наказанията постигат същия
+% резултат за текста (TeX никога не пренася), но оставят механизма достъпен.
+\usepackage[expansion=false]{microtype}
+\DisableLigatures{encoding=*,family=tt*}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\emergencystretch=1.5em              % цената на justified-без-преноси, вж. Б.4
+\sloppy
+\usepackage{indentfirst}             % отстъп и на ПЪРВИЯ абзац след заглавие, вж. Б.3
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0pt}
+
+% --- Номерация на страниците: долу вдясно (А.4) -------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[R]{\thepage}
+
+% --- Бележки под линия: 10 pt, single, justified (А.4) -------------------
+\usepackage[hang,flushmargin]{footmisc}
+\usepackage{ragged2e}
+\renewcommand{\footnotelayout}{\fontsize{10}{12}\selectfont\setstretch{1.0}\justifying}
+
+% --- Заглавия на раздели / параграфи / подпараграфи (А.7) ---------------
+\usepackage{titlesec}
+\newcommand{\sectionbreak}{\clearpage}   % „всеки раздел започва на нова страница“
+
+\renewcommand{\thesection}{\Roman{section}}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\arabic{section}.\arabic{subsection}.\arabic{subsubsection}}
+
+% Раздел: римски, ALL CAPS, центриран, bold 14 pt
+\titleformat{\section}[block]
+  {\fontsize{14}{16.8}\bfseries\centering}{\thesection. }{0pt}{\MakeUppercase}
+
+% Параграф: арабски, bold 14 pt, отстъп 1.25 cm
+\titleformat{\subsection}[block]
+  {\fontsize{14}{16.8}\bfseries}{\thesubsection. }{0pt}{}
+\titlespacing*{\subsection}{1.25cm}{*3}{*2}
+
+% Подпараграф: bold 13 pt, отстъп 2.0 cm
+\titleformat{\subsubsection}[block]
+  {\fontsize{13}{15.6}\bfseries}{\thesubsubsection. }{0pt}{}
+\titlespacing*{\subsubsection}{2.0cm}{*2}{*1}
+
+% --- Съдържание: разделите с ГЛАВНИ букви, 12 pt, bold (А.6) -------------
+\usepackage{etoolbox}
+\usepackage[titles]{tocloft}
+% NB: кръпката ТРЯБВА да е СЛЕД tocloft — пакетът предефинира \l@section и
+% иначе я изтрива (тихо: няма грешка, просто разделите излизат с малки букви).
+\makeatletter
+\patchcmd{\l@section}{#1}{\MakeUppercase{#1}}{}{}
+\makeatother
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsubsubsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsecfont}{\fontsize{12}{14}\bfseries}
+\renewcommand{\cftsecpagefont}{\fontsize{12}{14}\bfseries}
+\renewcommand{\cftsecaftersnum}{.\enspace}
+\settowidth{\cftsecnumwidth}{VIII.\enspace}
+\renewcommand{\cftsubsecaftersnum}{.}
+\renewcommand{\cftsubsubsecaftersnum}{.}
+
+% --- Надписи: таблици ОТГОРЕ, фигури ОТДОЛУ (А.8, А.9) ------------------
+\usepackage{caption}
+\usepackage{subcaption}
+\DeclareCaptionLabelFormat{tablelabel}{\bgen{Таблица}{Table} #2}
+\captionsetup[table]{labelformat=tablelabel, labelsep=period, position=above,
+                     font={bf,small}, justification=centering, singlelinecheck=true}
+\DeclareCaptionLabelFormat{figurelabel}{\bgen{Фигура}{Figure} #2}
+\captionsetup[figure]{labelformat=figurelabel, labelsep=period, position=below,
+                      font={bf,small}, justification=centering, singlelinecheck=true}
+
+% Препратки в текста: „(Табл. 3)“ / „(Фиг. 7)“ — задължителни по А.8/А.9.
+\newcommand{\tabref}[1]{(\bgen{Табл.}{Table}~\ref{#1})}
+\newcommand{\figref}[1]{(\bgen{Фиг.}{Fig.}~\ref{#1})}
+
+% --- Математика ---------------------------------------------------------
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+
+% --- Графики ------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing,arrows.meta,positioning,shapes.geometric,fit,calc}
+\usepackage{adjustbox}
+\usepackage{pdfpages}     % за подвързаните задание и декларация, вж. Б.5
+
+% --- Таблици ------------------------------------------------------------
+\usepackage{array}
+% Ляво подравнена колона с фиксирана ширина. Тесните `p{}` колони с ДВУСТРАННО
+% подравняване (наследено от основния текст) разкъсват редовете с огромни
+% междудумни интервали — правилото за justified от А.4 се отнася за ОСНОВНИЯ текст,
+% не за клетки от 3 cm. Всички таблици с текстови клетки ползват L.
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}% \cellcolor за топлинната карта
+\usepackage{longtable}    % „продължение“ при пренасяне на таблица (А.8)
+\usepackage{multirow}
+\usepackage{tabularx}
+
+% --- Числа и графики от измервания ---------------------------------------
+% siunitx: един формат за числата в целия документ, вместо решение на всяко
+% изречение. pgfplots и pgfplotstable четат CSV направо, така че нито една
+% фигура или таблица с резултати не се копира на ръка.
+\usepackage{siunitx}
+\sisetup{group-separator={\,}, group-minimum-digits=4, round-mode=figures, round-precision=3}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{pgfplotstable}
+
+% --- Помощни ------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+\usepackage{enumitem}
+\usepackage{textcomp}
+\usepackage{listings}
+\urlstyle{same}
+% КРИТИЧНО: `breaklines` на listings вмъква ДИСКРЕЦИОННИ прекъсвания, а глобалните
+% \hyphenpenalty/\exhyphenpenalty=10000 (правилото „без пренасяния“, А.4) ги правят
+% безкрайно скъпи — тогава дългите редове в листингите НЕ се пренасят и излизат извън
+% полето. Проверено изолирано: с наказанията 1 препълване, без тях 0. Наказанията се
+% нулират САМО вътре в листинг, така че текстът си остава без пренасяния.
+\makeatletter
+\lst@AddToHook{PreInit}{\hyphenpenalty=50\exhyphenpenalty=50}
+\makeatother
+\renewcommand{\lstlistingname}{\bgen{Листинг}{Listing}}
+\renewcommand{\lstlistlistingname}{\bgen{Списък на листингите}{List of Listings}}
+
+% Italic САМО за ключови понятия (А.4) — семантичен макрос, за да е ревизуемо.
+\newcommand{\term}[1]{\emph{#1}}
+% Инлайн код/идентификатори.
+\DeclareRobustCommand{\code}[1]{\texttt{#1}}
+% Глифи за таблиците с присъди (генерирани от tools/gen_tex.py).
+\newcommand{\cmark}{\ensuremath{\checkmark}}
+\newcommand{\xmark}{\ensuremath{\times}}
+
+% Стойности от измерванията, генерирани от tools/results2tex.py.
+%
+% Числата в изреченията се пишат като \R{ключ}, а не на ръка. Липсваща стойност се
+% отпечатва като червено [?ключ] и се намира с grep, вместо да остане правдоподобно
+% изглеждащо число, което никой не е проверил. Файлът се \input-ва само ако съществува,
+% за да се компилира документът и на машина, на която не са пускани измервания.
+\providecommand{\R}[1]{\textcolor{red}{\textbf{[?#1]}}}
+\IfFileExists{generated/results.tex}{\input{generated/results}}{}
+
+% Видим маркер за незапълнено място. Търси се с: grep -rn 'TODO' chapters/
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\tikzset{
+    block/.style={draw, rounded corners, fill=blue!5, align=center, font=\small,
+        minimum width=3.2cm, minimum height=1.05cm, inner sep=6pt},
+    accent/.style={draw, rounded corners, fill=green!8, align=center, font=\small,
+        minimum width=3.0cm, minimum height=0.95cm, inner sep=6pt},
+    danger/.style={draw, rounded corners, fill=red!6, align=center, font=\small,
+        minimum width=3.0cm, minimum height=0.95cm, inner sep=6pt},
+    note/.style={draw, dashed, rounded corners, fill=gray!8, align=left, font=\small,
+        inner sep=6pt},
+    line/.style={-Latex, thick}
+}
+
+% --- Единично разстояние в нетекстови среди -----------------------------
+\AtBeginEnvironment{tikzpicture}{\setstretch{1.1}}
+\AtBeginEnvironment{lstlisting}{\setstretch{1.1}}
+\AtBeginEnvironment{verbatim}{\setstretch{1.1}}
+\AtBeginEnvironment{tabular}{\setstretch{1.1}}
+\AtBeginEnvironment{longtable}{\setstretch{1.1}}
+
+\BeforeBeginEnvironment{tikzpicture}{\begin{adjustbox}{max width=\textwidth}}
+\AfterEndEnvironment{tikzpicture}{\end{adjustbox}}
+
+% --- Оцветяване на C++ код ----------------------------------------------
+\definecolor{cppblue}{RGB}{0,0,180}
+\definecolor{cppgreen}{RGB}{0,128,0}
+\definecolor{cppred}{RGB}{180,0,0}
+\definecolor{cppgray}{RGB}{128,128,128}
+
+\lstset{
+    language=C++,
+    basicstyle=\footnotesize\ttfamily,
+    % Пренасяне на дълги редове. `breakatwhitespace=false` е СЪЩЕСТВЕНО: коментарите в
+    % изходния текст стигат 110 знака без удобно място за прекъсване, и при `true` редът
+    % изобщо не се пренася, а излиза извън полето. `linewidth` се задава изрично, защото
+    % рамката и левият отстъп иначе не се приспадат от наличната ширина.
+    breaklines=true, breakatwhitespace=false, breakautoindent=false, breakindent=0pt,
+    linewidth=\dimexpr\linewidth-2.5em\relax,
+    columns=flexible, keepspaces=true,
+    postbreak=\mbox{\textcolor{cppgray}{\ensuremath{\hookrightarrow}}\space},
+    xleftmargin=1.5em, xrightmargin=0.5em,
+    keywordstyle=\color{cppblue}\bfseries,
+    stringstyle=\color{cppred},
+    commentstyle=\color{cppgreen},
+    identifierstyle=\color{black},
+    showstringspaces=false,
+    numbers=left, numberstyle=\tiny\color{cppgray}, numbersep=8pt,
+    aboveskip=1.5em, belowskip=1.5em,
+    frame=single, framerule=0.5pt, rulecolor=\color{cppgray},
+    tabsize=4, captionpos=b,
+    morekeywords={concept, requires, constexpr, consteval, constinit, noexcept,
+                  nullptr, override, final, co_await, co_return, co_yield,
+                  expected, unexpected, span, string_view, unique_ptr, shared_ptr},
+    emph={maui, view, element, handler, layout, page, application, bindable_object,
+          view_ref, weak_ref, observable, grid, stack_layout, content_page},
+    emphstyle=\color{cppblue},
+    inputencoding=utf8,
+    % Не-ASCII знаци, срещащи се в коментарите на изходния текст. Без тези редове
+    % \lstinputlisting отказва с „Invalid UTF-8 byte sequence“ — listings не разбира
+    % многобайтов вход, който не е в literate таблицата.
+    literate={—}{{---}}1 {→}{{$\rightarrow$}}1 {×}{{$\times$}}1 {…}{{...}}1 {§}{{\S}}1
+{а}{{\cyra}}1 {б}{{\cyrb}}1 {в}{{\cyrv}}1 {г}{{\cyrg}}1 {д}{{\cyrd}}1
+             {е}{{\cyre}}1 {ж}{{\cyrzh}}1 {з}{{\cyrz}}1 {и}{{\cyri}}1 {й}{{\cyrishrt}}1
+             {к}{{\cyrk}}1 {л}{{\cyrl}}1 {м}{{\cyrm}}1 {н}{{\cyrn}}1 {о}{{\cyro}}1
+             {п}{{\cyrp}}1 {р}{{\cyrr}}1 {с}{{\cyrs}}1 {т}{{\cyrt}}1 {у}{{\cyru}}1
+             {ф}{{\cyrf}}1 {х}{{\cyrh}}1 {ц}{{\cyrc}}1 {ч}{{\cyrch}}1 {ш}{{\cyrsh}}1
+             {щ}{{\cyrshch}}1 {ъ}{{\cyrhrdsn}}1 {ь}{{\cyrsftsn}}1 {ю}{{\cyryu}}1 {я}{{\cyrya}}1
+             {А}{{\CYRA}}1 {Б}{{\CYRB}}1 {В}{{\CYRV}}1 {Г}{{\CYRG}}1 {Д}{{\CYRD}}1
+             {Е}{{\CYRE}}1 {Ж}{{\CYRZH}}1 {З}{{\CYRZ}}1 {И}{{\CYRI}}1 {Й}{{\CYRISHRT}}1
+             {К}{{\CYRK}}1 {Л}{{\CYRL}}1 {М}{{\CYRM}}1 {Н}{{\CYRN}}1 {О}{{\CYRO}}1
+             {П}{{\CYRP}}1 {Р}{{\CYRR}}1 {С}{{\CYRS}}1 {Т}{{\CYRT}}1 {У}{{\CYRU}}1
+             {Ф}{{\CYRF}}1 {Х}{{\CYRH}}1 {Ц}{{\CYRC}}1 {Ч}{{\CYRCH}}1 {Ш}{{\CYRSH}}1
+             {Щ}{{\CYRSHCH}}1 {Ъ}{{\CYRHRDSN}}1 {Ь}{{\CYRSFTSN}}1 {Ю}{{\CYRYU}}1 {Я}{{\CYRYA}}1,
+}

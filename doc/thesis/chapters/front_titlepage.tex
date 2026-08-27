@@ -1,0 +1,66 @@
+% front_titlepage
+%
+% Open question, and worth settling before anything else: if the dissertation itself
+% is in English, is the title page still Bulgarian? The Bulgarian text below is kept
+% under \foreignlanguage even in the English build, which is exactly why both
+% languages stay loaded whichever way lang.tex is set.
+%
+% Every field marked TODO is one that must be taken from the faculty's own sheet
+% rather than guessed at.
+
+\begin{titlepage}
+\centering
+
+\includegraphics[width=2.5cm]{images/tu-logo.png}
+
+\vspace{0.6cm}
+
+{\fontsize{14}{17}\selectfont\bfseries
+\foreignlanguage{bulgarian}{ТЕХНИЧЕСКИ УНИВЕРСИТЕТ, СОФИЯ}\par}
+
+{\fontsize{12}{15}\selectfont
+\foreignlanguage{bulgarian}{Факултет по компютърни системи и технологии}\par
+\TODO{department, exactly as the faculty writes it}\par}
+
+\vfill
+
+{\fontsize{12}{15}\selectfont\bfseries
+\foreignlanguage{bulgarian}{Алекс Иванов Цветанов}\par}
+
+\vspace{1.0cm}
+
+{\fontsize{16}{19}\selectfont\bfseries
+\TODO{dissertation title}\par}
+
+\vspace{0.8cm}
+
+{\fontsize{12}{15}\selectfont
+\foreignlanguage{bulgarian}{ДИСЕРТАЦИОНЕН ТРУД}\par
+\foreignlanguage{bulgarian}{за придобиване на образователна и научна степен „доктор“}\par}
+
+\vspace{0.6cm}
+
+{\fontsize{12}{15}\selectfont
+\TODO{professional field and doctoral programme, from the enrolment order}\par}
+
+\vfill
+
+\begin{minipage}{0.45\textwidth}
+\raggedright
+{\fontsize{12}{15}\selectfont
+\foreignlanguage{bulgarian}{Научен ръководител:}\par
+\TODO{supervisor, with academic title}\par}
+\end{minipage}
+\hfill
+\begin{minipage}{0.45\textwidth}
+\raggedleft
+{\fontsize{12}{15}\selectfont
+\TODO{any second supervisor, or delete this block}\par}
+\end{minipage}
+
+\vspace{1.2cm}
+
+{\fontsize{12}{15}\selectfont
+\foreignlanguage{bulgarian}{София, \TODO{year}}\par}
+
+\end{titlepage}
