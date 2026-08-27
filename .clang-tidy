@@ -1,11 +1,17 @@
 ---
-# DO NOT run `clang-tidy --fix` over this codebase.
-# readability-static-accessed-through-instance miscompiles out-of-line coroutine member
-# definitions, rewriting `ChunkedResponse::send_headers()` into
-# `ChunkedResponse::std::coroutine_traits<...>::promise_type::send_headers()`. Verified
-# on clang-tidy 22.1.0: it silently corrupted 66 definitions across 9 files. The other
-# checks fix cleanly, so if you must auto-fix, pass an explicit --checks list that
-# excludes that one, and rebuild immediately afterwards.
+# readability-static-accessed-through-instance is OFF because it is broken on
+# coroutines, not because the rule is unwanted.
+#
+# It fires on the declaration line of every out-of-line coroutine member definition,
+# reporting a static member access that is not in the source. All 67 occurrences in
+# this tree were false positives of that shape. Its --fix then rewrites those lines
+# into nonsense: `ChunkedResponse::send_headers()` becomes
+# `ChunkedResponse::std::coroutine_traits<...>::promise_type::send_headers()`.
+# Verified on clang-tidy 22.1.0, where it silently corrupted 66 definitions across 9
+# files before a rebuild caught it.
+#
+# Consequence: DO NOT run a blanket `clang-tidy --fix` over this codebase. The other
+# checks fix cleanly, so pass an explicit --checks list and rebuild immediately after.
 #
 # Rationale for the non-obvious exclusions below. Note these must stay outside the
 # Checks block scalar: inside it, '#' is not a comment, it becomes part of the string
@@ -63,7 +69,8 @@ Checks: >
   -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -cppcoreguidelines-avoid-reference-coroutine-parameters,
-  -cppcoreguidelines-avoid-capturing-lambda-coroutines
+  -cppcoreguidelines-avoid-capturing-lambda-coroutines,
+  -readability-static-accessed-through-instance
 
 WarningsAsErrors: "*"
 

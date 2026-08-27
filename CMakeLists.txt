@@ -164,6 +164,7 @@ add_library(coroute STATIC
     src/core/metrics.cpp
 
     # Network abstraction
+    src/net/protocol_detect.cpp
     src/net/websocket.cpp
 )
 
