@@ -18,6 +18,8 @@ add_executable(unit_tests
     test_protocol_detect.cpp
     test_datagram.cpp
     test_io_context.cpp
+    test_http3_cid.cpp
+    test_http3_packet.cpp
     test_time.cpp
     test_router.cpp
     test_response.cpp

@@ -413,6 +413,11 @@ if(COROUTE_ENABLE_HTTP3)
         PkgConfig::NGHTTP3
     )
 
+    target_sources(coroute PRIVATE
+        src/http3/cid.cpp
+        src/http3/packet.cpp
+    )
+
     target_compile_definitions(coroute PUBLIC COROUTE_HAS_HTTP3)
     message(STATUS "HTTP/3: enabled (ngtcp2 ${NGTCP2_VERSION}, nghttp3 ${NGHTTP3_VERSION}, OpenSSL ${OPENSSL_VERSION})")
 else()
