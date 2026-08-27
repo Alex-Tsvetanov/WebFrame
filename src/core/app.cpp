@@ -5,6 +5,7 @@
 #include <sstream>
 #include <thread>
 #include <stdexcept>
+#include <tuple>
 
 namespace coroute
 {
@@ -84,7 +85,7 @@ namespace coroute
 
 			if (multi_accept)
 			{
-				std::cout << "Server listening on port " << port << " (multi-accept enabled)" << std::endl;
+				std::cout << "Server listening on port " << port << " (multi-accept enabled)" << '\n';
 			}
 			else
 			{
@@ -96,7 +97,7 @@ namespace coroute
 					throw std::runtime_error("Failed to listen: " + result.error().to_string());
 				}
 
-				std::cout << "Server listening on port " << listener_->local_port() << std::endl;
+				std::cout << "Server listening on port " << listener_->local_port() << '\n';
 
 				// Plain HTTP accept loop - use start_detached to keep it alive
 				[this]() -> Task<void>
@@ -107,7 +108,7 @@ namespace coroute
 						if (!conn_result)
 						{
 							if (cancel_source_.is_cancelled()) break;
-							std::cerr << "Accept error: " << conn_result.error().to_string() << std::endl;
+							std::cerr << "Accept error: " << conn_result.error().to_string() << '\n';
 							continue;
 						}
 
@@ -133,7 +134,7 @@ namespace coroute
 			throw std::runtime_error("Failed to listen: " + result.error().to_string());
 		}
 
-		std::cout << "Server listening on port " << listener_->local_port() << std::endl;
+		std::cout << "Server listening on port " << listener_->local_port() << '\n';
 
 		while (!cancel_source_.is_cancelled())
 		{
@@ -144,7 +145,7 @@ namespace coroute
 				{
 					break;
 				}
-				std::cerr << "Accept error: " << conn_result.error().to_string() << std::endl;
+				std::cerr << "Accept error: " << conn_result.error().to_string() << '\n';
 				continue;
 			}
 
@@ -169,7 +170,7 @@ namespace coroute
 
 	void App::shutdown(ShutdownOptions options)
 	{
-		std::cout << "Initiating graceful shutdown..." << std::endl;
+		std::cout << "Initiating graceful shutdown..." << '\n';
 
 		// Mark as shutting down
 		shutting_down_.store(true, std::memory_order_relaxed);
@@ -194,7 +195,7 @@ namespace coroute
 			if (elapsed >= options.drain_timeout)
 			{
 				std::cout << "Drain timeout reached with " << active_connections_.load(std::memory_order_relaxed)
-						  << " connections remaining" << std::endl;
+						  << " connections remaining" << '\n';
 				break;
 			}
 
@@ -205,7 +206,7 @@ namespace coroute
 		// Force close if configured and connections remain
 		if (options.force_close_after_timeout && active_connections_.load(std::memory_order_relaxed) > 0)
 		{
-			std::cout << "Force closing remaining connections..." << std::endl;
+			std::cout << "Force closing remaining connections..." << '\n';
 			cancel_source_.cancel();
 		}
 
@@ -215,7 +216,7 @@ namespace coroute
 			io_ctx_->stop();
 		}
 
-		std::cout << "Shutdown complete" << std::endl;
+		std::cout << "Shutdown complete" << '\n';
 	}
 
 #ifdef COROUTE_HAS_TLS
@@ -308,9 +309,11 @@ namespace coroute
 				}
 
 				// Send error response
+				// Deliberately ignored: the connection is closed on the next line
+				// regardless of whether the client is still there to read this.
 				auto resp = Response::bad_request(req_result.error().to_string());
 				auto data = resp.serialize();
-				co_await conn->async_write_all(data.data(), data.size());
+				std::ignore = co_await conn->async_write_all(data.data(), data.size());
 				break;
 			}
 
@@ -356,7 +359,7 @@ namespace coroute
 						// Render the view using the web template
 						nlohmann::json data = view_result.to_json();
 						std::string template_name = view_result.templates.web;
-						if (template_name.find('.') == std::string::npos)
+						if (!template_name.contains('.'))
 						{
 							template_name += ".html";
 						}
@@ -714,7 +717,7 @@ namespace coroute
 
 			// Parse form body as query parameters if content type is form-urlencoded
 			auto ct = req.content_type();
-			if (ct && ct->find("application/x-www-form-urlencoded") != std::string_view::npos)
+			if (ct && ct->contains("application/x-www-form-urlencoded"))
 			{
 				std::string_view form_body = req.body();
 				while (!form_body.empty())
@@ -772,11 +775,11 @@ namespace coroute
 		}
 		catch (const std::exception& e)
 		{
-			std::cerr << "WebSocket handler error: " << e.what() << std::endl;
+			std::cerr << "WebSocket handler error: " << e.what() << '\n';
 		}
 		catch (...)
 		{
-			std::cerr << "WebSocket handler error: unknown" << std::endl;
+			std::cerr << "WebSocket handler error: unknown" << '\n';
 		}
 
 		co_return true;
@@ -831,11 +834,11 @@ namespace coroute
 		}
 		catch (const std::exception& e)
 		{
-			std::cerr << "HTTP/2 connection error: " << e.what() << std::endl;
+			std::cerr << "HTTP/2 connection error: " << e.what() << '\n';
 		}
 		catch (...)
 		{
-			std::cerr << "HTTP/2 connection error: unknown" << std::endl;
+			std::cerr << "HTTP/2 connection error: unknown" << '\n';
 		}
 
 		active_connections_.fetch_sub(1, std::memory_order_relaxed);
