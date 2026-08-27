@@ -44,7 +44,8 @@ namespace coroute
 		// Forward declared on purpose. Naming the type here would pull ngtcp2 and
 		// nghttp3 into every translation unit that includes app.hpp, for the sake of one
 		// pointer.
-		class Http3Endpoint;
+		class Http3EndpointGroup;
+		struct Http3Stats;
 	}  // namespace http3
 
 
@@ -189,7 +190,7 @@ namespace coroute
 		// Guarded because a unique_ptr to an incomplete type cannot be destroyed, and
 		// without HTTP/3 built in nothing ever completes the forward declaration.
 #ifdef COROUTE_HAS_HTTP3
-		std::unique_ptr<http3::Http3Endpoint> http3_endpoint_;
+		std::unique_ptr<http3::Http3EndpointGroup> http3_group_;
 #endif
 		bool http3_enabled_ = false;
 
@@ -610,6 +611,16 @@ namespace coroute
 		// practice.
 		App& enable_http3(bool enable = true);
 		bool http3_enabled() const noexcept { return http3_enabled_; }
+
+#ifdef COROUTE_HAS_HTTP3
+		// What the QUIC endpoints did with what arrived, summed across workers.
+		//
+		// Exposed because forwarded_in over received is a measurement this design has to
+		// produce rather than assume: it says how often connection-ID steering in the
+		// kernel would have saved a userspace handoff, and therefore whether the eBPF
+		// version is worth building at all.
+		[[nodiscard]] http3::Http3Stats http3_stats() const noexcept;
+#endif
 #endif
 
 		// HTTP/2 configuration

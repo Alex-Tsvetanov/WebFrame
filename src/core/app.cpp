@@ -14,7 +14,7 @@
 namespace coroute
 {
 
-	// Out of line because http3::Http3Endpoint is only forward declared in the header.
+	// Out of line because http3::Http3EndpointGroup is only forward declared in the header.
 	App::App() = default;
 	App::~App() = default;
 
@@ -160,32 +160,38 @@ namespace coroute
 			throw std::runtime_error("HTTP/3 requires TLS: call enable_tls() before run()");
 		}
 
-		auto quic_tls = net::TlsContext::create_quic(quic_config);
-		if (!quic_tls)
-		{
-			throw std::runtime_error("HTTP/3 TLS context failed: " + quic_tls.error().to_string());
-		}
-
-		http3_endpoint_ = std::make_unique<http3::Http3Endpoint>(*io_ctx_, std::move(*quic_tls),
+		// One endpoint per worker where the backend can direct work at a named thread,
+		// otherwise one. The group decides which, because the answer depends on the I/O
+		// backend rather than on anything the application said.
+		http3_group_ = std::make_unique<http3::Http3EndpointGroup>(*io_ctx_, quic_config,
 		                                                         make_request_handler());
 
 		// Same port number as TCP, different transport. Sharing the number is what lets
 		// one Alt-Svc header point at "the same place, over UDP".
-		if (auto bound = http3_endpoint_->bind(port); !bound)
+		if (auto bound = http3_group_->bind(port); !bound)
 		{
 			throw std::runtime_error("HTTP/3 bind failed: " + bound.error().to_string());
 		}
 
 		// Published only now, so the Alt-Svc middleware cannot advertise a port before
 		// anything is listening on it.
-		http3_port_.store(http3_endpoint_->local_port(), std::memory_order_relaxed);
-		std::cout << "HTTP/3 listening on UDP " << http3_endpoint_->local_port() << '\n' << std::flush;
+		http3_port_.store(http3_group_->local_port(), std::memory_order_relaxed);
+		std::cout << "HTTP/3 listening on UDP " << http3_group_->local_port() << " across "
+				  << http3_group_->worker_count() << " worker(s)" << '\n'
+				  << std::flush;
 
-		http3_endpoint_->run().start_detached();
+		http3_group_->start();
 #else
 		(void)port;
 #endif
 	}
+
+#ifdef COROUTE_HAS_HTTP3
+	http3::Http3Stats App::http3_stats() const noexcept
+	{
+		return http3_group_ ? http3_group_->stats() : http3::Http3Stats{};
+	}
+#endif
 
 	void App::run(uint16_t port)
 	{

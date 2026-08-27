@@ -18,6 +18,9 @@ set -u
 BUILD="${1:-}"
 PREFIX="${2:-$HOME/opt/quic}"
 PORT="${3:-14555}"
+# Four workers, so the run exercises the sharded path: several UDP sockets on one
+# port through SO_REUSEPORT, and connection-ID steering between them.
+THREADS="${4:-4}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "$HERE/../.." && pwd)"
 CERTS="$PREFIX/testcerts"
@@ -53,8 +56,8 @@ g++ -std=c++23 -g -O0 -o "$BUILD/http3_app" "$HERE/http3_app.cpp" \
     "$BUILD/_deps/nghttp2-build/lib/libnghttp2.a" \
     -L"$PREFIX/lib" -lssl -lcrypto -luring -lz -lpthread || exit 1
 
-echo "== starting it on $PORT =="
-"$BUILD/http3_app" "$PORT" "$CERTS/key.pem" "$CERTS/cert.pem" > "$BUILD/http3_app.log" 2>&1 &
+echo "== starting it on $PORT with $THREADS worker(s) =="
+"$BUILD/http3_app" "$PORT" "$CERTS/key.pem" "$CERTS/cert.pem" "$THREADS" > "$BUILD/http3_app.log" 2>&1 &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null' EXIT
 sleep 2
@@ -100,10 +103,31 @@ check "$BUILD/h3.log" ":status: 200"
 check "$BUILD/h3.log" "coroute h3 ok"
 
 echo
+echo "== QUIC packet steering =="
+# Reported by the server about itself. forwarded_in over received says how much work
+# kernel-side steering could have saved, which is the question eBPF would answer.
+curl -sSk --http1.1 "https://127.0.0.1:$PORT/quic-stats" | sed 's/^/  /'
+
+echo
 echo "== descriptor count =="
-# The point of the exercise. Three protocols should cost one TCP descriptor and one
-# UDP descriptor, not one per protocol.
-ss -lntup 2>/dev/null | grep -c "pid=$SERVER," | sed 's/^/  listening sockets held by the server: /'
+# The point of the exercise, stated precisely so the number cannot flatter itself.
+#
+# The claim is one listening descriptor per transport per worker, independent of how
+# many protocols are served: N TCP and N UDP for N workers, whether that is HTTP/1.1
+# alone or all three at once. It is not one descriptor absolutely. The per-worker
+# sockets exist so the kernel can spread connections across threads, which is a
+# separate axis from the protocol mix and would be needed for a single-protocol
+# server too.
+#
+# So the figure to compare against nginx is TCP-listeners-per-worker, where a
+# configuration serving cleartext and TLS needs two because ssl and non-ssl cannot
+# share a listen directive.
+tcp_count=$(ss -lntp 2>/dev/null | grep -c "pid=$SERVER,")
+udp_count=$(ss -lnup 2>/dev/null | grep -c "pid=$SERVER,")
+echo "  workers:        $THREADS"
+echo "  TCP listeners:  $tcp_count  (expected: one per worker)"
+echo "  UDP sockets:    $udp_count  (expected: one per worker)"
+echo "  protocols served on them: HTTP/1.1, HTTP/2, HTTP/3"
 ss -lntup 2>/dev/null | grep "pid=$SERVER," | awk '{print "  " $1 " " $5}'
 
 if [ "$FAILED" -ne 0 ]; then
