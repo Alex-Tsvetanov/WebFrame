@@ -151,9 +151,12 @@ namespace coroute
 	{
 		MatchResult result;
 
-		// Use url-matcher's DFA-based matching with group capture
+		// Use url-matcher's DFA-based matching with group capture.
+		// match_with_groups takes its argument by value but only calls std::cbegin/cend
+		// on it, so a string_view hands iterators straight to the caller's buffer.
+		// Constructing a std::string here allocated on every single request.
 		auto& matcher = get_matcher_for(method);
-		auto matches = matcher.match_with_groups(std::string(path));
+		auto matches = matcher.match_with_groups(path);
 
 		if (matches.empty())
 		{
@@ -222,8 +225,9 @@ namespace coroute
 	{
 		ViewMatchResult result;
 
-		// Use url-matcher's DFA-based matching with group capture
-		auto matches = view_matcher_.match_with_groups(std::string(path));
+		// Use url-matcher's DFA-based matching with group capture. See Router::match
+		// for why the string_view is passed through rather than copied.
+		auto matches = view_matcher_.match_with_groups(path);
 
 		if (matches.empty())
 		{
