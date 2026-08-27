@@ -587,7 +587,7 @@ namespace coroute::http2
 		if (header.has_ack())
 		{
 			// ACK for our SETTINGS
-			if (payload.size() != 0)
+			if (!payload.empty())
 			{
 				co_await send_goaway(ErrorCode::FrameSizeError, "SETTINGS ACK with payload");
 				co_return unexpected(Error::io(IoError::InvalidArgument, "SETTINGS ACK with payload"));
@@ -628,7 +628,7 @@ namespace coroute::http2
 					}
 					// Update all stream windows
 					{
-						std::lock_guard lock(streams_mutex_);
+						std::scoped_lock lock(streams_mutex_);
 						int32_t delta =
 							static_cast<int32_t>(value) - static_cast<int32_t>(remote_settings_.initial_window_size);
 						for (auto& [id, stream] : streams_)
@@ -761,7 +761,7 @@ namespace coroute::http2
 
 			// Notify all streams that connection window has increased
 			{
-				std::lock_guard lock(streams_mutex_);
+				std::scoped_lock lock(streams_mutex_);
 				for (auto& [id, stream] : streams_)
 				{
 					stream->notify_window_update();
@@ -808,14 +808,14 @@ namespace coroute::http2
 
 	Stream* Http2Connection::get_stream(uint32_t stream_id)
 	{
-		std::lock_guard lock(streams_mutex_);
+		std::scoped_lock lock(streams_mutex_);
 		auto it = streams_.find(stream_id);
 		return it != streams_.end() ? it->second.get() : nullptr;
 	}
 
 	Stream* Http2Connection::create_stream(uint32_t stream_id)
 	{
-		std::lock_guard lock(streams_mutex_);
+		std::scoped_lock lock(streams_mutex_);
 		auto stream =
 			std::make_unique<Stream>(stream_id, this, static_cast<int32_t>(local_settings_.initial_window_size));
 		auto* ptr = stream.get();
@@ -826,7 +826,7 @@ namespace coroute::http2
 
 	void Http2Connection::remove_stream(uint32_t stream_id)
 	{
-		std::lock_guard lock(streams_mutex_);
+		std::scoped_lock lock(streams_mutex_);
 		if (streams_.erase(stream_id) > 0)
 		{
 			active_streams_.fetch_sub(1, std::memory_order_relaxed);
@@ -931,8 +931,8 @@ namespace coroute::http2
 		std::string conn_lower(*connection);
 		for (auto& c : conn_lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-		bool has_upgrade = conn_lower.find("upgrade") != std::string::npos;
-		bool has_settings = conn_lower.find("http2-settings") != std::string::npos;
+		bool has_upgrade = conn_lower.contains("upgrade");
+		bool has_settings = conn_lower.contains("http2-settings");
 
 		std::string upgrade_lower(*upgrade);
 		for (auto& c : upgrade_lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));

@@ -89,7 +89,7 @@ namespace coroute
 
 	void ConsoleSink::write(const LogEntry& entry)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 
 		std::ostringstream oss;
 
@@ -133,7 +133,7 @@ namespace coroute
 
 	void JsonSink::write(const LogEntry& entry)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 
 		out_ << "{";
 		out_ << "\"timestamp\":\"" << format_timestamp(entry.timestamp) << "\"";
@@ -186,7 +186,7 @@ namespace coroute
 
 	Logger& Logger::add_sink(std::shared_ptr<LogSink> sink)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		sinks_.push_back(std::move(sink));
 		return *this;
 	}
@@ -218,7 +218,7 @@ namespace coroute
 	{
 		if (entry.level < level_) return;
 
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		for (const auto& sink : sinks_)
 		{
 			sink->write(entry);

@@ -24,7 +24,7 @@ namespace coroute
 		}
 	}
 
-	bool Session::has(const std::string& key) const { return data_.count(key) > 0; }
+	bool Session::has(const std::string& key) const { return data_.contains(key); }
 
 	void Session::clear()
 	{
@@ -54,7 +54,7 @@ namespace coroute
 
 	std::shared_ptr<Session> MemorySessionStore::load(const std::string& id)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 
 		auto it = sessions_.find(id);
 		if (it == sessions_.end())
@@ -75,7 +75,7 @@ namespace coroute
 
 	void MemorySessionStore::save(const Session& session)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 
 		auto& stored = sessions_[session.id()];
 		if (!stored.session)
@@ -91,13 +91,13 @@ namespace coroute
 
 	void MemorySessionStore::destroy(const std::string& id)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		sessions_.erase(id);
 	}
 
 	void MemorySessionStore::cleanup(std::chrono::seconds max_age)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 
 		auto now = std::chrono::system_clock::now();
 		auto cutoff = now - max_age;
@@ -130,7 +130,7 @@ namespace coroute
 
 	size_t MemorySessionStore::size() const
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		return sessions_.size();
 	}
 

@@ -64,7 +64,7 @@ namespace coroute
 
 	std::shared_ptr<Counter> MetricsRegistry::counter(const std::string& name, const std::string& help)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		auto it = counters_.find(name);
 		if (it != counters_.end())
 		{
@@ -77,7 +77,7 @@ namespace coroute
 
 	std::shared_ptr<Gauge> MetricsRegistry::gauge(const std::string& name, const std::string& help)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		auto it = gauges_.find(name);
 		if (it != gauges_.end())
 		{
@@ -91,7 +91,7 @@ namespace coroute
 	std::shared_ptr<Histogram> MetricsRegistry::histogram(const std::string& name, const std::vector<double>& buckets,
 	                                                      const std::string& help)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		auto it = histograms_.find(name);
 		if (it != histograms_.end())
 		{
@@ -104,7 +104,7 @@ namespace coroute
 
 	std::string MetricsRegistry::prometheus_export() const
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		std::ostringstream out;
 
 		// Export counters
@@ -176,7 +176,7 @@ namespace coroute
 
 	void MetricsRegistry::clear()
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::scoped_lock lock(mutex_);
 		counters_.clear();
 		gauges_.clear();
 		histograms_.clear();
@@ -219,7 +219,7 @@ namespace coroute
 	Middleware metrics_middleware(MetricsRegistry& registry, MetricsOptions options)
 	{
 		auto http_metrics = std::make_shared<HttpMetrics>(registry);
-		auto registry_ptr = &registry;
+		auto *registry_ptr = &registry;
 
 		return [http_metrics, registry_ptr, options](Request& req, Next next) -> Task<Response>
 		{

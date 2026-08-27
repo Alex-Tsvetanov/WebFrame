@@ -165,7 +165,7 @@ namespace coroute
 		return it->second;
 	}
 
-	bool CookieJar::has(std::string_view name) const { return cookies_.count(std::string(name)) > 0; }
+	bool CookieJar::has(std::string_view name) const { return cookies_.contains(std::string(name)); }
 
 	void CookieJar::set(std::string name, std::string value) { cookies_[std::move(name)] = std::move(value); }
 

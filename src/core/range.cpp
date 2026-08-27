@@ -524,10 +524,10 @@ namespace coroute
 		{
 			return build_single_range(valid_ranges[0], total_size);
 		}
-		else
-		{
+		
+		
 			return build_multipart_range(valid_ranges, total_size);
-		}
+	
 	}
 
 	Response RangeResponseBuilder::build_range(int64_t start, int64_t end)

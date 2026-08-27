@@ -69,7 +69,7 @@ namespace coroute
 		return result;
 	}
 
-	bool FormData::has(std::string_view name) const { return index_.count(std::string(name)) > 0; }
+	bool FormData::has(std::string_view name) const { return index_.contains(std::string(name)); }
 
 	// ============================================================================
 	// URL Encoding/Decoding

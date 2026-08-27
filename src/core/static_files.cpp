@@ -475,7 +475,7 @@ namespace coroute
 		// Check URL prefix
 		if (!options_.url_prefix.empty())
 		{
-			if (url_path.find(options_.url_prefix) != 0)
+			if (!url_path.starts_with(options_.url_prefix))
 			{
 				co_return std::nullopt;
 			}
