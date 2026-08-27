@@ -183,4 +183,62 @@ TEST_CASE("a nested collector does not steal the outer one's slots", "[deferred]
 	REQUIRE(DeferredCollector::active() == nullptr);
 }
 
+TEST_CASE("awaiting a deferred value never resumes from inside await_suspend", "[deferred]")
+{
+	// The hazard this interface exists to prevent. An awaiter that registered a
+	// callback which resumed the coroutine would, whenever the value landed between
+	// the readiness check and the registration, resume and destroy the frame from
+	// inside await_suspend and then return into it.
+	//
+	// register_if_pending reports the outcome instead, so the awaiter can answer "do
+	// not suspend" without ever touching a frame that may already be gone.
+
+	SECTION("a value already present is not registered for")
+	{
+		const Deferred<int> ready(5);
+		bool called = false;
+		REQUIRE_FALSE(ready.state()->register_if_pending([&] { called = true; }));
+		// Not called, which is the difference from on_ready. The awaiter resumes itself
+		// by returning false instead.
+		REQUIRE_FALSE(called);
+	}
+
+	SECTION("a pending value is registered for and called on arrival")
+	{
+		Deferred<int> pending;
+		bool called = false;
+		REQUIRE(pending.state()->register_if_pending([&] { called = true; }));
+		REQUIRE_FALSE(called);
+	}
+
+	SECTION("the awaiter reports readiness without suspending")
+	{
+		const Deferred<int> ready(9);
+		const DeferredAwaiter awaiter{ready.state()};
+		REQUIRE(awaiter.await_ready());
+	}
+
+	SECTION("a pending awaiter would suspend")
+	{
+		const Deferred<int> pending;
+		const DeferredAwaiter awaiter{pending.state()};
+		REQUIRE_FALSE(awaiter.await_ready());
+	}
+}
+
+TEST_CASE("a coroutine can await a deferred value", "[deferred]")
+{
+	// End to end through the awaiter rather than through its parts, because the parts
+	// passing is not the same as co_await working.
+	const Deferred<int> value(immediate(11));
+
+	auto reader = [](Deferred<int> deferred) -> Task<int>
+	{
+		co_await await_deferred(deferred.state());
+		co_return *deferred.value();
+	};
+
+	REQUIRE(reader(value).sync_wait() == 11);
+}
+
 #endif  // COROUTE_HAS_TEMPLATES

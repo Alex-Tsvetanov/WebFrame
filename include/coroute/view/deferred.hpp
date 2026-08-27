@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <coroutine>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -59,7 +60,43 @@ namespace coroute
 		// Invoked when the value arrives, or immediately if it already has. Used by the
 		// renderer to flush a chunk the moment a slot can be filled.
 		virtual void on_ready(std::function<void()> callback) = 0;
+
+		// Registers `callback` only if the value is still pending.
+		//
+		// Returns true when it was stored and will be called later, false when the value
+		// was already there, in which case the callback is not called at all.
+		//
+		// This exists because on_ready is the wrong shape for a coroutine. An awaiter
+		// that registered a callback which resumed the coroutine would, whenever the
+		// value landed between the readiness check and the registration, resume and
+		// destroy the frame from inside await_suspend and then return into it. Reporting
+		// the outcome instead lets the awaiter say "do not suspend" without ever touching
+		// a frame that may already be gone.
+		virtual bool register_if_pending(std::function<void()> callback) = 0;
 	};
+
+	// Suspends until a deferred value arrives.
+	//
+	// Returning bool from await_suspend is the whole design: false means resume now,
+	// and it is the only safe answer when the value is already present.
+	struct DeferredAwaiter
+	{
+		std::shared_ptr<DeferredState> state;
+
+		[[nodiscard]] bool await_ready() const noexcept { return state->ready(); }
+
+		bool await_suspend(std::coroutine_handle<> handle) const
+		{
+			return state->register_if_pending([handle] { handle.resume(); });
+		}
+
+		void await_resume() const noexcept { }
+	};
+
+	[[nodiscard]] inline DeferredAwaiter await_deferred(std::shared_ptr<DeferredState> state)
+	{
+		return DeferredAwaiter{std::move(state)};
+	}
 
 	// Gathers the deferreds met while a model is being serialised.
 	//
@@ -135,15 +172,22 @@ namespace coroute
 				return value ? nlohmann::json(*value) : nlohmann::json(nullptr);
 			}
 
+			bool register_if_pending(std::function<void()> callback) override
+			{
+				std::lock_guard lock(mutex);
+				if (done.load(std::memory_order_acquire))
+				{
+					return false;
+				}
+				waiters.push_back(std::move(callback));
+				return true;
+			}
+
 			void on_ready(std::function<void()> callback) override
 			{
+				if (register_if_pending(callback))
 				{
-					std::lock_guard lock(mutex);
-					if (!done.load(std::memory_order_acquire))
-					{
-						waiters.push_back(std::move(callback));
-						return;
-					}
+					return;
 				}
 				// Already resolved. Called here rather than dropped, so a caller does not
 				// have to check readiness before registering and race with the answer
