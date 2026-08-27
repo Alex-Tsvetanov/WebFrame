@@ -81,6 +81,18 @@ namespace coroute::net
 		// Create TLS context from configuration
 		static expected<TlsContext, Error> create(const TlsConfig& config);
 
+		// Create a TLS context for QUIC.
+		//
+		// A separate context, not a flag on the TCP one, because the two must advertise
+		// different things. The TCP context offers h2 and http/1.1 and must never offer
+		// h3: a client that negotiated h3 over TCP would have agreed to speak a protocol
+		// that only exists over UDP. Discovery of the HTTP/3 endpoint happens through
+		// Alt-Svc instead.
+		//
+		// QUIC also requires TLS 1.3 (RFC 9001 section 4.2), so the minimum version is
+		// forced here rather than trusted to the caller's config.
+		static expected<TlsContext, Error> create_quic(const TlsConfig& config);
+
 		// Get the negotiated ALPN protocol after handshake
 		std::optional<std::string_view> alpn_protocol(SSL* ssl) const;
 

@@ -407,9 +407,12 @@ if(COROUTE_ENABLE_HTTP3)
     pkg_check_modules(NGTCP2 REQUIRED IMPORTED_TARGET libngtcp2)
     pkg_check_modules(NGTCP2_CRYPTO REQUIRED IMPORTED_TARGET libngtcp2_crypto_ossl)
 
+    # Order matters with static archives: the linker resolves left to right, so a
+    # library must appear before the ones it depends on. libngtcp2_crypto_ossl calls
+    # into libngtcp2, so listing ngtcp2 first leaves its symbols unresolved.
     target_link_libraries(coroute PUBLIC
-        PkgConfig::NGTCP2
         PkgConfig::NGTCP2_CRYPTO
+        PkgConfig::NGTCP2
         PkgConfig::NGHTTP3
     )
 

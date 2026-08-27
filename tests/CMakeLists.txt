@@ -21,6 +21,7 @@ add_executable(unit_tests
     test_http3_cid.cpp
     test_http3_packet.cpp
     test_http3_stateless.cpp
+    test_tls_context.cpp
     test_time.cpp
     test_router.cpp
     test_response.cpp

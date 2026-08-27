@@ -6,6 +6,10 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/bio.h>
+
+#ifdef COROUTE_HAS_HTTP3
+#include <ngtcp2/ngtcp2_crypto_ossl.h>
+#endif
 #include <cstring>
 
 namespace coroute::net
@@ -247,6 +251,44 @@ namespace coroute::net
 		SSL_CTX_set_tlsext_servername_arg(result.ctx_, result.state_.get());
 
 		return result;
+	}
+
+	expected<TlsContext, Error> TlsContext::create_quic(const TlsConfig& config)
+	{
+		// The QUIC context is an ordinary TLS 1.3 server context. ngtcp2 does its
+		// wiring per connection through ngtcp2_crypto_ossl_configure_server_session,
+		// not on the SSL_CTX, so there is nothing QUIC-specific to install here beyond
+		// the constraints below.
+		TlsConfig quic_config = config;
+
+		// RFC 9001 section 4.2: QUIC uses TLS 1.3 and nothing earlier. Forced rather
+		// than inherited, because a config written for the TCP listener will usually
+		// still allow 1.2 and the failure would appear as an unexplained handshake
+		// rejection.
+		quic_config.min_version = TlsConfig::MinVersion::TLS_1_3;
+
+		// Exactly h3, whatever the caller passed. Advertising h2 here would let a peer
+		// negotiate a protocol this endpoint cannot speak over UDP; advertising h3 on
+		// the TCP context would be the same mistake in reverse.
+		quic_config.alpn_protocols = {"h3"};
+
+		auto ctx = create(quic_config);
+		if (!ctx)
+		{
+			return ctx;
+		}
+
+#ifdef COROUTE_HAS_HTTP3
+		// Optional per the header, but the documentation is explicit that skipping it
+		// costs measurable performance, and this is the hot path for every handshake.
+		// Idempotent, so calling it once per context is harmless.
+		if (ngtcp2_crypto_ossl_init() != 0)
+		{
+			return unexpected(Error::io(IoError::Unknown, "ngtcp2_crypto_ossl_init failed"));
+		}
+#endif
+
+		return ctx;
 	}
 
 	std::optional<std::string_view> TlsContext::alpn_protocol(SSL* ssl) const
