@@ -20,6 +20,24 @@ namespace coroute::http3
 		constexpr std::array<std::uint32_t, 1> supported_versions{NGTCP2_PROTO_VER_V1};
 	}  // namespace
 
+	std::span<const std::uint8_t> server_reset_secret()
+	{
+		static const std::array<std::uint8_t, 32> secret = []
+		{
+			std::array<std::uint8_t, 32> bytes{};
+			if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
+			{
+				// Guessable tokens let an off-path attacker tear down any connection on
+				// the server. Zeroed so the failure is at least consistent; cid_fill
+				// reports the same condition and refuses the connection outright, which
+				// is the check that actually protects the handshake.
+				bytes.fill(0);
+			}
+			return bytes;
+		}();
+		return {secret.data(), secret.size()};
+	}
+
 	std::size_t write_version_negotiation(std::span<std::uint8_t> out, const CidKey& client_dcid,
 	                                      const CidKey& client_scid) noexcept
 	{

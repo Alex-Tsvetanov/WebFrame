@@ -146,6 +146,14 @@ namespace coroute::http3
 		std::unordered_map<std::int64_t, Stream> streams_;
 		bool closed_ = false;
 		bool handshake_done_ = false;
+
+		// flush() has two callers that do not know about each other: the endpoint's
+		// receive loop, and a detached handler finishing long afterwards. Both suspend
+		// on the socket, so without this the second would re-enter
+		// ngtcp2_conn_writev_stream while the first was still inside it. The second
+		// caller instead leaves a note, and the first loops again before returning.
+		bool flushing_ = false;
+		bool flush_pending_ = false;
 	};
 
 }  // namespace coroute::http3

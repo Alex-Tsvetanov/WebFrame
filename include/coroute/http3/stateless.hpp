@@ -37,6 +37,18 @@ namespace coroute::http3
 	[[nodiscard]] std::size_t write_version_negotiation(std::span<std::uint8_t> out, const CidKey& client_dcid,
 	                                                    const CidKey& client_scid) noexcept;
 
+	// The secret behind every stateless reset token this process issues.
+	//
+	// Process-wide on purpose, not per connection: a stateless reset is what the
+	// server sends when it has lost all state for a connection ID, so the token has to
+	// be recomputable from the connection ID alone. A per-connection secret would
+	// vanish exactly when it is needed.
+	//
+	// Both ends of that need it: a live connection derives tokens for the connection
+	// IDs it issues, and the endpoint derives the same token later for an ID it no
+	// longer recognises. They must agree, so the secret cannot live in either one.
+	[[nodiscard]] std::span<const std::uint8_t> server_reset_secret();
+
 	// Derives the reset token for a connection ID.
 	//
 	// Keyed, not merely hashed. A peer that can compute reset tokens for arbitrary

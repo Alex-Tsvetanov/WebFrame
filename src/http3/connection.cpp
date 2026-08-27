@@ -32,30 +32,6 @@ namespace coroute::http3
 		// full anyway, so a larger array only costs stack.
 		constexpr std::size_t max_write_vecs = 16;
 
-		// The secret behind every stateless reset token this process issues.
-		//
-		// Process-wide on purpose, not per connection: a stateless reset is what the
-		// server sends when it has lost all state for a connection ID, so the token has
-		// to be recomputable from the connection ID alone. A per-connection secret
-		// would vanish exactly when it is needed.
-		std::span<const std::uint8_t> reset_secret()
-		{
-			static const std::array<std::uint8_t, 32> secret = []
-			{
-				std::array<std::uint8_t, 32> bytes{};
-				if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
-				{
-					// Guessable tokens let an off-path attacker tear down connections.
-					// Zeroed so the failure is at least consistent; cid_fill reports the
-					// same condition and refuses the connection outright, which is the
-					// check that actually protects the handshake.
-					bytes.fill(0);
-				}
-				return bytes;
-			}();
-			return {secret.data(), secret.size()};
-		}
-
 		// ngtcp2 addresses are a (sockaddr*, len) pair. Endpoint is a fixed buffer
 		// holding the same thing, so each conversion is a bounded copy.
 		net::Endpoint endpoint_from(const ngtcp2_addr& addr) noexcept
@@ -433,95 +409,120 @@ namespace coroute::http3
 			co_return unexpected(quic_error("connection is closed"));
 		}
 
+		// A flush already in progress will pick this up before it returns. Returning
+		// here rather than waiting is what keeps the two callers from interleaving
+		// inside ngtcp2, which is not reentrant.
+		if (flushing_)
+		{
+			flush_pending_ = true;
+			co_return expected<void, Error>{};
+		}
+
+		flushing_ = true;
+		// Cleared on every exit, including the error paths below, which is why it is a
+		// guard object rather than an assignment before each co_return.
+		struct FlushGuard
+		{
+			bool& flag;
+			~FlushGuard() { flag = false; }
+		} guard{flushing_};
+
 		std::array<std::uint8_t, max_datagram_size> buffer{};
 
-		for (;;)
+		do
 		{
-			std::int64_t stream_id = -1;
-			int fin = 0;
-			std::array<nghttp3_vec, max_write_vecs> vecs{};
-			nghttp3_ssize vec_count = 0;
+			// Anything that arrived while the previous pass was suspended is picked up
+			// by the next turn of the outer loop.
+			flush_pending_ = false;
 
-			if (h3_ != nullptr)
+			for (;;)
 			{
-				vec_count = nghttp3_conn_writev_stream(h3_, &stream_id, &fin, vecs.data(), vecs.size());
-				if (vec_count < 0)
+				std::int64_t stream_id = -1;
+				int fin = 0;
+				std::array<nghttp3_vec, max_write_vecs> vecs{};
+				nghttp3_ssize vec_count = 0;
+
+				if (h3_ != nullptr)
 				{
-					closed_ = true;
-					co_return unexpected(quic_error("nghttp3_conn_writev_stream failed"));
-				}
-			}
-
-			std::uint32_t flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
-			if (fin != 0)
-			{
-				flags |= NGTCP2_WRITE_STREAM_FLAG_FIN;
-			}
-
-			ngtcp2_path_storage path_storage;
-			ngtcp2_path_storage_zero(&path_storage);
-			ngtcp2_pkt_info packet_info{};
-			ngtcp2_ssize written_data = 0;
-
-			const ngtcp2_ssize written = ngtcp2_conn_writev_stream(
-				conn_, &path_storage.path, &packet_info, buffer.data(), buffer.size(), &written_data, flags, stream_id,
-				reinterpret_cast<const ngtcp2_vec*>(vecs.data()), vec_count, now_ts());
-
-			if (written < 0)
-			{
-				// Two of these are ordinary flow-control outcomes rather than errors,
-				// and each resumes differently, so they are separated rather than
-				// collapsed into one retry.
-				if (written == NGTCP2_ERR_WRITE_MORE)
-				{
-					// The packet has room left. Tell nghttp3 what was taken and go round
-					// again to fill it.
-					if (written_data > 0 &&
-					    nghttp3_conn_add_write_offset(h3_, stream_id, static_cast<std::size_t>(written_data)) != 0)
+					vec_count = nghttp3_conn_writev_stream(h3_, &stream_id, &fin, vecs.data(), vecs.size());
+					if (vec_count < 0)
 					{
 						closed_ = true;
-						co_return unexpected(quic_error("nghttp3_conn_add_write_offset failed"));
+						co_return unexpected(quic_error("nghttp3_conn_writev_stream failed"));
 					}
-					continue;
 				}
-				if (written == NGTCP2_ERR_STREAM_DATA_BLOCKED || written == NGTCP2_ERR_STREAM_SHUT_WR)
+
+				std::uint32_t flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
+				if (fin != 0)
 				{
-					// This stream cannot send now, but the others may. Park it so
-					// nghttp3 stops offering it, and keep going.
-					if (stream_id >= 0)
-					{
-						nghttp3_conn_block_stream(h3_, stream_id);
-					}
-					continue;
+					flags |= NGTCP2_WRITE_STREAM_FLAG_FIN;
 				}
-				closed_ = true;
-				co_return unexpected(quic_error("ngtcp2_conn_writev_stream failed"));
-			}
 
-			if (written_data > 0 &&
-			    nghttp3_conn_add_write_offset(h3_, stream_id, static_cast<std::size_t>(written_data)) != 0)
-			{
-				closed_ = true;
-				co_return unexpected(quic_error("nghttp3_conn_add_write_offset failed"));
-			}
+				ngtcp2_path_storage path_storage;
+				ngtcp2_path_storage_zero(&path_storage);
+				ngtcp2_pkt_info packet_info{};
+				ngtcp2_ssize written_data = 0;
 
-			// Zero means ngtcp2 has nothing further to send right now.
-			if (written == 0)
-			{
-				break;
-			}
+				const ngtcp2_ssize written = ngtcp2_conn_writev_stream(
+					conn_, &path_storage.path, &packet_info, buffer.data(), buffer.size(), &written_data, flags, stream_id,
+					reinterpret_cast<const ngtcp2_vec*>(vecs.data()), vec_count, now_ts());
 
-			// The path comes back from ngtcp2 rather than being remembered, so a client
-			// that has migrated is answered at its new address with no special case.
-			peer_ = endpoint_from(path_storage.path.remote);
-			local_ = endpoint_from(path_storage.path.local);
+				if (written < 0)
+				{
+					// Two of these are ordinary flow-control outcomes rather than errors,
+					// and each resumes differently, so they are separated rather than
+					// collapsed into one retry.
+					if (written == NGTCP2_ERR_WRITE_MORE)
+					{
+						// The packet has room left. Tell nghttp3 what was taken and go round
+						// again to fill it.
+						if (written_data > 0 &&
+						    nghttp3_conn_add_write_offset(h3_, stream_id, static_cast<std::size_t>(written_data)) != 0)
+						{
+							closed_ = true;
+							co_return unexpected(quic_error("nghttp3_conn_add_write_offset failed"));
+						}
+						continue;
+					}
+					if (written == NGTCP2_ERR_STREAM_DATA_BLOCKED || written == NGTCP2_ERR_STREAM_SHUT_WR)
+					{
+						// This stream cannot send now, but the others may. Park it so
+						// nghttp3 stops offering it, and keep going.
+						if (stream_id >= 0)
+						{
+							nghttp3_conn_block_stream(h3_, stream_id);
+						}
+						continue;
+					}
+					closed_ = true;
+					co_return unexpected(quic_error("ngtcp2_conn_writev_stream failed"));
+				}
 
-			auto sent = co_await socket_.async_send({buffer.data(), static_cast<std::size_t>(written)}, peer_, local_);
-			if (!sent)
-			{
-				co_return unexpected(sent.error());
+				if (written_data > 0 &&
+				    nghttp3_conn_add_write_offset(h3_, stream_id, static_cast<std::size_t>(written_data)) != 0)
+				{
+					closed_ = true;
+					co_return unexpected(quic_error("nghttp3_conn_add_write_offset failed"));
+				}
+
+				// Zero means ngtcp2 has nothing further to send right now.
+				if (written == 0)
+				{
+					break;
+				}
+
+				// The path comes back from ngtcp2 rather than being remembered, so a client
+				// that has migrated is answered at its new address with no special case.
+				peer_ = endpoint_from(path_storage.path.remote);
+				local_ = endpoint_from(path_storage.path.local);
+
+				auto sent = co_await socket_.async_send({buffer.data(), static_cast<std::size_t>(written)}, peer_, local_);
+				if (!sent)
+				{
+					co_return unexpected(sent.error());
+				}
 			}
-		}
+		} while (flush_pending_);
 
 		co_return expected<void, Error>{};
 	}
@@ -577,7 +578,7 @@ namespace coroute::http3
 
 		static_assert(stateless_reset_token_length == NGTCP2_STATELESS_RESET_TOKENLEN,
 		              "the stateless reset token width is fixed by RFC 9000 and must match ngtcp2's");
-		const auto derived = derive_reset_token(reset_secret(), CidKey(cid->data, cidlen));
+		const auto derived = derive_reset_token(server_reset_secret(), CidKey(cid->data, cidlen));
 		std::memcpy(token->data, derived.data(), derived.size());
 		return 0;
 	}
