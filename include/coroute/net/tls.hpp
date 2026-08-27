@@ -174,30 +174,6 @@ namespace coroute::net
 		Task<expected<void, Error>> fill_read_bio();
 	};
 
-	// ============================================================================
-	// TLS Listener - Accepts TLS connections
-	// ============================================================================
-
-	class TlsListener
-	{
-	public:
-		TlsListener(std::unique_ptr<Listener> inner, TlsContext& ctx);
-		~TlsListener();
-
-		// Accept a new TLS connection (performs handshake)
-		Task<expected<std::unique_ptr<TlsConnection>, Error>> accept();
-
-		// Accept without handshake (caller must call handshake())
-		Task<expected<std::unique_ptr<TlsConnection>, Error>> accept_no_handshake();
-
-		// Close the listener
-		void close();
-
-	private:
-		std::unique_ptr<Listener> inner_;
-		TlsContext* ctx_;
-	};
-
 }  // namespace coroute::net
 
 #endif  // coroute_HAS_TLS

@@ -1,5 +1,6 @@
 #include "coroute/core/app.hpp"
 #include "coroute/util/zero_copy.hpp"
+#include "coroute/net/protocol_detect.hpp"
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -10,14 +11,139 @@
 namespace coroute
 {
 
+	std::function<Task<Response>(Request&)> App::make_request_handler()
+	{
+		return [this](Request& r) -> Task<Response>
+		{
+			auto match = router_.match(r.method(), r.path());
+			if (match)
+			{
+				r.set_route_params(std::move(match.params));
+			}
+			co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
+		};
+	}
+
+	Task<void> App::serve_connection(std::unique_ptr<net::Connection> conn)
+	{
+		// Deliberately does not touch active_connections_. Both handle_connection and
+		// handle_http2_connection account for the connection themselves, so counting it
+		// here as well would double-count it for the length of the classification.
+		//
+		// One octet decides TLS versus cleartext. read_prefix hands back both the bytes
+		// and a connection that replays them, so whichever protocol handler runs next
+		// sees the stream exactly as if nothing had looked at it.
+		auto prefix = co_await net::read_prefix(std::move(conn), 1);
+		if (!prefix)
+		{
+			co_return;  // peer went away before saying anything
+		}
+
+		std::unique_ptr<net::Connection> stream = std::move(prefix->conn);
+
+		switch (net::classify(prefix->bytes))
+		{
+			case net::WireProtocol::Tls:
+			{
+#ifdef COROUTE_HAS_TLS
+				if (!tls_ctx_)
+				{
+					// A TLS client reached a server with no certificate configured.
+					// Closing is the only honest answer: replying in cleartext would
+					// be unreadable to the peer.
+					stream->close();
+					co_return;
+				}
+
+				auto tls = net::TlsConnection::create(std::move(stream), *tls_ctx_, true);
+				if (!tls)
+				{
+					co_return;
+				}
+
+				std::unique_ptr<net::TlsConnection> tls_conn = std::move(*tls);
+				auto handshake = co_await tls_conn->handshake();
+				if (!handshake)
+				{
+					co_return;
+				}
+
+#ifdef COROUTE_HAS_HTTP2
+				if (http2_enabled_)
+				{
+					auto proto = tls_conn->negotiated_protocol();
+					if (proto && *proto == "h2")
+					{
+						auto h2 = std::make_shared<http2::Http2Connection>(std::move(tls_conn));
+						h2->set_handler(make_request_handler());
+						co_await handle_http2_connection(std::move(h2));
+						co_return;
+					}
+				}
+#endif
+				co_await handle_connection(std::move(tls_conn));
+#else
+				stream->close();
+#endif
+				co_return;
+			}
+
+			case net::WireProtocol::Cleartext:
+			{
+#ifdef COROUTE_HAS_HTTP2
+				// Prior-knowledge HTTP/2: a client that already knows this endpoint
+				// speaks h2 opens with the preface instead of a request line. Only
+				// top up the buffer while the bytes keep matching, so a normal request
+				// never pays for the check.
+				if (http2_enabled_ && net::preface_match(prefix->bytes) != net::PrefaceMatch::No)
+				{
+					auto full = co_await net::read_prefix(std::move(stream), net::http2_client_preface.size());
+					if (!full)
+					{
+						co_return;
+					}
+					stream = std::move(full->conn);
+
+					if (net::preface_match(full->bytes) == net::PrefaceMatch::Yes)
+					{
+						auto h2 = std::make_shared<http2::Http2Connection>(std::move(stream));
+						h2->set_handler(make_request_handler());
+						co_await handle_http2_connection(std::move(h2));
+						co_return;
+					}
+				}
+#endif
+				// HTTP/1.1, which also covers the WebSocket and h2c upgrade paths.
+				co_await handle_connection(std::move(stream));
+				co_return;
+			}
+
+			case net::WireProtocol::Unknown:
+			default:
+				// Neither a TLS record nor an HTTP method token. Nothing useful can be
+				// said back, so drop it rather than guess at a protocol.
+				stream->close();
+				co_return;
+		}
+	}
+
 	void App::run(uint16_t port)
 	{
 		io_ctx_ = net::IoContext::create(thread_count_);
 
-#ifdef COROUTE_HAS_TLS
-		if (tls_enabled_ && tls_ctx_)
+		// One listening descriptor, whatever mix of protocols is configured. TLS and
+		// cleartext used to be mutually exclusive branches here, so serving both meant
+		// two App instances: two thread pools, two event loops and the routes
+		// registered twice. Classification happens per connection instead.
+		auto on_connection = [this](std::unique_ptr<net::Connection> conn)
+		{ serve_connection(std::move(conn)).start_detached(); };
+
+		if (io_ctx_->enable_multi_accept(port, on_connection))
 		{
-			// TLS mode - use single listener
+			std::cout << "Server listening on port " << port << " (multi-accept)" << '\n';
+		}
+		else
+		{
 			listener_ = net::Listener::create(*io_ctx_);
 			auto result = listener_->listen(port);
 			if (!result)
@@ -25,98 +151,23 @@ namespace coroute
 				throw std::runtime_error("Failed to listen: " + result.error().to_string());
 			}
 
-			std::cout << "Server listening on port " << listener_->local_port() << " (HTTPS)" << std::endl;
-			tls_listener_ = std::make_unique<net::TlsListener>(std::move(listener_), *tls_ctx_);
+			std::cout << "Server listening on port " << listener_->local_port() << '\n';
 
-			// TLS accept loop - use start_detached to keep it alive
-			[this]() -> Task<void>
+			[this, on_connection]() -> Task<void>
 			{
 				while (!cancel_source_.is_cancelled())
 				{
-					auto conn_result = co_await tls_listener_->accept();
-					if (!conn_result)
+					auto conn = co_await listener_->async_accept();
+					if (!conn)
 					{
 						if (cancel_source_.is_cancelled()) break;
-						std::cerr << "TLS Accept error: " << conn_result.error().to_string() << std::endl;
+						std::cerr << "Accept error: " << conn.error().to_string() << '\n';
 						continue;
 					}
-
-#ifdef COROUTE_HAS_HTTP2
-					// Check ALPN negotiated protocol
-					if (http2_enabled_)
-					{
-						auto* tls_conn = dynamic_cast<net::TlsConnection*>(conn_result->get());
-						if (tls_conn)
-						{
-							auto proto = tls_conn->negotiated_protocol();
-							if (proto && *proto == "h2")
-							{
-								// HTTP/2 over TLS - create HTTP/2 connection
-								auto h2_conn = std::make_shared<http2::Http2Connection>(std::move(*conn_result));
-								h2_conn->set_handler(
-									[this](Request& r) -> Task<Response>
-									{
-										auto match = router_.match(r.method(), r.path());
-										if (match)
-										{
-											r.set_route_params(std::move(match.params));
-										}
-										co_return co_await middleware_chain_.execute_or_not_found(r, match.handler);
-									});
-								handle_http2_connection(h2_conn).start_detached();
-								continue;
-							}
-						}
-					}
-#endif
-
-					handle_connection(std::move(*conn_result)).start_detached();
+					on_connection(std::move(*conn));
 				}
 			}()
-							.start_detached();
-		}
-		else
-#endif
-		{
-			// Try to enable multi-accept (SO_REUSEPORT) for better scalability
-			// This must be done BEFORE creating a regular listener
-			bool multi_accept = io_ctx_->enable_multi_accept(port, [this](std::unique_ptr<net::Connection> conn)
-			                                                 { handle_connection(std::move(conn)).start_detached(); });
-
-			if (multi_accept)
-			{
-				std::cout << "Server listening on port " << port << " (multi-accept enabled)" << '\n';
-			}
-			else
-			{
-				// Fall back to single-listener accept loop
-				listener_ = net::Listener::create(*io_ctx_);
-				auto result = listener_->listen(port);
-				if (!result)
-				{
-					throw std::runtime_error("Failed to listen: " + result.error().to_string());
-				}
-
-				std::cout << "Server listening on port " << listener_->local_port() << '\n';
-
-				// Plain HTTP accept loop - use start_detached to keep it alive
-				[this]() -> Task<void>
-				{
-					while (!cancel_source_.is_cancelled())
-					{
-						auto conn_result = co_await listener_->async_accept();
-						if (!conn_result)
-						{
-							if (cancel_source_.is_cancelled()) break;
-							std::cerr << "Accept error: " << conn_result.error().to_string() << '\n';
-							continue;
-						}
-
-						handle_connection(std::move(*conn_result)).start_detached();
-					}
-				}()
-								.start_detached();
-			}
+										   .start_detached();
 		}
 
 		// Run the event loop
@@ -180,12 +231,6 @@ namespace coroute
 		{
 			listener_->close();
 		}
-#ifdef COROUTE_HAS_TLS
-		if (tls_listener_)
-		{
-			tls_listener_->close();
-		}
-#endif
 
 		// Wait for existing connections to drain
 		auto start = std::chrono::steady_clock::now();

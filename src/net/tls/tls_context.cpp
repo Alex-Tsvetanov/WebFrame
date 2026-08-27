@@ -582,45 +582,6 @@ namespace coroute::net
 		co_return expected<void, Error>{};
 	}
 
-	// ============================================================================
-	// TlsListener Implementation
-	// ============================================================================
-
-	TlsListener::TlsListener(std::unique_ptr<Listener> inner, TlsContext& ctx)
-		: inner_(std::move(inner)), ctx_(&ctx) { }
-
-	TlsListener::~TlsListener() = default;
-
-	Task<expected<std::unique_ptr<TlsConnection>, Error>> TlsListener::accept()
-	{
-		auto conn = co_await accept_no_handshake();
-		if (!conn) co_return unexpected(conn.error());
-
-		auto handshake_result = co_await (*conn)->handshake();
-		if (!handshake_result) co_return unexpected(handshake_result.error());
-
-		co_return std::move(*conn);
-	}
-
-	Task<expected<std::unique_ptr<TlsConnection>, Error>> TlsListener::accept_no_handshake()
-	{
-		auto inner_conn = co_await inner_->async_accept();
-		if (!inner_conn) co_return unexpected(inner_conn.error());
-
-		auto tls_conn = TlsConnection::create(std::move(*inner_conn), *ctx_, true);
-		if (!tls_conn) co_return unexpected(tls_conn.error());
-
-		co_return std::move(*tls_conn);
-	}
-
-	void TlsListener::close()
-	{
-		if (inner_)
-		{
-			inner_->close();
-		}
-	}
-
 }  // namespace coroute::net
 
 #endif  // coroute_HAS_TLS

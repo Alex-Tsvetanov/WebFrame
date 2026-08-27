@@ -167,7 +167,6 @@ namespace coroute
 		// TLS support
 #ifdef COROUTE_HAS_TLS
 		std::unique_ptr<net::TlsContext> tls_ctx_;
-		std::unique_ptr<net::TlsListener> tls_listener_;
 #endif
 		bool tls_enabled_ = false;
 
@@ -702,6 +701,22 @@ namespace coroute
 		CancellationToken cancellation_token() const { return cancel_source_.token(); }
 
 	private:
+		// Classify an accepted connection and hand it to the right protocol.
+		//
+		// This is the single entry point for every accepted socket. It reads the first
+		// octets, decides TLS or cleartext, and dispatches. Every protocol the server
+		// speaks over TCP reaches its handler through here, which is what allows one
+		// listening descriptor to serve all of them.
+		Task<void> serve_connection(std::unique_ptr<net::Connection> conn);
+
+		// The route-and-middleware dispatch used by every protocol.
+		//
+		// HTTP/1.1 reaches the router through handle_connection, HTTP/2 through
+		// Http2Connection::set_handler. Both need the same lambda, and it was written
+		// out twice; HTTP/3 would have made it three times. Spelled out rather than
+		// using http2::RequestHandler so this compiles with HTTP/2 disabled.
+		std::function<Task<Response>(Request&)> make_request_handler();
+
 		// Handle a single connection
 		Task<void> handle_connection(std::unique_ptr<net::Connection> conn);
 
