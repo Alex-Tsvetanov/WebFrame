@@ -242,6 +242,7 @@ set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(inja)
 target_link_libraries(coroute PUBLIC inja)
 target_compile_definitions(coroute PUBLIC COROUTE_HAS_TEMPLATES)
+target_sources(coroute PRIVATE src/view/deferred_stream.cpp)
 message(STATUS "inja template engine: enabled")
 
 # Compression dependencies (zlib)

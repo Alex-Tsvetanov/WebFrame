@@ -18,6 +18,7 @@ add_executable(unit_tests
     test_protocol_detect.cpp
     test_datagram.cpp
     test_deferred.cpp
+    test_deferred_stream.cpp
     test_io_context.cpp
     test_http3_cid.cpp
     test_http3_packet.cpp
