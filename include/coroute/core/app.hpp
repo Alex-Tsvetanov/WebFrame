@@ -39,6 +39,15 @@
 namespace coroute
 {
 
+	namespace http3
+	{
+		// Forward declared on purpose. Naming the type here would pull ngtcp2 and
+		// nghttp3 into every translation unit that includes app.hpp, for the sake of one
+		// pointer.
+		class Http3Endpoint;
+	}  // namespace http3
+
+
 	// ============================================================================
 	// Middleware Types
 	// ============================================================================
@@ -170,6 +179,26 @@ namespace coroute
 #endif
 		bool tls_enabled_ = false;
 
+		// Kept because HTTP/3 needs a second TLS context built from the same
+		// certificate but a different ALPN list, and that context cannot be built until
+		// run() knows the port.
+		AppTlsConfig tls_config_;
+
+		// HTTP/3 support
+		//
+		// Guarded because a unique_ptr to an incomplete type cannot be destroyed, and
+		// without HTTP/3 built in nothing ever completes the forward declaration.
+#ifdef COROUTE_HAS_HTTP3
+		std::unique_ptr<http3::Http3Endpoint> http3_endpoint_;
+#endif
+		bool http3_enabled_ = false;
+
+		// The port QUIC is actually listening on, published for the Alt-Svc header.
+		// Zero until run() has bound the socket, which is what the middleware checks:
+		// advertising a port nothing is listening on sends clients somewhere that will
+		// time out.
+		std::atomic<uint16_t> http3_port_{0};
+
 		// HTTP/2 support
 #ifdef COROUTE_HAS_HTTP2
 		bool http2_enabled_ = true;  // Enable by default when available
@@ -200,8 +229,11 @@ namespace coroute
 #endif
 
 	public:
-		App() = default;
-		~App() = default;
+		// Both defined in the .cpp. The HTTP/3 endpoint is held by pointer to an
+		// incomplete type, and a defaulted constructor needs that type complete just as
+		// much as the destructor does, because it has to be able to unwind.
+		App();
+		~App();
 
 		// Non-copyable, non-movable (due to atomics)
 		App(const App&) = delete;
@@ -565,6 +597,19 @@ namespace coroute
 #ifdef COROUTE_HAS_TLS
 		App& enable_tls(const AppTlsConfig& config);
 		bool tls_enabled() const noexcept { return tls_enabled_; }
+
+		// Serves HTTP/3 on the same port number as TCP, over UDP.
+		//
+		// Requires TLS: QUIC has no cleartext mode at all (RFC 9001 section 4.2 fixes
+		// it to TLS 1.3), so this is refused rather than silently ignored if no
+		// certificate is configured by the time run() is called.
+		//
+		// Also registers the Alt-Svc middleware. A browser will not try HTTP/3 on its
+		// own; it connects over TCP and upgrades only if the response advertises an
+		// endpoint. Without that header this port is reachable in theory and unused in
+		// practice.
+		App& enable_http3(bool enable = true);
+		bool http3_enabled() const noexcept { return http3_enabled_; }
 #endif
 
 		// HTTP/2 configuration
@@ -716,6 +761,10 @@ namespace coroute
 		// out twice; HTTP/3 would have made it three times. Spelled out rather than
 		// using http2::RequestHandler so this compiles with HTTP/2 disabled.
 		std::function<Task<Response>(Request&)> make_request_handler();
+
+		// Brings up the QUIC endpoint on the same port number, over UDP. Does nothing
+		// unless enable_http3() was called; throws if it was and TLS is missing.
+		void start_http3(uint16_t port);
 
 		// Handle a single connection
 		Task<void> handle_connection(std::unique_ptr<net::Connection> conn);

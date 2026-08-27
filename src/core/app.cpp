@@ -1,6 +1,9 @@
 #include "coroute/core/app.hpp"
 #include "coroute/util/zero_copy.hpp"
 #include "coroute/net/protocol_detect.hpp"
+#ifdef COROUTE_HAS_HTTP3
+#include "coroute/http3/endpoint.hpp"
+#endif
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -10,6 +13,10 @@
 
 namespace coroute
 {
+
+	// Out of line because http3::Http3Endpoint is only forward declared in the header.
+	App::App() = default;
+	App::~App() = default;
 
 	std::function<Task<Response>(Request&)> App::make_request_handler()
 	{
@@ -127,6 +134,59 @@ namespace coroute
 		}
 	}
 
+	void App::start_http3(uint16_t port)
+	{
+		if (!http3_enabled_)
+		{
+			return;
+		}
+
+#ifdef COROUTE_HAS_HTTP3
+		// QUIC gets its own TLS context, built from the same certificate. It cannot
+		// share the TCP one: that advertises h2 and http/1.1, and this must advertise
+		// only h3 and force TLS 1.3, which QUIC requires (RFC 9001 section 4.2).
+		net::TlsConfig quic_config;
+		quic_config.cert_file = tls_config_.cert_file;
+		quic_config.key_file = tls_config_.key_file;
+		quic_config.ca_file = tls_config_.ca_file;
+		quic_config.chain_file = tls_config_.chain_file;
+		quic_config.verify_client = tls_config_.verify_client;
+
+		if (quic_config.cert_file.empty() || quic_config.key_file.empty())
+		{
+			// Refused rather than skipped. QUIC has no cleartext mode, so there is no
+			// degraded thing to fall back to, and a server that quietly ignored this
+			// would advertise Alt-Svc for a port serving nothing.
+			throw std::runtime_error("HTTP/3 requires TLS: call enable_tls() before run()");
+		}
+
+		auto quic_tls = net::TlsContext::create_quic(quic_config);
+		if (!quic_tls)
+		{
+			throw std::runtime_error("HTTP/3 TLS context failed: " + quic_tls.error().to_string());
+		}
+
+		http3_endpoint_ = std::make_unique<http3::Http3Endpoint>(*io_ctx_, std::move(*quic_tls),
+		                                                         make_request_handler());
+
+		// Same port number as TCP, different transport. Sharing the number is what lets
+		// one Alt-Svc header point at "the same place, over UDP".
+		if (auto bound = http3_endpoint_->bind(port); !bound)
+		{
+			throw std::runtime_error("HTTP/3 bind failed: " + bound.error().to_string());
+		}
+
+		// Published only now, so the Alt-Svc middleware cannot advertise a port before
+		// anything is listening on it.
+		http3_port_.store(http3_endpoint_->local_port(), std::memory_order_relaxed);
+		std::cout << "HTTP/3 listening on UDP " << http3_endpoint_->local_port() << '\n' << std::flush;
+
+		http3_endpoint_->run().start_detached();
+#else
+		(void)port;
+#endif
+	}
+
 	void App::run(uint16_t port)
 	{
 		io_ctx_ = net::IoContext::create(thread_count_);
@@ -137,6 +197,8 @@ namespace coroute
 		// registered twice. Classification happens per connection instead.
 		auto on_connection = [this](std::unique_ptr<net::Connection> conn)
 		{ serve_connection(std::move(conn)).start_detached(); };
+
+		start_http3(port);
 
 		if (io_ctx_->enable_multi_accept(port, on_connection))
 		{
@@ -265,8 +327,48 @@ namespace coroute
 	}
 
 #ifdef COROUTE_HAS_TLS
+	App& App::enable_http3(bool enable)
+	{
+#ifndef COROUTE_HAS_HTTP3
+		if (enable)
+		{
+			// Asked for and not built in. Saying so beats starting a server that
+			// silently answers nothing on UDP.
+			throw std::runtime_error("HTTP/3 was requested but this build has it disabled "
+			                         "(configure with -DCOROUTE_ENABLE_HTTP3=ON)");
+		}
+#endif
+		if (enable && !http3_enabled_)
+		{
+			// One middleware covers every protocol, rather than editing each response
+			// finalisation path. Registered here so it exists whatever order the
+			// application sets things up in.
+			use(
+				[this](Request& request, Next next) -> Task<Response>
+				{
+					Response response = co_await next(request);
+
+					// Only once the socket is actually bound. Advertising a port before
+					// then points clients at nothing, and they pay a timeout for it.
+					const uint16_t port = http3_port_.load(std::memory_order_relaxed);
+					if (port != 0 && !response.header("alt-svc"))
+					{
+						// ma is how long the client may remember this. A day is the
+						// usual choice: long enough to be worth caching, short enough
+						// that withdrawing HTTP/3 takes effect within a day.
+						response.set_header("Alt-Svc", "h3=\":" + std::to_string(port) + "\"; ma=86400");
+					}
+					co_return response;
+				});
+		}
+		http3_enabled_ = enable;
+		return *this;
+	}
+
 	App& App::enable_tls(const AppTlsConfig& config)
 	{
+		tls_config_ = config;
+
 		net::TlsConfig tls_config;
 		tls_config.cert_file = config.cert_file;
 		tls_config.key_file = config.key_file;
@@ -292,7 +394,17 @@ namespace coroute
 		}
 		else
 		{
-			tls_config.alpn_protocols = config.alpn_protocols;
+			// h3 is filtered out rather than passed through. This list is offered over
+			// TCP, and HTTP/3 does not run over TCP: a client that selected it here
+			// would negotiate a protocol neither end can speak on this connection.
+			// HTTP/3 is discovered through Alt-Svc instead.
+			for (const auto& protocol : config.alpn_protocols)
+			{
+				if (protocol != "h3")
+				{
+					tls_config.alpn_protocols.push_back(protocol);
+				}
+			}
 		}
 
 		auto ctx_result = net::TlsContext::create(tls_config);
