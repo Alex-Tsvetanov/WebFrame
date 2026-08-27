@@ -1073,6 +1073,15 @@ namespace coroute::net
 		uint16_t port_ = 0;
 		bool gso_ = false;
 
+		// The ring this socket's operations are submitted to, and therefore the worker
+		// whose thread will process their completions.
+		//
+		// Not always ring 0. QUIC sharding gives every worker its own socket on one
+		// shared UDP port, and if all of them submitted to ring 0 then one thread would
+		// perform every receive and every send for the whole server. The sockets would
+		// be split and the work would not be.
+		size_t ring_index_ = 0;
+
 		// Receive scratch, reused across calls. The Datagram spans handed back point
 		// straight into buffers_, so they are valid only until the next receive.
 		std::vector<std::array<std::uint8_t, kDatagramBufSize>> buffers_{kDatagramBatch};
@@ -1083,7 +1092,10 @@ namespace coroute::net
 		std::vector<Datagram> out_{kDatagramBatch};
 
 	public:
-		explicit UringDatagramSocket(UringContext& ctx) : ctx_(ctx) { }
+		explicit UringDatagramSocket(UringContext& ctx, size_t worker_index = 0)
+		    : ctx_(ctx), ring_index_(worker_index)
+		{
+		}
 
 		~UringDatagramSocket() override { close(); }
 
@@ -1190,8 +1202,9 @@ namespace coroute::net
 
 			if (!co_await UringSubmitAwaiter{op, [&]
 			                                 {
-												 return ctx_.submit_sqe(&op, [fd, hdr0](io_uring_sqe* sqe)
-				                                                        { io_uring_prep_recvmsg(sqe, fd, hdr0, 0); });
+												 return ctx_.submit_sqe(ring_index_, &op,
+				                                                    [fd, hdr0](io_uring_sqe* sqe)
+				                                                    { io_uring_prep_recvmsg(sqe, fd, hdr0, 0); });
 											 }})
 			{
 				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE"));
@@ -1330,7 +1343,7 @@ namespace coroute::net
 			if (!co_await UringSubmitAwaiter{op, [&]
 			                                 {
 												 return ctx_.submit_sqe(
-													 &op, [fd, out](io_uring_sqe* sqe)
+													 ring_index_, &op, [fd, out](io_uring_sqe* sqe)
 													 { io_uring_prep_sendmsg(sqe, fd, out, MSG_NOSIGNAL); });
 											 }})
 			{
@@ -1368,9 +1381,9 @@ namespace coroute::net
 		return std::make_unique<UringListener>(static_cast<UringContext&>(ctx));
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx)
+	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t worker_index)
 	{
-		return std::make_unique<UringDatagramSocket>(static_cast<UringContext&>(ctx));
+		return std::make_unique<UringDatagramSocket>(static_cast<UringContext&>(ctx), worker_index);
 	}
 
 }  // namespace coroute::net

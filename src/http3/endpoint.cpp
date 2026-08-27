@@ -111,8 +111,13 @@ namespace coroute::http3
 				// peer that something is listening.
 				co_return;
 			}
-			auto& stored = connections_[(*connection)->scid()];
-			stored = std::move(*connection);
+			// Held by value, not as a reference into the map. Rehashing would not
+			// invalidate the reference, but erasing the element would, and the flush
+			// below suspends: anything that sweeps closed connections while it is
+			// suspended would leave the reference dangling. A shared_ptr copy costs an
+			// increment and removes the question.
+			auto stored = std::move(*connection);
+			connections_[stored->scid()] = stored;
 			(void)co_await stored->flush();
 			co_return;
 		}

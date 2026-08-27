@@ -689,7 +689,7 @@ namespace coroute::net
 	// Datagrams are not implemented on this backend yet. HTTP/3 is being landed on
 	// Linux first, and a nullptr here is honest: the header documents it, and callers
 	// fall back rather than link against a socket that silently drops packets.
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx)
+	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t)
 	{
 		(void)ctx;
 		return nullptr;

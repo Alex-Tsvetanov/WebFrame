@@ -99,7 +99,14 @@ namespace coroute::net
 		[[nodiscard]] virtual bool has_segmentation_offload() const noexcept { return false; }
 
 		// Factory. Returns nullptr on backends that do not implement datagrams yet.
-		static std::unique_ptr<DatagramSocket> create(IoContext& ctx);
+		//
+		// `worker_index` names the worker this socket's I/O belongs to. It matters for
+		// QUIC sharding: several sockets share one UDP port through SO_REUSEPORT, one
+		// per worker, and each one's completions have to be processed by its own worker
+		// or the whole point of the split is lost and everything funnels through one
+		// thread. Backends without per-worker queues ignore it, which is what
+		// IoContext::supports_worker_affinity() reports.
+		static std::unique_ptr<DatagramSocket> create(IoContext& ctx, std::size_t worker_index = 0);
 	};
 
 }  // namespace coroute::net

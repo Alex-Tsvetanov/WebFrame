@@ -1091,7 +1091,7 @@ namespace coroute::net
 		return std::make_unique<EpollListener>(static_cast<EpollContext&>(ctx));
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx)
+	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t)
 	{
 		return std::make_unique<EpollDatagramSocket>(static_cast<EpollContext&>(ctx));
 	}
