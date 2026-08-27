@@ -4,17 +4,23 @@
 %
 % The entire switch. \bgtrue builds Bulgarian, \bgfalse builds English.
 %
-% Both languages stay loaded either way, so T2A and the Cyrillic fonts remain live
-% in the English build and \foreignlanguage{bulgarian}{...} works for the title
-% page and for quoted terminology. Only the main language moves.
+% The dissertation is in Bulgarian. The switch is not left over from an undecided
+% question: the автореферат must carry an English annotation on its last page
+% (ПУРПНСТУС, раздел 9 д), and that annotation is a document fragment with its own
+% captions and headings rather than a paragraph \foreignlanguage can wrap.
+%
+% Both languages stay loaded either way, so T2A and the Cyrillic fonts are live
+% regardless and \foreignlanguage{english}{...} works for quoted terminology inside
+% the Bulgarian body. Only the main babel language moves.
 %
 % What actually depends on this: captions, the four reference macros, the listing
 % names, and the unnumbered headings. Geometry, fonts, spacing, titlesec, tocloft,
 % fancyhdr and the whole \lstset are untouched, so a page count agreed in one
-% language holds in the other.
+% language holds in the other. That is what makes the 150-page budget meaningful
+% rather than language-specific.
 %
 % Both directions are known to build: 15 pages, no errors, no overfull boxes, and a
 % table of contents that switches with it.
 
 \newif\ifbg
-\bgfalse
+\bgtrue
