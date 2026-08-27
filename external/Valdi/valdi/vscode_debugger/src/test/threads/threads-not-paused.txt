@@ -1,8 +1,0 @@
-{
-    threads : [
-        [0] : {
-            id : <number>
-            name : localhost:8001/index.html
-        }
-    ]
-}

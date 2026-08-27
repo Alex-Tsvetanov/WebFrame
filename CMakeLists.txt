@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(coroute VERSION 2.0.0 LANGUAGES CXX)
 
-# Require C++20
-set(CMAKE_CXX_STANDARD 20)
+# Require C++23
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -34,21 +34,37 @@ message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "I/O Backend: ${COROUTE_IO_BACKEND}")
 message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 
-# Check for C++23 std::expected
-include(CheckCXXSourceCompiles)
-check_cxx_source_compiles("
-    #include <expected>
-    int main() {
-        std::expected<int, int> e = 42;
-        return e.value();
-    }
-"    COROUTE_HAS_STD_EXPECTED)
+# std::expected.
+#
+# Switching from the bundled coroute::expected to std::expected changes the type used at
+# roughly 200 call sites, and the bundled one is deliberately more permissive: it accepts
+# expected<void, E>{}, allows implicit conversions the standard type does not, and deduces
+# unexpected differently. That migration is its own piece of work, so it is opt-in. A C++
+# standard bump and an expected swap must never land in the same commit.
+option(COROUTE_USE_STD_EXPECTED "Use std::expected instead of the bundled implementation" OFF)
 
-if(COROUTE_HAS_STD_EXPECTED)
-    message(STATUS "Using std::expected from C++23")
+if(COROUTE_USE_STD_EXPECTED)
+    # CMP0067 is NEW at cmake_minimum_required 3.20, so this try-compile inherits
+    # CMAKE_CXX_STANDARD. Under C++20 it silently failed and selected the fallback.
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles("
+        #include <expected>
+        int main() {
+            std::expected<int, int> e = 42;
+            return e.value();
+        }
+    "    COROUTE_STD_EXPECTED_USABLE)
+
+    if(NOT COROUTE_STD_EXPECTED_USABLE)
+        message(FATAL_ERROR
+            "COROUTE_USE_STD_EXPECTED=ON but <expected> is not usable with "
+            "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} at C++${CMAKE_CXX_STANDARD}.")
+    endif()
+
     add_compile_definitions(COROUTE_HAS_STD_EXPECTED)
+    message(STATUS "expected: std::expected (C++23)")
 else()
-    message(STATUS "Using custom expected implementation")
+    message(STATUS "expected: bundled coroute::expected")
 endif()
 
 # Compiler-specific flags
@@ -57,6 +73,75 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
 elseif(MSVC)
     add_compile_options(/W4 /permissive-)
 endif()
+
+# MinGW builds link libstdc++/libgcc dynamically by default, so any process launched
+# without the toolchain bin directory on PATH dies with STATUS_ENTRYPOINT_NOT_FOUND.
+# That breaks catch_discover_tests, which runs the test binary at build time to
+# enumerate cases, and it fails before a single test has run.
+if(MINGW)
+    add_link_options(-static-libgcc -static-libstdc++)
+endif()
+
+# ============================================================================
+# Build gates: sanitizers, coverage, clang-tidy
+# ============================================================================
+#
+# These used to exist only as CI-side CMAKE_CXX_FLAGS strings, which meant they could
+# not be reproduced locally without copying a shell line out of a workflow file. They
+# belong in the build system so CMakePresets can select them by name.
+
+set(COROUTE_SANITIZER "" CACHE STRING "Sanitizer to enable (address+undefined, thread, memory)")
+set_property(CACHE COROUTE_SANITIZER PROPERTY STRINGS "" "address" "undefined" "address+undefined" "thread" "memory")
+
+if(COROUTE_SANITIZER)
+    if(MSVC)
+        # MSVC only ships AddressSanitizer.
+        if(NOT COROUTE_SANITIZER STREQUAL "address")
+            message(FATAL_ERROR "MSVC supports only COROUTE_SANITIZER=address, got '${COROUTE_SANITIZER}'")
+        endif()
+        add_compile_options(/fsanitize=address)
+    else()
+        string(REPLACE "+" "," _coroute_san_list "${COROUTE_SANITIZER}")
+
+        # memory requires every dependency to be instrumented too. Uninstrumented
+        # OpenSSL/nghttp2/zlib/simdjson produce false positives that drown the real
+        # findings, so MSan is only meaningful on a core-only configuration.
+        if(_coroute_san_list MATCHES "memory")
+            if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                message(FATAL_ERROR "COROUTE_SANITIZER=memory requires Clang")
+            endif()
+            if(COROUTE_ENABLE_TLS OR COROUTE_ENABLE_HTTP2 OR COROUTE_ENABLE_SIMDJSON)
+                message(WARNING
+                    "MemorySanitizer with uninstrumented third-party libraries reports false "
+                    "positives. Configure with TLS, HTTP2 and SIMDJSON OFF for usable output.")
+            endif()
+            add_compile_options(-fsanitize-memory-track-origins=2)
+        endif()
+
+        add_compile_options(-fsanitize=${_coroute_san_list} -fno-omit-frame-pointer -fno-sanitize-recover=all -g)
+        add_link_options(-fsanitize=${_coroute_san_list})
+        unset(_coroute_san_list)
+    endif()
+    message(STATUS "Sanitizer: ${COROUTE_SANITIZER}")
+endif()
+
+option(COROUTE_ENABLE_COVERAGE "Instrument for coverage" OFF)
+if(COROUTE_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        # Source-based coverage, not gcov: gcov mangles line mapping for coroutines
+        # and heavily templated code, both of which this codebase is full of.
+        add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+        add_link_options(-fprofile-instr-generate)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(--coverage)
+        add_link_options(--coverage)
+    else()
+        message(FATAL_ERROR "COROUTE_ENABLE_COVERAGE requires Clang or GCC")
+    endif()
+    message(STATUS "Coverage: enabled")
+endif()
+
+option(COROUTE_ENABLE_CLANG_TIDY "Run clang-tidy over the library sources" OFF)
 
 # Main library
 add_library(coroute STATIC
@@ -78,23 +163,23 @@ add_library(coroute STATIC
     src/core/logging.cpp
     src/core/metrics.cpp
 
-    # Coroutines
-    src/coro/task.cpp
-    src/coro/cancellation.cpp
-
     # Network abstraction
-    src/net/socket.cpp
-    src/net/event_loop.cpp
     src/net/websocket.cpp
-
-    # View system
-    src/view/web_renderer.cpp
 )
 
 target_include_directories(coroute PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
+
+# Scope clang-tidy to this target. Setting CMAKE_CXX_CLANG_TIDY globally would also
+# lint every FetchContent dependency, which is neither our code nor our problem.
+if(COROUTE_ENABLE_CLANG_TIDY)
+    find_program(COROUTE_CLANG_TIDY_EXE NAMES clang-tidy REQUIRED)
+    set_target_properties(coroute PROPERTIES
+        CXX_CLANG_TIDY "${COROUTE_CLANG_TIDY_EXE};--extra-arg=-std=c++23")
+    message(STATUS "clang-tidy: ${COROUTE_CLANG_TIDY_EXE}")
+endif()
 
 # Platform-specific I/O implementation
 if(COROUTE_IO_BACKEND STREQUAL "iocp")
@@ -196,11 +281,20 @@ else()
     message(STATUS "simdjson: disabled (use -DCOROUTE_ENABLE_SIMDJSON=ON to enable)")
 endif()
 
-find_package(OpenSSL REQUIRED)
-target_link_libraries(coroute PUBLIC OpenSSL::SSL OpenSSL::Crypto)
-target_compile_definitions(coroute PUBLIC COROUTE_HAS_TLS)
-target_sources(coroute PRIVATE src/net/tls/tls_context.cpp)
-message(STATUS "TLS/SSL: enabled (OpenSSL ${OPENSSL_VERSION})")
+# TLS/SSL via OpenSSL.
+#
+# COROUTE_ENABLE_TLS used to be declared and then ignored: OpenSSL was found REQUIRED
+# unconditionally, so -DCOROUTE_ENABLE_TLS=OFF did nothing and the tree would not
+# configure at all without OpenSSL development headers.
+if(COROUTE_ENABLE_TLS)
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(coroute PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(coroute PUBLIC COROUTE_HAS_TLS)
+    target_sources(coroute PRIVATE src/net/tls/tls_context.cpp)
+    message(STATUS "TLS/SSL: enabled (OpenSSL ${OPENSSL_VERSION})")
+else()
+    message(STATUS "TLS/SSL: disabled (use -DCOROUTE_ENABLE_TLS=ON to enable)")
+endif()
 
 # Optional HTTP/2 support via nghttp2
 if(COROUTE_ENABLE_HTTP2)

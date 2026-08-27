@@ -1,7 +1,0 @@
-dependencies:
-  - drawing
-  - file_system
-  - valdi_core
-  - valdi_standalone
-
-output_target: debug

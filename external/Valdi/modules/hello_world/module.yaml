@@ -1,7 +1,0 @@
-output_target: release
-
-dependencies:
-  - valdi_core
-  - valdi_tsx
-
-compilation_mode: js

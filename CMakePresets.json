@@ -1,0 +1,293 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "COROUTE_BUILD_TESTS": "ON",
+        "COROUTE_BUILD_EXAMPLES": "ON"
+      }
+    },
+
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "COROUTE_IO_BACKEND": "io_uring"
+      }
+    },
+    {
+      "name": "macos-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "COROUTE_IO_BACKEND": "kqueue"
+      }
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "COROUTE_IO_BACKEND": "iocp"
+      }
+    },
+
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug (io_uring)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release (io_uring)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "macos-debug",
+      "displayName": "macOS Debug (kqueue)",
+      "inherits": "macos-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos-release",
+      "displayName": "macOS Release (kqueue)",
+      "inherits": "macos-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug (IOCP)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release (IOCP)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+
+    {
+      "name": "gate-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "Gate: AddressSanitizer + UBSan",
+      "inherits": "gate-base",
+      "cacheVariables": {
+        "COROUTE_SANITIZER": "address+undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "Gate: ThreadSanitizer",
+      "inherits": "gate-base",
+      "cacheVariables": {
+        "COROUTE_SANITIZER": "thread"
+      }
+    },
+    {
+      "name": "msan",
+      "displayName": "Gate: MemorySanitizer (core only)",
+      "inherits": "gate-base",
+      "cacheVariables": {
+        "COROUTE_SANITIZER": "memory",
+        "COROUTE_ENABLE_TLS": "OFF",
+        "COROUTE_ENABLE_HTTP2": "OFF",
+        "COROUTE_ENABLE_SIMDJSON": "OFF",
+        "COROUTE_BUILD_EXAMPLES": "OFF"
+      }
+    },
+    {
+      "name": "tidy",
+      "displayName": "Gate: clang-tidy",
+      "inherits": "gate-base",
+      "cacheVariables": {
+        "COROUTE_ENABLE_CLANG_TIDY": "ON",
+        "COROUTE_BUILD_EXAMPLES": "OFF"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Gate: coverage (llvm-cov)",
+      "inherits": "gate-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "COROUTE_ENABLE_COVERAGE": "ON",
+        "COROUTE_BUILD_EXAMPLES": "OFF"
+      }
+    },
+
+    {
+      "name": "bench",
+      "displayName": "Benchmark build (Release, never Debug)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "COROUTE_BUILD_TESTS": "OFF",
+        "COROUTE_BUILD_EXAMPLES": "ON"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "macos-debug", "configurePreset": "macos-debug" },
+    { "name": "macos-release", "configurePreset": "macos-release" },
+    { "name": "windows-debug", "configurePreset": "windows-debug" },
+    { "name": "windows-release", "configurePreset": "windows-release" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "msan", "configurePreset": "msan" },
+    { "name": "tidy", "configurePreset": "tidy" },
+    { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "bench", "configurePreset": "bench" }
+  ],
+
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "inherits": "test-base"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "inherits": "test-base"
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
+      "inherits": "test-base"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release",
+      "inherits": "test-base"
+    },
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "inherits": "test-base"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "inherits": "test-base"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "inherits": "test-base",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:detect_stack_use_after_return=1:strict_string_checks=1:symbolize=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "inherits": "test-base",
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
+      }
+    },
+    {
+      "name": "msan",
+      "configurePreset": "msan",
+      "inherits": "test-base",
+      "environment": {
+        "MSAN_OPTIONS": "halt_on_error=1:print_stats=1"
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "inherits": "test-base",
+      "environment": {
+        "LLVM_PROFILE_FILE": "${sourceDir}/build/coverage/profraw/%p.profraw"
+      }
+    }
+  ],
+
+  "workflowPresets": [
+    {
+      "name": "asan",
+      "steps": [
+        { "type": "configure", "name": "asan" },
+        { "type": "build", "name": "asan" },
+        { "type": "test", "name": "asan" }
+      ]
+    },
+    {
+      "name": "tsan",
+      "steps": [
+        { "type": "configure", "name": "tsan" },
+        { "type": "build", "name": "tsan" },
+        { "type": "test", "name": "tsan" }
+      ]
+    },
+    {
+      "name": "coverage",
+      "steps": [
+        { "type": "configure", "name": "coverage" },
+        { "type": "build", "name": "coverage" },
+        { "type": "test", "name": "coverage" }
+      ]
+    }
+  ]
+}

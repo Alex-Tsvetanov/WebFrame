@@ -21,8 +21,11 @@ if(COROUTE_ENABLE_HTTP2)
     add_subdirectory(http2_server)
 endif()
 
-# HTTPS server example (requires TLS support)
-if(OpenSSL_FOUND OR TARGET ssl)
+# HTTPS server example (requires TLS support).
+# Was guarded on OpenSSL_FOUND, which CMake never sets: find_package(OpenSSL) sets
+# OPENSSL_FOUND. Gate on the project option instead, which is what actually decides
+# whether COROUTE_HAS_TLS is defined.
+if(COROUTE_ENABLE_TLS)
     add_subdirectory(https_server)
 endif()
 

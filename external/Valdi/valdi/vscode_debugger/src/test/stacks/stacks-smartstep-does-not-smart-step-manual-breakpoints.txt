@@ -1,3 +1,0 @@
-foo @ ${workspaceFolder}/web/smartStep/exceptionBp.js:9:3
-bar @ ${workspaceFolder}/web/smartStep/exceptionBp.js:3:5
-<anonymous> @ ${workspaceFolder}/web/smartStep/exceptionBp.js:5:1

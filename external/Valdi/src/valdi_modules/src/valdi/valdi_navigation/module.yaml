@@ -1,5 +1,0 @@
-dependencies:
-  - foundation
-  - valdi_core
-
-output_target: release

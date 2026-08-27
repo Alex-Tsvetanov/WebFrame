@@ -43,10 +43,7 @@
 
 // View system
 #ifdef COROUTE_HAS_TEMPLATES
-#include "coroute/view/view_renderer.hpp"
 #include "coroute/view/view_types.hpp"
-#include "coroute/view/web_renderer.hpp"
-
 #endif
 
 namespace coroute

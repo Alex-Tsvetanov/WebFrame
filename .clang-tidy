@@ -1,4 +1,33 @@
 ---
+# DO NOT run `clang-tidy --fix` over this codebase.
+# readability-static-accessed-through-instance miscompiles out-of-line coroutine member
+# definitions, rewriting `ChunkedResponse::send_headers()` into
+# `ChunkedResponse::std::coroutine_traits<...>::promise_type::send_headers()`. Verified
+# on clang-tidy 22.1.0: it silently corrupted 66 definitions across 9 files. The other
+# checks fix cleanly, so if you must auto-fix, pass an explicit --checks list that
+# excludes that one, and rebuild immediately afterwards.
+#
+# Rationale for the non-obvious exclusions below. Note these must stay outside the
+# Checks block scalar: inside it, '#' is not a comment, it becomes part of the string
+# and silently breaks every entry that follows.
+#
+# Bounds-checking family
+#   -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access
+#   -cppcoreguidelines-pro-bounds-constant-array-index
+# pro-bounds-pointer-arithmetic and pro-bounds-array-to-pointer-decay were already
+# off, so leaving these two on was inconsistent rather than deliberate. They fire on
+# every container operator[] and every non-constant array index, which in a protocol
+# parser is every line that does work. ASan catches bounds errors from real indices
+# instead of guessing from syntax.
+#
+# Coroutine lifetime family
+#   -cppcoreguidelines-avoid-reference-coroutine-parameters
+#   -cppcoreguidelines-avoid-capturing-lambda-coroutines
+# Both fire on the framework's own middleware signature, Task<Response>(Request&,
+# Next), and on the middleware factories that return capturing lambda coroutines. The
+# hazard is real and is the main memory risk in this codebase, but it cannot be fixed
+# without breaking the public API, and neither check can see that Request outlives the
+# chain borrowing it. The asan preset is the instrument for this, not a static check.
 Checks: >
   bugprone-*,
   cert-*,
@@ -30,7 +59,11 @@ Checks: >
   -readability-convert-member-functions-to-static,
   -bugprone-branch-clone,
   -cppcoreguidelines-avoid-c-arrays,
-  -modernize-avoid-c-arrays
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-avoid-reference-coroutine-parameters,
+  -cppcoreguidelines-avoid-capturing-lambda-coroutines
 
 WarningsAsErrors: "*"
 
