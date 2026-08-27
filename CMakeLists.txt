@@ -421,6 +421,7 @@ if(COROUTE_ENABLE_HTTP3)
         src/http3/packet.cpp
         src/http3/headers.cpp
         src/http3/stateless.cpp
+        src/http3/connection.cpp
     )
 
     target_compile_definitions(coroute PUBLIC COROUTE_HAS_HTTP3)
