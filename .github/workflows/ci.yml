@@ -133,14 +133,16 @@ jobs:
     name: Sanitizer Tests
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        sanitizer: [address, thread, undefined]
-    
+        # Preset names from CMakePresets.json. asan bundles UBSan; running them
+        # separately doubles the job count for no extra coverage. They cannot be
+        # combined with tsan.
+        preset: [asan, tsan]
+
     steps:
     - uses: actions/checkout@v5
-      with:
-        submodules: recursive
-    
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -152,29 +154,15 @@ jobs:
           liburing-dev \
           clang-18 \
           llvm-18
-    
-    - name: Configure CMake with Sanitizer
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Debug \
-          -DCMAKE_C_COMPILER=clang-18 \
-          -DCMAKE_CXX_COMPILER=clang++-18 \
-          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
-          -DCOROUTE_BUILD_EXAMPLES=OFF \
-          -DCOROUTE_BUILD_TESTS=ON \
-          -DCOROUTE_ENABLE_TLS=ON \
-          -DCOROUTE_ENABLE_HTTP2=ON
-    
-    - name: Build
-      run: cmake --build build --parallel
-    
-    - name: Run Tests with Sanitizer
-      run: |
-        cd build
-        ctest --output-on-failure
+
+    # Examples must be ON. With them OFF the server itself is never instrumented,
+    # so the coroutine frame lifetime bugs ASan exists to catch here are structurally
+    # unreachable and the job only proves the unit tests are clean.
+    - name: Configure, build and test
+      run: cmake --workflow --preset ${{ matrix.preset }}
       env:
-        ASAN_OPTIONS: detect_leaks=1:symbolize=1
-        UBSAN_OPTIONS: print_stacktrace=1
+        CC: clang-18
+        CXX: clang++-18
 
   static-analysis:
     name: Static Analysis (cppcheck)
@@ -190,17 +178,20 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cppcheck
     
+    # --error-exitcode=1 was previously followed by "|| true", which made the exit
+    # code meaningless and turned this job into a report generator. It now fails.
     - name: Run cppcheck
       run: |
-        cppcheck --enable=all --inconclusive --std=c++20 \
+        cppcheck --enable=all --inconclusive --std=c++23 \
           --suppress=missingIncludeSystem \
           --suppress=unusedFunction \
           -I include/ \
           src/ include/ \
           --error-exitcode=1 \
-          --xml --xml-version=2 2> cppcheck-report.xml || true
-    
+          --xml --xml-version=2 2> cppcheck-report.xml
+
     - name: Upload cppcheck report
+      if: always()
       uses: actions/upload-artifact@v6
       with:
         name: cppcheck-report
@@ -208,13 +199,10 @@ jobs:
   cpp-linter:
     name: C++ Linter (Clang-Format & Clang-Tidy)
     runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions: 
+    permissions:
       pull-requests: write
     steps:
       - uses: actions/checkout@v5
-        with:
-          submodules: recursive
 
       - name: Install Dependencies
         run: |
@@ -238,10 +226,23 @@ jobs:
         with:
           style: 'file'
           tidy-checks: ''
+          # Pinned. clang-tidy gained checks after 18 that fire heavily on this
+          # codebase, so an unpinned version would change the gate under us.
           version: '18'
           database: 'build'
           thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
           ignore: 'external|build|_deps|lib|benchmark|doc'
-          files-changed-only: false
-          lines-changed-only: false
-          extra-args: '-std=c++20'
+          # Scoped to changed lines. The tree carries a historical backlog of
+          # clang-tidy findings; gating the whole tree would mean the job could
+          # never be green, which is how it ended up continue-on-error in the first
+          # place. Gating the diff makes it a real gate for everything new.
+          files-changed-only: true
+          lines-changed-only: true
+          extra-args: '-std=c++23'
+
+      # This is what makes the job a gate rather than a report.
+      - name: Fail on lint findings
+        if: steps.linter.outputs.checks-failed > 0
+        run: |
+          echo "clang-format/clang-tidy reported ${{ steps.linter.outputs.checks-failed }} findings on changed lines."
+          exit 1

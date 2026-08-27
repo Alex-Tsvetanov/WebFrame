@@ -37,7 +37,10 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_C_COMPILER=gcc-12 \
           -DCMAKE_CXX_COMPILER=g++-12 \
-          -DCMAKE_CXX_FLAGS="-O3 -march=native -flto" \
+          # Not -march=native. Shared runners vary in microarchitecture, so native
+          # tuning makes every run a measurement of whichever machine GitHub gave us.
+          # These numbers are a regression smoke signal only and are NOT citable.
+          -DCMAKE_CXX_FLAGS="-O3 -march=x86-64-v3 -flto" \
           -DCOROUTE_BUILD_EXAMPLES=ON \
           -DCOROUTE_BUILD_TESTS=OFF \
           -DCOROUTE_ENABLE_TLS=ON \
