@@ -416,6 +416,7 @@ if(COROUTE_ENABLE_HTTP3)
     target_sources(coroute PRIVATE
         src/http3/cid.cpp
         src/http3/packet.cpp
+        src/http3/stateless.cpp
     )
 
     target_compile_definitions(coroute PUBLIC COROUTE_HAS_HTTP3)
