@@ -16,6 +16,7 @@ option(COROUTE_ENABLE_BROTLI "Enable Brotli compression support" OFF)
 option(COROUTE_ENABLE_SIMDJSON "Enable simdjson for fast JSON parsing" ON)
 option(COROUTE_ENABLE_TLS "Enable TLS/SSL support via OpenSSL" ON)
 option(COROUTE_ENABLE_HTTP2 "Enable HTTP/2 support via nghttp2" ON)
+option(COROUTE_ENABLE_HTTP3 "Enable HTTP/3 support via ngtcp2 and nghttp3 (needs OpenSSL 3.5+)" OFF)
 
 # Detect platform and set I/O backend
 if(WIN32)
@@ -304,7 +305,14 @@ endif()
 # unconditionally, so -DCOROUTE_ENABLE_TLS=OFF did nothing and the tree would not
 # configure at all without OpenSSL development headers.
 if(COROUTE_ENABLE_TLS)
-    find_package(OpenSSL REQUIRED)
+    if(COROUTE_ENABLE_HTTP3)
+        # ngtcp2's OpenSSL backend uses the QUIC TLS API that first appeared in 3.5.
+        # Distributions are behind: Ubuntu 24.04 ships 3.0.13 with no newer candidate,
+        # so this usually means pointing OPENSSL_ROOT_DIR at a locally built 3.5.
+        find_package(OpenSSL 3.5 REQUIRED)
+    else()
+        find_package(OpenSSL REQUIRED)
+    endif()
     target_link_libraries(coroute PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(coroute PUBLIC COROUTE_HAS_TLS)
     target_sources(coroute PRIVATE src/net/tls/tls_context.cpp)
@@ -369,6 +377,46 @@ if(COROUTE_ENABLE_HTTP2)
     message(STATUS "HTTP/2: enabled (nghttp2)")
 else()
     message(STATUS "HTTP/2: disabled (use -DCOROUTE_ENABLE_HTTP2=ON to enable)")
+endif()
+
+# ============================================================================
+# Optional HTTP/3 support via ngtcp2 + nghttp3
+# ============================================================================
+#
+# ngtcp2 and nghttp3 are protocol state machines only: neither owns a socket nor an
+# event loop. That is why they were chosen over msquic or lsquic, which bring their
+# own I/O layer and would compete with the IoContext backends for the descriptor.
+# Here they sit on top of DatagramSocket like any other protocol.
+#
+# Found rather than fetched, deliberately. FetchContent cannot compose these: nghttp2,
+# nghttp3 and ngtcp2 each call add_custom_target(check) unconditionally, outside any
+# BUILD_TESTING guard, and CMake targets are global. Pulling in a second one fails
+# with "another target with the same name already exists" and there is no option that
+# turns it off. ngtcp2 and nghttp3 additionally collide on a "main" test executable.
+#
+# scripts/build-quic-deps.sh builds OpenSSL 3.5, nghttp3 and ngtcp2 into one prefix.
+# Point CMAKE_PREFIX_PATH and OPENSSL_ROOT_DIR at it. This is also how curl consumes
+# them, so it is the well-trodden path rather than a workaround.
+if(COROUTE_ENABLE_HTTP3)
+    if(NOT COROUTE_ENABLE_TLS)
+        message(FATAL_ERROR "COROUTE_ENABLE_HTTP3 requires COROUTE_ENABLE_TLS: QUIC has no cleartext mode.")
+    endif()
+
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(NGHTTP3 REQUIRED IMPORTED_TARGET libnghttp3)
+    pkg_check_modules(NGTCP2 REQUIRED IMPORTED_TARGET libngtcp2)
+    pkg_check_modules(NGTCP2_CRYPTO REQUIRED IMPORTED_TARGET libngtcp2_crypto_ossl)
+
+    target_link_libraries(coroute PUBLIC
+        PkgConfig::NGTCP2
+        PkgConfig::NGTCP2_CRYPTO
+        PkgConfig::NGHTTP3
+    )
+
+    target_compile_definitions(coroute PUBLIC COROUTE_HAS_HTTP3)
+    message(STATUS "HTTP/3: enabled (ngtcp2 ${NGTCP2_VERSION}, nghttp3 ${NGHTTP3_VERSION}, OpenSSL ${OPENSSL_VERSION})")
+else()
+    message(STATUS "HTTP/3: disabled (use -DCOROUTE_ENABLE_HTTP3=ON to enable)")
 endif()
 
 # Examples
