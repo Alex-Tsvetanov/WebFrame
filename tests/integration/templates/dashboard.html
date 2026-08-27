@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ title }}</title>
+</head>
+<body>
+<h1>{{ title }}</h1>
+<p id="now">visitors now: {{ visitors_now }}</p>
+
+<!-- The no-JavaScript path: the runtime fills this in by attribute. -->
+<p data-coroute-slot="{{ slow_report.__coroute_deferred }}">loading...</p>
+
+<!-- The typed path: a slot is a real Promise, so it composes like one. -->
+<script>
+  coroute.deferred({{ slow_report.__coroute_deferred }}).then(function (value) {
+    var el = document.createElement('p');
+    el.id = 'awaited';
+    el.textContent = 'awaited: ' + value;
+    document.body.appendChild(el);
+  });
+</script>
+</body>
+</html>

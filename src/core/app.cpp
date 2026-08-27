@@ -1,6 +1,7 @@
 #include "coroute/core/app.hpp"
 #include "coroute/util/zero_copy.hpp"
 #include "coroute/net/protocol_detect.hpp"
+#include "coroute/core/chunked.hpp"
 #ifdef COROUTE_HAS_HTTP3
 #include "coroute/http3/endpoint.hpp"
 #endif
@@ -133,6 +134,55 @@ namespace coroute
 				co_return;
 		}
 	}
+
+#ifdef COROUTE_HAS_TEMPLATES
+	Task<bool> App::stream_deferred_view(net::Connection& conn, const std::string& html,
+	                                     const DeferredCollector& collector, bool keep_alive)
+	{
+		// Chunked rather than a length: the length is not known, because the values that
+		// go in the holes have not arrived. That is the whole reason to stream.
+		ChunkedResponse chunked(&conn);
+		chunked.status(200).header("Content-Type", "text/html; charset=utf-8");
+		chunked.header("Connection", keep_alive ? "keep-alive" : "close");
+
+		// Headers go out with the first write rather than by a separate call, which is
+		// what keeps the shell and its headers in one flush.
+		//
+		// The page first, complete except for the holes. This is where the time is
+		// saved: a reader sees the layout, the navigation and everything already known
+		// without waiting on the slowest query on the page.
+		if (!co_await chunked.write(with_deferred_runtime(html)))
+		{
+			co_return false;
+		}
+
+		// In slot order rather than completion order.
+		//
+		// Every deferred started when it was constructed, so they are all running
+		// already and the total wait is the slowest one either way. What in-order costs
+		// is that a value which arrives early waits behind a slower one before reaching
+		// the page. The first flush above, which is the large win, is unaffected.
+		//
+		// ponytail: in-order flush, upgrade to a completion queue if measurement shows
+		// per-slot arrival time matters.
+		for (std::size_t slot = 0; slot < collector.pending().size(); ++slot)
+		{
+			const auto& state = collector.pending()[slot];
+			co_await await_deferred(state);
+
+			if (!co_await chunked.write(deferred_resolve_script(slot, state->to_json())))
+			{
+				co_return false;
+			}
+		}
+
+		if (!co_await chunked.finish())
+		{
+			co_return false;
+		}
+		co_return true;
+	}
+#endif
 
 	void App::start_http3(uint16_t port)
 	{
@@ -519,13 +569,36 @@ namespace coroute
 					{
 						ViewResultAny view_result = co_await (*view_match.handler)(req);
 
-						// Render the view using the web template
-						nlohmann::json data = view_result.to_json();
+						// Values still on the way are collected as the model is
+						// serialised, so a field cannot emit a placeholder without being
+						// registered for streaming.
+						DeferredCollector collector;
+						nlohmann::json data;
+						{
+							DeferredCollector::Scope scope(collector);
+							data = view_result.to_json();
+						}
+
 						std::string template_name = view_result.templates.web;
 						if (!template_name.contains('.'))
 						{
 							template_name += ".html";
 						}
+
+						if (!collector.empty())
+						{
+							// Streamed, and the response is finished here rather than by
+							// the code below: it has already been written.
+							const bool ok = co_await stream_deferred_view(
+								*conn, render(template_name, data), collector,
+								keep_alive && request_count < MAX_REQUESTS_PER_CONNECTION);
+							if (!ok)
+							{
+								break;
+							}
+							continue;
+						}
+
 						resp = render_html(template_name, data);
 					}
 					catch (const std::exception& e)

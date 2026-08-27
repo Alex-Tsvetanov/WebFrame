@@ -145,4 +145,60 @@ TEST_CASE("a resolve chunk names its slot", "[deferred][stream]")
 	REQUIRE(chunk.find("</script>") != std::string::npos);
 }
 
+TEST_CASE("the runtime is placed where it can actually run", "[deferred][stream]")
+{
+	// Position matters twice: before any page code that awaits a slot, because a
+	// streamed document runs scripts in arrival order, and after the doctype, because
+	// a script in front of it puts the browser into quirks mode.
+
+	SECTION("just inside head when there is one")
+	{
+		const std::string page = "<!DOCTYPE html><html><head><title>x</title></head><body>hi</body></html>";
+		const std::string out = with_deferred_runtime(page);
+
+		REQUIRE(out.starts_with("<!DOCTYPE html>"));
+		REQUIRE(out.find("api.deferred") > out.find("<head>"));
+		REQUIRE(out.find("api.deferred") < out.find("<title>"));
+	}
+
+	SECTION("just inside body when there is no head")
+	{
+		const std::string page = "<!DOCTYPE html><html><body><p>hi</p></body></html>";
+		const std::string out = with_deferred_runtime(page);
+
+		REQUIRE(out.starts_with("<!DOCTYPE html>"));
+		REQUIRE(out.find("api.deferred") > out.find("<body>"));
+		REQUIRE(out.find("api.deferred") < out.find("<p>"));
+	}
+
+	SECTION("an uppercase tag is still a tag")
+	{
+		// A template author is entitled to write <HEAD>, and matching case-sensitively
+		// would silently fall through to the fragment case and emit a script before the
+		// doctype.
+		const std::string page = "<!DOCTYPE html><HTML><HEAD></HEAD><BODY>hi</BODY></HTML>";
+		const std::string out = with_deferred_runtime(page);
+
+		REQUIRE(out.starts_with("<!DOCTYPE html>"));
+		REQUIRE(out.find("api.deferred") > out.find("<HEAD>"));
+	}
+
+	SECTION("a fragment with neither gets it first")
+	{
+		// No doctype to get in front of, so the front is the right place.
+		const std::string fragment = "<div>just a piece</div>";
+		const std::string out = with_deferred_runtime(fragment);
+		REQUIRE(out.starts_with("<script>"));
+		REQUIRE(out.find("<div>") != std::string::npos);
+	}
+
+	SECTION("the page itself is not otherwise disturbed")
+	{
+		const std::string page = "<!DOCTYPE html><html><head></head><body><p>keep me</p></body></html>";
+		const std::string out = with_deferred_runtime(page);
+		REQUIRE(out.find("<p>keep me</p>") != std::string::npos);
+		REQUIRE(out.find("</html>") != std::string::npos);
+	}
+}
+
 #endif  // COROUTE_HAS_TEMPLATES

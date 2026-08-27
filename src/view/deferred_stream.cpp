@@ -49,6 +49,52 @@ namespace coroute
 )";
 	}
 
+	std::string with_deferred_runtime(std::string_view html)
+	{
+		// Case-insensitive, because a template author is entitled to write <HEAD>.
+		const auto find_tag = [html](std::string_view tag) -> std::size_t
+		{
+			for (std::size_t i = 0; i + tag.size() <= html.size(); ++i)
+			{
+				bool match = true;
+				for (std::size_t j = 0; j < tag.size(); ++j)
+				{
+					char a = html[i + j];
+					char b = tag[j];
+					if (a >= 'A' && a <= 'Z')
+					{
+						a = static_cast<char>(a - 'A' + 'a');
+					}
+					if (a != b)
+					{
+						match = false;
+						break;
+					}
+				}
+				if (match)
+				{
+					return i + tag.size();
+				}
+			}
+			return std::string_view::npos;
+		};
+
+		std::size_t at = find_tag("<head>");
+		if (at == std::string_view::npos)
+		{
+			at = find_tag("<body>");
+		}
+
+		const std::string runtime = deferred_runtime_script();
+		if (at == std::string_view::npos)
+		{
+			// A fragment with neither. There is no doctype to get in front of, so the
+			// front is the right place.
+			return runtime + std::string(html);
+		}
+		return std::string(html.substr(0, at)) + runtime + std::string(html.substr(at));
+	}
+
 	std::string escape_for_script(std::string_view json_text)
 	{
 		std::string out;

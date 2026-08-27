@@ -30,6 +30,8 @@
 #endif
 
 #ifdef COROUTE_HAS_TEMPLATES
+#include "coroute/view/deferred.hpp"
+#include "coroute/view/deferred_stream.hpp"
 #include "coroute/view/view_middleware.hpp"
 #include "coroute/view/view_types.hpp"
 #include <inja/inja.hpp>
@@ -772,6 +774,16 @@ namespace coroute
 		// out twice; HTTP/3 would have made it three times. Spelled out rather than
 		// using http2::RequestHandler so this compiles with HTTP/2 disabled.
 		std::function<Task<Response>(Request&)> make_request_handler();
+
+#ifdef COROUTE_HAS_TEMPLATES
+		// Sends a view whose model still has values on the way.
+		//
+		// The page goes out first, with a hole per pending value, and each hole is
+		// filled by a later chunk. Returns false if the connection failed, in which case
+		// the caller should stop rather than try to send anything else on it.
+		Task<bool> stream_deferred_view(net::Connection& conn, const std::string& html,
+		                                const DeferredCollector& collector, bool keep_alive);
+#endif
 
 		// Brings up the QUIC endpoint on the same port number, over UDP. Does nothing
 		// unless enable_http3() was called; throws if it was and TLS is missing.

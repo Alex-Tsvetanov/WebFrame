@@ -52,6 +52,18 @@ namespace coroute
 	// One chunk: fills a slot and resolves its Promise.
 	[[nodiscard]] std::string deferred_resolve_script(std::size_t slot, const nlohmann::json& value);
 
+	// Puts the runtime into a rendered page.
+	//
+	// Position matters twice. It has to come before any page code that calls
+	// coroute.deferred, since a streamed document executes scripts in the order they
+	// arrive. And it cannot simply go first: a script before the doctype puts the
+	// browser into quirks mode, which changes layout on a page that never asked for it.
+	//
+	// So it goes just inside <head> where there is one, just inside <body> otherwise,
+	// and only in front of everything for a fragment with neither, where there is no
+	// doctype to get in front of.
+	[[nodiscard]] std::string with_deferred_runtime(std::string_view html);
+
 	// Rejects a slot, so a page awaiting it fails instead of hanging.
 	//
 	// A handler that threw has to say so. Without this the Promise stays pending for as
