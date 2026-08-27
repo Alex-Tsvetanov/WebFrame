@@ -14,6 +14,7 @@ add_executable(unit_tests
     test_expected.cpp
     test_error.cpp
     test_from_string.cpp
+    test_sha1.cpp
     test_time.cpp
     test_router.cpp
     test_response.cpp

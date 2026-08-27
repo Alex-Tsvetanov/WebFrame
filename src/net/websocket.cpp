@@ -3,12 +3,11 @@
 #include <array>
 #include <cstring>
 #include <cctype>
+#include <tuple>
 
-// Use OpenSSL for SHA-1 and Base64 (available on all platforms)
-#include <openssl/sha.h>
-#include <openssl/bio.h>
-#include <openssl/evp.h>
-#include <openssl/buffer.h>
+// SHA-1 and Base64 for the RFC 6455 handshake. Self-contained so that a plaintext
+// WebSocket server does not need a TLS library present for a 20 byte digest.
+#include "coroute/util/sha1.hpp"
 
 namespace coroute::net
 {
@@ -19,29 +18,6 @@ namespace coroute::net
 
 	namespace
 	{
-
-		std::array<uint8_t, 20> sha1(const void* data, size_t len)
-		{
-			std::array<uint8_t, 20> hash{};
-			SHA1(static_cast<const unsigned char*>(data), len, hash.data());
-			return hash;
-		}
-
-		std::string base64_encode(const uint8_t* data, size_t len)
-		{
-			BIO* b64 = BIO_new(BIO_f_base64());
-			BIO* mem = BIO_new(BIO_s_mem());
-			b64 = BIO_push(b64, mem);
-			BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-			BIO_write(b64, data, static_cast<int>(len));
-			BIO_flush(b64);
-
-			BUF_MEM* buf_ptr = nullptr;
-			BIO_get_mem_ptr(b64, &buf_ptr);
-			std::string result(buf_ptr->data, buf_ptr->length);
-			BIO_free_all(b64);
-			return result;
-		}
 
 		// WebSocket magic GUID (RFC 6455)
 		constexpr std::string_view ws_magic_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -69,7 +45,7 @@ namespace coroute::net
 		bool has_upgrade = false;
 		std::string conn_lower(*connection);
 		for (auto& c : conn_lower) c = static_cast<char>(std::tolower(c));
-		has_upgrade = conn_lower.find("upgrade") != std::string::npos;
+		has_upgrade = conn_lower.contains("upgrade");
 
 		std::string upgrade_lower(*upgrade);
 		for (auto& c : upgrade_lower) c = static_cast<char>(std::tolower(c));
@@ -90,10 +66,10 @@ namespace coroute::net
 		combined.append(ws_magic_guid);
 
 		// SHA-1 hash
-		auto hash = sha1(combined.data(), combined.size());
+		auto hash = util::sha1(combined.data(), combined.size());
 
 		// Base64 encode
-		return base64_encode(hash.data(), hash.size());
+		return util::base64_encode(hash.data(), hash.size());
 	}
 
 	Response create_upgrade_response(const Request& req)
@@ -307,7 +283,12 @@ namespace coroute::net
 						// Handle control frames immediately
 						if (header.opcode == WebSocketOpcode::Ping)
 						{
-							co_await pong(payload);
+							// A pong that cannot be written means the peer is gone. Continuing
+							// would spin until the next read failed, losing the real cause.
+							if (auto pong_result = co_await pong(payload); !pong_result)
+							{
+								co_return unexpected(pong_result.error());
+							}
 							continue;
 						}
 
@@ -334,7 +315,9 @@ namespace coroute::net
 										payload.size() - 2);
 								}
 							}
-							co_await send_close_frame(code, reason);
+							// Deliberately ignored: the close is reported to the caller below
+							// and the connection is being torn down either way.
+							std::ignore = co_await send_close_frame(code, reason);
 							co_return WebSocketMessage{.opcode = WebSocketOpcode::Close, .data = std::move(payload)};
 						}
 
