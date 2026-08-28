@@ -344,12 +344,15 @@ def live_capture_check() -> None:
 
 
 def main() -> int:
+    from benchmark.harness import selfcheck_driver
+
     fingerprint_checks()
     campaign_checks()
     validity_checks()
     counter_checks()
     schema_checks()
     ordering_checks()
+    selfcheck_driver.run(check)
     live_capture_check()
     print(f"\n{PASSED} checks passed")
     return 0

@@ -17,10 +17,13 @@ Built so far, and self-checked:
                      interrupted campaign keeps everything that finished
     ordering.py      the run order, walked in passes with systems interleaved so a
                      warming machine does not hand one system the cold half
+    driver.py        what happens for one run and in what order, behind two protocols
+                     so its rules are checkable without a server or a generator
 
 Not built yet:
 
-    the driver, which ties these together: fresh server and generator process per run
+    the adapters behind those protocols: the real server launcher and the real
+    generator invocations
     the netns pair with veth and per-direction netem
     cgroup v2 accounting for CPU and memory
     h2load, wrk2 and k6 invocation and output parsing
