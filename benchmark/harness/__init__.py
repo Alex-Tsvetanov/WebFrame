@@ -13,15 +13,23 @@ Built so far, and self-checked:
                      campaign mix two populations
     validity.py      the pre-declared criteria under which a run is discarded, and the
                      kernel counters that must not move during one
+    schema.py        one record per run, every factor a field, appended as JSONL so an
+                     interrupted campaign keeps everything that finished
+    ordering.py      the run order, walked in passes with systems interleaved so a
+                     warming machine does not hand one system the cold half
 
 Not built yet:
 
-    the run schema and its Parquet writer
-    the driver: fresh server and generator process per run, randomised order
+    the driver, which ties these together: fresh server and generator process per run
     the netns pair with veth and per-direction netem
     cgroup v2 accounting for CPU and memory
     h2load, wrk2 and k6 invocation and output parsing
     results2tex.py, which turns accepted runs into the thesis' \\R{} keys
+
+Nothing here can produce a citable number on the machine it was written on: WSL
+reports itself as virtualised and validity.py refuses it, which is the guard working.
+The load generators are not installed either. Both are Phase B concerns, waiting on the
+Linux partition.
 
 Run the self-check with:
 
