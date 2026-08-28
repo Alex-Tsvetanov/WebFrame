@@ -36,3 +36,18 @@ endfunction()
 
 coroute_add_fuzzer(fuzz_h2_frame)
 coroute_add_fuzzer(fuzz_range)
+coroute_add_fuzzer(fuzz_urlencoded)
+coroute_add_fuzzer(fuzz_multipart)
+
+# HPACK needs nghttp2, so it only exists when HTTP/2 is compiled in.
+if(COROUTE_ENABLE_HTTP2)
+    coroute_add_fuzzer(fuzz_hpack)
+endif()
+
+# corpus/<name>/ holds inputs libFuzzer found interesting, committed so a run starts
+# from what previous runs learned instead of from nothing. Pass the directory as the
+# first argument and new finds are added to it:
+#
+#   fuzz_range ../../../fuzz/corpus/range -max_total_time=300
+#
+# A crash artifact is written to the working directory, not the corpus.
