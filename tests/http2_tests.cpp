@@ -539,3 +539,60 @@ TEST_CASE("HTTP/2 Constants", "[http2][frame]")
 }
 
 #endif  // coroute_HAS_HTTP2
+
+// ============================================================================
+// HPACK decompression bound
+// ============================================================================
+
+TEST_CASE("HPACK decoding stops at the advertised header list size", "[hpack]")
+{
+	using namespace coroute::http2;
+
+	// A block a peer can send inside one HEADERS frame at the default max frame size,
+	// built the way a decompression bomb is built: insert one entry large enough to
+	// fill the dynamic table, then reference it with a single octet per repetition.
+	//
+	// Decoding this unbounded produced 49 MB from 16 KB, a ratio of about 3000 to 1.
+	// The connection layer bounded the accumulated compressed block, which is a
+	// different quantity: SETTINGS_MAX_HEADER_LIST_SIZE is defined on the decoded list.
+	constexpr std::size_t value_len = 4000;
+	std::vector<std::uint8_t> block;
+
+	// Literal header field with incremental indexing, new name, no Huffman.
+	block.push_back(0x40);
+	block.push_back(0x01);  // name length 1
+	block.push_back(static_cast<std::uint8_t>('x'));
+	// Value length 4000 with a 7-bit prefix: 127, then the remainder as a varint.
+	block.push_back(0x7F);
+	block.push_back(0xA1);
+	block.push_back(0x1E);
+	block.insert(block.end(), value_len, static_cast<std::uint8_t>('A'));
+
+	// Then indexed header fields naming the entry just inserted, which is index 62.
+	while (block.size() < 16384)
+	{
+		block.push_back(static_cast<std::uint8_t>(0x80 | 62));
+	}
+
+	HpackDecoder decoder;
+	REQUIRE(decoder.max_header_list_size() == Constants::DefaultMaxHeaderListSize);
+
+	auto result = decoder.decode(std::span<const std::uint8_t>(block));
+	REQUIRE_FALSE(result.has_value());
+
+	SECTION("a header list within the limit still decodes")
+	{
+		// The ordinary case has to keep working: the limit is 8 KB and a request's
+		// headers are a fraction of that.
+		HpackEncoder encoder;
+		std::vector<Header> headers{{":method", "GET"}, {":path", "/"}, {":scheme", "https"},
+		                            {":authority", "example.com"}, {"user-agent", "probe"}};
+		auto encoded = encoder.encode(headers);
+		REQUIRE(encoded.has_value());
+
+		HpackDecoder ordinary;
+		auto decoded = ordinary.decode(std::span<const std::uint8_t>(*encoded));
+		REQUIRE(decoded.has_value());
+		CHECK(decoded->size() == headers.size());
+	}
+}

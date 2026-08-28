@@ -97,6 +97,12 @@ namespace coroute::http2
 		  remote_window_size_(Constants::DefaultInitialWindowSize)
 	{
 		read_buffer_.reserve(64ULL * 1024);
+
+		// The limit this connection advertises in its SETTINGS, applied where RFC 9113
+		// defines it. The CONTINUATION path bounds the accumulated compressed block by
+		// the same number, which is a different quantity: HPACK expands, so bounding
+		// the input does not bound the output.
+		decoder_.set_max_header_list_size(local_settings_.max_header_list_size);
 	}
 
 	Http2Connection::~Http2Connection() { is_open_.store(false, std::memory_order_relaxed); }

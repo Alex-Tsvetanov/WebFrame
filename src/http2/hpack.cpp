@@ -147,6 +147,15 @@ namespace coroute::http2
 
 		std::vector<Header> result;
 
+		// RFC 9113 section 6.5.2 defines the header list size as the sum of the name
+		// and value octets plus 32 per field. This server advertises a limit in its
+		// SETTINGS and, until this check existed, did not enforce it: the connection
+		// layer bounded the accumulated compressed block instead, which is a different
+		// quantity. A 16 KB block that inserts one 4000-octet entry and then references
+		// it with a single octet per repetition decodes to 49 MB, a ratio of about
+		// 3000 to 1. Measured, not estimated.
+		std::size_t list_size = 0;
+
 		const uint8_t* in = data.data();
 		size_t inlen = data.size();
 
@@ -171,6 +180,15 @@ namespace coroute::http2
 			if (inflate_flags & NGHTTP2_HD_INFLATE_EMIT)
 			{
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+				list_size += nv.namelen + nv.valuelen + 32;
+				if (list_size > max_header_list_size_)
+				{
+					// Checked before the copy, so the octets that would have exceeded the
+					// limit are never allocated.
+					nghttp2_hd_inflate_end_headers(inflater_);
+					return unexpected(Error::io(IoError::InvalidArgument, "HPACK header list too large"));
+				}
+
 				result.push_back({std::string(reinterpret_cast<const char*>(nv.name), nv.namelen),
 				                  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 				                  std::string(reinterpret_cast<const char*>(nv.value), nv.valuelen)});
