@@ -180,6 +180,12 @@ namespace coroute
 		// nearest thing to a precedent in this codebase. Zero switches it off.
 		std::chrono::milliseconds handshake_timeout_{30000};
 
+		// How long an established HTTP/1.1 connection may sit without a byte moving.
+		// Enforced by net::IdleTimeout, since no backend enforces set_timeout. Zero
+		// switches it off, which restores the behaviour this codebase had while the
+		// timeout was configured and ignored.
+		std::chrono::milliseconds keep_alive_timeout_{30000};
+
 		// Connection tracking for graceful shutdown
 		std::atomic<size_t> active_connections_{0};
 		std::atomic<bool> shutting_down_{false};
@@ -319,6 +325,18 @@ namespace coroute
 		[[nodiscard]] std::chrono::milliseconds handshake_timeout() const noexcept
 		{
 			return handshake_timeout_;
+		}
+
+		// The idle limit on an established HTTP/1.1 connection. Zero disables it.
+		App& keep_alive_timeout(std::chrono::milliseconds limit)
+		{
+			keep_alive_timeout_ = limit;
+			return *this;
+		}
+
+		[[nodiscard]] std::chrono::milliseconds keep_alive_timeout() const noexcept
+		{
+			return keep_alive_timeout_;
 		}
 
 		// Route registration (simple form)

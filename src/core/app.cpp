@@ -2,6 +2,7 @@
 #include "coroute/util/zero_copy.hpp"
 #include "coroute/net/protocol_detect.hpp"
 #include "coroute/net/deadline.hpp"
+#include "coroute/net/idle_timeout.hpp"
 #include "coroute/core/chunked.hpp"
 #ifdef COROUTE_HAS_HTTP3
 #include "coroute/http3/endpoint.hpp"
@@ -540,14 +541,21 @@ namespace coroute
 
 		conn->set_cancellation_token(cancel_source_.token());
 
-		// Keep-alive configuration
+		// Keep-alive configuration. The idle limit is a member rather than a constant
+		// because it is now enforced, so it is something a run has to be able to set.
 		constexpr size_t MAX_REQUESTS_PER_CONNECTION = 100;
-		constexpr auto KEEP_ALIVE_TIMEOUT = std::chrono::seconds(30);
+		const auto KEEP_ALIVE_TIMEOUT = keep_alive_timeout_;
 
 		size_t request_count = 0;
 		bool keep_alive = true;
 
-		// Set connection timeout
+		// Wrapped rather than merely configured. Every backend stores the value passed to
+		// set_timeout and none of them acts on it, so without this the is_timeout() branch
+		// below is unreachable, and a client that opens a connection and then goes quiet
+		// holds a coroutine until it disconnects. The wrapper still passes the value down,
+		// so a backend that grows a real implementation agrees with it rather than
+		// competing with it.
+		conn = std::make_unique<net::IdleTimeout>(std::move(conn), *io_ctx_, KEEP_ALIVE_TIMEOUT);
 		conn->set_timeout(KEEP_ALIVE_TIMEOUT);
 
 		// HTTP/1.1 keep-alive loop

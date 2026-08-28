@@ -33,6 +33,7 @@ namespace
 				  << "  --backlog N       listen backlog (default: 1024)\n"
 				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
 				  << "  --handshake-ms N  limit on the classification window (default: 30000, 0 disables)\n"
+				  << "  --keep-alive-ms N idle limit on an established connection (default: 30000, 0 disables)\n"
 				  << "  --tls CERT KEY    serve TLS on the same port\n"
 				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
 				  << "\n"
@@ -65,6 +66,7 @@ int main(int argc, char** argv)
 	size_t payload = 0;  // 0 means the default greeting
 	size_t backlog = 1024;
 	size_t handshake_ms = 30000;
+	size_t keep_alive_ms = 30000;
 	bool detect = true;
 	bool http3 = false;
 	std::string cert_file;
@@ -132,6 +134,14 @@ int main(int argc, char** argv)
 				return 2;
 			}
 		}
+		else if (arg == "--keep-alive-ms")
+		{
+			if (!parse_size(value_for("--keep-alive-ms"), keep_alive_ms))
+			{
+				std::cerr << "invalid --keep-alive-ms\n";
+				return 2;
+			}
+		}
 		else if (arg == "--no-detect")
 		{
 			detect = false;
@@ -191,6 +201,7 @@ int main(int argc, char** argv)
 	app.backlog(static_cast<int>(backlog));
 	app.enable_protocol_detection(detect);
 	app.handshake_timeout(std::chrono::milliseconds(handshake_ms));
+	app.keep_alive_timeout(std::chrono::milliseconds(keep_alive_ms));
 	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
 
 #ifdef COROUTE_HAS_TLS
@@ -232,6 +243,7 @@ int main(int argc, char** argv)
 	std::cout << "Benchmark server on port " << port << " (" << workers << " workers, " << body.size()
 			  << " byte body, backlog " << backlog << ", detect " << (detect ? "on" : "off")
 			  << ", handshake " << handshake_ms << "ms"
+			  << ", keep-alive " << keep_alive_ms << "ms"
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
 			  << ")" << std::endl;
 
