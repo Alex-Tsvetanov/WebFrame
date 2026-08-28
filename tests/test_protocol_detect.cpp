@@ -344,3 +344,148 @@ TEST_CASE("read_prefix accumulates across short reads", "[protocol_detect]")
 		REQUIRE_FALSE(result.has_value());
 	}
 }
+
+// ============================================================================
+// The adversarial set
+// ============================================================================
+//
+// The cases above establish that classification works. These establish what it does
+// when the peer is not cooperating, and what it deliberately does not do.
+
+TEST_CASE("The two opening sets are disjoint over every possible octet", "[protocol_detect]")
+{
+	// This is the assumption the descriptor proposition rests on: a TLS record and an
+	// HTTP method token cannot begin with the same octet, so one octet decides. The
+	// proof states it; this checks it, over the whole domain rather than over examples.
+	//
+	// 256 cases is the entire input space of the decision, so this is exhaustive rather
+	// than a sample.
+	int tls_octets = 0;
+	int cleartext_octets = 0;
+
+	for (int value = 0; value <= 0xFF; ++value)
+	{
+		const auto octet = static_cast<std::uint8_t>(value);
+		const std::vector<std::uint8_t> one{octet};
+		const WireProtocol verdict = classify(one);
+
+		INFO("octet: 0x" << std::hex << value);
+		switch (verdict)
+		{
+			case WireProtocol::Tls:
+				REQUIRE(octet == 0x16);
+				++tls_octets;
+				break;
+			case WireProtocol::Cleartext:
+				REQUIRE(octet >= 'A');
+				REQUIRE(octet <= 'Z');
+				++cleartext_octets;
+				break;
+			case WireProtocol::Unknown:
+				REQUIRE(octet != 0x16);
+				REQUIRE((octet < 'A' || octet > 'Z'));
+				break;
+		}
+	}
+
+	// Exactly one octet opens TLS, exactly twenty-six open cleartext, and no octet does
+	// both, which is what disjointness means when written as a count.
+	CHECK(tls_octets == 1);
+	CHECK(cleartext_octets == 26);
+}
+
+TEST_CASE("Classification routes, it does not validate", "[protocol_detect]")
+{
+	// Both halves of this are limits of one-octet classification, and both are
+	// deliberate. Validating here would mean buffering enough of the stream to be sure,
+	// which is the cost the design exists to avoid, and the layer underneath validates
+	// anyway.
+
+	SECTION("an octet of 0x16 that is not TLS is still sent to the TLS layer")
+	{
+		// A record header claiming an implausible version and a zero length. It is not a
+		// ClientHello and no handshake will come of it. Classification says Tls anyway,
+		// and the TLS handshake is what rejects it.
+		const std::vector<std::uint8_t> not_really_tls{0x16, 0xFF, 0xFF, 0x00, 0x00};
+		REQUIRE(classify(not_really_tls) == WireProtocol::Tls);
+	}
+
+	SECTION("an uppercase token that is not a method is still sent to the HTTP parser")
+	{
+		REQUIRE(classify_text("ZZZZ / HTTP/1.1\r\n") == WireProtocol::Cleartext);
+		REQUIRE(classify_text("X") == WireProtocol::Cleartext);
+	}
+}
+
+TEST_CASE("Only the first octet is inspected", "[protocol_detect]")
+{
+	// A request carrying 0x16 in a header value or a body must not be affected by it.
+	// Anything else would mean classification depends on how much of the stream has
+	// arrived, which is the bug the incremental preface matcher exists to avoid.
+	std::string request = "POST /upload HTTP/1.1\r\nContent-Length: 3\r\n\r\n";
+	request.push_back('\x16');
+	request.append("\x03\x01", 2);
+
+	REQUIRE(classify_text(request) == WireProtocol::Cleartext);
+}
+
+TEST_CASE("A ClientHello arriving one octet at a time", "[protocol_detect]")
+{
+	// The classic first-octet-classifier bug is to read once, take whatever the socket
+	// happened to give, and hand the rest on having lost the first octets. TCP is a byte
+	// stream and a client is free to send the handshake in single-byte segments, so the
+	// bytes read to classify have to reach the TLS layer intact.
+	//
+	// A record header with a real length field, then filler. Nothing here has to be a
+	// valid handshake: what is under test is that every octet survives the trip.
+	std::string hello;
+	hello.push_back('\x16');          // ContentType: handshake
+	hello.append("\x03\x01", 2);      // legacy_record_version
+	hello.append("\x00\x20", 2);      // length: 32 octets follow
+	hello.append(32, '\xAB');
+
+	std::deque<std::string> one_at_a_time;
+	for (char c : hello)
+	{
+		one_at_a_time.emplace_back(1, c);
+	}
+
+	// One octet is all classification needs, and it must not consume more than that
+	// from the peer's point of view.
+	auto result = read_prefix(scripted(std::move(one_at_a_time)), 1).sync_wait();
+	REQUIRE(result.has_value());
+	REQUIRE(result->bytes.size() == 1);
+	REQUIRE(classify(result->bytes) == WireProtocol::Tls);
+
+	// What the TLS layer would then read. It must see the whole record, first octet
+	// included, in order.
+	std::string replayed;
+	for (;;)
+	{
+		char chunk[8] = {};
+		auto n = result->conn->async_read(chunk, sizeof(chunk)).sync_wait();
+		REQUIRE(n.has_value());
+		if (*n == 0)
+		{
+			break;
+		}
+		replayed.append(chunk, *n);
+	}
+
+	REQUIRE(replayed.size() == hello.size());
+	CHECK(replayed == hello);
+}
+
+TEST_CASE("A peer that connects and sends nothing", "[protocol_detect]")
+{
+	// Distinct from the truncated case above, which sends two octets and then closes.
+	// This one sends none at all, which is what an idle scanner or a slowloris looks
+	// like at the moment of accept.
+	//
+	// read_prefix reports failure rather than returning an empty prefix, so the caller
+	// cannot mistake "nothing arrived" for "nothing was needed". A peer that holds the
+	// connection open without sending is a different matter: nothing here can detect
+	// that, which is why the classification window carries a deadline.
+	auto result = read_prefix(scripted({}), 1).sync_wait();
+	REQUIRE_FALSE(result.has_value());
+}
