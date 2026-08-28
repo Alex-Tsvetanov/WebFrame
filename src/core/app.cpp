@@ -1,11 +1,13 @@
 #include "coroute/core/app.hpp"
 #include "coroute/util/zero_copy.hpp"
 #include "coroute/net/protocol_detect.hpp"
+#include "coroute/net/deadline.hpp"
 #include "coroute/core/chunked.hpp"
 #ifdef COROUTE_HAS_HTTP3
 #include "coroute/http3/endpoint.hpp"
 #endif
 #include <cstring>
+#include <optional>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -32,31 +34,35 @@ namespace coroute
 		};
 	}
 
-	Task<void> App::serve_connection(std::unique_ptr<net::Connection> conn)
+	Task<std::optional<App::Detected>> App::detect_protocol(std::unique_ptr<net::Connection> conn)
 	{
-		// Deliberately does not touch active_connections_. Both handle_connection and
-		// handle_http2_connection account for the connection themselves, so counting it
-		// here as well would double-count it for the length of the classification.
+		// The window this deadline covers is exactly this coroutine: from the first read
+		// to the moment the protocol is known. Leaving the frame disarms it, so none of
+		// the ways out below has to remember to, and there are eleven of them.
 		//
-		// One octet decides TLS versus cleartext. read_prefix hands back both the bytes
-		// and a connection that replays them, so whichever protocol handler runs next
-		// sees the stream exactly as if nothing had looked at it.
-		if (!protocol_detection_)
-		{
-			// The arm with the demultiplexer switched off. Straight to HTTP/1.1 without
-			// reading a byte to decide, which is what the cost of classification is
-			// measured against. See App::enable_protocol_detection.
-			co_await handle_connection(std::move(conn));
-			co_return;
-		}
+		// It exists because nothing else in the stack will wake a parked classification
+		// read. Connection::set_timeout is stored by all four backends and enforced by
+		// none, and handle_connection already relies on it for keep-alive, so the gap is
+		// wider than this window. Closing it properly is a per-backend change; this
+		// covers the window the demultiplexer added.
+		//
+		// Cost is one heap push per accepted connection, not per read. Against a TCP
+		// accept, and against a TLS handshake on the branch that has one, that is not a
+		// quantity the A/B in chapter VI can resolve.
+		net::Deadline deadline(*io_ctx_, handshake_timeout_, [c = conn.get()] { c->close(); });
 
 		auto prefix = co_await net::read_prefix(std::move(conn), 1);
 		if (!prefix)
 		{
-			co_return;  // peer went away before saying anything
+			co_return std::nullopt;  // peer went away before saying anything
 		}
 
 		std::unique_ptr<net::Connection> stream = std::move(prefix->conn);
+
+		// read_prefix hands back the replaying wrapper rather than the socket it wrapped,
+		// so the deadline has to follow it. Closing the old object would close nothing
+		// that anyone is reading from.
+		deadline.replace([c = stream.get()] { c->close(); });
 
 		switch (net::classify(prefix->bytes))
 		{
@@ -69,20 +75,25 @@ namespace coroute
 					// Closing is the only honest answer: replying in cleartext would
 					// be unreadable to the peer.
 					stream->close();
-					co_return;
+					co_return std::nullopt;
 				}
 
 				auto tls = net::TlsConnection::create(std::move(stream), *tls_ctx_, true);
 				if (!tls)
 				{
-					co_return;
+					co_return std::nullopt;
 				}
 
 				std::unique_ptr<net::TlsConnection> tls_conn = std::move(*tls);
+
+				// The handshake is inside the window on purpose: a peer that opens with
+				// 0x16 and then stalls is the same attack as one that says nothing.
+				deadline.replace([c = tls_conn.get()] { c->close(); });
+
 				auto handshake = co_await tls_conn->handshake();
 				if (!handshake)
 				{
-					co_return;
+					co_return std::nullopt;
 				}
 
 #ifdef COROUTE_HAS_HTTP2
@@ -91,18 +102,15 @@ namespace coroute
 					auto proto = tls_conn->negotiated_protocol();
 					if (proto && *proto == "h2")
 					{
-						auto h2 = std::make_shared<http2::Http2Connection>(std::move(tls_conn));
-						h2->set_handler(make_request_handler());
-						co_await handle_http2_connection(std::move(h2));
-						co_return;
+						co_return Detected{std::move(tls_conn), true};
 					}
 				}
 #endif
-				co_await handle_connection(std::move(tls_conn));
+				co_return Detected{std::move(tls_conn), false};
 #else
 				stream->close();
+				co_return std::nullopt;
 #endif
-				co_return;
 			}
 
 			case net::WireProtocol::Cleartext:
@@ -117,22 +125,19 @@ namespace coroute
 					auto full = co_await net::read_prefix(std::move(stream), net::http2_client_preface.size());
 					if (!full)
 					{
-						co_return;
+						co_return std::nullopt;
 					}
 					stream = std::move(full->conn);
+					deadline.replace([c = stream.get()] { c->close(); });
 
 					if (net::preface_match(full->bytes) == net::PrefaceMatch::Yes)
 					{
-						auto h2 = std::make_shared<http2::Http2Connection>(std::move(stream));
-						h2->set_handler(make_request_handler());
-						co_await handle_http2_connection(std::move(h2));
-						co_return;
+						co_return Detected{std::move(stream), true};
 					}
 				}
 #endif
 				// HTTP/1.1, which also covers the WebSocket and h2c upgrade paths.
-				co_await handle_connection(std::move(stream));
-				co_return;
+				co_return Detected{std::move(stream), false};
 			}
 
 			case net::WireProtocol::Unknown:
@@ -140,8 +145,42 @@ namespace coroute
 				// Neither a TLS record nor an HTTP method token. Nothing useful can be
 				// said back, so drop it rather than guess at a protocol.
 				stream->close();
-				co_return;
+				co_return std::nullopt;
 		}
+	}
+
+	Task<void> App::serve_connection(std::unique_ptr<net::Connection> conn)
+	{
+		// Deliberately does not touch active_connections_. Both handle_connection and
+		// handle_http2_connection account for the connection themselves, so counting it
+		// here as well would double-count it for the length of the classification.
+		if (!protocol_detection_)
+		{
+			// The arm with the demultiplexer switched off. Straight to HTTP/1.1 without
+			// reading a byte to decide, which is what the cost of classification is
+			// measured against. See App::enable_protocol_detection.
+			co_await handle_connection(std::move(conn));
+			co_return;
+		}
+
+		auto detected = co_await detect_protocol(std::move(conn));
+		if (!detected)
+		{
+			co_return;
+		}
+
+#ifdef COROUTE_HAS_HTTP2
+		if (detected->http2)
+		{
+			// One place rather than two. The TLS-with-h2 branch and the prior-knowledge
+			// branch used to build this separately, which is how they came to differ.
+			auto h2 = std::make_shared<http2::Http2Connection>(std::move(detected->conn));
+			h2->set_handler(make_request_handler());
+			co_await handle_http2_connection(std::move(h2));
+			co_return;
+		}
+#endif
+		co_await handle_connection(std::move(detected->conn));
 	}
 
 #ifdef COROUTE_HAS_TEMPLATES

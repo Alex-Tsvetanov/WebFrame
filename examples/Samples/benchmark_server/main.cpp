@@ -32,6 +32,7 @@ namespace
 				  << "  --payload BYTES   response body size (default: 13, \"Hello, World!\")\n"
 				  << "  --backlog N       listen backlog (default: 1024)\n"
 				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
+				  << "  --handshake-ms N  limit on the classification window (default: 30000, 0 disables)\n"
 				  << "  --tls CERT KEY    serve TLS on the same port\n"
 				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
 				  << "\n"
@@ -63,6 +64,7 @@ int main(int argc, char** argv)
 	size_t port = 8080;
 	size_t payload = 0;  // 0 means the default greeting
 	size_t backlog = 1024;
+	size_t handshake_ms = 30000;
 	bool detect = true;
 	bool http3 = false;
 	std::string cert_file;
@@ -119,6 +121,14 @@ int main(int argc, char** argv)
 			if (!parse_size(value_for("--backlog"), backlog) || backlog == 0)
 			{
 				std::cerr << "invalid --backlog\n";
+				return 2;
+			}
+		}
+		else if (arg == "--handshake-ms")
+		{
+			if (!parse_size(value_for("--handshake-ms"), handshake_ms))
+			{
+				std::cerr << "invalid --handshake-ms\n";
 				return 2;
 			}
 		}
@@ -180,6 +190,7 @@ int main(int argc, char** argv)
 	app.threads(workers);
 	app.backlog(static_cast<int>(backlog));
 	app.enable_protocol_detection(detect);
+	app.handshake_timeout(std::chrono::milliseconds(handshake_ms));
 	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
 
 #ifdef COROUTE_HAS_TLS
@@ -198,17 +209,29 @@ int main(int argc, char** argv)
 	}
 #endif
 
+#ifdef COROUTE_HAS_HTTP3
 	if (http3)
 	{
-		// Throws on a build without HTTP/3, which is the intended behaviour: see above
-		// on configured-but-not-served.
 		app.enable_http3();
 	}
+#else
+	if (http3)
+	{
+		// The comment that used to sit here said this call throws on a build without
+		// HTTP/3. It does not: enable_http3 is not declared at all in that build, so
+		// this file did not compile anywhere HTTP/3 was off, which is every build on
+		// this machine. Same shape as the TLS block above, and refusing here keeps
+		// the rule that a configured protocol is either served or reported.
+		std::cerr << "--http3 was requested but this build has HTTP/3 disabled\n";
+		return 2;
+	}
+#endif
 
 	// Printed so the run's configuration is recoverable from its own log rather than
 	// from whatever the driver believes it launched.
 	std::cout << "Benchmark server on port " << port << " (" << workers << " workers, " << body.size()
 			  << " byte body, backlog " << backlog << ", detect " << (detect ? "on" : "off")
+			  << ", handshake " << handshake_ms << "ms"
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
 			  << ")" << std::endl;
 

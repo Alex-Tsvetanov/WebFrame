@@ -1,12 +1,14 @@
 #pragma once
 
 #include <any>
+#include <chrono>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -173,6 +175,11 @@ namespace coroute
 		int backlog_ = 1024;
 		bool protocol_detection_ = true;
 
+		// How long a peer may take to reveal which protocol it speaks. Matches the
+		// 30 s the backends already default Connection::set_timeout to, which is the
+		// nearest thing to a precedent in this codebase. Zero switches it off.
+		std::chrono::milliseconds handshake_timeout_{30000};
+
 		// Connection tracking for graceful shutdown
 		std::atomic<size_t> active_connections_{0};
 		std::atomic<bool> shutting_down_{false};
@@ -296,6 +303,23 @@ namespace coroute
 		}
 
 		[[nodiscard]] bool protocol_detection() const noexcept { return protocol_detection_; }
+
+		// The limit on the classification window: from accept to knowing the protocol.
+		//
+		// A peer that connects and says nothing otherwise parks a coroutine for as long
+		// as it likes, because Connection::set_timeout is stored by every backend and
+		// enforced by none. Zero disables the limit, which is only useful under a
+		// debugger.
+		App& handshake_timeout(std::chrono::milliseconds limit)
+		{
+			handshake_timeout_ = limit;
+			return *this;
+		}
+
+		[[nodiscard]] std::chrono::milliseconds handshake_timeout() const noexcept
+		{
+			return handshake_timeout_;
+		}
 
 		// Route registration (simple form)
 		App& route(HttpMethod method, std::string pattern, Handler handler)
@@ -812,6 +836,25 @@ namespace coroute
 		// speaks over TCP reaches its handler through here, which is what allows one
 		// listening descriptor to serve all of them.
 		Task<void> serve_connection(std::unique_ptr<net::Connection> conn);
+
+		// What classification concluded, and the connection to carry on with.
+		//
+		// Deliberately not an Http2Connection: building one here would put the
+		// construction back in two places, which is where the two branches had drifted
+		// apart. The caller turns the flag into a connection object, once.
+		struct Detected
+		{
+			std::unique_ptr<net::Connection> conn;
+			bool http2 = false;
+		};
+
+		// Everything from the first octet to knowing the protocol, and nothing after it.
+		//
+		// A separate coroutine because the deadline on this window is a local of it. The
+		// frame ending is the disarm, so no exit path can forget one, and there are
+		// eleven exits. That is the same lesson as the awaiter race: when the ordinary
+		// use of an interface contains an easy mistake, the fix is the interface.
+		Task<std::optional<Detected>> detect_protocol(std::unique_ptr<net::Connection> conn);
 
 		// The route-and-middleware dispatch used by every protocol.
 		//
