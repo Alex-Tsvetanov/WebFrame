@@ -54,6 +54,16 @@
 \phantomsection
 \addcontentsline{toc}{section}{\bgen{ЛИТЕРАТУРА}{BIBLIOGRAPHY}}
 \bibliographystyle{unsrt}
-\bibliography{references}
+% coroute.bib, not references.bib. The generic name is not unique on this machine, and
+% BibTeX resolved it through the TeX search path to another thesis' bibliography
+% entirely: 17 entries, none of them cited here. The document still built and the
+% bibliography still rendered, so every citation was silently wrong. A unique filename
+% cannot be shadowed.
+%
+% The ../ is not decoration. latexmk builds into build/ and BibTeX runs with its
+% working directory set there, so a bare name is looked for inside build/ and is not
+% found. BIBINPUTS does not help: it is not honoured here. The explicit relative path
+% is what actually works, and it is consistent with $out_dir in latexmkrc.
+\bibliography{../coroute}
 
 \end{document}
