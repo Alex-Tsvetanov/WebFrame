@@ -12,11 +12,14 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from benchmark.harness import environment as env_mod
+from benchmark.harness import ordering
+from benchmark.harness import schema
 from benchmark.harness import validity
 
 
@@ -58,7 +61,8 @@ def fingerprint_checks() -> None:
     print("\n== the fingerprint identifies the machine, not the moment ==")
 
     a = sample_env()
-    check("the same environment hashes the same", env_mod.fingerprint(a) == env_mod.fingerprint(sample_env()))
+    check("the same environment hashes the same",
+          env_mod.fingerprint(a) == env_mod.fingerprint(sample_env()))
 
     # The whole reason for a curated field list. If everything were hashed, every run
     # would be its own campaign and the guard would fire constantly, which is how
@@ -68,7 +72,7 @@ def fingerprint_checks() -> None:
     check("unfingerprinted fields do not change the hash",
           env_mod.fingerprint(noisy) == env_mod.fingerprint(a))
 
-    for field, value, label in [
+    for dotted, value, label in [
         ("cpu.governor", "powersave", "governor moving to powersave"),
         ("kernel.release", "6.9.0-1-generic", "a kernel upgrade"),
         ("build.git_commit", "b" * 40, "a different commit"),
@@ -76,9 +80,9 @@ def fingerprint_checks() -> None:
         ("cpu.physical_cores", 4, "SMT or core count changing"),
         ("tuning.transparent_hugepages", "always", "a hugepage setting change"),
     ]:
-        section, _, key = field.partition(".")
-        changed = sample_env(**{field: value})
-        check(f"{label} changes the hash", env_mod.fingerprint(changed) != env_mod.fingerprint(a))
+        changed = sample_env(**{dotted: value})
+        check(f"{label} changes the hash",
+              env_mod.fingerprint(changed) != env_mod.fingerprint(a))
 
     diffs = env_mod.fingerprint_differences(a, sample_env(**{"cpu.governor": "powersave"}))
     check("a refusal can say which field moved",
@@ -97,6 +101,7 @@ def campaign_checks() -> None:
         check("reopening on the same machine works", again.fingerprint == first.fingerprint)
 
         moved = sample_env(**{"cpu.governor": "powersave"})
+        message = ""
         try:
             env_mod.Campaign.open_or_create(path, moved)
             raised = False
@@ -193,14 +198,140 @@ def counter_checks() -> None:
 
     # A counter that moved but is not watched must not appear. Otherwise every run has
     # something to point at and the criteria stop meaning anything.
-    check("only the watched counters are returned", set(deltas) <= set(validity.ZERO_DELTA_COUNTERS))
+    check("only the watched counters are returned",
+          set(deltas) <= set(validity.ZERO_DELTA_COUNTERS))
+
+
+def schema_checks() -> None:
+    print("\n== a run record carries everything needed to place it ==")
+
+    def complete(**kw):
+        base = dict(system="coroute", protocol="http1.1", io_backend="io_uring",
+                    workers=6, connections=256, duration_s=30.0)
+        base.update(kw)
+        return schema.RunRecord(**base)
+
+    check("a complete record has no missing factors", not complete().missing_factors())
+
+    # A run missing its protocol is not a row with a gap, it is a row nobody can
+    # interpret, and finding out weeks later means the machine time is gone.
+    incomplete = complete(protocol="")
+    check("a record missing a factor says which", incomplete.missing_factors() == ["protocol"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "runs.jsonl"
+
+        message = ""
+        try:
+            schema.append(path, incomplete)
+            raised = False
+        except ValueError as exc:
+            raised = True
+            message = str(exc)
+        check("writing an unplaceable run is refused", raised)
+        check("the refusal names the factor", "protocol" in message)
+
+        for repetition in range(3):
+            schema.append(path, complete(repetition=repetition, requests_total=1000))
+        records = list(schema.read(path))
+        check("three runs round-trip", len(records) == 3)
+        check("repetition distinguishes them",
+              sorted(r.repetition for r in records) == [0, 1, 2])
+        check("run ids are distinct", len({r.run_id for r in records}) == 3)
+
+        # What a campaign killed mid-write leaves behind: a line with no terminating
+        # newline. Refusing to read the file because of it would throw away everything
+        # that did complete.
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write('{"system": "coroute", "protoc')
+        check("a torn trailing line is skipped, not fatal", len(list(schema.read(path))) == 3)
+
+        # And the next append must not join itself onto the fragment. Without the
+        # newline guard the torn run takes a good one down with it, which is a second
+        # run lost to a crash that only interrupted one.
+        schema.append(path, complete(repetition=99, requests_total=1))
+        check("a later append survives a torn line", len(list(schema.read(path))) == 4)
+        check("the recovered run is the new one",
+              any(r.repetition == 99 for r in schema.read(path)))
+
+        # Rejected runs stay in the file: they are the evidence for the rejection count
+        # that has to be reported next to the results.
+        schema.append(path, complete(accepted=False,
+                                     rejection_reasons=["virtualisation detected"]))
+        all_runs = list(schema.read(path))
+        check("rejected runs are kept", len(all_runs) == 5)
+        check("but excluded from analysis", len(schema.accepted_only(iter(all_runs))) == 4)
+
+        # A file written by a later schema must still read.
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"system": "coroute", "protocol": "http3",
+                                     "io_backend": "epoll", "workers": 1,
+                                     "connections": 1, "duration_s": 1.0,
+                                     "a_field_from_the_future": 42}) + "\n")
+        check("an unknown field does not break reading", len(list(schema.read(path))) == 6)
+
+    # None means closed loop, a number means open loop, and the difference decides
+    # whether the latency figures are service time or response time.
+    check("offered_rate defaults to closed loop", complete().offered_rate is None)
+
+
+def ordering_checks() -> None:
+    print("\n== run order interleaves systems so drift does not pick a side ==")
+
+    cells = [
+        ordering.Cell.of("coroute", protocol="http1.1", connections=256),
+        ordering.Cell.of("nginx", protocol="http1.1", connections=256),
+        ordering.Cell.of("h2o", protocol="http1.1", connections=256),
+        ordering.Cell.of("coroute", protocol="http2", connections=256),
+    ]
+
+    plan = ordering.plan(cells, repetitions=5, seed=1234)
+    check("every cell runs once per repetition", len(plan) == len(cells) * 5)
+
+    counts = Counter(run.cell for run in plan)
+    check("no cell is favoured", set(counts.values()) == {5})
+
+    # The property that matters. All of A then all of B would give A a mean position of
+    # 0 and B of 1, so every warm-up effect would land on B and be read as B being slow.
+    means = ordering.position_summary(plan)
+    spread = max(means.values()) - min(means.values())
+    check(f"systems sit at similar mean positions (spread {spread:.2f})", spread < 1.0)
+
+    check("the same seed gives the same order",
+          [r.cell for r in ordering.plan(cells, 5, 1234)] == [r.cell for r in plan])
+    check("a different seed gives a different order",
+          [r.cell for r in ordering.plan(cells, 5, 9999)] != [r.cell for r in plan])
+
+    # Passes must not be identical to each other, or a cell keeps its slot and is always
+    # measured on an equally cold or equally hot machine.
+    first = [r.cell for r in plan if r.repetition == 0]
+    second = [r.cell for r in plan if r.repetition == 1]
+    check("repetitions are shuffled differently from each other", first != second)
+
+    # Seeding from seed+repetition would make campaign 1 pass 2 identical to campaign 2
+    # pass 1, colliding two campaigns that are meant to be independent.
+    a = [r.cell for r in ordering.plan(cells, 3, 100) if r.repetition == 1]
+    b = [r.cell for r in ordering.plan(cells, 3, 101) if r.repetition == 0]
+    check("campaign seeds do not collide across repetitions", a != b)
+
+    # Cells built with the same factors in a different keyword order are one cell, so
+    # the design cannot silently contain a duplicate.
+    check("factor order does not create a second cell",
+          ordering.Cell.of("x", a=1, b=2) == ordering.Cell.of("x", b=2, a=1))
+    try:
+        ordering.plan([cells[0], cells[0]], 1, 1)
+        raised = False
+    except ValueError:
+        raised = True
+    check("a duplicated cell is refused", raised)
 
 
 def live_capture_check() -> None:
     print("\n== capture works on this machine ==")
 
     captured = env_mod.capture(build_type="Release", io_backend="io_uring")
-    check("capture returns a fingerprintable dict", isinstance(env_mod.fingerprint(captured), str))
+    check("capture returns a fingerprintable dict",
+          isinstance(env_mod.fingerprint(captured), str))
     check("capture is stable across calls",
           env_mod.fingerprint(captured)
           == env_mod.fingerprint(env_mod.capture(build_type="Release", io_backend="io_uring")))
@@ -217,6 +348,8 @@ def main() -> int:
     campaign_checks()
     validity_checks()
     counter_checks()
+    schema_checks()
+    ordering_checks()
     live_capture_check()
     print(f"\n{PASSED} checks passed")
     return 0
