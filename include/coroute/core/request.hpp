@@ -72,6 +72,22 @@ namespace coroute
 		const Headers& headers() const noexcept { return headers_; }
 		std::string_view body() const noexcept { return body_; }
 
+		// ASCII case folding only, which is what HTTP field names are defined over.
+		// std::tolower with a char argument is undefined for negative values, so the
+		// comparison is written out rather than delegated.
+		static std::string fold(std::string_view key)
+		{
+			std::string out(key);
+			for (char& c : out)
+			{
+				if (c >= 0x41 && c <= 0x5A)
+				{
+					c = static_cast<char>(c + 0x20);
+				}
+			}
+			return out;
+		}
+
 		// Setters (for parser)
 		void set_method(HttpMethod m) { method_ = m; }
 		void set_method(std::string_view m) { method_ = parse_method(m); }
@@ -80,7 +96,18 @@ namespace coroute
 		void set_http_version(std::string v) { http_version_ = std::move(v); }
 		void set_body(std::string b) { body_ = std::move(b); }
 
-		void add_header(std::string key, std::string value) { headers_[std::move(key)] = std::move(value); }
+		// Field names are case-insensitive (RFC 9110 section 5.1), so they are stored
+		// folded and looked up folded. This used to be an exact-case map lookup with a
+		// comment saying case-insensitive would be better, which meant a request whose
+		// field name was spelled "content-length" had no Content-Length as far as this
+		// server was concerned, so the declared body was never read. Measured rather
+		// than assumed: the unread octets are discarded with the read buffer instead of
+		// being executed as a second request, so this is not smuggling on its own. What
+		// it is is a disagreement with every correct parser about how many octets the
+		// request occupies, which is the precondition for a desync with anything in
+		// front. HTTP/2 mandates lowercase field names, so a gateway translating down to
+		// HTTP/1.1 emits exactly this.
+		void add_header(std::string key, std::string value) { headers_[fold(key)] = std::move(value); }
 
 		void add_query_param(std::string key, std::string value) { query_params_[std::move(key)] = std::move(value); }
 
@@ -106,8 +133,7 @@ namespace coroute
 		// Get header value
 		std::optional<std::string_view> header(std::string_view key) const
 		{
-			// Case-insensitive lookup would be better, but keeping simple for now
-			auto it = headers_.find(std::string(key));
+			auto it = headers_.find(fold(key));
 			if (it != headers_.end())
 			{
 				return it->second;

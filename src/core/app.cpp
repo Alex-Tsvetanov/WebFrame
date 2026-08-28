@@ -962,10 +962,50 @@ namespace coroute
 					value = value.substr(1);
 				}
 
+				// Two Content-Length lines that disagree are the classic desync: this server
+				// stores headers in a map, so the later one silently replaced the earlier one
+				// and a proxy taking the first would frame the body differently. RFC 9112
+				// section 6.3 requires rejecting the message rather than picking one.
+				if (Request::fold(std::string(key)) == "content-length")
+				{
+					auto existing = req.header("content-length");
+					if (existing && *existing != value)
+					{
+						co_return unexpected(
+						    Error::http(HttpError::BadRequest, "Conflicting Content-Length"));
+					}
+				}
+
 				req.add_header(std::string(key), std::string(value));
 			}
 
 			pos = header_end + 2;
+		}
+
+		// Transfer-Encoding is not implemented on this path, and saying so is the only
+		// safe answer.
+		//
+		// It used to be ignored entirely: a chunked request has no Content-Length, so no
+		// body was read and the chunk data was discarded with the read buffer. Checked
+		// against a running server rather than assumed, and the octets are dropped rather
+		// than executed, so this was not smuggling by itself. It is still a server that
+		// disagrees with the client about how long the request was, which is what a
+		// front-end proxy honouring Transfer-Encoding needs in order to desync against
+		// it. RFC 9112 section 6.1 says a server that does not understand a transfer
+		// coding responds 501.
+		//
+		// The status reaching the client is 400 rather than 501, because handle_connection
+		// answers every parse failure with bad_request and discards the code carried in
+		// the error. That is worth fixing separately; the framing is what matters here.
+		//
+		// ChunkedBodyReader exists and would decode this properly. Wiring it needs the
+		// octets already buffered past the headers to be handed to it, and getting that
+		// handover subtly wrong reintroduces the same desync, so refusing comes first and
+		// implementing follows separately.
+		if (req.header("transfer-encoding"))
+		{
+			co_return unexpected(
+			    Error::http(HttpError::NotImplemented, "Transfer-Encoding is not supported"));
 		}
 
 		// Read body if Content-Length is present
