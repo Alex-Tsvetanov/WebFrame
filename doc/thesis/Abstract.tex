@@ -1,0 +1,67 @@
+% ============================================================================
+% Автореферат на дисертационния труд
+% ============================================================================
+%
+% Build: latexmk -pdf Abstract.tex
+%
+% Second \documentclass in the same directory, sharing lang.tex, preamble.tex,
+% coroute.bib and the \R{} key namespace with Main.tex. The sharing is the point:
+% a number that disagrees between a dissertation and its автореферат is the most
+% avoidable question at a defence, and one key namespace makes the disagreement
+% impossible rather than unlikely.
+%
+% Written last. It is a condensation of a document that already exists, not a
+% summary written afterwards from memory.
+%
+% Budget: 30 pages per the supervisor, hard cap 32 per section 9 (д).
+%   title page and general characterisation   4
+%   chapter-by-chapter summary               16   weighted toward III, IV and VI
+%   contributions                             3
+%   publications and citations of them        2
+%   bibliography, only what this document cites  2
+%   English annotation, mandatory, last page  2
+%                                            --
+%                                            29
+% One page of slack, deliberately: the annotation and the contributions statement
+% are the two parts whose length is least under the author's control.
+%
+% Open question, recorded rather than guessed: whether the автореферат has a
+% mandated section order, and whether the English annotation has a required length
+% or form. Both come from the faculty, not from this file.
+% ============================================================================
+
+\documentclass[12pt,a4paper]{article}
+
+\input{lang}
+\input{preamble}
+
+\newcommand{\chapdir}{abstract}
+
+\begin{document}
+
+\input{\chapdir/title}
+
+\pagenumbering{arabic}
+
+% No table of contents. The budget above has no line for one, and the section
+% order is still an open question; adding it later is one line.
+
+\input{\chapdir/01_general}
+\input{\chapdir/02_chapters}
+\input{\chapdir/03_contributions}
+\input{\chapdir/04_publications}
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{\bgen{ЛИТЕРАТУРА}{BIBLIOGRAPHY}}
+\bibliographystyle{unsrt}
+% ../coroute, not references: see the same comment in Main.tex. The unique name
+% cannot be shadowed through the TeX search path, and the ../ is required because
+% BibTeX runs with its working directory inside build/.
+\bibliography{../coroute}
+
+% The English annotation is mandatory and goes on the last page, after the
+% bibliography. It stays last even if the section order above changes.
+\input{\chapdir/05_annotation_en}
+
+\end{document}

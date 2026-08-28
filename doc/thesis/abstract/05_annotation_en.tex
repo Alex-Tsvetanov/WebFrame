@@ -1,0 +1,64 @@
+% abstract/05_annotation_en
+% Budget: 2 pages. Mandatory by section 9 (д), and it goes on the last page.
+%
+% The mechanism, checked on a probe rather than assumed:
+%   \bgfalse scoped around this fragment does NOTHING. \bgen is defined once at load
+%   time by branching on \ifbg, which is exactly the property that makes it expandable
+%   and safe inside \addcontentsline. Flipping the conditional afterwards does not
+%   redefine the macro.
+%   \renewcommand{\bgen}[2]{#2} inside a group DOES work.
+%   \begin{otherlanguage}{english} switches babel's part: hyphenation and the
+%   automatic names, so \figurename becomes Figure inside it and reverts outside.
+% Both are used below. The \bgen call is deliberate: it keeps the mechanism exercised
+% by every build, so a preamble change that breaks it fails here rather than at the
+% printer.
+
+\clearpage
+\begin{otherlanguage}{english}
+\begingroup
+\renewcommand{\bgen}[2]{#2}
+
+\section*{\bgen{АНОТАЦИЯ}{ANNOTATION}}
+
+The dissertation studies the number and organisation of listening descriptors in a
+web application library that serves HTTP/1.1, HTTP/2, HTTP/3 and WebSocket at the
+same time.
+
+Conventional servers bind the choice of protocol to the choice of listening socket.
+The choice is recorded when the socket is configured, that is, before any byte has
+arrived, so each additional protocol adds a listening unit. The dissertation shows
+this is documented behaviour across five servers and three C++ libraries rather than
+an assumption, and identifies the one system that departs from it together with what
+that departure costs.
+
+The work moves the decision to the moment after the connection is accepted. A single
+octet separates a TLS record from a cleartext method token, so one descriptor can
+carry every application-layer protocol above a given transport. The number of
+listening descriptors then depends on the number of worker threads and the number of
+transports, and not on the number of protocols served. This is stated as a
+proposition with explicit assumptions and proved, so that it can be refuted.
+
+Three further results support it. QUIC connections are distributed across worker
+threads by encoding the worker index in the connection identifier, which is portable
+to platforms where eBPF does not exist. Values that have not yet arrived are
+expressed as a type on the server and as a matching primitive in the browser, so
+incompleteness is carried by the type system on both sides of the connection rather
+than by a convention. A second input and output mechanism on Linux makes the choice
+between readiness and completion an independent variable within one codebase, one
+machine and one kernel.
+
+The measurement methodology is built around the ways a server benchmark can be
+silently wrong, since an incorrectly conducted measurement does not refuse to run: it
+produces plausible numbers. Both arms of every comparison come from one binary
+selected by a runtime flag, the environment is fingerprinted and a change in it stops
+the campaign, and the rejection criteria are declared before any run.
+
+\TODO{numerical results, once the campaign has been run. Every number arrives through
+the same key namespace as the dissertation, so the two documents cannot disagree}
+
+\vspace{0.5em}
+\noindent
+\emph{Keywords:} \TODO{keyword list, if the faculty's sheet requires one}
+
+\endgroup
+\end{otherlanguage}

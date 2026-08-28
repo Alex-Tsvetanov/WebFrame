@@ -1,0 +1,57 @@
+% abstract/02_chapters
+% Budget: 16 pages, weighted toward III, IV and VI, because those carry the
+% contributions. The per-chapter figures below are targets, not a rule; what they
+% prevent is the usual failure, where the survey chapter is condensed carefully and
+% the results chapter is condensed by running out of room.
+%
+%   I    state of the art        2
+%   II   theoretical foundations 2
+%   III  architecture            4
+%   IV   implementation          3
+%   V    methodology             1
+%   VI   results and analysis    3
+%   VII  application             1
+%                               --
+%                               16
+
+\section*{\bgen{КРАТКО ИЗЛОЖЕНИЕ НА ДИСЕРТАЦИОННИЯ ТРУД}{SUMMARY OF THE DISSERTATION}}
+
+\subsection*{\bgen{Глава I. Състояние на проблема}{Chapter I. State of the art}}
+
+\TODO{2 pages: the coupling of protocol to listening unit, documented across five
+servers and three C++ libraries, plus the one counterexample and what it costs.
+Reproduce the listener-model table of chapter~I, or a narrowed form of it. Labels are
+not shared between the two documents, so it is copied, not referenced}
+
+\subsection*{\bgen{Глава II. Теоретични основи}{Chapter II. Theoretical foundations}}
+
+\TODO{2 pages: stackless coroutines and the frame-ownership boundary, deterministic
+matching, and the proposition on descriptor minimisation with its proof sketch. The
+proposition is stated in full, since it is a scientific contribution}
+
+\subsection*{\bgen{Глава III. Архитектура}{Chapter III. Architecture}}
+
+\TODO{4 pages: demultiplexing after accept, QUIC connection routing by identifier,
+API and view separation with the awaited and deferred modes. This is the longest
+part of the summary because it carries three of the eight contributions}
+
+\subsection*{\bgen{Глава IV. Реализация}{Chapter IV. Implementation}}
+
+\TODO{3 pages: what was written and what was reused with the reason for each,
+the compile-time parameter typing, and the race whose fix is an interface change}
+
+\subsection*{\bgen{Глава V. Методика}{Chapter V. Methodology}}
+
+\TODO{1 page: only the mechanisms, not the reasoning behind each. The reasoning is
+what the dissertation is for}
+
+\subsection*{\bgen{Глава VI. Резултати и анализ}{Chapter VI. Results and analysis}}
+
+\TODO{3 pages: every number through \textbackslash R\{\}, never retyped. Until the
+campaign runs, this section prints red markers, which is the intended state and not
+an omission}
+
+\subsection*{\bgen{Глава VII. Приложение и валидация}{Chapter VII. Application and validation}}
+
+\TODO{1 page: the example application, the three properties it checks, and the
+limitation that its author is the library's author}
