@@ -1,5 +1,7 @@
 #include "coroute/core/chunked.hpp"
 
+#include <cstdint>
+
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -45,6 +47,11 @@ namespace coroute
 			return oss.str();
 		}
 
+		// The largest single chunk this server will accept, matching the limit app.cpp
+		// applies to a Content-Length body. Chunked and unchunked framing describe the
+		// same quantity, so they had better agree about how large it may be.
+		constexpr std::uint64_t max_chunk_size = 10ULL * 1024 * 1024;
+
 		int64_t parse_chunk_size(std::string_view hex_size)
 		{
 			// Trim whitespace
@@ -69,7 +76,19 @@ namespace coroute
 				return -1;
 			}
 
-			int64_t result = 0;
+			// Accumulated unsigned and capped as it goes.
+			//
+			// This was int64_t with a bare result *= 16 and no bound, so a chunk-size line
+			// of twenty hex digits overflowed a signed integer, which is undefined rather
+			// than merely wrong: the caller checks only for a negative result, and a
+			// compiler entitled to assume the overflow cannot happen is entitled to drop
+			// that check. Found by fuzz_chunk_size under trapping UBSan.
+			//
+			// The cap is the limit this server already applies to a Content-Length body.
+			// The two framings describe the same quantity, and two paths disagreeing about
+			// how long a body may be is the shape request smuggling takes. Without it a
+			// six-digit size passed straight through to a read of twelve megabytes.
+			std::uint64_t result = 0;
 			for (char c : hex_size)
 			{
 				result *= 16;
@@ -89,9 +108,16 @@ namespace coroute
 				{
 					return -1;  // Invalid character
 				}
+
+				if (result > max_chunk_size)
+				{
+					// Checked inside the loop, so a long line is rejected on the digit that
+					// crosses the limit rather than after multiplying its way to nowhere.
+					return -1;
+				}
 			}
 
-			return result;
+			return static_cast<int64_t>(result);
 		}
 
 	}  // namespace chunked

@@ -94,3 +94,38 @@ TEST_CASE("ChunkedResponse configuration", "[chunked]")
 		CHECK_FALSE(resp.headers_sent());
 	}
 }
+
+// ============================================================================
+// Regressions from fuzz_chunk_size
+// ============================================================================
+
+TEST_CASE("A chunk size cannot overflow its way to a small number", "[chunked]")
+{
+	// This was int64_t accumulated with a bare multiply and no bound, so a long line
+	// overflowed a signed integer. That is undefined rather than merely wrong: the
+	// caller checks only for a negative result, and a compiler entitled to assume the
+	// overflow cannot happen is entitled to drop that check.
+	CHECK(chunked::parse_chunk_size("FFFFFFFFFFFFFFFFFFFF") == -1);
+	CHECK(chunked::parse_chunk_size("10000000000000000") == -1);
+	CHECK(chunked::parse_chunk_size(std::string(64, 'F')) == -1);
+}
+
+TEST_CASE("A chunk is bounded by the same limit as a body", "[chunked]")
+{
+	// Chunked and unchunked framing describe the same quantity. app.cpp rejects a
+	// Content-Length body over ten megabytes; a chunk claiming more than that used to
+	// pass straight through to a read of that size.
+	CHECK(chunked::parse_chunk_size("A00000") == 10485760);  // exactly the limit
+	CHECK(chunked::parse_chunk_size("A00001") == -1);        // one octet past it
+	CHECK(chunked::parse_chunk_size("BB00A0") == -1);        // the input the fuzzer found
+
+	// Ordinary sizes are unaffected, including the terminating zero chunk and the
+	// extension syntax after a semicolon.
+	CHECK(chunked::parse_chunk_size("0") == 0);
+	CHECK(chunked::parse_chunk_size("1a") == 26);
+	CHECK(chunked::parse_chunk_size("1A") == 26);
+	CHECK(chunked::parse_chunk_size(" ff ") == 255);
+	CHECK(chunked::parse_chunk_size("ff;ext=1") == 255);
+	CHECK(chunked::parse_chunk_size("") == -1);
+	CHECK(chunked::parse_chunk_size("zz") == -1);
+}

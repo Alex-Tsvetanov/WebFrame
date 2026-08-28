@@ -24,13 +24,23 @@ endif()
 
 # fuzzer-no-link on the library so the code under test is instrumented for coverage
 # guidance, while only the harnesses link the libFuzzer main.
-target_compile_options(coroute PRIVATE -fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer)
+# Trapping UBSan alongside ASan. The trapping form rather than -fsanitize=undefined
+# because the UBSan runtime is thin on the Windows target, and a trap is all a
+# fuzzer needs: libFuzzer reports it as a crash either way. Signed overflow is the
+# one that matters here, since a length computed by overflowing is exactly the
+# shape of a smuggling primitive, and ASan alone does not see it.
+set(COROUTE_FUZZ_UBSAN -fsanitize=signed-integer-overflow,shift,integer-divide-by-zero
+                       -fsanitize-trap=undefined)
+
+target_compile_options(coroute PRIVATE -fsanitize=fuzzer-no-link,address ${COROUTE_FUZZ_UBSAN}
+                                       -fno-omit-frame-pointer)
 target_link_options(coroute PUBLIC -fsanitize=address)
 
 function(coroute_add_fuzzer name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE coroute)
-    target_compile_options(${name} PRIVATE -fsanitize=fuzzer,address -fno-omit-frame-pointer)
+    target_compile_options(${name} PRIVATE -fsanitize=fuzzer,address ${COROUTE_FUZZ_UBSAN}
+                                          -fno-omit-frame-pointer)
     target_link_options(${name} PRIVATE -fsanitize=fuzzer,address)
 endfunction()
 
@@ -38,6 +48,8 @@ coroute_add_fuzzer(fuzz_h2_frame)
 coroute_add_fuzzer(fuzz_range)
 coroute_add_fuzzer(fuzz_urlencoded)
 coroute_add_fuzzer(fuzz_multipart)
+coroute_add_fuzzer(fuzz_chunk_size)
+coroute_add_fuzzer(fuzz_cookie)
 
 # HPACK needs nghttp2, so it only exists when HTTP/2 is compiled in.
 if(COROUTE_ENABLE_HTTP2)
