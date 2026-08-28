@@ -1,5 +1,6 @@
 #include "coroute/net/io_context.hpp"
 #include "coroute/net/datagram.hpp"
+#include "coroute/net/timer_queue.hpp"
 
 #if defined(COROUTE_BACKEND_EPOLL)
 
@@ -163,6 +164,10 @@ namespace coroute::net
 
 		~EpollContext() override
 		{
+			// Before stop(): a timer firing into a half-torn-down loop has
+			// nothing useful to do, and joining first means no callback is in
+			// flight while the workers are being joined.
+			timers_.stop();
 			stop();
 
 			for (auto& worker : workers_)
@@ -257,16 +262,16 @@ namespace coroute::net
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
 		{
-			std::thread(
-				[this, delay, cb = std::move(callback)]() mutable
-				{
-					std::this_thread::sleep_for(delay);
-					post(std::move(cb));
-				})
-				.detach();
+			timers_.schedule(delay, std::move(callback));
 		}
 
 	private:
+		// Was a detached thread per call that slept for the delay. Fine for a handful of
+		// one-off timers, ruinous for anything per-connection: a deadline on every accepted
+		// connection would have meant a sleeping thread on every accepted connection. One
+		// thread for the whole context, started only if something is ever scheduled.
+		TimerQueue timers_{[this](std::function<void()> cb) { post(std::move(cb)); }};
+
 		void worker_thread()
 		{
 			while (!stopped_)

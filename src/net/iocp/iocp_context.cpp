@@ -10,6 +10,7 @@
 
 #include "coroute/net/io_context.hpp"
 #include "coroute/net/datagram.hpp"
+#include "coroute/net/timer_queue.hpp"
 
 #if defined(COROUTE_PLATFORM_WINDOWS)
 
@@ -77,19 +78,12 @@ namespace coroute::net
 		std::atomic<bool> stopped_{false};
 		size_t thread_count_;
 
-		// Timer queue
-		struct TimerEntry
-		{
-			std::chrono::system_clock::time_point expiry;
-			std::function<void()> callback;
-
-			bool operator>(const TimerEntry& other) const { return expiry > other.expiry; }
-		};
-
-		std::mutex timer_mutex_;
-		std::condition_variable timer_cv_;
-		std::priority_queue<TimerEntry, std::vector<TimerEntry>, std::greater<TimerEntry>> timers_;
-		std::thread timer_thread_;
+		// This backend's own timer queue, lifted into TimerQueue so the other three
+		// stop spawning a sleeping thread per scheduled callback. Two changes came with
+		// the move: steady_clock instead of system_clock, so a wall-clock step cannot
+		// stretch a deadline, and the thread is joined before the completion port is
+		// closed rather than after it.
+		TimerQueue timers_{[this](std::function<void()> cb) { post(std::move(cb)); }};
 
 		// Posted callbacks
 		std::mutex callback_mutex_;
@@ -119,13 +113,14 @@ namespace coroute::net
 				WSACleanup();
 				throw std::runtime_error("CreateIoCompletionPort failed: " + std::to_string(GetLastError()));
 			}
-
-			// Start timer thread
-			timer_thread_ = std::thread([this] { timer_thread_proc(); });
 		}
 
 		~IocpContext() override
 		{
+			// First, and before the completion port is closed. The previous order joined
+			// the timer thread after CloseHandle and WSACleanup, so a callback firing
+			// during shutdown posted to a handle that was already gone.
+			timers_.stop();
 			stop();
 
 			// Wait for workers
@@ -143,16 +138,6 @@ namespace coroute::net
 			}
 
 			WSACleanup();
-
-			if (timer_thread_.joinable())
-			{
-				{
-					std::lock_guard lock(timer_mutex_);
-					stopped_ = true;
-				}
-				timer_cv_.notify_all();
-				timer_thread_.join();
-			}
 		}
 
 		HANDLE handle() const noexcept { return completion_port_; }
@@ -196,7 +181,9 @@ namespace coroute::net
 				PostQueuedCompletionStatus(completion_port_, 0, 0, nullptr);
 			}
 
-			timer_cv_.notify_all();
+			// Stopping the context stops its timers. Safe from a scheduled callback,
+			// which runs on a worker rather than on the timer thread.
+			timers_.stop();
 		}
 
 		bool stopped() const noexcept override { return stopped_; }
@@ -220,43 +207,10 @@ namespace coroute::net
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
 		{
-			auto expiry = std::chrono::system_clock::now() + delay;
-			{
-				std::lock_guard lock(timer_mutex_);
-				timers_.push({expiry, std::move(callback)});
-			}
-			timer_cv_.notify_all();
+			timers_.schedule(delay, std::move(callback));
 		}
 
 	private:
-		void timer_thread_proc()
-		{
-			while (!stopped_)
-			{
-				std::unique_lock lock(timer_mutex_);
-				if (timers_.empty())
-				{
-					timer_cv_.wait(lock, [this] { return stopped_ || !timers_.empty(); });
-				}
-				else
-				{
-					auto now = std::chrono::system_clock::now();
-					auto& top = timers_.top();
-					if (top.expiry <= now)
-					{
-						auto cb = std::move(const_cast<TimerEntry&>(top).callback);
-						timers_.pop();
-						lock.unlock();
-						post(std::move(cb));
-					}
-					else
-					{
-						timer_cv_.wait_until(lock, top.expiry);
-					}
-				}
-			}
-		}
-
 		void worker_thread()
 		{
 			while (!stopped_)
