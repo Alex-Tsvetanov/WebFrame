@@ -4,6 +4,7 @@
 #include "coroute/net/deadline.hpp"
 #include "coroute/net/idle_timeout.hpp"
 #include "coroute/core/chunked.hpp"
+#include "coroute/core/request_parse.hpp"
 #ifdef COROUTE_HAS_HTTP3
 #include "coroute/http3/endpoint.hpp"
 #endif
@@ -771,37 +772,6 @@ namespace coroute
 		conn->close();
 	}
 
-	// URL decode helper
-	static std::string url_decode(std::string_view str)
-	{
-		std::string result;
-		result.reserve(str.size());
-
-		for (size_t i = 0; i < str.size(); ++i)
-		{
-			if (str[i] == '%' && i + 2 < str.size())
-			{
-				// Decode %XX
-				char hex[3] = {str[i + 1], str[i + 2], '\0'};
-				char* end;
-				long val = std::strtol(hex, &end, 16);
-				if (end == hex + 2)
-				{
-					result += static_cast<char>(val);
-					i += 2;
-					continue;
-				}
-			}
-			else if (str[i] == '+')
-			{
-				result += ' ';
-				continue;
-			}
-			result += str[i];
-		}
-
-		return result;
-	}
 
 	Task<expected<Request, Error>> App::parse_request(net::Connection& conn)
 	{
@@ -870,143 +840,14 @@ namespace coroute
 		}
 
 		// Parse the request
-		std::string_view data(buffer.data(), total_read);
-		Request req;
-
-		// Find request line
-		auto line_end = data.find("\r\n");
-		if (line_end == std::string_view::npos)
+		// The head parses without the connection, so it lives in request_parse.cpp and
+		// is reachable from a test and a fuzz harness. Only the body needs the socket.
+		auto head = parse_request_head(std::string_view(buffer.data(), total_read));
+		if (!head)
 		{
-			co_return unexpected(Error::http(HttpError::BadRequest, "Invalid request line"));
+			co_return unexpected(head.error());
 		}
-
-		std::string_view request_line = data.substr(0, line_end);
-
-		// Parse method
-		auto method_end = request_line.find(' ');
-		if (method_end == std::string_view::npos)
-		{
-			co_return unexpected(Error::http(HttpError::BadRequest, "Invalid request line"));
-		}
-		req.set_method(request_line.substr(0, method_end));
-
-		// Parse path
-		auto path_start = method_end + 1;
-		auto path_end = request_line.find(' ', path_start);
-		if (path_end == std::string_view::npos)
-		{
-			co_return unexpected(Error::http(HttpError::BadRequest, "Invalid request line"));
-		}
-
-		std::string_view path_with_query = request_line.substr(path_start, path_end - path_start);
-
-		// Split path and query string
-		auto query_start = path_with_query.find('?');
-		if (query_start != std::string_view::npos)
-		{
-			// URL decode the path
-			req.set_path(url_decode(path_with_query.substr(0, query_start)));
-			req.set_query_string(std::string(path_with_query.substr(query_start + 1)));
-
-			// Parse query parameters with URL decoding
-			std::string_view qs = path_with_query.substr(query_start + 1);
-			while (!qs.empty())
-			{
-				auto amp = qs.find('&');
-				std::string_view param = (amp != std::string_view::npos) ? qs.substr(0, amp) : qs;
-
-				auto eq = param.find('=');
-				if (eq != std::string_view::npos)
-				{
-					req.add_query_param(url_decode(param.substr(0, eq)), url_decode(param.substr(eq + 1)));
-				}
-				else if (!param.empty())
-				{
-					// Parameter without value
-					req.add_query_param(url_decode(param), "");
-				}
-
-				if (amp == std::string_view::npos) break;
-				qs = qs.substr(amp + 1);
-			}
-		}
-		else
-		{
-			req.set_path(url_decode(path_with_query));
-		}
-
-		// Parse HTTP version
-		auto version_start = path_end + 1;
-		req.set_http_version(std::string(request_line.substr(version_start)));
-
-		// Parse headers
-		size_t pos = line_end + 2;
-		while (pos < data.size())
-		{
-			auto header_end = data.find("\r\n", pos);
-			if (header_end == std::string_view::npos || header_end == pos)
-			{
-				break;  // End of headers
-			}
-
-			std::string_view header_line = data.substr(pos, header_end - pos);
-			auto colon = header_line.find(':');
-			if (colon != std::string_view::npos)
-			{
-				std::string_view key = header_line.substr(0, colon);
-				std::string_view value = header_line.substr(colon + 1);
-
-				// Trim leading whitespace from value
-				while (!value.empty() && value[0] == ' ')
-				{
-					value = value.substr(1);
-				}
-
-				// Two Content-Length lines that disagree are the classic desync: this server
-				// stores headers in a map, so the later one silently replaced the earlier one
-				// and a proxy taking the first would frame the body differently. RFC 9112
-				// section 6.3 requires rejecting the message rather than picking one.
-				if (Request::fold(std::string(key)) == "content-length")
-				{
-					auto existing = req.header("content-length");
-					if (existing && *existing != value)
-					{
-						co_return unexpected(
-						    Error::http(HttpError::BadRequest, "Conflicting Content-Length"));
-					}
-				}
-
-				req.add_header(std::string(key), std::string(value));
-			}
-
-			pos = header_end + 2;
-		}
-
-		// Transfer-Encoding is not implemented on this path, and saying so is the only
-		// safe answer.
-		//
-		// It used to be ignored entirely: a chunked request has no Content-Length, so no
-		// body was read and the chunk data was discarded with the read buffer. Checked
-		// against a running server rather than assumed, and the octets are dropped rather
-		// than executed, so this was not smuggling by itself. It is still a server that
-		// disagrees with the client about how long the request was, which is what a
-		// front-end proxy honouring Transfer-Encoding needs in order to desync against
-		// it. RFC 9112 section 6.1 says a server that does not understand a transfer
-		// coding responds 501.
-		//
-		// The status reaching the client is 400 rather than 501, because handle_connection
-		// answers every parse failure with bad_request and discards the code carried in
-		// the error. That is worth fixing separately; the framing is what matters here.
-		//
-		// ChunkedBodyReader exists and would decode this properly. Wiring it needs the
-		// octets already buffered past the headers to be handed to it, and getting that
-		// handover subtly wrong reintroduces the same desync, so refusing comes first and
-		// implementing follows separately.
-		if (req.header("transfer-encoding"))
-		{
-			co_return unexpected(
-			    Error::http(HttpError::NotImplemented, "Transfer-Encoding is not supported"));
-		}
+		Request req = std::move(*head);
 
 		// Read body if Content-Length is present
 		auto content_length = req.content_length();
@@ -1062,12 +903,12 @@ namespace coroute
 					auto eq = param.find('=');
 					if (eq != std::string_view::npos)
 					{
-						req.add_query_param(url_decode(param.substr(0, eq)), url_decode(param.substr(eq + 1)));
+						req.add_query_param(url_decode(param.substr(0, eq), true), url_decode(param.substr(eq + 1), true));
 					}
 					else if (!param.empty())
 					{
 						// Parameter without value
-						req.add_query_param(url_decode(param), "");
+						req.add_query_param(url_decode(param, true), "");
 					}
 
 					if (amp == std::string_view::npos) break;

@@ -162,6 +162,7 @@ add_library(coroute STATIC
     src/core/chunked.cpp
     src/core/compression.cpp
     src/core/range.cpp
+    src/core/request_parse.cpp
     src/core/json.cpp
     src/core/form.cpp
     src/core/cookie.cpp

@@ -50,6 +50,7 @@ coroute_add_fuzzer(fuzz_urlencoded)
 coroute_add_fuzzer(fuzz_multipart)
 coroute_add_fuzzer(fuzz_chunk_size)
 coroute_add_fuzzer(fuzz_cookie)
+coroute_add_fuzzer(fuzz_request_head)
 
 # HPACK needs nghttp2, so it only exists when HTTP/2 is compiled in.
 if(COROUTE_ENABLE_HTTP2)

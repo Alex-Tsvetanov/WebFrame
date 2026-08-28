@@ -42,6 +42,7 @@ add_executable(unit_tests
     test_timer_queue.cpp
     test_deadline.cpp
     test_idle_timeout.cpp
+    test_request_parse.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE coroute Catch2::Catch2WithMain)
