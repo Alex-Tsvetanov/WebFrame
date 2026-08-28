@@ -108,6 +108,23 @@
     },
 
     {
+      "name": "fuzz",
+      "displayName": "Fuzz harnesses (Clang, ASan)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "COROUTE_BUILD_FUZZERS": "ON",
+        "COROUTE_BUILD_EXAMPLES": "OFF",
+        "COROUTE_BUILD_TESTS": "OFF",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+        "CMAKE_C_FLAGS": "-D_DISABLE_STRING_ANNOTATION -D_DISABLE_VECTOR_ANNOTATION",
+        "CMAKE_CXX_FLAGS": "-D_DISABLE_STRING_ANNOTATION -D_DISABLE_VECTOR_ANNOTATION"
+      }
+    },
+
+    {
       "name": "gate-base",
       "hidden": true,
       "inherits": "base",

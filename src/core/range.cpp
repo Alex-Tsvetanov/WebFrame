@@ -1,4 +1,6 @@
 #include "coroute/core/range.hpp"
+
+#include <charconv>
 #include "coroute/core/time.hpp"
 
 #include <algorithm>
@@ -117,6 +119,39 @@ namespace coroute
 		}
 
 		// Parse a single range spec like "0-499", "500-", "-500"
+		// Digits and nothing else.
+		//
+		// std::stoll stops at the first character it does not understand and reports
+		// success, so "1;" parsed as 1 and "5abc" as 5. A Range header could carry
+		// arbitrary trailing bytes past a digit and still be accepted, which is how
+		// "bytes=1;-0" became a range. Found by fuzz_range.
+		std::optional<std::int64_t> parse_offset(std::string_view text)
+		{
+			if (text.empty())
+			{
+				return std::nullopt;
+			}
+			for (char c : text)
+			{
+				// No sign either: a byte position is not negative, and a leading minus
+				// would be the range separator being read as part of a number.
+				if (c < 0x30 || c > 0x39)
+				{
+					return std::nullopt;
+				}
+			}
+
+			std::int64_t value = 0;
+			const auto* first = text.data();
+			const auto* last = text.data() + text.size();
+			const auto parsed = std::from_chars(first, last, value);
+			if (parsed.ec != std::errc{} || parsed.ptr != last)
+			{
+				return std::nullopt;  // overflow, or digits this did not consume
+			}
+			return value;
+		}
+
 		std::optional<ByteRange> parse_range_spec(std::string_view spec)
 		{
 			spec = trim(spec);
@@ -137,11 +172,8 @@ namespace coroute
 			auto start_str = trim(spec.substr(0, dash));
 			if (!start_str.empty())
 			{
-				try
-				{
-					range.start = std::stoll(std::string(start_str));
-				}
-				catch (...)
+				range.start = parse_offset(start_str);
+				if (!range.start)
 				{
 					return std::nullopt;
 				}
@@ -151,11 +183,8 @@ namespace coroute
 			auto end_str = trim(spec.substr(dash + 1));
 			if (!end_str.empty())
 			{
-				try
-				{
-					range.end = std::stoll(std::string(end_str));
-				}
-				catch (...)
+				range.end = parse_offset(end_str);
+				if (!range.end)
 				{
 					return std::nullopt;
 				}
@@ -163,6 +192,16 @@ namespace coroute
 
 			// Must have at least start or end
 			if (!range.start.has_value() && !range.end.has_value())
+			{
+				return std::nullopt;
+			}
+
+			// An inverted range is not a range. RFC 9110 calls a last-byte-pos below the
+			// first-byte-pos invalid, and accepting it here produced a ByteRange whose
+			// length() was negative: "bytes=100-1" reported a length of -98. normalize()
+			// rejected it, so the static file handler was safe, but any caller reading the
+			// parse result without normalising first inherited the negative length.
+			if (range.start && range.end && *range.start > *range.end)
 			{
 				return std::nullopt;
 			}

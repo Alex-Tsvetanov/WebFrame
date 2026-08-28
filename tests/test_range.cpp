@@ -355,3 +355,50 @@ TEST_CASE("RangeHeader validation", "[range]")
 		CHECK_FALSE(header->is_single_range());
 	}
 }
+
+// ============================================================================
+// Regressions from fuzz_range
+// ============================================================================
+
+TEST_CASE("An inverted range is not a range", "[range]")
+{
+	// RFC 9110: a last-byte-pos below the first-byte-pos is invalid. These used to
+	// parse, producing a ByteRange whose length() was negative. normalize() rejected
+	// them, so the static file handler was safe, but a caller reading the parse result
+	// without normalising first inherited the negative length.
+	CHECK_FALSE(range::parse("bytes=5-2").has_value());
+	CHECK_FALSE(range::parse("bytes=1-0").has_value());
+	CHECK_FALSE(range::parse("bytes=100-1").has_value());
+
+	// The equal case is a one-byte range and stays valid.
+	auto same = range::parse("bytes=7-7");
+	REQUIRE(same.has_value());
+	REQUIRE(same->ranges.size() == 1);
+	CHECK(same->ranges[0].start == 7);
+	CHECK(same->ranges[0].end == 7);
+}
+
+TEST_CASE("A byte position is digits and nothing else", "[range]")
+{
+	// std::stoll stops at the first character it does not understand and reports
+	// success, so a position could carry arbitrary trailing bytes. "1;-0" parsed as
+	// the range 1 to 0 because the semicolon ended the number silently.
+	CHECK_FALSE(range::parse("bytes=1;-0").has_value());
+	CHECK_FALSE(range::parse("bytes=5abc-9").has_value());
+	CHECK_FALSE(range::parse("bytes=0-9zzz").has_value());
+	CHECK_FALSE(range::parse("bytes=0x10-0x20").has_value());
+
+	// A sign is not part of a position either: the minus is the separator, and one
+	// consumed as part of a number is a separator that has gone missing.
+	CHECK_FALSE(range::parse("bytes=+0-5").has_value());
+
+	// Whitespace around the parts is still tolerated, as it was before.
+	auto spaced = range::parse("bytes= 0 - 5 ");
+	REQUIRE(spaced.has_value());
+	REQUIRE(spaced->ranges.size() == 1);
+	CHECK(spaced->ranges[0].start == 0);
+	CHECK(spaced->ranges[0].end == 5);
+
+	// And a value too wide for the type is rejected rather than wrapped.
+	CHECK_FALSE(range::parse("bytes=0-99999999999999999999999").has_value());
+}

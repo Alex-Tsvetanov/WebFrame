@@ -442,3 +442,10 @@ if(COROUTE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Fuzz harnesses. Clang only, since libFuzzer has no MSVC or GCC equivalent, and off by
+# default because turning it on instruments the library itself.
+option(COROUTE_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only)" OFF)
+if(COROUTE_BUILD_FUZZERS)
+    add_subdirectory(fuzz)
+endif()
