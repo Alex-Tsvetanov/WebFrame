@@ -4,4 +4,45 @@
 \section*{\bgen{СПИСЪК НА СЪКРАЩЕНИЯТА}{LIST OF ABBREVIATIONS}}
 \addcontentsline{toc}{section}{\bgen{СПИСЪК НА СЪКРАЩЕНИЯТА}{LIST OF ABBREVIATIONS}}
 
-\TODO{abbreviations used throughout, in one table}
+Списъкът съдържа съкращенията, използвани в текста, и само тях. Имената на системни
+извиквания, на функции и на типове не са съкращения и не се превеждат; те се дават с
+шрифт за код на мястото на употребата им.
+
+\begin{longtable}{@{}L{3.0cm}L{11.5cm}@{}}
+\toprule
+\textbf{Съкращение} & \textbf{Значение} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Съкращение} & \textbf{Значение} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+ALPN & Application-Layer Protocol Negotiation, договаряне на протокола на приложно ниво в рамките на TLS ръкостискането \cite{rfc7301} \\
+API & Application Programming Interface, програмен интерфейс \\
+BCa & Bias-corrected and accelerated, вид бутстрап доверителен интервал \cite{efron1987better} \\
+eBPF & Extended Berkeley Packet Filter, механизъм за изпълнение на проверени програми в ядрото на Linux \\
+HPACK & Компресия на заглавни полета в HTTP/2 \cite{rfc7541} \\
+HTML & HyperText Markup Language \\
+HTTP & HyperText Transfer Protocol \\
+HTTPS & HTTP над TLS \\
+IOCP & Input/Output Completion Ports, механизъм за вход и изход по завършване в Windows \\
+IP & Internet Protocol \\
+JSON & JavaScript Object Notation \\
+MTU & Maximum Transmission Unit, най-голям размер на предаваната единица \\
+QPACK & Компресия на заглавни полета в HTTP/3 \cite{rfc9114} \\
+QUIC & Транспортен протокол над UDP с вградена криптография \cite{rfc9000} \\
+RFC & Request for Comments, поредица от документи на IETF \\
+TCP & Transmission Control Protocol \\
+TLS & Transport Layer Security \\
+UDP & User Datagram Protocol \\
+XSS & Cross-Site Scripting, вид уязвимост при вграждане на неекранирани данни \\
+\end{longtable}
+
+\vspace{0.5em}
+\noindent
+Термините, оставени на английски в текста по правилата за терминология, не са съкращения и
+затова не влизат тук. Такива са \emph{handler}, \emph{middleware}, \emph{callback},
+\emph{stream}, \emph{backend} и \emph{endpoint}.
