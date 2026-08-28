@@ -3,6 +3,18 @@
 
 \TODO{measurements; every number arrives through the results macro or pgfplotstable, never by hand}
 
+% Демонстрация на механизма, а не резултат. Числата идват от
+% benchmark/harness/results2tex.py и се пишат като \R{ключ}, никога на ръка.
+% Без файла generated/results.tex всяко от тях се отпечатва като червено [?ключ],
+% което се намира с grep. Точно това трябва да се вижда, докато измервания още няма.
+\bgen{Пропускателна способност на coroute по HTTP/1.1}{Throughput of coroute over HTTP/1.1}:
+\R{coroute.h1.rps} \bgen{заявки в секунда}{requests per second}
+(\bgen{медиана от}{median of} \R{coroute.h1.n} \bgen{изпълнения}{runs},
+95\% BCa CI \R{coroute.h1.rps.lo}--\R{coroute.h1.rps.hi}),
+\bgen{при}{at} p99 \R{coroute.h1.p99}\,ms.
+\bgen{За nginx}{For nginx}: \R{nginx.h1.rps}.
+\bgen{Липсваща стойност}{A missing value}: \R{coroute.h3.rps}.
+
 \subsection{\bgen{Изводи}{Summary}}
 
 \TODO{every numbered chapter ends with one}

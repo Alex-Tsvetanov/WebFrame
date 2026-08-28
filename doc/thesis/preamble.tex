@@ -153,7 +153,11 @@
 % изречение. pgfplots и pgfplotstable четат CSV направо, така че нито една
 % фигура или таблица с резултати не се копира на ръка.
 \usepackage{siunitx}
-\sisetup{group-separator={\,}, group-minimum-digits=4, round-mode=figures, round-precision=3}
+% Без закръгляване тук. Значещите цифри зависят от величината: пропускателната
+% способност е цяло число, латентността е с два знака, а брой изпълнения няма
+% дробна част изобщо. Инструментът, който знае какво означава числото, го
+% закръглява при генерирането; siunitx отговаря само за вида.
+\sisetup{group-separator={\,}, group-minimum-digits=4, round-mode=none}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepackage{pgfplotstable}

@@ -19,6 +19,9 @@ Built so far, and self-checked:
                      warming machine does not hand one system the cold half
     driver.py        what happens for one run and in what order, behind two protocols
                      so its rules are checkable without a server or a generator
+    stats.py         medians and BCa bootstrap intervals, in the standard library
+    results2tex.py   accepted runs to the \R{} keys the thesis quotes, refusing any
+                     key that two different cells both claim
 
 Not built yet:
 
