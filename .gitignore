@@ -15,3 +15,8 @@ build*/
 benchmark/benchmark.sh
 debug.log
 .cache/
+
+# CTest scratch, written into the source directory when ctest runs from here rather
+# than from a build directory. Generated, and it has been sitting untracked long
+# enough to be noise in every git status.
+Testing/
