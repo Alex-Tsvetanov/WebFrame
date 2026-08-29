@@ -48,11 +48,23 @@ case("conflicting content-length",
      + str(len(SMUGGLED)).encode() + b"\r\n\r\n" + SMUGGLED,
      ["400"])
 
-# A transfer coding this server does not implement. RFC 9112 section 6.1 says answer
-# 501 rather than ignore it, since ignoring it leaves a body nobody consumed.
+# Chunked framing, which the server decodes. The terminating chunk ends the body, so
+# what follows is not part of this request and must not become another one. The
+# connection is closed after a chunked request precisely so it cannot.
 case("transfer-encoding chunked",
      b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n" + SMUGGLED,
+     ["404"])
+
+# A coding this server cannot apply. RFC 9112 section 6.1 says answer 501 rather than
+# ignore it, and picking out the part of a list it recognises would be worse than both.
+case("unsupported transfer coding",
+     b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: gzip, chunked\r\n\r\n0\r\n\r\n",
      ["501"])
+
+# Both framings at once, which two parties may resolve differently.
+case("both framings at once",
+     b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n0\r\n\r\n",
+     ["400"])
 
 # A body larger than the server accepts, rejected on the header before anything is
 # read or allocated.

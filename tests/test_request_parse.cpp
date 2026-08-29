@@ -77,14 +77,34 @@ TEST_CASE("Parsing a request head", "[request_parse]")
 		CHECK(same.has_value());
 	}
 
-	SECTION("Transfer-Encoding is refused rather than ignored")
+	SECTION("chunked is accepted here and decoded by the caller")
 	{
+		// The head parser has no connection, so it can only say the framing is one it
+		// understands. Reading the body is parse_request's job.
 		auto req = parse_request_head("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n");
-		CHECK_FALSE(req.has_value());
+		CHECK(req.has_value());
 
 		// Including when the field name arrives in the case an HTTP/2 gateway emits.
 		auto folded = parse_request_head("POST / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n");
-		CHECK_FALSE(folded.has_value());
+		CHECK(folded.has_value());
+	}
+
+	SECTION("a transfer coding this server cannot apply is refused")
+	{
+		// Not "the part of the list I recognise". Picking a coding out of a list is how
+		// a parser ends up framing a body it did not understand.
+		CHECK_FALSE(parse_request_head("POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n").has_value());
+		CHECK_FALSE(parse_request_head("POST / HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n").has_value());
+		CHECK_FALSE(parse_request_head("POST / HTTP/1.1\r\nTransfer-Encoding: chunked, gzip\r\n\r\n").has_value());
+	}
+
+	SECTION("both framings at once is refused")
+	{
+		// RFC 9112 section 6.3: two parties may resolve this differently, which is the
+		// same reason two Content-Length lines are refused.
+		auto both = parse_request_head(
+		    "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n");
+		CHECK_FALSE(both.has_value());
 	}
 
 	SECTION("a request line missing its parts is refused")

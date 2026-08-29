@@ -166,30 +166,32 @@ Request req;
 		pos = header_end + 2;
 	}
 
-	// Transfer-Encoding is not implemented on this path, and saying so is the only
-	// safe answer.
+	// Transfer-Encoding, checked here and decoded by the caller.
 	//
-	// It used to be ignored entirely: a chunked request has no Content-Length, so no
-	// body was read and the chunk data was discarded with the read buffer. Checked
-	// against a running server rather than assumed, and the octets are dropped rather
-	// than executed, so this was not smuggling by itself. It is still a server that
-	// disagrees with the client about how long the request was, which is what a
-	// front-end proxy honouring Transfer-Encoding needs in order to desync against
-	// it. RFC 9112 section 6.1 says a server that does not understand a transfer
-	// coding responds 501.
+	// It used to be ignored entirely, so a chunked request had no body read and the
+	// chunk data was discarded with the read buffer. Then it was refused outright,
+	// which was safe but left a required part of HTTP/1.1 unimplemented. Now the one
+	// coding this server can actually decode is accepted and anything else gets the
+	// 501 RFC 9112 section 6.1 asks for.
 	//
-	// The status reaching the client is 400 rather than 501, because handle_connection
-	// answers every parse failure with bad_request and discards the code carried in
-	// the error. That is worth fixing separately; the framing is what matters here.
-	//
-	// ChunkedBodyReader exists and would decode this properly. Wiring it needs the
-	// octets already buffered past the headers to be handed to it, and getting that
-	// handover subtly wrong reintroduces the same desync, so refusing comes first and
-	// implementing follows separately.
-	if (req.header("transfer-encoding"))
+	// Exactly "chunked" and nothing else. A list such as "gzip, chunked" names a
+	// coding this cannot apply, and picking out the part it recognises is how a
+	// parser ends up framing a body it did not understand.
+	if (auto coding = req.header("transfer-encoding"))
 	{
-		return unexpected(
-		    Error::http(HttpError::NotImplemented, "Transfer-Encoding is not supported"));
+		if (Request::fold(std::string(*coding)) != "chunked")
+		{
+			return unexpected(Error::http(HttpError::NotImplemented, "Unsupported transfer coding"));
+		}
+
+		// Both framings at once. RFC 9112 section 6.3 treats the message as suspect
+		// precisely because two parties may resolve it differently, which is the same
+		// reason two Content-Length lines are refused above.
+		if (req.header("content-length"))
+		{
+			return unexpected(
+			    Error::http(HttpError::BadRequest, "Both Transfer-Encoding and Content-Length"));
+		}
 	}
 
 		return req;

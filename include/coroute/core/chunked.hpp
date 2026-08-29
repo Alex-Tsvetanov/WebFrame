@@ -118,6 +118,18 @@ namespace coroute
 	public:
 		explicit ChunkedBodyReader(net::Connection* conn) : conn_(conn) { }
 
+		// Seeded with octets already taken off the connection.
+		//
+		// The request parser reads until the blank line that ends the headers, and the
+		// read that finds it usually carries part of the body with it. Those octets are
+		// gone from the socket, so a reader that only knows how to read from the socket
+		// starts in the middle of the first chunk. Handing them over is the whole of
+		// what makes this reader usable from the request path.
+		ChunkedBodyReader(net::Connection* conn, std::string_view already_read)
+			: conn_(conn), buffer_(already_read)
+		{
+		}
+
 		// Read the entire chunked body into a string
 		// Use this for small bodies where you want all data at once
 		Task<expected<std::string, Error>> read_all(size_t max_size = 10 * 1024 * 1024);

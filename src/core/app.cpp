@@ -605,6 +605,16 @@ namespace coroute
 
 			Request& req = *req_result;
 
+			// A chunked request ends this connection.
+			//
+			// The body reader may hold octets belonging to whatever the client sent next,
+			// and parse_request owns its buffer for one call, so there is nowhere to put
+			// them. Closing after the response means they can never be misread as the start
+			// of a request, which is the failure this whole area has been about. Carrying
+			// them properly means this loop holding pushback across calls, which is also
+			// what the Content-Length path would need to support pipelining.
+			const bool was_chunked = req.header("transfer-encoding").has_value();
+
 			// Check for WebSocket upgrade
 			if (co_await try_websocket_upgrade(conn, req))
 			{
@@ -624,7 +634,7 @@ namespace coroute
 #endif
 
 			// Determine keep-alive based on request
-			keep_alive = req.keep_alive();
+			keep_alive = req.keep_alive() && !was_chunked;
 
 #ifdef COROUTE_HAS_TEMPLATES
 			// Check for view routes first (GET-only)
@@ -862,6 +872,32 @@ namespace coroute
 			co_return unexpected(head.error());
 		}
 		Request req = std::move(*head);
+
+		// A chunked body, decoded from where the header read left off.
+		//
+		// The read that found the blank line usually carried part of the body with it,
+		// and those octets are already off the socket. Handing them to the reader is the
+		// whole of the handover, and getting it wrong means starting mid-chunk.
+		if (req.header("transfer-encoding"))
+		{
+			const std::string_view carried(buffer.data() + header_end_pos, total_read - header_end_pos);
+			ChunkedBodyReader reader(&conn, carried);
+
+			auto body = co_await reader.read_all(MAX_BODY_SIZE);
+			if (!body)
+			{
+				co_return unexpected(body.error());
+			}
+			req.set_body(std::move(*body));
+
+			// Whatever the reader has left over belongs to the next request on this
+			// connection, and there is nowhere to put it: parse_request owns its buffer for
+			// one call. handle_connection closes the connection after a chunked request for
+			// that reason, so those octets can never be misread as the start of something.
+			// Carrying them properly means the connection loop holding pushback across
+			// calls, which is the same change the Content-Length path needs for pipelining.
+			co_return req;
+		}
 
 		// Read body if Content-Length is present
 		auto content_length = req.content_length();
