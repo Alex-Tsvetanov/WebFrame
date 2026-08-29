@@ -5,11 +5,19 @@
 % is unclear which of them broke it. This loads the same fonts, the same language and
 % the same TikZ styles as the real preamble, and nothing else.
 %
-% Usage, from doc/thesis:
-%   latexmk -pdf -interaction=nonstopmode -outdir=build/probe \
-%       -jobname=probe-NAME "\def\figfile{NAME}\input{figures/_probe.tex}"
+% Usage, from doc/thesis. Note that the obvious latexmk invocation does NOT work on
+% Windows: Perl's argument handling strips the backslashes, so latexmk looks for a file
+% literally named deffigfileNAMEinputfigures/_probe.tex. Call pdflatex directly:
 %
-% Or copy this file, replace \figfile, and build the copy.
+%   pdflatex -interaction=nonstopmode -jobname=probe-NAME \
+%       -output-directory=build/probe "\def\figfile{NAME}\input{figures/_probe.tex}"
+%
+% Or write a two line wrapper into build/ and compile that, which is what the figure
+% authors ended up doing.
+%
+% The real text width in the dissertation is 16.0 cm, measured, not the 14.5 cm that
+% the page geometry might suggest at a glance. A figure scaled to fit 14.5 cm is
+% correct but leaves more margin than it needs.
 
 \documentclass[12pt,a4paper]{article}
 

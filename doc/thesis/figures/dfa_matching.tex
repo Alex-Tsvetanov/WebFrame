@@ -1,0 +1,72 @@
+\begin{figure}[htbp]
+\centering
+% Автоматът е нарисуван на два реда, защото пътят се чете отляво надясно.
+% Ребрата с повече от един символ са свити, за да се събере фигурата.
+% В реалния автомат всеки символ е отделен преход.
+\begin{tikzpicture}[
+    scale=0.9, transform shape,
+    >={Stealth[width=5pt,length=5pt]},
+    st/.style={draw, circle, minimum size=0.78cm, inner sep=0pt,
+               font=\fontsize{8}{9}\selectfont},
+    acc/.style={st, double, double distance=1pt, fill=gray!10},
+    start st/.style={st, fill=gray!25},
+    tr/.style={->, semithick},
+    lbl/.style={font=\fontsize{8}{10}\selectfont, inner sep=2pt},
+    rt/.style={font=\fontsize{8}{10}\selectfont, inner sep=2pt},
+  ]
+
+  % Горен ред: /users и /users/{id}
+  \node[start st] (q0) at (0,0)   {$q_0$};
+  \node[st]       (q1) at (2.3,0) {$q_1$};
+  \node[acc]      (q2) at (4.6,0) {$q_2$};
+  \node[st]       (q3) at (7.0,0) {$q_3$};
+  \node[acc]      (q4) at (9.4,0) {$q_4$};
+
+  % Долен ред: /posts и /posts/{id}/comments
+  \node[acc] (q5) at (4.6,-2.4)  {$q_5$};
+  \node[st]  (q6) at (7.0,-2.4)  {$q_6$};
+  \node[st]  (q7) at (9.4,-2.4)  {$q_7$};
+  \node[acc] (q8) at (12.4,-2.4) {$q_8$};
+
+  % Вход в началното състояние.
+  \draw[tr] (-1.15,0) -- (q0) node[lbl, midway, above=1pt] {път};
+
+  \draw[tr] (q0) -- (q1) node[lbl, midway, above] {\code{/}};
+  \draw[tr] (q1) -- (q2) node[lbl, midway, above] {\code{users}};
+  \draw[tr] (q2) -- (q3) node[lbl, midway, above] {\code{/}};
+  \draw[tr] (q3) -- (q4) node[lbl, midway, above] {\code{s}};
+  % Параметърът е един или повече символа, затова има примка.
+  \draw[tr] (q4) edge[loop above] node[lbl] {\code{s}} (q4);
+
+  % Колянчето държи надписа хоризонтален, а линията не минава през него.
+  \draw[tr, rounded corners=3pt] (q1) -- (2.3,-2.4) -- (q5)
+        node[lbl, midway, above=1pt] {\code{posts}};
+  \draw[tr] (q5) -- (q6) node[lbl, midway, above] {\code{/}};
+  \draw[tr] (q6) -- (q7) node[lbl, midway, above] {\code{s}};
+  \draw[tr] (q7) edge[loop above] node[lbl] {\code{s}} (q7);
+  \draw[tr] (q7) -- (q8) node[lbl, midway, above] {\code{/comments}};
+
+  % Всяко приемащо състояние носи маршрута, който разпознава.
+  \node[rt, below=1pt of q2] {\code{/users}};
+  \node[rt, below=1pt of q4] {\code{/users/\{id\}}};
+  \node[rt, below=1pt of q5] {\code{/posts}};
+  % Последният надпис е закачен наляво, за да не излезе извън полето.
+  \node[rt, anchor=north east] at ($(q8.south)+(0.35,-0.07)$)
+        {\code{/posts/\{id\}/comments}};
+
+  % Легендата е един възел с изрична котва, за да не се разширява наляво.
+  \node[note, text width=12.4cm, anchor=north west] at (-0.95,-4.3) {%
+    Двойният кръг е приемащо състояние. До него стои маршрутът, който то
+    разпознава. \code{s} е символ от сегмент на пътя, тоест
+    \code{A-Za-z0-9\_.\%-}. Ребра с няколко символа са свити за четимост.
+    В автомата всеки символ е отделен преход. Началните символи на свитите
+    ребра се различават, така че изборът остава детерминиран.};
+\end{tikzpicture}
+\caption{Детерминиран краен автомат за съпоставяне на маршрути. Показани са
+четири маршрута. Автоматът се строи веднъж, при регистрацията. При заявка
+пътят се чете отляво надясно с по един преход на символ, например
+\code{/users/42} дава девет символа и девет прехода. Затова времето за
+съпоставяне зависи от дължината на пътя, а не от броя на регистрираните
+маршрути. Още маршрути добавят състояния, но не добавят стъпки за един път.}
+\label{fig:dfa_matching}
+\end{figure}

@@ -1,0 +1,81 @@
+% Шевът на абстракцията за вход и изход.
+%
+% Четирите колони са на стъпка 3.25 cm и ширина 3.05 cm, за да се подредят протоколните
+% слоеве отгоре и бекендите отдолу точно един под друг. Цялата картина, заедно със
+% завъртените етикети отляво, излиза около 13.6 cm и се побира в 14.5 cm без мащабиране.
+%
+% Черно бяло: трите пласта се различават по фон (бял, сив 25, сив 10), а моделът на
+% бекенда се чете по рамката, плътна за завършване и пунктирана за готовност. Никъде
+% не се разчита на цвят.
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  lane/.style={proc, minimum width=3.05cm, minimum height=0.8cm},
+  impl/.style={box, minimum width=3.05cm, minimum height=1.4cm, fill=gray!10, thick},
+  compl/.style={impl},                    % модел на завършване
+  ready/.style={impl, densely dashed},    % модел на готовност
+  seam/.style={box, minimum width=12.8cm, minimum height=1.15cm, fill=gray!25, thick},
+  side/.style={note, rotate=90},
+]
+
+% ---- Над шева: това, което не се сменя ------------------------------------
+\node[lane, minimum width=12.8cm] (app) at (4.875,5.3)
+     {Маршрутизатор и middleware верига};
+
+\node[note] at (4.875,4.62) {протоколни слоеве};
+
+\node[lane] (h11) at (0.00,3.9) {\code{HTTP/1.1}};
+\node[lane] (h2)  at (3.25,3.9) {\code{HTTP/2}};
+\node[lane] (h3)  at (6.50,3.9) {\code{HTTP/3}};
+\node[lane] (ws)  at (9.75,3.9) {\code{WebSocket}};
+
+\begin{scope}[on background layer]
+  \node[grp, fit=(app)(h11)(ws)] (upper) {};
+\end{scope}
+
+% ---- Шевът ----------------------------------------------------------------
+\node[seam] (seam) at (4.875,2.0)
+     {Интерфейс за вход и изход\\[1pt]
+      \code{IoContext}\quad\code{Listener}\quad\code{Connection}\quad\code{DatagramSocket}};
+
+\draw[flow] (upper.south) -- (seam.north);
+
+% ---- Под шева: четирите реализации ----------------------------------------
+\node[compl] (uring)  at (0.00,0.10) {\code{io\_uring}\\[2pt] Linux\\[1pt] завършване};
+\node[ready] (epoll)  at (3.25,0.10) {\code{epoll}\\[2pt] Linux\\[1pt] готовност};
+\node[ready] (kqueue) at (6.50,0.10) {\code{kqueue}\\[2pt] macOS, BSD\\[1pt] готовност};
+\node[compl] (iocp)   at (9.75,0.10) {\code{IOCP}\\[2pt] Windows\\[1pt] завършване};
+
+% Пунктирана стрелка надолу: реализация на интерфейса, а не извикване през него.
+\foreach \n in {uring,epoll,kqueue,iocp}
+  \draw[thin flow] (seam.south -| \n.north) -- (\n.north);
+
+% ---- Методологичната бележка ----------------------------------------------
+% Скобата обхваща само двата Linux бекенда, защото точно тяхното съжителство
+% прави модела независима променлива.
+\draw[decorate, decoration={brace, mirror, amplitude=5pt}, semithick]
+     ($(uring.south west)+(0,-0.10)$) -- ($(epoll.south east)+(0,-0.10)$);
+
+\node[note, text width=12.8cm, anchor=north west] at (-1.525,-1.05)
+     {И двата модела са налични на една и съща система. Моделът на интерфейса,
+      готовност или завършване, се мери като независима променлива: една машина,
+      един двоичен файл, сменя се само бекендът. На macOS и Windows моделът върви
+      заедно с операционната система и двете не могат да се разделят.};
+
+\node[note, text width=12.8cm, anchor=north west] at (-1.525,-2.35)
+     {Плътна рамка: модел на завършване. Пунктирана рамка: модел на готовност.};
+
+% Завъртените етикети отляво носят цялото послание на фигурата. Центрирани са
+% по вертикалната среда на пласта, който именуват, за да не се четат като етикет
+% на шева между тях.
+\node[side] at (-1.95,4.575) {не се променя};
+\node[side] at (-1.95,0.100) {сменя се};
+
+\end{tikzpicture}
+\caption{Шев на абстракцията за вход и изход. Над шева стои всичко, което не зависи
+от бекенда: маршрутизаторът, middleware веригата и протоколните слоеве. Под шева
+стоят четирите реализации. Понеже \code{io\_uring} и \code{epoll} се предлагат на
+една и съща операционна система, моделът на интерфейса може да се измери отделно
+от нея.}
+\label{fig:io_backend_seam}
+\end{figure}

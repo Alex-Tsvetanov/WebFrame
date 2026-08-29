@@ -1,0 +1,101 @@
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  font=\fontsize{9}{11}\selectfont,
+  % Заглавие на жизнена линия.
+  head/.style={box, fill=gray!10, minimum height=0.8cm},
+  % Жизнените линии са пунктирани, за да не се четат като поток от данни.
+  life/.style={densely dotted, gray!60},
+  msg/.style={-Stealth, thick},
+  ret/.style={-Stealth, semithick, densely dashed},
+  lbl/.style={midway, above, font=\fontsize{8}{9.6}\selectfont, align=center, inner sep=1.5pt},
+  lblb/.style={midway, below, font=\fontsize{8}{9.6}\selectfont, align=center, inner sep=1.5pt},
+  tiny note/.style={font=\fontsize{7.5}{9}\selectfont, align=left, inner sep=1.5pt},
+]
+
+% === жизнени линии ===========================================================
+% Третата линия носи две имена, защото read_prefix чете, а после връща обвивката
+% PrefaceConnection. По потока това е един и същ участник.
+\node[head, minimum width=2.1cm] (hA) at (0,0)    {Клиент};
+\node[head, minimum width=2.1cm] (hB) at (3.0,0)  {Сокет};
+\node[head] (hC) at (7.2,0)  {\code{read\_prefix}\\ \code{PrefaceConnection}};
+\node[head] (hD) at (11.2,0) {Протоколен слой\\ (TLS ръкостискане\\ или HTTP парсер)};
+
+\draw[life] (0,-0.62)    -- (0,-8.80);
+\draw[life] (3.0,-0.62)  -- (3.0,-8.80);
+\draw[life] (7.2,-0.62)  -- (7.2,-8.80);
+\draw[life] (11.2,-0.92) -- (11.2,-8.80);
+
+% === четене и решение ========================================================
+\draw[msg] (0,-1.55) -- (3.0,-1.55)
+  node[lbl] {изпраща \code{0x16 ...}\\ или \code{GET ...}};
+
+\draw[msg] (7.2,-2.35) -- (3.0,-2.35) node[lbl] {\code{async\_read}};
+\draw[ret] (3.0,-3.05) -- (7.2,-3.05) node[lbl] {първите октети};
+
+% Възловият момент. Октетите вече са извън ядрото, затова обвивката трябва да ги
+% пази. Кутията стои между линиите на Сокет и Протоколен слой, за да не ги закрие.
+\node[box, fill=gray!25, align=center, text width=6.1cm,
+      font=\fontsize{8}{10}\selectfont] (wrap) at (7.2,-4.05)
+  {\code{classify} решава по първия октет\\
+   сокетът се обвива в \code{PrefaceConnection},\\
+   която пази прочетените октети};
+
+\draw[msg] (7.2,-5.35) -- (11.2,-5.35) node[lbl] {предава връзката нататък};
+
+% === повторение на прочетеното ===============================================
+% Щрихованата лента показва живота на буфера: започва при обвиването и свършва
+% при първото четене на протоколния слой. Стои вляво от жизнената линия, за да
+% не закрива върховете на стрелките, които идват отдясно.
+\draw[pattern=north east lines] (6.83,-4.85) rectangle (7.09,-6.55);
+\draw[semithick] (6.83,-5.70) -- (5.6,-5.70);
+\node[tiny note, anchor=east, align=right] at (5.55,-5.70)
+  {буфер с\\ прочетените\\ октети};
+
+\draw[msg] (11.2,-5.95) -- (7.2,-5.95) node[lbl] {\code{async\_read}};
+\draw[ret] (7.2,-6.60) -- (11.2,-6.60)
+  node[lbl] {повторените октети,\\ без системно извикване};
+
+% === продължението от сокета =================================================
+\draw[msg] (11.2,-7.45) -- (7.2,-7.45) node[lbl] {\code{async\_read}};
+\draw[msg] (7.2,-7.45) -- (3.0,-7.45) node[lbl] {препраща}
+                                      node[lblb] {буферът е празен};
+
+\draw[ret] (3.0,-8.35) -- (7.2,-8.35);
+\draw[ret] (7.2,-8.35) -- (11.2,-8.35) node[lbl] {останалото от потока};
+
+% === какво вижда протоколният слой ===========================================
+% Осемте клетки са схема на потока. Границата между щрихованите и сивите клетки
+% умишлено не е подчертана, защото протоколният слой не я вижда.
+\foreach \i in {0,1,2} {
+  \draw[pattern=north east lines] (0.4+0.52*\i,-10.10) rectangle (0.92+0.52*\i,-9.60);
+}
+\foreach \i in {3,4,5,6,7} {
+  \draw[fill=gray!10] (0.4+0.52*\i,-10.10) rectangle (0.92+0.52*\i,-9.60);
+}
+
+\draw[decorate, decoration={brace, amplitude=4pt}] (0.4,-9.50) -- (1.96,-9.50)
+  node[midway, above, font=\fontsize{7.5}{9}\selectfont, inner sep=5pt] {повторени};
+\draw[decorate, decoration={brace, amplitude=4pt}] (1.96,-9.50) -- (4.56,-9.50)
+  node[midway, above, font=\fontsize{7.5}{9}\selectfont, inner sep=5pt] {от сокета};
+\draw[decorate, decoration={brace, amplitude=4pt, mirror}] (0.4,-10.20) -- (4.56,-10.20)
+  node[midway, below, align=center, font=\fontsize{8}{10}\selectfont, inner sep=5pt]
+  {един непрекъснат поток\\ за протоколния слой};
+
+% Шрифтът е записан тук, а не чрез стила note, защото преамбюлът предефинира
+% note по-нататък и кутията става твърде голяма, а тогава закрива стрелката
+% с останалото от потока.
+\node[grp, align=left, font=\fontsize{8}{10}\selectfont,
+      text width=6.6cm, anchor=west] at (5.70,-9.90)
+  {Защо не \code{MSG\_PEEK}: октетите, прочетени за разпознаването,
+   са същите, които следващият слой ще поиска. Надничането ги чете
+   два пъти и иска отделна реализация във всеки бекенд.};
+
+\end{tikzpicture}
+\caption{Четене с връщане на прочетеното на пътя на приемане.
+\code{read\_prefix} взема първите октети от сокета и \code{classify} решава по
+първия от тях. Сокетът се обвива в \code{PrefaceConnection}, която пази
+прочетеното. Протоколният слой получава първо повторените октети, после
+останалото от сокета, и вижда потока така, все едно никой не го е поглеждал.}
+\label{fig:pushback_connection}
+\end{figure}

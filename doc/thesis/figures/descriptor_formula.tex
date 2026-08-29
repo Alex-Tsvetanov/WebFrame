@@ -1,0 +1,123 @@
+% Визуализация на предложението от раздел sec:formal: L_demux = W * |T|.
+%
+% Подредбата е избрана така, че броенето да се вижда, а не да се чете. Протоколите стоят
+% най-отгоре, защото точно техният брой трябва да НЕ участва в сметката: линиите от тях се
+% сливат в един канал на транспорт, преди изобщо да стигнат до дескрипторите. Дескрипторите
+% стоят по два над всяка работна нишка, тоест видимо се умножават по W, а не по |P|.
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    font=\fontsize{9}{11}\selectfont,
+    pbox/.style={box, minimum width=2.1cm, minimum height=0.6cm,
+                 font=\fontsize{8}{10}\selectfont},
+    dbox/.style={box, minimum width=1.5cm, minimum height=0.62cm, fill=gray!10,
+                 font=\fontsize{8}{10}\selectfont},
+    wbox/.style={box, minimum width=3.0cm, minimum height=0.75cm, fill=gray!25,
+                 font=\fontsize{8}{10}\selectfont},
+    % Двете сметки са с еднаква височина, за да се четат като двойка, а не като
+    % главна и второстепенна.
+    fbox/.style={box, align=center, inner sep=5pt, minimum height=1.95cm},
+    link/.style={semithick},
+    udp/.style={semithick, densely dashed},
+    tail/.style={semithick, densely dotted},
+    dot/.style={circle, fill, inner sep=0pt, minimum size=2.6pt},
+  ]
+
+  % Височините на трите канала са фиксирани като координати, за да може всяка връзка да се
+  % чертае правоъгълно. Правоъгълните трасета правят двете неизбежни пресичания
+  % (пунктираните UDP отклонения срещу плътния TCP канал) перпендикулярни, тоест четими
+  % без цвят.
+  \coordinate (cf) at (0,3.55);   % сливане на TCP протоколите
+  \coordinate (ct) at (0,2.15);   % общ TCP канал
+  \coordinate (cu) at (0,2.55);   % общ UDP канал
+
+  % === множеството P =========================================================
+  \node[pbox] (p1) at (1.05,4.35) {\code{HTTP/1.1}};
+  \node[pbox] (p2) at (3.35,4.35) {\code{HTTP/2}};
+  \node[pbox] (p3) at (5.65,4.35) {\code{WebSocket}};
+  \node[pbox] (p4) at (8.60,4.35) {\code{HTTP/3}};
+  \node[grp, fit=(p1)(p2)(p3)(p4)] (grpP) {};
+  \node[note, anchor=south west] at (grpP.north west)
+    {протоколи на приложно ниво $P$, тук $|P| = 4$};
+
+  % === дескриптори и работни нишки ===========================================
+  \node[dbox] (d1t) at (0.68,1.15) {слушащ\\\code{TCP}};
+  \node[dbox] (d1u) at (2.32,1.15) {слушащ\\\code{UDP}};
+  \node[dbox] (d2t) at (4.08,1.15) {слушащ\\\code{TCP}};
+  \node[dbox] (d2u) at (5.72,1.15) {слушащ\\\code{UDP}};
+  \node[dbox] (d3t) at (7.48,1.15) {слушащ\\\code{TCP}};
+  \node[dbox] (d3u) at (9.12,1.15) {слушащ\\\code{UDP}};
+
+  \node[wbox] (w1) at (1.5,0) {нишка $w_1$};
+  \node[wbox] (w2) at (4.9,0) {нишка $w_2$};
+  \node[wbox] (w3) at (8.3,0) {нишка $w_3$};
+  \node (wdots) at (10.4,0) {$\cdots$};
+
+  \foreach \d in {d1t,d1u,d2t,d2u,d3t,d3u}
+    \draw[link] (\d.south) -- (\d.south |- w1.north);
+
+  % === сливане на TCP протоколите в един канал ================================
+  % Трите линии слизат до обща височина и продължават като една. Това е цялата идея на
+  % фигурата: оттук надолу броят на протоколите вече не се вижда никъде.
+  \draw[link] (p1.south) -- (p1.south |- cf);
+  \draw[link] (p2.south) -- (p2.south |- cf);
+  \draw[link] (p3.south) -- (p3.south |- cf);
+  \draw[link] (p3.south |- cf) -- (d1t.north |- cf) -- (d1t.north |- ct);
+  \node[dot] at (p1.south |- cf) {};
+  \node[dot] at (p2.south |- cf) {};
+
+  \draw[link] (d1t.north |- ct) -- (d3t.north |- ct);
+  \draw[tail] (d3t.north |- ct) -- (10.4,2.15);
+  \foreach \d in {d1t,d2t,d3t} {
+    \draw[-Stealth, link] (\d.north |- ct) -- (\d.north);
+    \node[dot] at (\d.north |- ct) {};
+  }
+
+  % === UDP ===================================================================
+  \draw[udp] (p4.south) -- (p4.south |- cu);
+  \draw[udp] (d1u.north |- cu) -- (d3u.north |- cu);
+  \draw[tail] (d3u.north |- cu) -- (10.4,2.55);
+  \node[dot] at (p4.south |- cu) {};
+  % Бяло прекъсване на мястото на пресичане с TCP канала. В черно-бял печат това е
+  % единственият надежден начин да се види коя линия минава над коя.
+  \foreach \d in {d1u,d2u,d3u} {
+    \draw[line width=2.4pt, white]
+      ($(\d.north |- cu)+(0,-0.12)$) -- ($(\d.north)+(0,0.06)$);
+    \draw[-Stealth, udp] (\d.north |- cu) -- (\d.north);
+    \node[dot] at (\d.north |- cu) {};
+  }
+
+  % === пояснения =============================================================
+  % Текстът е разбит на къси редове, за да не опре в спускането на HTTP/3 вдясно.
+  \node[note, anchor=north west] at (5.9,3.75)
+    {трите протокола\\над \code{TCP} делят\\един дескриптор};
+  \node[note, anchor=west] at (10.6,1.15) {$|T| = 2$\\дескриптора\\на нишка};
+
+  % Десният край взема само абсцисата на многоточието; ординатата е тази на работните
+  % нишки. Иначе скобата излиза наклонена, защото възелът с многоточието е по-нисък на
+  % височина и долният му ръб стои по-високо от долния ръб на кутиите.
+  \draw[decorate, decoration={brace, mirror, amplitude=5pt}]
+    ($(w1.south west)+(0,-0.22)$) -- ($(wdots.east |- w1.south)+(0.35,-0.22)$);
+  \node[note, anchor=north] at (5.5,-0.72) {$W$ работни нишки};
+
+  % === двете сметки една до друга ============================================
+  \node[fbox, fill=gray!25, thick, minimum width=4.6cm] (fa) at (2.1,-2.35)
+    {предложение\\[2pt]
+     $L_{\text{demux}} = W \cdot |T|$\\[2pt]
+     {\fontsize{8}{9.5}\selectfont броят не зависи от $|P|$}};
+  \node[fbox, fill=gray!10, minimum width=7.8cm] (fb) at (8.7,-2.35)
+    {обичайна конфигурация\\[2pt]
+     $L_{\text{conv}} = W \cdot \bigl([\,S \neq \varnothing\,] + [\,P \setminus S \neq \varnothing\,]\bigr)$\\[2pt]
+     {\fontsize{8}{9.5}\selectfont отделен слушащ сокет за криптиран}\\
+     {\fontsize{8}{9.5}\selectfont и за некриптиран трафик}};
+
+\end{tikzpicture}
+\caption{Брой на слушащите дескриптори при класификация след приемане на връзката. Всяка
+работна нишка притежава по един слушащ дескриптор за \code{TCP} и по един за \code{UDP}.
+Протоколите от $P$ се разделят след \code{accept}, по първия октет и по ALPN, а не чрез
+отделни слушащи сокети, затова линиите им се сливат преди дескрипторите и $|P|$ не участва в
+броенето. Остава $L_{\text{demux}} = W \cdot |T|$. Вдясно долу е обичайната конфигурация за
+сравнение, при която разделянето на $P$ на криптирана и некриптирана част се плаща с втори
+дескриптор на работна нишка.}
+\label{fig:descriptor_formula}
+\end{figure}

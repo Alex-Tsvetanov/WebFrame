@@ -1,0 +1,107 @@
+% Път на приетата връзка: от accept до манипулатора, през всички протоколи.
+% Източник: src/core/app.cpp (detect_protocol, serve_connection, make_request_handler)
+% и include/coroute/net/protocol_detect.hpp (classify, preface_match).
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  scale=0.9, transform shape,
+  % Черно-бял печат: различаваме нещата по форма, дебелина и сив тон, не по цвят.
+  stage/.style={proc, minimum width=3.2cm},
+  engine/.style={proc, minimum width=3.6cm, minimum height=0.7cm, fill=gray!10},
+  shared/.style={proc, minimum width=3.4cm, fill=gray!25},
+  choice/.style={decision, minimum width=2.4cm},
+  % Бял фон под надписите по стрелките, за да не се четат върху линия.
+  tag/.style={font=\fontsize{7.5}{9}\selectfont, inner sep=1.5pt, fill=white},
+  % preamble.tex задава note два пъти и печели вторият: рамкирана бележка с
+  % пунктир, сив фон и по-едър шрифт. Тук бележките стоят плътно до кутиите и
+  % такава рамка ги закрива, затова стилът се фиксира вътре в картината.
+  note/.style={align=left, font=\fontsize{8}{10}\selectfont},
+  % Прозорецът на крайния срок е с прекъсната рамка, групите отдолу са с точки.
+  window/.style={draw, densely dashed, rounded corners=2pt, inner sep=6pt},
+]
+
+% ---- TCP колона -----------------------------------------------------------
+\node[stage]   (acc)  at (5.0,  0.0) {\code{accept} върху единствения\\слушащ дескриптор};
+\node[stage]   (dl)   at (5.0, -1.5) {въоръжаване на \code{Deadline}\\(\code{handshake\_timeout\_})};
+\node[stage]   (rd)   at (5.0, -3.0) {\code{read\_prefix}: един октет};
+\node[choice] (cls)  at (5.0, -4.6) {\code{classify}};
+
+\node[box, minimum width=1.8cm, minimum height=0.7cm] (drop) at (5.0, -6.3) {затваряне};
+
+\node[stage, minimum width=3.0cm] (tls) at (1.4, -6.3) {TLS ръкостискане};
+\node[stage, minimum width=3.4cm] (pre) at (8.6, -6.3) {постъпково сравнение\\с префикса на \code{h2}};
+
+\node[choice] (alpn)  at (1.4, -8.2) {ALPN};
+\node[choice] (pfull) at (8.6, -8.2) {съвпада?};
+
+% Двата двигателя стоят един под друг, а не един до друг. Така четирите изхода
+% на разпознаването влизат отляво и отдясно, без нито едно пресичане на линии.
+\node[engine] (h2) at (5.0, -10.2) {\code{Http2Connection}};
+\node[engine] (h1) at (5.0, -11.4) {HTTP/1.1 връзка};
+
+% ---- Общата опашка --------------------------------------------------------
+\node[shared, minimum width=6.4cm] (entry) at (5.0, -13.0)
+      {единна входна точка за заявки\\\code{make\_request\_handler()}};
+\node[shared] (rt) at (1.2, -14.8) {маршрутизатор\\\code{router\_.match}};
+\node[shared] (mw) at (5.0, -14.8) {верига от middleware};
+\node[shared] (hd) at (8.8, -14.8) {манипулатор на\\маршрута};
+
+% ---- UDP колона -----------------------------------------------------------
+\node[stage, minimum width=3.6cm]   (udp)  at (12.6,  0.0) {UDP датаграма\\на същия номер порт};
+\node[stage, minimum width=3.6cm]   (quic) at (12.6, -2.6) {QUIC ръкостискане,\\TLS 1.3, ALPN само \code{h3}};
+\node[engine, minimum width=3.6cm] (h3)   at (12.6, -6.3) {\code{Http3EndpointGroup}};
+
+% ---- Рамки ----------------------------------------------------------------
+\begin{scope}[on background layer]
+  \node[window, fit=(dl)(rd)(cls)(tls)(pre)(alpn)(pfull)(drop)] (win) {};
+  \node[grp, fit=(h2)(h1)] (eng) {};
+  \node[grp, fit=(entry)(rt)(mw)(hd)] (tail) {};
+\end{scope}
+
+\node[note, anchor=north east] at (10.35,-1.05)
+     {прозорец на \code{Deadline}:\\от първия октет\\до разпознаването};
+\node[note, anchor=north east] at (12.35,-9.3) {по-кратък път,\\същото място\\на сливане};
+
+% ---- Стрелки --------------------------------------------------------------
+\draw[flow] (acc) -- (dl);
+\draw[flow] (dl)  -- (rd);
+\draw[flow] (rd)  -- (cls);
+
+\draw[flow] (cls) -- node[tag, above] {\code{0x16}} (tls);
+\draw[flow] (cls) -- node[tag, above] {буква \code{A}..\code{Z}} (pre);
+\draw[flow] (cls) -- node[tag, right] {друго} (drop);
+
+\draw[flow] (tls) -- (alpn);
+\draw[flow] (pre) -- node[note, anchor=west] {дочитат се\\24 октета} (pfull);
+
+\draw[flow] (alpn.south)  -- node[tag, above, pos=0.6] {\code{h2}}       (h2.west);
+\draw[flow] (alpn.south)  -- node[tag, below, pos=0.6] {\code{http/1.1}} (h1.west);
+\draw[flow] (pfull.south) -- node[tag, above, pos=0.6] {да}              (h2.east);
+\draw[flow] (pfull.south) -- node[tag, below, pos=0.6] {не}              (h1.east);
+
+% Изходът тръгва от рамката, не от една от двете кутии: който и двигател да е
+% избран, извиква едно и също нещо.
+\draw[flow] (eng.south) -- (entry.north);
+
+% Същият номер порт, друг транспорт. Пътят е отделен и по-къс, но свършва на едно място.
+\draw[flow] (udp)  -- (quic);
+\draw[flow] (quic) -- (h3);
+\draw[flow] (h3) |- node[tag, above, pos=0.75] {HTTP/3} (entry.east);
+
+\draw[flow] (entry) -| (rt);
+\draw[flow] (rt) -- (mw);
+\draw[flow] (mw) -- (hd);
+
+\node[note, anchor=north, align=center] at (5.0,-15.6)
+     {Един маршрутизатор, една верига, един манипулатор.\\
+      Затова манипулаторът не съдържа условия по протокол.};
+
+\end{tikzpicture}
+\caption{Път на приета връзка, от \code{accept} до манипулатора на маршрута. Един
+слушащ дескриптор носи и TLS, и открит текст: първият октет разделя двата случая, а
+\code{Deadline} покрива целия прозорец на разпознаването, включително ръкостискането.
+Четирите TCP изхода (TLS с \code{h2}, TLS с \code{http/1.1}, префикс на \code{h2} по
+открит текст, HTTP/1.1) стигат до едно и също място. HTTP/3 идва по UDP по отделен,
+по-кратък път и се влива в същата точка.}
+\label{fig:demux_path}
+\end{figure}

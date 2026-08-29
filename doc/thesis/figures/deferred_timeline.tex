@@ -1,0 +1,113 @@
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  x=1cm, y=1cm,
+  % Лентите на заявките са с еднаква дължина в двата панела. Това е нарочно:
+  % щом най-бавната заявка свършва на едно и също място, последният байт също.
+  % Единственото, което се мести между двата панела, е първият байт.
+  %
+  % Подредени са от най-дълга към най-къса, за да не пресича стрелка чужда лента.
+  qbar/.style={draw, fill=gray!10, anchor=west, inner sep=0pt,
+               minimum height=0.42cm, font=\fontsize{8}{9}\selectfont},
+  chunk/.style={draw, fill=gray!25, anchor=west, inner sep=0pt,
+                minimum height=0.42cm, minimum width=0.35cm},
+  whole/.style={chunk, fill=gray!40},
+  guide/.style={densely dotted, gray!60},
+  hdr/.style={anchor=west, font=\fontsize{9}{11}\selectfont},
+  % preamble.tex задава note два пъти и печели вторият: рамкирана бележка с
+  % пунктир и по-едър шрифт. В тази фигура надписите са позиционирани плътно
+  % един до друг, затова стилът се фиксира тук, вътре в картината.
+  note/.style={align=left, font=\fontsize{8}{10}\selectfont},
+  lane/.style={note, anchor=east, align=right},
+  pend/.style={draw, circle, fill=white, inner sep=0pt, minimum size=0.17cm},
+  done/.style={draw, circle, fill=gray!40, inner sep=0pt, minimum size=0.21cm},
+]
+
+% Двете вертикални линии са единствените общи опорни точки: пристигане на
+% заявката и последен байт. Всичко останало се чете спрямо тях.
+\draw[guide] (1.5,1.45) -- (1.5,-9.35);
+\draw[guide] (10.05,1.45) -- (10.05,-9.35);
+
+\node[lane] at (9.95,1.30) {последен байт,};
+\node[lane] at (9.95,1.02) {еднакъв в двата случая};
+
+% ---------------------------------------------------------------- изчакано
+\node[hdr] at (1.5,0.55) {\textbf{Изчакано:} моделът се попълва, после се рендира};
+
+\node[qbar, minimum width=8.2cm] at (1.5,-0.15) {източник C (най-бавен)};
+\node[qbar, minimum width=5.0cm] at (1.5,-0.75) {източник B};
+\node[qbar, minimum width=2.8cm] at (1.5,-1.35) {източник A};
+
+% Редът „изход“ е празен до самия край. Това е цялата разлика.
+\node[lane] at (1.35,-2.05) {изход};
+\node[whole] (all) at (9.7,-2.05) {};
+\node[note, anchor=east] at (9.6,-2.05) {рендиране и изпращане на цялата страница};
+\node[note, anchor=north east] at (10.05,-2.4) {първи байт};
+
+% Мярката, заради която фигурата съществува.
+\draw[Stealth-Stealth, thick] (1.5,-3.0) -- (9.7,-3.0);
+\node[note, anchor=north] at (5.6,-3.1) {разлика във времето до първия байт};
+
+% ---------------------------------------------------------------- отложено
+\node[hdr] at (1.5,-3.85) {\textbf{Отложено:} \code{Deferred} в модела};
+
+\node[qbar, minimum width=8.2cm] at (1.5,-4.45) {източник C (най-бавен)};
+\node[qbar, minimum width=5.0cm] at (1.5,-5.05) {източник B};
+\node[qbar, minimum width=2.8cm] at (1.5,-5.65) {източник A};
+
+% Обвивката е по-тъмна от порциите, защото е различно нещо: тя носи
+% запазените места, а не стойност.
+\node[lane] at (1.35,-6.35) {изход};
+\node[whole] (shell) at (1.5,-6.35) {};
+\node[chunk] (cA) at (4.3,-6.35) {};
+\node[chunk] (cB) at (6.5,-6.35) {};
+\node[chunk] (cC) at (9.7,-6.35) {};
+\node[note, anchor=north west] at (2.2,-6.55) {първи байт};
+
+\draw[thin flow] (9.7,-4.66) -- (cC.north);
+\draw[thin flow] (6.5,-5.26) -- (cB.north);
+\draw[thin flow] (4.3,-5.86) -- (cA.north);
+
+% ---------------------------------------------------------------- браузър
+% Всеки ред е един слот: празно кръгче при създаването на Promise, точкувана
+% линия докато стои неразрешен, запълнено кръгче когато порцията пристигне.
+\node[lane] at (1.35,-7.70) {браузър};
+\draw[guide] (1.85,-7.35) -- (1.85,-8.05);
+
+\node[pend] at (1.85,-7.35) {};
+\node[pend] at (1.85,-7.70) {};
+\node[pend] at (1.85,-8.05) {};
+
+\draw[densely dotted, semithick] (1.85,-7.35) -- (4.65,-7.35);
+\draw[densely dotted, semithick] (1.85,-7.70) -- (6.85,-7.70);
+\draw[densely dotted, semithick] (1.85,-8.05) -- (10.05,-8.05);
+
+\node[done] (pA) at (4.65,-7.35) {};
+\node[done] (pB) at (6.85,-7.70) {};
+\node[done] (pC) at (10.05,-8.05) {};
+
+\draw[thin flow] (shell.south) -- (1.85,-7.27);
+\draw[thin flow] (cA.south) -- (pA.north);
+\draw[thin flow] (cB.south) -- (pB.north);
+\draw[thin flow] (cC.south) -- (pC.north);
+
+\node[note, anchor=north west] at (1.55,-8.45)
+  {Обвивката носи по един \code{Promise} за всяко запазено място.};
+\node[note, anchor=north west] at (1.55,-8.75)
+  {Всяка порция решава своя \code{Promise}.};
+
+% ---------------------------------------------------------------- ос
+\draw[-Stealth, semithick] (1.2,-9.35) -- (11.2,-9.35)
+  node[anchor=south east, font=\fontsize{8}{10}\selectfont] {време};
+\node[note, anchor=north] at (1.5,-9.45) {заявка};
+
+\end{tikzpicture}
+\caption{Изчакано и отложено рендиране върху обща времева ос. Горе моделът се
+попълва изцяло, преди да тръгне какъвто и да е байт, затова първият байт съвпада
+с края на най-бавната заявка. Долу обвивката на страницата тръгва веднага, със
+запазени места, а всяка стойност пътува като отделна порция, щом пристигне.
+Последният байт е на едно и също място в двата случая, защото и в двата се
+определя от най-бавната заявка. Спестява се време до първия байт, а не общо
+време.}
+\label{fig:deferred_timeline}
+\end{figure}

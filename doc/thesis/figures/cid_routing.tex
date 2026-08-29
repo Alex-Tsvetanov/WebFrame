@@ -1,0 +1,114 @@
+\begin{figure}[htbp]
+\centering
+% Двете половини се четат отгоре надолу: първо какво прави ядрото само по себе си,
+% после какво добавя сървърът над него. Затова няма обща рамка, а пунктирана черта
+% между тях и два надписа.
+\begin{tikzpicture}[
+    % Клетките на идентификатора се долепват една до друга, затова са отделен стил
+    % с фиксирана широчина, а не box.
+    byte/.style={draw, minimum width=0.72cm, minimum height=0.62cm, inner sep=1pt,
+                 font=\fontsize{8}{9}\selectfont},
+    worker/.style={box, minimum width=3.2cm, minimum height=0.6cm, fill=gray!10},
+    % Притежателят на връзката се различава по дебелина на контура и по-тъмен сив
+    % фон, тъй като изданието е черно-бяло.
+    owner/.style={worker, very thick, fill=gray!25},
+    stage/.style={box, minimum width=3.4cm, text width=3.2cm, minimum height=1.1cm},
+    party/.style={box, minimum width=3.2cm, text width=3.0cm},
+    part/.style={font=\fontsize{9}{11}\selectfont\bfseries},
+    lbl/.style={note, font=\fontsize{8}{9.5}\selectfont},
+  ]
+
+% ==================================================================
+% а) Хешът по четворката
+% ==================================================================
+\node[part, anchor=west] at (0,0.95) {а) Хешът по четворката греши след миграция};
+
+\node[party] (c1) at (1.7,0.00) {Клиент, адрес A};
+\node[party] (c2) at (1.7,-2.15) {Същият клиент, адрес B, след миграция};
+
+\node[box, minimum width=3.2cm, text width=3.0cm, fill=gray!10] (hash) at (5.5,-1.0)
+  {Ядро: хеш по четворката адреси, \code{SO\_REUSEPORT}};
+
+% Разстоянието между нишките е по-голямо от кутиите, за да има място за надписите
+% отдясно, които са по два реда.
+\node[worker] (w1) at (9.5,0.15) {Нишка 1};
+\node[owner]  (w2) at (9.5,-0.75) {Нишка 2};
+\node[worker] (w3) at (9.5,-1.65) {Нишка 3};
+\node[worker] (w4) at (9.5,-2.55) {Нишка 4};
+
+% Плътната линия е пътят преди миграцията, пунктираната е след нея. Двата пътя
+% влизат и излизат от кутията на ядрото на различна височина, за да не се слеят.
+\draw[flow] (c1.east) to[out=0,in=180] ($(hash.west)+(0,0.25)$);
+\draw[flow] ($(hash.east)+(0,0.25)$) to[out=0,in=180] (w2.west);
+
+\draw[thin flow] (c2.east) to[out=0,in=180] ($(hash.west)+(0,-0.25)$);
+\draw[thin flow] ($(hash.east)+(0,-0.25)$) to[out=0,in=180] (w3.west);
+
+% Кръгчето с кръст стои върху върха на пунктираната стрелка, точно там, където
+% пакетът стига до нишка без състояние.
+\node[draw, circle, inner sep=0.8pt, fill=white,
+      font=\fontsize{8}{9}\selectfont] at ($(w3.west)+(-0.34,0)$) {$\times$};
+
+\node[lbl, anchor=west, text width=2.6cm] at (11.15,-0.75)
+  {тук е състоянието на връзката};
+\node[lbl, anchor=west, text width=2.6cm] at (11.15,-1.65)
+  {тук няма състояние, несъответствие};
+
+% ==================================================================
+% б) Индексът в идентификатора
+% ==================================================================
+\draw[densely dotted, gray!60] (0,-3.05) -- (13.6,-3.05);
+
+\node[part, anchor=west] at (0,-3.5)
+  {б) Индексът на нишката пътува в идентификатора};
+
+\node[byte, fill=gray!40] (b0) at (3.76,-5.0) {0};
+\node[byte, fill=gray!10, right=0pt of b0] (b1) {1};
+\node[byte, fill=gray!10, right=0pt of b1] (b2) {2};
+\node[byte, fill=gray!10, right=0pt of b2] (bd) {$\dots$};
+\node[byte, fill=gray!10, right=0pt of bd] (bn) {15};
+
+\draw[decorate, decoration={brace, amplitude=4pt}]
+  (b0.north west) -- (bn.north east)
+  node[midway, above=5pt, lbl, align=center, text width=5.6cm]
+  {идентификатор на връзката, издаден от сървъра};
+
+% Двата надписа стоят отляво и отдясно, а не един под друг, защото под клетките
+% минава стрелката към стъпката, която чете байт нула.
+\node[lbl, anchor=east, align=right, text width=2.7cm] (bl) at (2.9,-5.0)
+  {байт 0 носи индекса на работната нишка};
+\draw[flow] (bl.east) -- (b0.west);
+
+\node[lbl, anchor=west, text width=3.3cm] (br) at (7.5,-5.0)
+  {байтове от 1 до 15 са случайни, от CSPRNG};
+\draw[flow] (br.west) -- (bn.east);
+
+\node[stage] (s1) at (1.9,-6.7) {Пакет с къс хедър пристига при нишка 3};
+\node[stage] (s2) at (6.8,-6.7) {Нишка 3 чете байт 0 от \code{DCID}};
+\node[stage] (s3) at (11.7,-6.7) {Нишка 2 обработва пакета};
+
+\draw[flow] (s1.east) -- (s2.west);
+\draw[flow] (s2.east) -- (s3.west);
+
+\node[lbl, align=center, text width=3.4cm] at (9.25,-5.85)
+  {препращане в потребителското пространство};
+
+\draw[thin flow] (b0.south) -- (s2.north west)
+  node[midway, right=2pt, lbl] {индекс 2};
+
+\node[grp, note, text width=12.6cm, fill=gray!10] at (6.8,-8.55)
+  {Същото се прави и в ядрото: програма на eBPF, закачена през
+   \code{SO\_ATTACH\_REUSEPORT\_EBPF}, чете идентификатора, преди пакетът да стигне
+   до потребителското пространство. eBPF обаче не съществува под macOS и Windows, а
+   зареждането на програма иска права, каквито сървърът често няма. Затова пътят
+   по-горе е в потребителското пространство.};
+
+\end{tikzpicture}
+\caption{Разпределяне на QUIC връзки по работни нишки. Горе: \code{SO\_REUSEPORT}
+хешира четворката адреси, затова след миграция на клиента дейтаграмите отиват при
+нишка, която няма състояние за връзката. Долу: байт нула на идентификатора носи
+индекса на притежаващата нишка, останалите байтове са криптографски случайни, и
+погрешно доставеният пакет се препраща в потребителското пространство до
+притежателя.}
+\label{fig:cid_routing}
+\end{figure}
