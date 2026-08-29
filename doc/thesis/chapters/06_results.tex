@@ -115,6 +115,39 @@
 само за затворения цикъл, а в отворения цикъл сигналът за насищане е изоставането на
 графика, което е величина за самия график, а не за машината под него.
 
+\paragraph{Докъде стига генераторът.} Изоставането на графика е измерено при всяко изпълнение
+и се съобщава тук по предложено натоварване, а не само като едно число за цялата кампания.
+Причината е, че единственото число не различава генератор, който е далеч от границата си
+навсякъде, от генератор, който я приближава точно там, където се правят твърденията.
+
+\begin{table}[H]
+\centering\small
+\caption{Изоставане на генератора от собствения му график, 99-и персентил в микросекунди}
+\label{tab:pacing}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={offered_rate, pacing_on, pacing_max_on, pacing_off, pacing_max_off},
+  columns/offered_rate/.style={column name={Предложени}, fixed, zerofill=false, precision=0},
+  columns/pacing_on/.style={column name={с кл.\ медиана}, fixed, precision=0},
+  columns/pacing_max_on/.style={column name={най-лошо}, fixed, precision=0},
+  columns/pacing_off/.style={column name={без кл.\ медиана}, fixed, precision=0},
+  columns/pacing_max_off/.style={column name={най-лошо}, fixed, precision=0},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/h1_demux.csv}
+\end{table}
+
+Медианата расте от около четиридесет микросекунди при най-ниското натоварване до около
+седемдесет при най-високото, тоест генераторът се затруднява точно там, където се очаква, и
+остава на порядък от границата си. Най-лошата единична стойност в цялата кампания е
+\R{campaign.x1.pacing-worst}\,\textmu s и се среща при 70\,000 заявки в секунда, което е около
+половината от границата.
+
+Оттук следва и защо предложените натоварвания спират на 70\,000, а не продължават нагоре.
+Над този темп изоставането на този хост минава от десетки микросекунди към милисекунди, тоест
+измерването започва да описва генератора. Границата на кампанията е избрана от това измерване,
+а не приета предварително.
+
 \subsection{Х1: цената на класификацията след приемането}
 \label{sec:h1}
 
@@ -123,7 +156,7 @@
 разграничен с флаг при изпълнение, при еднакво предложено натоварване в отворен цикъл.
 
 \begin{table}[H]
-\centering
+\centering\small
 \caption{Пропускателна способност и латентност с и без класификация, \(n = 25\) на клетка}
 \label{tab:h1-demux}
 \pgfplotstabletypeset[
@@ -228,6 +261,110 @@
 Това е недостатък на постановката, открит от анализа на резултата, а не ограничение на
 средата, и е записан като изискване към кампанията под Linux в раздел~\ref{sec:planned}.
 
+\subsection{Разпределението на латентността по цялата си дължина}
+\label{sec:percentiles}
+
+Таблиците дотук показват два персентила. Хипотезата се решава от тях, но сървър, описан с два
+персентила, е описан наполовина: разликата между рамената може да е нула в средата и различна
+в опашката, и обратното.
+
+\begin{table}[H]
+\centering\small
+\caption{Персентили на латентността, двете рамена, в милисекунди}
+\label{tab:percentiles}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={offered_rate, p50_on, p90_on, p99_on, p999_on, p50_off, p90_off, p99_off, p999_off},
+  columns/offered_rate/.style={column name={Предл.}, fixed, zerofill=false, precision=0},
+  columns/p50_on/.style={column name={p50}, fixed, precision=3},
+  columns/p90_on/.style={column name={p90}, fixed, precision=3},
+  columns/p99_on/.style={column name={p99}, fixed, precision=3},
+  columns/p999_on/.style={column name={p99.9}, fixed, precision=3},
+  columns/p50_off/.style={column name={p50}, fixed, precision=3},
+  columns/p90_off/.style={column name={p90}, fixed, precision=3},
+  columns/p99_off/.style={column name={p99}, fixed, precision=3},
+  columns/p999_off/.style={column name={p99.9}, fixed, precision=3},
+  every head row/.style={before row={\toprule
+    & \multicolumn{4}{c}{\textbf{с класификация}} & \multicolumn{4}{c}{\textbf{без нея}} \\
+    \cmidrule(lr){2-5}\cmidrule(lr){6-9}}, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/h1_demux.csv}
+\end{table}
+
+Формата на разпределението е една и съща в двете рамена. Медианата остава около 0,05\,ms до
+40\,000 заявки в секунда и се повишава до около 0,06\,ms при 70\,000. Деветдесетият персентил
+следва медианата на разстояние от няколко хилядни. Деветдесет и деветият се отделя от нея
+осезаемо едва при най-високото натоварване. Тоест до 55\,000 заявки в секунда опашката се
+дължи на отделни събития, а не на натрупване в опашката за обработка, и това е съгласувано с
+това, което таблицата за \code{backlog} показва в раздел~\ref{sec:backlog}.
+
+Персентилът 99,9 не следва тази форма и не бива да се чете от тази таблица като величина.
+Раздел~\ref{sec:tail} обяснява защо.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  thesis plot,
+  xlabel={постигната пропускателна способност, заявки в секунда},
+  ylabel={p99, ms},
+  legend pos=north west,
+]
+% Постигнатата пропускателна способност по едната ос и опашката по другата. При отворен
+% цикъл под насищането постигнатото съвпада с предложеното, тоест кривата показва цената
+% в опашка за всяко ниво на обслужване, а не компромис между двете.
+\addplot+[mark=*] table[col sep=comma, x=rps_on, y=p99_on]{\datadir/h1_demux.csv};
+\addlegendentry{с класификация}
+\addplot+[mark=square*] table[col sep=comma, x=rps_off, y=p99_off]{\datadir/h1_demux.csv};
+\addlegendentry{без класификация}
+\end{axis}
+\end{tikzpicture}
+\caption{Опашка спрямо постигната пропускателна способност. Двете криви са неразличими,
+което е твърдението на Х1, представено така, както се чете при избор на работна точка.}
+\label{fig:pareto}
+\end{figure}
+
+\subsection{Процесорно време и памет}
+\label{sec:cpu-mem}
+
+Латентността и пропускателната способност описват какво вижда клиентът. Процесорното време и
+паметта описват какво струва това, и се съобщават отделно, защото равна латентност при
+различна цена е различен резултат от равна латентност при равна цена.
+
+\begin{table}[H]
+\centering\small
+\caption{Процесорно време на сървъра за изпълнение, в секунди, и връх на работното
+множество, в MiB}
+\label{tab:cpu}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={offered_rate, cpu_on, cpu_lo_on, cpu_hi_on, cpu_off, cpu_lo_off, cpu_hi_off, mem_mib_on},
+  columns/offered_rate/.style={column name={Предл.}, fixed, zerofill=false, precision=0},
+  columns/cpu_on/.style={column name={с кл.}, fixed, precision=2},
+  columns/cpu_lo_on/.style={column name={долна}, fixed, precision=2},
+  columns/cpu_hi_on/.style={column name={горна}, fixed, precision=2},
+  columns/cpu_off/.style={column name={без кл.}, fixed, precision=2},
+  columns/cpu_lo_off/.style={column name={долна}, fixed, precision=2},
+  columns/cpu_hi_off/.style={column name={горна}, fixed, precision=2},
+  columns/mem_mib_on/.style={column name={памет}, fixed, precision=2},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/h1_demux.csv}
+\end{table}
+
+\paragraph{Паметта не зависи от натоварването.} Върхът на работното множество остава около
+седем мебибайта при всяко предложено натоварване, тоест при седемкратна разлика в обема
+обслужен трафик. Това е съгласувано с твърдението от глава~II за произхода на цената за
+връзка: при корутини без стек тя се определя от текста на програмата, а броят връзки тук е
+постоянен. Наблюдението не е проверка на това твърдение, защото броят връзки не е обхождан;
+то е съгласуваност, а не потвърждение, и обхождането по брой връзки остава за кампанията под
+Linux.
+
+\paragraph{Процесорното време расте почти пропорционално.} От около седем секунди при 10\,000
+заявки в секунда до около четиридесет и четири при 70\,000, тоест около седемкратно при
+седемкратно натоварване. Отклонението от пропорционалността е в едната клетка, разгледана в
+следващия раздел.
+
 \subsection{Едно правило, което сработи там, където не трябваше}
 \label{sec:cpu-anomaly}
 
@@ -268,9 +405,30 @@
 
 Три наблюдения определят как това се тълкува.
 
-Дялът е еднакъв в двете рамена. При 70\,000 заявки в секунда високият режим се среща в 8 от
-25 изпълнения без класификация и в 14 от 25 с нея, а при 55\,000 в 10 от 25 и 12 от 25.
-Разликите са в границите на биномното разсейване при такива числа и не сочат посока.
+\emph{Дялът е от един и същ порядък в двете рамена.} Броенето е по клетки, а не общо, защото
+общият брой би скрил зависимост от натоварването, ако такава има.
+
+\begin{table}[H]
+\centering
+\caption{Изпълнения с p99.9 над една милисекунда, от 25 на клетка}
+\label{tab:tail-modes}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={offered_rate, tail_hi_on, tail_hi_off},
+  columns/offered_rate/.style={column name={Предложено натоварване}, fixed, zerofill=false,
+    precision=0},
+  columns/tail_hi_on/.style={column name={с класификация}, fixed, precision=0},
+  columns/tail_hi_off/.style={column name={без класификация}, fixed, precision=0},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/h1_demux.csv}
+\end{table}
+
+Дялът расте с натоварването, което е очаквано, ако причината е конкуренция за процесорно
+време. Разликата между двете рамена в отделна клетка достига шест изпълнения от двадесет и
+пет, но не запазва посоката си: при 40\,000 заявки в секунда високият режим е по-чест в
+рамото \emph{без} класификация, а при останалите натоварвания в рамото с нея. Знак, който се
+обръща, е разсейване, а не ефект.
 
 Дялът не се мени с времето. Кампанията продължава около седемдесет и шест минути и
 изпълненията с висок режим са разпределени равномерно в нея: между едно и четири на всяко от
@@ -478,7 +636,7 @@
 \centering
 \caption{Какво остава за измерване, на коя платформа и защо там}
 \label{tab:planned}
-\begin{tabular}{@{}L{3.4cm}L{2.2cm}L{8.4cm}@{}}
+\begin{tabular}{@{}L{3.7cm}L{2.5cm}L{7.8cm}@{}}
 \toprule
 \textbf{Измерване} & \textbf{Платформа} & \textbf{Защо не тук} \\
 \midrule

@@ -53,12 +53,44 @@ produces plausible numbers. Both arms of every comparison come from one binary
 selected by a runtime flag, the environment is fingerprinted and a change in it stops
 the campaign, and the rejection criteria are declared before any run.
 
-\TODO{numerical results, once the campaign has been run. Every number arrives through
-the same key namespace as the dissertation, so the two documents cannot disagree}
+Two campaigns of \R{campaign.sweeps.runs} and \R{campaign.x1.runs} runs were carried
+out on one unvirtualised machine under Windows, for HTTP/1.1 without TLS. No run was
+rejected by the admissibility rules, and the worst value each rule reached is reported
+alongside that count, since zero rejections otherwise reads as loose rules rather than
+as clean runs.
+
+The first hypothesis is not rejected. Across five offered loads from 10\,000 to
+70\,000 requests per second, the difference in the 99th percentile between the
+classifying arm and the same binary without classification lies between
+\R{h1detect.x1.rel-min}\% and \R{h1detect.x1.rel-max}\%, and the confidence interval on
+the difference covers zero at every load. The resolution of the design is reported with
+the result: the half-width of that interval is between
+\R{h1detect.x1.resolution-min}\% and \R{h1detect.x1.resolution-max}\% of the median, so
+the design can see a difference several times smaller than the five percent threshold
+it declared in advance. A non-rejection without that figure is a statement about the
+number of runs rather than about the server.
+
+The scope of the result is narrower than the hypothesis. Classification costs something
+once per connection and something once per request, and a campaign holding sixty-four
+persistent connections that carry a hundred and fifty thousand requests amortises the
+per-connection cost below any resolution. What is bounded is the per-request path. The
+per-connection cost is not measured, and connection-arrival load is recorded as a
+requirement for the Linux campaign rather than left implicit.
+
+Counting the listening descriptors of a running process, from the kernel rather than
+from the server, confirms the proposition and corrects it. The count does not change
+when classification is switched off, which is the claim the work defends. It also does
+not change with the number of worker threads under Windows, which refutes the earlier
+form of the equation and yields the multiplier taken from the platform's accept model.
+
+The three remaining hypotheses are not tested here, for three different reasons, each
+stated with the measurement that would settle it.
 
 \vspace{0.5em}
 \noindent
-\emph{Keywords:} \TODO{keyword list, if the faculty's sheet requires one}
+\emph{Keywords:} protocol demultiplexing, listening sockets, HTTP/3, QUIC connection
+identifier, C++ coroutines, io\_uring, epoll, server benchmarking methodology,
+coordinated omission, deferred rendering.
 
 \endgroup
 \end{otherlanguage}

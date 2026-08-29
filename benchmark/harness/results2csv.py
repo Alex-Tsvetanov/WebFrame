@@ -69,16 +69,40 @@ def _rows_for(records: list[schema.RunRecord], vary: str,
             row[f"rps_lo{tag}"] = round(low) if low is not None else ""
             row[f"rps_hi{tag}"] = round(high) if high is not None else ""
 
-            for pct in ("p50", "p99", "p999"):
+            for pct in ("p50", "p90", "p99", "p999"):
                 vals = [r.latency_ms[pct] for r in members if pct in r.latency_ms]
                 point, low, high = _interval(vals)
                 row[f"{pct}{tag}"] = round(point, 3)
                 row[f"{pct}_lo{tag}"] = round(low, 3) if low is not None else ""
                 row[f"{pct}_hi{tag}"] = round(high, 3) if high is not None else ""
 
+            # The upper mode of a bimodal p99.9 is counted rather than averaged. A
+            # median over a two-mode distribution names whichever mode holds more than
+            # half the runs and says nothing about the other one.
+            tails = [r.latency_ms["p999"] for r in members if "p999" in r.latency_ms]
+            if tails:
+                row[f"tail_hi{tag}"] = sum(1 for v in tails if v > 1.0)
+
             cpu = [r.server_cpu_seconds for r in members if r.server_cpu_seconds is not None]
             if cpu:
-                row[f"cpu{tag}"] = round(_interval(cpu)[0], 2)
+                point, low, high = _interval(cpu)
+                row[f"cpu{tag}"] = round(point, 2)
+                row[f"cpu_lo{tag}"] = round(low, 2) if low is not None else ""
+                row[f"cpu_hi{tag}"] = round(high, 2) if high is not None else ""
+
+            mem = [r.server_memory_peak_bytes for r in members
+                   if r.server_memory_peak_bytes is not None]
+            if mem:
+                row[f"mem_mib{tag}"] = round(_interval(mem)[0] / 2 ** 20, 2)
+
+            # The generator's own saturation signal, carried into the table it validates.
+            # Kept next to the numbers it admits rather than in a separate file, because
+            # a validity figure read apart from the measurement is a figure nobody reads.
+            pacing = [r.generator_pacing_p99_us for r in members
+                      if r.generator_pacing_p99_us is not None]
+            if pacing:
+                row[f"pacing{tag}"] = round(_interval(pacing)[0], 0)
+                row[f"pacing_max{tag}"] = round(max(pacing), 0)
 
         # With exactly two arms the difference between them is the result, and it is
         # bootstrapped directly rather than read off the overlap of the two intervals.
