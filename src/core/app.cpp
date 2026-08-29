@@ -580,10 +580,24 @@ namespace coroute
 					break;  // Clean disconnect or timeout
 				}
 
-				// Send error response
+				// The status the error carries, rather than 400 for everything.
+				//
+				// parse_request already reports PayloadTooLarge for an oversized body or
+				// header block, and NotImplemented for a transfer coding it does not
+				// support. Both reached the client as 400, so a client could not tell "your
+				// request was malformed" from "this server will not do that", which are
+				// different things to act on and, for the second, the answer RFC 9112
+				// section 6.1 requires.
+				auto resp = Response::bad_request(req_result.error().to_string());
+				if (req_result.error().is_http())
+				{
+					// set_status carries the reason phrase with it, so the status line stays
+					// consistent rather than saying 501 Bad Request.
+					resp.set_status(static_cast<int>(req_result.error().http_error()));
+				}
+
 				// Deliberately ignored: the connection is closed on the next line
 				// regardless of whether the client is still there to read this.
-				auto resp = Response::bad_request(req_result.error().to_string());
 				auto data = resp.serialize();
 				std::ignore = co_await conn->async_write_all(data.data(), data.size());
 				break;
