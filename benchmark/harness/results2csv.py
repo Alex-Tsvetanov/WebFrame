@@ -79,8 +79,44 @@ def _rows_for(records: list[schema.RunRecord], vary: str,
             cpu = [r.server_cpu_seconds for r in members if r.server_cpu_seconds is not None]
             if cpu:
                 row[f"cpu{tag}"] = round(_interval(cpu)[0], 2)
+
+        # With exactly two arms the difference between them is the result, and it is
+        # bootstrapped directly rather than read off the overlap of the two intervals.
+        # Non-overlapping intervals do imply a difference; overlapping ones do not imply
+        # its absence, so the overlap test answers a question nobody asked.
+        if series is not None and len(series_values) == 2:
+            first, second = series_values
+            row.update(_difference(selected, vary, v, series, first, second))
         rows.append(row)
     return rows
+
+
+def _difference(selected: list[schema.RunRecord], vary: str, value: Any,
+                series: str, baseline: Any, other: Any) -> dict[str, Any]:
+    """The bootstrapped difference between two arms, in the units and in percent.
+
+    Both are emitted because they answer different halves of the pre-declared rule: the
+    interval says whether a difference is there at all, the percentage whether it is
+    large enough to be worth reporting. Either alone permits the wrong conclusion.
+    """
+    def arm(which: Any) -> list[schema.RunRecord]:
+        return [r for r in selected
+                if getattr(r, vary) == value and getattr(r, series) == which]
+
+    base, test = arm(baseline), arm(other)
+    out: dict[str, Any] = {}
+    for pct in ("p50", "p99", "p999"):
+        a = [r.latency_ms[pct] for r in base if pct in r.latency_ms]
+        b = [r.latency_ms[pct] for r in test if pct in r.latency_ms]
+        if len(a) < 3 or len(b) < 3:
+            continue
+        c = stats.compare(a, b)
+        out[f"d_{pct}"] = round(c.interval.point, 4)
+        out[f"d_{pct}_lo"] = round(c.interval.low, 4)
+        out[f"d_{pct}_hi"] = round(c.interval.high, 4)
+        out[f"d_{pct}_pct"] = round(100.0 * c.relative, 2)
+        out[f"d_{pct}_reportable"] = int(c.reportable)
+    return out
 
 
 def _tag(value: Any) -> str:
@@ -89,10 +125,11 @@ def _tag(value: Any) -> str:
     return str(value).replace(".", "").replace("_", "")
 
 
-def _write(path: Path, rows: list[dict[str, Any]]) -> int:
+def _write(path: Path, rows: list[dict[str, Any]],
+           header: Sequence[str] | None = None) -> int:
     if not rows:
         return 0
-    columns: list[str] = []
+    columns: list[str] = list(header or ())
     for row in rows:
         for key in row:
             if key not in columns:
@@ -158,7 +195,9 @@ def main(argv: Sequence[str]) -> int:
             head = reason.split(";")[0].strip()[:80]
             reasons[head] = reasons.get(head, 0) + 1
     rejection_rows = [{"reason": k, "count": v} for k, v in sorted(reasons.items())]
-    _write(out_dir / "rejections.csv", rejection_rows)
+    # Passed explicitly so a campaign with no rejections still writes a file with a
+    # header rather than nothing at all: an absent file reads as "not generated".
+    _write(out_dir / "rejections.csv", rejection_rows, header=("reason", "count"))
     print(f"  {'rejections.csv':<20} {len(rejection_rows)} rows")
 
     print(f"\nwrote {written} data rows to {out_dir}")

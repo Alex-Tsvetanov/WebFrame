@@ -1,6 +1,10 @@
 # Benchmark build artifacts
 build/
-results/
+
+# The run records are the evidence behind chapter VI and are versioned. The raw
+# per-request samples are not: they are hundreds of megabytes and the records already
+# carry the percentiles and the environment fingerprint every claim rests on.
+results/samples/
 *.exe
 *.o
 *.obj
