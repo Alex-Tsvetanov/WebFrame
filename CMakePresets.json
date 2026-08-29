@@ -117,7 +117,20 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "COROUTE_BUILD_FUZZERS": "ON",
         "COROUTE_BUILD_EXAMPLES": "OFF",
-        "COROUTE_BUILD_TESTS": "OFF",
+        "COROUTE_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "fuzz-windows",
+      "displayName": "Fuzz harnesses (Clang, ASan, Windows)",
+      "inherits": "fuzz",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "COROUTE_ENABLE_TLS": "OFF",
         "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
         "CMAKE_C_FLAGS": "-D_DISABLE_STRING_ANNOTATION -D_DISABLE_VECTOR_ANNOTATION",
         "CMAKE_CXX_FLAGS": "-D_DISABLE_STRING_ANNOTATION -D_DISABLE_VECTOR_ANNOTATION"

@@ -246,3 +246,74 @@ jobs:
         run: |
           echo "clang-format/clang-tidy reported ${{ steps.linter.outputs.checks-failed }} findings on changed lines."
           exit 1
+
+  fuzz:
+    name: Fuzz Harnesses (regression + short run)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libssl-dev \
+          zlib1g-dev \
+          liburing-dev \
+          clang-18 \
+          llvm-18
+
+    - name: Build harnesses
+      run: cmake --preset fuzz && cmake --build build/fuzz
+      env:
+        CC: clang-18
+        CXX: clang++-18
+
+    # Two different things, and only the first is a gate in the usual sense.
+    #
+    # Replaying the committed corpus is deterministic: every input that has ever
+    # been interesting is executed once, including the three named seeds that
+    # reproduce the HPACK decompression bomb and the two chunk-size defects. If a
+    # change reintroduces one of those, this fails on the same input that found it.
+    #
+    # The short exploratory run afterwards is not deterministic and is not expected
+    # to find anything on most commits. It is here because a corpus only stays
+    # useful if something keeps adding to it, and thirty seconds per harness is
+    # cheap enough to spend on the chance.
+    - name: Replay the committed corpus
+      run: |
+        set -e
+        for harness in build/fuzz/fuzz/fuzz_*; do
+          name=$(basename "$harness" | sed 's/^fuzz_//')
+          echo "::group::replay $name"
+          "$harness" -runs=0 "fuzz/corpus/$name"
+          echo "::endgroup::"
+        done
+
+    - name: Short exploratory run
+      run: |
+        set -e
+        for harness in build/fuzz/fuzz/fuzz_*; do
+          name=$(basename "$harness" | sed 's/^fuzz_//')
+          echo "::group::explore $name"
+          "$harness" "fuzz/corpus/$name" -max_total_time=30 -max_len=4096
+          echo "::endgroup::"
+        done
+
+    # A crash artifact is written to the working directory, so anything here is a
+    # finding worth keeping rather than re-deriving.
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: fuzz-artifacts
+        path: |
+          crash-*
+          timeout-*
+          oom-*
+        if-no-files-found: ignore
