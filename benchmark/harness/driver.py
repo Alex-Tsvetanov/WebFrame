@@ -50,8 +50,14 @@ class GeneratorResult:
     latency_ms: dict[str, float] = field(default_factory=dict)
     latency_histogram: str | None = None
     raw_samples_path: str | None = None
-    # The saturation check. A generator at full CPU is measuring itself.
+    # The saturation check for a closed loop. A generator at full CPU is measuring
+    # itself. It says nothing about an open loop, which paces by spinning.
     cpu_fraction: float | None = None
+    # The saturation check for an open loop: how late the generator was, at p99, in
+    # getting a request onto the socket relative to when it was due.
+    pacing_p99_us: float | None = None
+    # And whether it delivered the rate it was asked for.
+    achieved_share: float | None = None
     argv: list[str] = field(default_factory=list)
 
 
@@ -171,6 +177,8 @@ def run_one(
         record.latency_histogram = result.latency_histogram
         record.raw_samples_path = result.raw_samples_path
         record.generator_cpu_fraction = result.cpu_fraction
+        record.generator_pacing_p99_us = result.pacing_p99_us
+        record.generator_achieved_share = result.achieved_share
         record.generator_argv = list(result.argv)
 
     except Exception as exc:  # noqa: BLE001 - a failed run is data, not a crash

@@ -34,7 +34,21 @@ MAX_ERROR_RATE = 0.001  # 0.1%
 
 # Above this the load generator is the bottleneck and the measurement is of the client.
 # The most common way a framework benchmark is wrong.
+#
+# Applied to closed loop runs only. An open loop paces by spinning, because no sleep
+# is accurate to the tens of microseconds a fixed rate needs, so it sits at full CPU
+# whether or not it is keeping up. Judging it by CPU would refuse every valid open
+# loop run and accept none.
 MAX_GENERATOR_CPU = 0.85  # 85%
+
+# What an open loop is judged by instead: how late the generator was in getting a
+# request onto the socket, relative to when that request was due. A generator that
+# fell milliseconds behind was offering a different load than the record claims, and
+# the resulting latency is partly its own queueing.
+MAX_PACING_LAG_US = 1000.0  # 1 ms at p99
+
+# And whether it delivered the rate it promised at all.
+MIN_ACHIEVED_SHARE = 0.99
 
 # Sustained clock has to stay close to what the run started at. Thermal throttling
 # midway produces a slowdown that belongs to the room, not to the code.
@@ -93,12 +107,30 @@ def check_run(record: dict[str, Any]) -> Verdict:
                 "the server was failing rather than serving"
             )
 
-    generator_cpu = record.get("generator_cpu_fraction")
-    if generator_cpu is not None and generator_cpu > MAX_GENERATOR_CPU:
-        verdict.reasons.append(
-            f"generator CPU {generator_cpu:.1%} exceeds {MAX_GENERATOR_CPU:.0%}; "
-            "the measurement is of the load generator"
-        )
+    # Which rule applies depends on the loop, because the two fail differently.
+    # offered_rate is set for an open loop and None for a closed one.
+    open_loop = record.get("offered_rate") is not None
+
+    if not open_loop:
+        generator_cpu = record.get("generator_cpu_fraction")
+        if generator_cpu is not None and generator_cpu > MAX_GENERATOR_CPU:
+            verdict.reasons.append(
+                f"generator CPU {generator_cpu:.1%} exceeds {MAX_GENERATOR_CPU:.0%}; "
+                "the measurement is of the load generator"
+            )
+    else:
+        lag = record.get("generator_pacing_p99_us")
+        if lag is not None and lag > MAX_PACING_LAG_US:
+            verdict.reasons.append(
+                f"generator was {lag:.0f}us behind its own schedule at p99, above "
+                f"{MAX_PACING_LAG_US:.0f}us; the offered load was not the load recorded"
+            )
+        share = record.get("generator_achieved_share")
+        if share is not None and share < MIN_ACHIEVED_SHARE:
+            verdict.reasons.append(
+                f"generator delivered {share:.1%} of the offered rate, below "
+                f"{MIN_ACHIEVED_SHARE:.0%}; it could not sustain the schedule"
+            )
 
     start = record.get("cpu_mhz_start")
     end = record.get("cpu_mhz_end")

@@ -106,6 +106,14 @@ class RunRecord:
     server_cpu_seconds: float | None = None
     server_memory_peak_bytes: int | None = None
     generator_cpu_fraction: float | None = None
+    # How far behind its own schedule the generator fell, in microseconds at the
+    # 99th percentile, measured from when a request was due to when it reached the
+    # socket. This is the saturation signal for an open loop, where CPU is not: an
+    # open loop paces by spinning and is at full CPU by construction.
+    generator_pacing_p99_us: float | None = None
+    # Achieved divided by offered. An open loop that could not keep up was offering
+    # a different load than the one this record claims.
+    generator_achieved_share: float | None = None
 
     # --- Validity -----------------------------------------------------------
     virtualisation: str | None = None

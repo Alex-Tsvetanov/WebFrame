@@ -1,0 +1,282 @@
+"""The two concrete things the driver needs: a server to measure and a client to drive it.
+
+The driver deliberately knows nothing about either, so everything platform specific and
+everything tool specific lives here. That separation is why the rules in validity.py can
+be self-checked on a machine with neither installed.
+
+Server-side cost is read from the operating system rather than sampled with a timer.
+Sampling a process's CPU after it has stopped reports whatever the last sample happened
+to be, which is how the previous harness came to plot Linux lifetime-average percent and
+Windows cumulative CPU seconds into the same column.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import json
+import os
+import socket
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from benchmark.harness.driver import GeneratorResult, ResourceUsage, RunFailed
+from benchmark.harness.ordering import Cell
+
+
+# --------------------------------------------------------------------- Windows
+
+if os.name == "nt":
+
+    class _FILETIME(ctypes.Structure):
+        _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
+
+        @property
+        def seconds(self) -> float:
+            # 100 nanosecond units since the epoch the API uses. Only differences are
+            # meaningful, which is all this is used for.
+            return ((self.high << 32) | self.low) / 1e7
+
+    class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_uint32),
+            ("PageFaultCount", ctypes.c_uint32),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    def _process_cost(pid: int) -> tuple[float | None, int | None]:
+        """CPU seconds and peak working set, read from the kernel before the process exits."""
+        PROCESS_QUERY_INFORMATION = 0x0400
+        PROCESS_VM_READ = 0x0010
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid
+        )
+        if not handle:
+            return None, None
+        try:
+            creation, exit_t, kernel, user = _FILETIME(), _FILETIME(), _FILETIME(), _FILETIME()
+            cpu = None
+            if ctypes.windll.kernel32.GetProcessTimes(
+                handle, ctypes.byref(creation), ctypes.byref(exit_t),
+                ctypes.byref(kernel), ctypes.byref(user)
+            ):
+                cpu = kernel.seconds + user.seconds
+
+            counters = _PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(_PROCESS_MEMORY_COUNTERS)
+            peak = None
+            if ctypes.windll.psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb
+            ):
+                peak = int(counters.PeakWorkingSetSize)
+            return cpu, peak
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+
+else:
+
+    def _process_cost(pid: int) -> tuple[float | None, int | None]:
+        """CPU seconds and peak RSS from /proc, which is the same kernel accounting.
+
+        cgroup v2 is what the methodology asks for and is what a Linux campaign should
+        use. This is the fallback for a process not placed in its own scope.
+        """
+        try:
+            with open(f"/proc/{pid}/stat", encoding="ascii") as fh:
+                fields = fh.read().rsplit(")", 1)[1].split()
+            ticks = os.sysconf("SC_CLK_TCK")
+            cpu = (int(fields[11]) + int(fields[12])) / ticks
+        except (OSError, IndexError, ValueError):
+            cpu = None
+        peak = None
+        try:
+            with open(f"/proc/{pid}/status", encoding="ascii") as fh:
+                for line in fh:
+                    if line.startswith("VmHWM:"):
+                        peak = int(line.split()[1]) * 1024
+                        break
+        except OSError:
+            pass
+        return cpu, peak
+
+
+# ---------------------------------------------------------------------- server
+
+
+@dataclass
+class CorouteServer:
+    """One benchmark_server process, started fresh and stopped for certain.
+
+    Every factor the cell carries becomes a command line flag rather than a build
+    option, so both arms of a comparison are the same binary. Build to build variation
+    from code layout and link order is documented at 5 to 10 percent, well above the
+    run to run noise this is trying to resolve.
+    """
+
+    binary: Path
+    cell: Cell
+    port: int
+    affinity_mask: str | None = None
+    _proc: subprocess.Popen | None = None
+    _cost: tuple[float | None, int | None] = (None, None)
+
+    @property
+    def argv(self) -> list[str]:
+        factors = self.cell.as_dict()
+        args = [
+            str(self.binary),
+            "--port", str(self.port),
+            "--workers", str(factors.get("workers", 4)),
+            "--backlog", str(factors.get("backlog", 1024)),
+            "--payload", str(factors.get("payload_bytes", 0)),
+            # Unlimited, because a limit forces a reconnect and turns a keep-alive
+            # measurement into a measurement of accept.
+            "--max-requests", "0",
+        ]
+        if not factors.get("protocol_detection", True):
+            args.append("--no-detect")
+        if self.affinity_mask:
+            args += ["--affinity", self.affinity_mask]
+        return args
+
+    def start(self) -> None:
+        self._proc = subprocess.Popen(
+            self.argv,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+    def wait_until_ready(self, timeout_s: float) -> bool:
+        """Connects until it can, so no run measures process startup."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self._proc is not None and self._proc.poll() is not None:
+                return False
+            try:
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
+                    return True
+            except OSError:
+                time.sleep(0.05)
+        return False
+
+    def stop(self) -> ResourceUsage:
+        if self._proc is None:
+            return ResourceUsage()
+
+        # Read the cost while the process still exists. After it exits the handle
+        # reports nothing and the run would silently carry no server-side numbers.
+        cpu, peak = _process_cost(self._proc.pid)
+
+        self._proc.terminate()
+        try:
+            self._proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait(timeout=10)
+        self._proc = None
+        return ResourceUsage(cpu_seconds=cpu, memory_peak_bytes=peak)
+
+
+# ------------------------------------------------------------------- generator
+
+
+@dataclass
+class LoadgenGenerator:
+    """The load generator from benchmark/generator, invoked once per run.
+
+    It reports its own admissibility through the exit code as well as through the JSON,
+    but the verdict is not taken from here: validity.py decides, from the record, once.
+    Two places deciding the same thing is how they come to disagree.
+    """
+
+    binary: Path
+    port: int
+    threads: int
+    warmup_s: float = 2.0
+    affinity_mask: str | None = None
+    samples_dir: Path | None = None
+
+    @property
+    def name(self) -> str:
+        return "coroute-loadgen"
+
+    def _argv(self, cell: Cell, duration_s: float, out: Path, samples: Path | None) -> list[str]:
+        factors = cell.as_dict()
+        args = [
+            str(self.binary),
+            "--host", "127.0.0.1",
+            "--port", str(self.port),
+            "--connections", str(factors.get("connections", 64)),
+            "--threads", str(self.threads),
+            "--duration", f"{duration_s:g}",
+            "--warmup", f"{self.warmup_s:g}",
+            "--out", str(out),
+        ]
+        rate = factors.get("offered_rate")
+        if rate:
+            args += ["--rate", f"{float(rate):g}"]
+        if self.affinity_mask:
+            args += ["--affinity", self.affinity_mask]
+        if samples is not None:
+            args += ["--samples", str(samples)]
+        return args
+
+    def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
+        out = Path(os.environ.get("TEMP", "/tmp")) / f"loadgen-{self.port}.json"
+        samples = None
+        if self.samples_dir is not None:
+            self.samples_dir.mkdir(parents=True, exist_ok=True)
+            factors = cell.as_dict()
+            stem = "-".join(
+                str(factors.get(k, "")) for k in ("workers", "connections", "offered_rate")
+            )
+            samples = self.samples_dir / f"{cell.system}-{stem}-{int(time.time()*1000)}.txt"
+
+        argv = self._argv(cell, duration_s, out, samples)
+        # A generator that hangs would hold the campaign forever, so it is bounded by
+        # the run it was asked for plus a wide margin for startup and teardown.
+        proc = subprocess.run(
+            argv, capture_output=True, text=True,
+            timeout=duration_s + self.warmup_s + 120,
+        )
+
+        if not out.exists():
+            raise RunFailed(
+                f"generator produced no result file (exit {proc.returncode}): "
+                f"{proc.stderr.strip()[:200]}"
+            )
+
+        data: dict[str, Any] = json.loads(out.read_text(encoding="utf-8"))
+
+        lat = data.get("latency_us", {})
+        # Reported in milliseconds, because that is what the record and every figure
+        # use. Converted once, here, rather than in each consumer.
+        latency_ms = {k: v / 1000.0 for k, v in lat.items() if k != "samples"}
+
+        offered = float(data.get("offered_rate", 0.0))
+        achieved = float(data.get("rps", 0.0))
+
+        result = GeneratorResult(
+            requests_total=int(data.get("completed", 0)) + int(data.get("non_2xx", 0)),
+            requests_non_2xx=int(data.get("non_2xx", 0)),
+            socket_errors=int(data.get("socket_errors", 0)),
+            requests_per_second=float(data.get("rps", 0.0)),
+            bytes_per_second=float(data.get("bytes_read", 0)) / max(float(data.get("duration_s", 1)), 1e-9),
+            latency_ms=latency_ms,
+            raw_samples_path=str(samples) if samples is not None else None,
+            cpu_fraction=float(data.get("generator_cpu_fraction", -1.0)),
+            # The open loop rules in validity.py are stated in terms of these two.
+            pacing_p99_us=float(data.get("pacing_us", {}).get("p99", 0.0)),
+            achieved_share=(achieved / offered) if offered > 0 else None,
+            argv=list(argv),
+        )
+        return result
