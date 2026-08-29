@@ -13,6 +13,15 @@
 #include <coroute/coroute.hpp>
 
 #include <charconv>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(__linux__)
+#include <sched.h>
+#endif
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -34,6 +43,8 @@ namespace
 				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
 				  << "  --handshake-ms N  limit on the classification window (default: 30000, 0 disables)\n"
 				  << "  --keep-alive-ms N idle limit on an established connection (default: 30000, 0 disables)\n"
+				  << "  --max-requests N  requests per connection before closing (default: 100, 0 unlimited)\n"
+				  << "  --affinity HEX    pin the server to a CPU mask, e.g. ff\n"
 				  << "  --tls CERT KEY    serve TLS on the same port\n"
 				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
 				  << "\n"
@@ -67,6 +78,8 @@ int main(int argc, char** argv)
 	size_t backlog = 1024;
 	size_t handshake_ms = 30000;
 	size_t keep_alive_ms = 30000;
+	size_t max_requests = 100;
+	std::string affinity_hex;
 	bool detect = true;
 	bool http3 = false;
 	std::string cert_file;
@@ -142,6 +155,18 @@ int main(int argc, char** argv)
 				return 2;
 			}
 		}
+		else if (arg == "--max-requests")
+		{
+			if (!parse_size(value_for("--max-requests"), max_requests))
+			{
+				std::cerr << "invalid --max-requests\n";
+				return 2;
+			}
+		}
+		else if (arg == "--affinity")
+		{
+			affinity_hex = value_for("--affinity");
+		}
 		else if (arg == "--no-detect")
 		{
 			detect = false;
@@ -197,11 +222,37 @@ int main(int argc, char** argv)
 	const std::string body = (payload == 0) ? std::string("Hello, World!") : std::string(payload, 'x');
 
 	App app;
+// Applied before the io context creates its workers, so no thread starts on a
+	// core it will later be moved off. On one host the server and the generator
+	// otherwise compete for the same cores, and a measurement in which they compete
+	// is partly a measurement of the scheduler.
+	if (!affinity_hex.empty())
+	{
+		const unsigned long long mask = std::strtoull(affinity_hex.c_str(), nullptr, 16);
+		bool applied = false;
+		#if defined(_WIN32)
+		applied = SetProcessAffinityMask(GetCurrentProcess(), static_cast<DWORD_PTR>(mask)) != 0;
+		#elif defined(__linux__)
+		cpu_set_t set;
+		CPU_ZERO(&set);
+		for (int i = 0; i < 64; ++i)
+		{
+			if ((mask >> i) & 1ULL) CPU_SET(i, &set);
+		}
+		applied = sched_setaffinity(0, sizeof(set), &set) == 0;
+		#endif
+		if (!applied)
+		{
+			std::cerr << "warning: could not apply affinity mask " << affinity_hex << "\n";
+		}
+	}
+
 	app.threads(workers);
 	app.backlog(static_cast<int>(backlog));
 	app.enable_protocol_detection(detect);
 	app.handshake_timeout(std::chrono::milliseconds(handshake_ms));
 	app.keep_alive_timeout(std::chrono::milliseconds(keep_alive_ms));
+	app.max_requests_per_connection(max_requests);
 	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
 
 #ifdef COROUTE_HAS_TLS
@@ -244,6 +295,8 @@ int main(int argc, char** argv)
 			  << " byte body, backlog " << backlog << ", detect " << (detect ? "on" : "off")
 			  << ", handshake " << handshake_ms << "ms"
 			  << ", keep-alive " << keep_alive_ms << "ms"
+			  << ", max-requests " << max_requests
+			  << ", affinity " << (affinity_hex.empty() ? std::string("none") : affinity_hex)
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
 			  << ")" << std::endl;
 

@@ -1,0 +1,69 @@
+% A minimal document for checking one figure on its own.
+%
+% The figures are drawn one per file and included by the chapters, so a broken one
+% would otherwise only show up when the whole dissertation is built, by which point it
+% is unclear which of them broke it. This loads the same fonts, the same language and
+% the same TikZ styles as the real preamble, and nothing else.
+%
+% Usage, from doc/thesis:
+%   latexmk -pdf -interaction=nonstopmode -outdir=build/probe \
+%       -jobname=probe-NAME "\def\figfile{NAME}\input{figures/_probe.tex}"
+%
+% Or copy this file, replace \figfile, and build the copy.
+
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{cmap}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[main=bulgarian,english]{babel}
+\usepackage{tempora}
+\usepackage[top=2.5cm, bottom=2.5cm, left=3.0cm, right=2.0cm, a4paper]{geometry}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{array}
+
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing,arrows.meta,positioning,shapes.geometric,fit,calc}
+\usetikzlibrary{backgrounds,chains,matrix,patterns,shadows.blur}
+
+\tikzset{
+  box/.style={draw, rounded corners=1pt, align=center, inner sep=4pt,
+              font=\fontsize{9}{11}\selectfont},
+  wide/.style={box, minimum width=2.6cm},
+  proc/.style={wide, minimum height=0.85cm},
+  decision/.style={draw, diamond, aspect=2, align=center, inner sep=1pt,
+                   font=\fontsize{8}{10}\selectfont},
+  note/.style={align=left, font=\fontsize{8}{10}\selectfont},
+  flow/.style={-Stealth, thick},
+  thin flow/.style={-Stealth, semithick, densely dashed},
+  grp/.style={draw, densely dotted, rounded corners=2pt, inner sep=6pt},
+}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{pgfplotstable}
+\pgfplotsset{
+  thesis plot/.style={
+    width=0.92\linewidth, height=6.4cm,
+    tick label style={font=\fontsize{8}{10}\selectfont},
+    label style={font=\fontsize{9}{11}\selectfont},
+    legend style={font=\fontsize{8}{10}\selectfont, draw=none, fill=none},
+    grid=major, grid style={densely dotted, gray!40},
+    every axis plot/.append style={thick},
+  },
+}
+
+% The real preamble defines these; a figure may use them.
+\DeclareRobustCommand{\code}[1]{\texttt{#1}}
+\newcommand{\term}[1]{\emph{#1}}
+
+\providecommand{\figfile}{}
+
+\begin{document}
+\input{figures/\figfile}
+\end{document}

@@ -132,6 +132,29 @@
 \usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{decorations.pathreplacing,arrows.meta,positioning,shapes.geometric,fit,calc}
+\usetikzlibrary{backgrounds,chains,matrix,patterns,shadows.blur}
+% Диаграмите се четат и на черно-бял печат, затова се разчита на форма, щриховка и
+% дебелина на линията, а не на цвят. Стиловете са събрани тук, за да изглеждат всички
+% фигури като части от един документ, а не като единайсет отделни рисунки.
+\tikzset{
+  box/.style={draw, rounded corners=1pt, align=center, inner sep=4pt,
+              font=\fontsize{9}{11}\selectfont},
+  wide/.style={box, minimum width=2.6cm},
+  proc/.style={wide, minimum height=0.85cm},
+  decision/.style={draw, diamond, aspect=2, align=center, inner sep=1pt,
+                   font=\fontsize{8}{10}\selectfont},
+  note/.style={align=left, font=\fontsize{8}{10}\selectfont},
+  flow/.style={-Stealth, thick},
+  thin flow/.style={-Stealth, semithick, densely dashed},
+  grp/.style={draw, densely dotted, rounded corners=2pt, inner sep=6pt},
+}
+
+
+% figures/ съдържа по една фигура на файл. Вмъкват се на мястото, на което текстът
+% ги обсъжда, а не се събират в приложение: фигура, до която се стига по препратка,
+% се пропуска при четене.
+\newcommand{\figdir}{figures}
+
 \usepackage{adjustbox}
 \usepackage{pdfpages}     % за подвързаните задание и декларация, вж. Б.5
 
@@ -161,6 +184,18 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepackage{pgfplotstable}
+% Един вид за всички графики в глава VI, за да изглеждат като части от
+% един документ, а не като поредица от отделни картинки.
+\pgfplotsset{
+  thesis plot/.style={
+    width=0.92\linewidth, height=6.4cm,
+    tick label style={font=\fontsize{8}{10}\selectfont},
+    label style={font=\fontsize{9}{11}\selectfont},
+    legend style={font=\fontsize{8}{10}\selectfont, draw=none, fill=none},
+    grid=major, grid style={densely dotted, gray!40},
+    every axis plot/.append style={thick},
+  },
+}
 
 % --- Помощни ------------------------------------------------------------
 \usepackage[hidelinks]{hyperref}

@@ -444,6 +444,13 @@ if(COROUTE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# The load generator for chapter VI. Built by default because a measurement tool that
+# has to be remembered separately is a measurement tool that is out of date.
+option(COROUTE_BUILD_BENCHMARK_TOOLS "Build the load generator" ON)
+if(COROUTE_BUILD_BENCHMARK_TOOLS)
+    add_subdirectory(benchmark/generator)
+endif()
+
 # Fuzz harnesses. Clang only, since libFuzzer has no MSVC or GCC equivalent, and off by
 # default because turning it on instruments the library itself.
 option(COROUTE_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only)" OFF)

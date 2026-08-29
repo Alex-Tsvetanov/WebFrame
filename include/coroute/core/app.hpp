@@ -186,6 +186,12 @@ namespace coroute
 		// timeout was configured and ignored.
 		std::chrono::milliseconds keep_alive_timeout_{30000};
 
+		// How many requests one connection may carry before the server closes it.
+		// Zero means no limit. A limit is a defence against a client holding a
+		// connection forever, and it is also a variable a benchmark has to control,
+		// because forcing a reconnect changes what is being measured.
+		std::size_t max_requests_per_connection_ = 100;
+
 		// Connection tracking for graceful shutdown
 		std::atomic<size_t> active_connections_{0};
 		std::atomic<bool> shutting_down_{false};
@@ -337,6 +343,18 @@ namespace coroute
 		[[nodiscard]] std::chrono::milliseconds keep_alive_timeout() const noexcept
 		{
 			return keep_alive_timeout_;
+		}
+
+		// Requests per connection before it is closed. Zero removes the limit.
+		App& max_requests_per_connection(std::size_t limit)
+		{
+			max_requests_per_connection_ = limit;
+			return *this;
+		}
+
+		[[nodiscard]] std::size_t max_requests_per_connection() const noexcept
+		{
+			return max_requests_per_connection_;
 		}
 
 		// Route registration (simple form)

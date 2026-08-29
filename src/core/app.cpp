@@ -544,10 +544,35 @@ namespace coroute
 
 		// Keep-alive configuration. The idle limit is a member rather than a constant
 		// because it is now enforced, so it is something a run has to be able to set.
-		constexpr size_t MAX_REQUESTS_PER_CONNECTION = 100;
+		// A member, not a constant. At high request rates a limit of 100 forces a
+		// reconnect every 100 requests, which turns a keep-alive measurement into a
+		// measurement of accept. Anything that changes what is being measured has to be
+		// something a run can set.
+		const size_t MAX_REQUESTS_PER_CONNECTION = max_requests_per_connection_;
 		const auto KEEP_ALIVE_TIMEOUT = keep_alive_timeout_;
 
 		size_t request_count = 0;
+
+		// Zero means no limit, and that has to hold at every site that reads the limit,
+		// not just at the loop guard. It did not: "request_count >= 0" is always true,
+		// so setting the limit to zero told every client to close after one request and
+		// the subtraction below underflowed into an enormous Keep-Alive max. Throughput
+		// fell from 147k to 16k requests per second, which is how it was noticed.
+		const auto at_request_limit = [&]
+		{
+			return MAX_REQUESTS_PER_CONNECTION > 0 && request_count >= MAX_REQUESTS_PER_CONNECTION;
+		};
+		const auto keep_alive_header = [&]
+		{
+			const std::string base = "timeout=" + std::to_string(keep_alive_timeout_.count() / 1000);
+			if (MAX_REQUESTS_PER_CONNECTION == 0)
+			{
+				// No max= at all rather than a fabricated one. RFC 9112 makes the parameter
+				// optional, and a number here would be a promise the server is not making.
+				return base;
+			}
+			return base + ", max=" + std::to_string(MAX_REQUESTS_PER_CONNECTION - request_count);
+		};
 		bool keep_alive = true;
 
 		// Wrapped rather than merely configured. Every backend stores the value passed to
@@ -564,8 +589,9 @@ namespace coroute
 		{
 			++request_count;
 
-			// Check max requests limit
-			if (request_count > MAX_REQUESTS_PER_CONNECTION)
+			// Zero removes the limit, which a measurement needs in order to separate the
+			// cost of serving requests from the cost of accepting connections.
+			if (MAX_REQUESTS_PER_CONNECTION > 0 && request_count > MAX_REQUESTS_PER_CONNECTION)
 			{
 				break;
 			}
@@ -674,7 +700,7 @@ namespace coroute
 							// the code below: it has already been written.
 							const bool ok = co_await stream_deferred_view(
 								*conn, render(template_name, data), collector,
-								keep_alive && request_count < MAX_REQUESTS_PER_CONNECTION);
+								keep_alive && !at_request_limit());
 							if (!ok)
 							{
 								break;
@@ -694,7 +720,7 @@ namespace coroute
 					}
 
 					// Add Connection header based on keep-alive status
-					bool should_close = !keep_alive || request_count >= MAX_REQUESTS_PER_CONNECTION;
+					bool should_close = !keep_alive || at_request_limit();
 					if (should_close)
 					{
 						resp.set_header("Connection", "close");
@@ -703,8 +729,7 @@ namespace coroute
 					else
 					{
 						resp.set_header("Connection", "keep-alive");
-						resp.set_header("Keep-Alive", "timeout=30, max=" +
-						                                  std::to_string(MAX_REQUESTS_PER_CONNECTION - request_count));
+						resp.set_header("Keep-Alive", keep_alive_header());
 					}
 
 					// Send response
@@ -745,7 +770,7 @@ namespace coroute
 			}
 
 			// Add Connection header based on keep-alive status
-			bool should_close = !keep_alive || request_count >= MAX_REQUESTS_PER_CONNECTION;
+			bool should_close = !keep_alive || at_request_limit();
 			if (should_close)
 			{
 				resp.set_header("Connection", "close");
@@ -754,8 +779,7 @@ namespace coroute
 			else
 			{
 				resp.set_header("Connection", "keep-alive");
-				resp.set_header("Keep-Alive",
-				                "timeout=30, max=" + std::to_string(MAX_REQUESTS_PER_CONNECTION - request_count));
+				resp.set_header("Keep-Alive", keep_alive_header());
 			}
 
 			// Send response
