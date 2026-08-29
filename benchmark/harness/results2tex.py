@@ -86,6 +86,12 @@ def _key_part(factor: str, value: Any) -> str:
         return _short_protocol(str(value))
     if isinstance(value, bool):
         return f"{factor}-{'on' if value else 'off'}"
+    # An integral float renders as an integer before the dot is stripped. Otherwise an
+    # offered rate of 40000.0 becomes the key part "400000", which reads as four hundred
+    # thousand: a key that silently misnames its own cell, which is the failure this
+    # module exists to prevent.
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value).replace(".", "").replace("_", "").lower()
 
 

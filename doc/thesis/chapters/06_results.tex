@@ -1,20 +1,286 @@
 % 06_results
 \section{\bgen{РЕЗУЛТАТИ И АНАЛИЗ}{RESULTS AND ANALYSIS}}
 
-\TODO{measurements; every number arrives through the results macro or pgfplotstable, never by hand}
+Главата прилага методиката от глава~V и представя това, което тя произведе. Числата в нея
+не са преписвани: скаларите се вмъкват по име от \code{generated/results.tex}, а таблиците и
+графиките се четат направо от CSV файловете в \code{data/}. Стойност, за която липсва
+измерване, се отпечатва като червен маркер, а не като правдоподобно число, и такива маркери
+в текста по-долу са умишлени.
 
-% Демонстрация на механизма, а не резултат. Числата идват от
-% benchmark/harness/results2tex.py и се пишат като \R{ключ}, никога на ръка.
-% Без файла generated/results.tex всяко от тях се отпечатва като червено [?ключ],
-% което се намира с grep. Точно това трябва да се вижда, докато измервания още няма.
-\bgen{Пропускателна способност на coroute по HTTP/1.1}{Throughput of coroute over HTTP/1.1}:
-\R{coroute.h1.rps} \bgen{заявки в секунда}{requests per second}
-(\bgen{медиана от}{median of} \R{coroute.h1.n} \bgen{изпълнения}{runs},
-95\% BCa CI \R{coroute.h1.rps.lo}--\R{coroute.h1.rps.hi}),
-\bgen{при}{at} p99 \R{coroute.h1.p99}\,ms.
-\bgen{За nginx}{For nginx}: \R{nginx.h1.rps}.
-\bgen{Липсваща стойност}{A missing value}: \R{coroute.h3.rps}.
+Главата се чете в определен ред. Първо какво позволява средата, защото това ограничава кои
+твърдения изобщо могат да бъдат направени. После колко изпълнения бяха отхвърлени и по коя
+причина, защото кампания, изхвърлила една трета от изпълненията си, е различна кампания от
+такава, която не е изхвърлила нито едно. Едва след това резултатите.
+
+\subsection{Средата и какво тя позволява}
+\label{sec:env}
+
+Измерванията в тази глава са направени на една машина под Windows, невиртуализирана, с
+шест физически ядра. Отпечатъкът на средата е записан заедно с изпълненията и кампанията
+отказва да дописва към файл, чиято машина се е променила.
+
+\paragraph{Едната машина е ограничението.} Генераторът и сървърът се изпълняват на един и
+същ хост и се конкурират за едни и същи ядра. Затова те са закрепени към несечащи се
+множества: сървърът към четири физически ядра, генераторът към две. Нито един от двата не
+разполага с цялата машина.
+
+Следствието е върху вида на твърденията, а не върху точността им. Абсолютната пропускателна
+способност, измерена така, е свойство на разделянето на ядрата, а не на сървъра, и не се
+съобщава като характеристика на реализацията. Това, което конфигурацията поддържа, е
+\emph{сравнение}: две рамена, които виждат едни и същи условия, при които се различава само
+изследваният фактор. Хипотеза Х1 е точно такова сравнение и затова е измерима тук.
+
+\paragraph{Loopback не е мрежа.} Интерфейсът има MTU 65536 и време за обръщение от порядъка
+на микросекунди. Първото облагодетелства протоколите над TCP спрямо QUIC, тъй като QUIC
+изпраща дейтаграми от порядъка на 1200 байта по замисъл. Второто прави невидими свойствата,
+заради които мултиплексирането съществува. И понеже адресът е един, миграцията на връзка не
+може да бъде предизвикана изобщо.
+
+Затова тук няма сравнение между протоколи, няма измерване при влошена мрежа и няма нито един
+резултат за HTTP/3. Те не са пропуснати, а изключени от средата, и се провеждат в
+кампанията под Linux \figref{fig:measurement_topology}.
+
+\paragraph{Обхватът на генератора.} \code{loadgen} говори само HTTP/1.1. Всичко в тази глава
+е следователно за HTTP/1.1 без TLS.
+
+\subsection{Допустимост: колко изпълнения бяха отхвърлени}
+\label{sec:rejections}
+
+Правилата от раздела за допустимост в глава~V се прилагат от драйвера, веднъж, върху записа.
+Отхвърлените изпълнения се записват заедно с приетите, защото кампания с тихи пропуски не се
+различава от кампания, която не е била изпълнена.
+
+\begin{table}[H]
+\centering
+\caption{Отхвърлени изпълнения по причина}
+\label{tab:rejections}
+\pgfplotstabletypeset[
+  col sep=comma, string type,
+  columns/reason/.style={column name={Причина}, column type={l}},
+  columns/count/.style={column name={Брой}, column type={r}},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/rejections.csv}
+\end{table}
+
+\TODO{ако таблицата е празна, това означава нула отхвърлени изпълнения и текстът тук трябва
+да го каже с думи, а не да оставя празна таблица}
+
+\subsection{Х1: цената на класификацията след приемането}
+\label{sec:h1}
+
+Хипотезата гласи, че разпознаването на протокола по първия октет не води до измеримо
+влошаване спрямо същия сървър без класификация. Двете рамена са един и същ двоичен файл,
+разграничен с флаг при изпълнение, при еднакво предложено натоварване в отворен цикъл.
+
+\begin{table}[H]
+\centering
+\caption{Пропускателна способност и латентност с и без класификация}
+\label{tab:h1-demux}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={offered_rate, rps_on, p50_on, p99_on, rps_off, p50_off, p99_off},
+  columns/offered_rate/.style={column name={Предложени}, fixed, zerofill=false, precision=0},
+  columns/rps_on/.style={column name={с кл.\ заявки/s}, fixed, precision=0},
+  columns/p50_on/.style={column name={p50 (ms)}, fixed, precision=3},
+  columns/p99_on/.style={column name={p99 (ms)}, fixed, precision=3},
+  columns/rps_off/.style={column name={без кл.\ заявки/s}, fixed, precision=0},
+  columns/p50_off/.style={column name={p50 (ms)}, fixed, precision=3},
+  columns/p99_off/.style={column name={p99 (ms)}, fixed, precision=3},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/h1_demux.csv}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  thesis plot,
+  xlabel={предложено натоварване, заявки в секунда},
+  ylabel={p99, ms},
+  legend pos=north west,
+]
+% Интервалите се чертаят от същия CSV, от който идват и точките. Лента, която не се
+% застъпва с другата, е разликата, която хипотезата търси; застъпване означава, че
+% разликата не е разграничима при този брой изпълнения.
+\addplot+[mark=*, error bars/.cd, y dir=both, y explicit]
+  table[col sep=comma, x=offered_rate, y=p99_on,
+        y error plus expr=\thisrow{p99_hi_on}-\thisrow{p99_on},
+        y error minus expr=\thisrow{p99_on}-\thisrow{p99_lo_on}]{\datadir/h1_demux.csv};
+\addlegendentry{с класификация}
+\addplot+[mark=square*, error bars/.cd, y dir=both, y explicit]
+  table[col sep=comma, x=offered_rate, y=p99_off,
+        y error plus expr=\thisrow{p99_hi_off}-\thisrow{p99_off},
+        y error minus expr=\thisrow{p99_off}-\thisrow{p99_lo_off}]{\datadir/h1_demux.csv};
+\addlegendentry{без класификация}
+\end{axis}
+\end{tikzpicture}
+\caption{Латентност при 99-и персентил спрямо предложеното натоварване, двете рамена на
+хипотеза Х1. Лентите са 95\% BCa доверителни интервали върху медианите на изпълненията.}
+\label{fig:h1-p99}
+\end{figure}
+
+\paragraph{Как се чете.} Хипотезата се отхвърля само ако доверителният интервал на разликата
+изключва нулата \emph{и} относителната големина надхвърля пет процента. И двете условия са
+обявени в глава~I, преди събирането на данните. Застъпващи се интервали не доказват
+равенство; те означават, че при този брой изпълнения разлика не е разграничима, което е
+по-слабото и по-честното твърдение.
+
+\TODO{изводът по Х1 се дописва след разчитането на таблицата: приета, отхвърлена, или
+неразграничима при този брой изпълнения}
+
+\subsection{Мащабиране по работни нишки}
+\label{sec:workers}
+
+\begin{table}[H]
+\centering
+\caption{Пропускателна способност и латентност спрямо броя работни нишки}
+\label{tab:workers}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={workers, n, rps, p50, p99, p999},
+  columns/workers/.style={column name={Нишки}, fixed, precision=0},
+  columns/n/.style={column name={$n$}, fixed, precision=0},
+  columns/rps/.style={column name={заявки/s}, fixed, precision=0},
+  columns/p50/.style={column name={p50 (ms)}, fixed, precision=3},
+  columns/p99/.style={column name={p99 (ms)}, fixed, precision=3},
+  columns/p999/.style={column name={p99.9 (ms)}, fixed, precision=3},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/workers.csv}
+\end{table}
+
+Сървърът е закрепен към четири физически ядра, тоест над четири работни нишки се очаква
+насищане, а не подобрение. Стойността на измерването е в това дали кривата се държи както
+предвижда закрепването, което е проверка на самата постановка, а не на реализацията.
+
+\subsection{Размер на отговора}
+\label{sec:payload}
+
+\begin{table}[H]
+\centering
+\caption{Пропускателна способност и латентност спрямо размера на отговора}
+\label{tab:payload}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={payload_bytes, n, rps, p50, p99},
+  columns/payload_bytes/.style={column name={Отговор (B)}, fixed, precision=0},
+  columns/n/.style={column name={$n$}, fixed, precision=0},
+  columns/rps/.style={column name={заявки/s}, fixed, precision=0},
+  columns/p50/.style={column name={p50 (ms)}, fixed, precision=3},
+  columns/p99/.style={column name={p99 (ms)}, fixed, precision=3},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/payload.csv}
+\end{table}
+
+Размерът на отговора е включен, защото цената на класификацията е на връзка, а цената на
+отговора е на заявка. Ако първата изобщо е разграничима, съотношението между двете трябва да
+се мени с размера, и това е втори, независим начин да се погледне същият въпрос.
+
+\subsection{Дължина на опашката за приемане}
+\label{sec:backlog}
+
+\begin{table}[H]
+\centering
+\caption{Пропускателна способност и латентност спрямо \code{backlog}}
+\label{tab:backlog}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={backlog, n, rps, p99, p999},
+  columns/backlog/.style={column name={\code{backlog}}, fixed, precision=0},
+  columns/n/.style={column name={$n$}, fixed, precision=0},
+  columns/rps/.style={column name={заявки/s}, fixed, precision=0},
+  columns/p99/.style={column name={p99 (ms)}, fixed, precision=3},
+  columns/p999/.style={column name={p99.9 (ms)}, fixed, precision=3},
+  every head row/.style={before row=\toprule, after row=\midrule},
+  every last row/.style={after row=\bottomrule},
+]{\datadir/backlog.csv}
+\end{table}
+
+Подразбиращата се стойност в интерфейса за вход и изход беше 128, което е малко при няколко
+хиляди едновременни връзки, затова параметърът е обхождан, а не приет за константа. При
+натоварването и броя връзки в тази кампания опашката е плитка и не се очаква разлика.
+Измерването превръща това очакване в резултат вместо в допускане.
+
+\subsection{Преброяване на слушащите дескриптори}
+\label{sec:census}
+
+Предложението от раздел~\ref{sec:formal} е твърдение за брой, а не за скорост, тоест то се
+проверява чрез броене, а не чрез натоварване. Броенето е и единственото измерване в главата,
+което не зависи от генератора.
+
+\TODO{таблица с преброяването: брой слушащи дескриптори при 1, 2, 4 и 8 работни нишки, с
+включена и изключена класификация, отчетени от самата операционна система при работещ процес}
+
+\subsection{Какво тази кампания не измерва}
+\label{sec:notmeasured}
+
+Три от четирите хипотези остават непроверени тук, и причината за всяка е различна.
+
+\paragraph{Х2, делът на препратените QUIC пакети.} Изисква HTTP/3, а тази среда няма
+конфигурация за него, и изисква предизвикана миграция, която на един адрес е невъзможна.
+Провежда се под Linux.
+
+\paragraph{Х3, изчакано срещу отложено изобразяване.} Изисква генератор, който изобразява
+страница и измерва време до първия байт отделно от времето до последния. \code{loadgen} не
+прави това. Функционалната проверка, че обвивката тръгва преди стойността, съществува и е
+описана в глава~VII, но тя е проверка на поведение, а не измерване.
+
+\paragraph{Х4, времето за маршрутизиране при нарастващ брой маршрути.} Изисква обхождане по
+брой регистрирани маршрути, което не е част от тази кампания. То не изисква Linux и може да
+бъде проведено на същата машина.
+
+\TODO{Х4 може да се измери тук; ако бъде добавено обхождане по брой маршрути, този абзац се
+заменя с резултата}
+
+\subsection{Запланувани измервания под Linux и macOS}
+\label{sec:planned}
+
+Разделът съществува, за да е ясно какво липсва и къде ще застане, а не за да обещава.
+Ключовете по-долу са същите, които текстът ще използва, когато кампаниите бъдат проведени.
+Дотогава те се отпечатват като червени маркери, тоест липсата е видима в самия документ и се
+намира с търсене, вместо да бъде премълчана.
+
+\begin{table}[H]
+\centering
+\caption{Какво остава за измерване, на коя платформа и защо там}
+\label{tab:planned}
+\begin{tabular}{@{}L{3.4cm}L{2.2cm}L{8.4cm}@{}}
+\toprule
+\textbf{Измерване} & \textbf{Платформа} & \textbf{Защо не тук} \\
+\midrule
+Сравнение между HTTP/1.1, HTTP/2 и HTTP/3 & Linux & Изисква h2load и мрежов път с реален
+MTU. Loopback наказва QUIC по причина, която няма нищо общо с реализацията. \\
+Готовност срещу завършване, \code{epoll} срещу \code{io\_uring} & Linux & Двата механизма
+съществуват на една и съща операционна система само там, което прави вида на интерфейса
+независима променлива. \\
+Дял на препратените QUIC пакети (Х2) & Linux & Изисква предизвикана миграция между два
+адреса в отделни мрежови пространства. \\
+Влошена мрежа: закъснение, загуба, разбъркване & Linux & Под Windows няма програмируем
+еквивалент на \code{tc}. \\
+\code{kqueue} като трети механизъм & macOS & Единствената платформа, на която съществува.
+Нативно изпълнение, не във виртуална машина. \\
+Проверка на две машини & Linux & Отделя ефекта от това, че клиент и сървър делят една
+машина, от измерваното. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Ключовете, които ще бъдат попълнени.} Пропускателна способност под Linux с
+класификация: \R{coroute-linux.h1.protocol\_detection-on.40000.4.0.1024.rps} заявки в
+секунда, при p99 \R{coroute-linux.h1.protocol\_detection-on.40000.4.0.1024.p99}\,ms. Същото
+под macOS: \R{coroute-macos.h1.protocol\_detection-on.40000.4.0.1024.rps}. Делът на
+препратените QUIC пакети: \R{coroute-linux.h3.fwd\_in} от
+\R{coroute-linux.h3.rx} получени.
+
+Всеки от тези маркери е червен в отпечатания документ. Това е предвиденото състояние до
+провеждането на съответната кампания и е за предпочитане пред число, което изглежда
+измерено.
 
 \subsection{\bgen{Изводи}{Summary}}
 
-\TODO{every numbered chapter ends with one}
+\TODO{изводите се дописват, след като таблиците по-горе бъдат разчетени; те трябва да кажат
+за всяка хипотеза приета ли е, отхвърлена ли е, или неразграничима при този брой изпълнения,
+и да повторят, че всичко в главата е за HTTP/1.1 без TLS на една машина}

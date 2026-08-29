@@ -96,6 +96,30 @@ def design_windows_h1() -> list[Cell]:
     return cells
 
 
+def design_windows_h1_deep() -> list[Cell]:
+    """Only the cells hypothesis X1 turns on, so they can be run many more times.
+
+    The first campaign ran every cell seven times and the difference intervals came out
+    between 4.7 and 11.8 percent of the median, depending on the offered rate. X1's own
+    rejection threshold is five percent, so at seven repetitions the design could not
+    resolve the difference it was declared to look for at four of the five rates. That is
+    a fact about the design and not about the result, and the fix is repetitions: the
+    interval narrows with the square root of their number.
+
+    Ten cells rather than nineteen, because spending the same machine time on the sweeps
+    would buy resolution where no claim depends on it.
+    """
+    base = dict(
+        protocol="http1.1", tls=False, io_backend="iocp", workers=4, connections=64,
+        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
+    )
+    return [
+        Cell.of("coroute", **base, protocol_detection=detect, offered_rate=rate)
+        for rate in OFFERED_RATES
+        for detect in (True, False)
+    ]
+
+
 def design_smoke() -> list[Cell]:
     """Two cells, for checking the machinery without spending an hour on it."""
     base = dict(
@@ -108,7 +132,11 @@ def design_smoke() -> list[Cell]:
     ]
 
 
-DESIGNS = {"windows-h1": design_windows_h1, "smoke": design_smoke}
+DESIGNS = {
+    "windows-h1": design_windows_h1,
+    "windows-h1-deep": design_windows_h1_deep,
+    "smoke": design_smoke,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
