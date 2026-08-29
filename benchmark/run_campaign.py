@@ -84,6 +84,15 @@ def design_windows_h1() -> list[Cell]:
         cells.append(Cell.of("coroute", **{**base, "payload_bytes": payload},
                              protocol_detection=True, offered_rate=40_000))
 
+    # Listen backlog. The default in the io context was 128, which is far too small at
+    # several thousand concurrent connections, so it is a swept variable rather than a
+    # constant. At this offered rate and connection count the queue is shallow and the
+    # sweep is expected to show little; measuring it is how that becomes a finding
+    # rather than an assumption.
+    for backlog in (128, 512, 4096):
+        cells.append(Cell.of("coroute", **{**base, "backlog": backlog},
+                             protocol_detection=True, offered_rate=40_000))
+
     return cells
 
 
