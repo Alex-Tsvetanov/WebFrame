@@ -107,6 +107,16 @@ def design_bracket() -> list[Cell]:
     return [_cell(arm, routes, 1000) for routes in (200, 300, 500, 700) for arm in ARMS]
 
 
+def design_bracket_low() -> list[Cell]:
+    """Between ten routes and a hundred, the other end of the same question.
+
+    At ten routes the three arms' repetition ranges overlap completely and no choice is
+    visible. At a hundred they no longer overlap. The crossing is somewhere in here, and
+    it is the number the brief asks for, so it is measured rather than interpolated.
+    """
+    return [_cell(arm, routes, 1000) for routes in (20, 50) for arm in ARMS]
+
+
 def design_large() -> list[Cell]:
     """Ten thousand routes.
 
@@ -125,6 +135,7 @@ def design_smoke() -> list[Cell]:
 DESIGNS = {
     "main": design_main,
     "bracket": design_bracket,
+    "bracket-low": design_bracket_low,
     "large": design_large,
     "smoke": design_smoke,
 }
