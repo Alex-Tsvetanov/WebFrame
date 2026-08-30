@@ -1,6 +1,6 @@
 paper-io-portability Linux measurement session
 
-=== machine (recorded before timed runs) ===
+=== machine ===
 machine_name: docker:cursor
 uname: Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC Fri Aug 28 16:08:20 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
 kernel: 6.12.94+
@@ -8,29 +8,1476 @@ hostname: cursor
 cpu_model: Intel(R) Xeon(R) Processor
 virtualisation: 'docker'
 docker_image: None (unpublished when None; Docker-named machine is the protocol)
-dockerenv_present: False
 client_server_same_host: True (loopback). Bounded limitation: not a two-host network path.
 clock: CLOCK_MONOTONIC resolution_ns=1
-logical_cores: 4
-physical_cores: 4
+git_commit: b397e0f809e9a2504d1b1eff284476f23976da44
 compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
-liburing: 2.5
-git_commit: 7e94c2baeac072dadce6347c2384214285ccf1c0
-git_dirty: True
+build_type: Release
+deps: {'liburing': '2.5', 'openssl': '3.0.13'}
 
 === protocol ===
-one binary; backend and write path selected at runtime (--io-backend, --write-path)
-open loop; warmup discarded; duration 20s warmup 3s fixed before data
+one binary; backend and write path selected at runtime
+open loop; warmup discarded; duration and warmup fixed before data
 median of 7 independent runs (fresh server, fresh generator each) for A and B
 ladder: one run per rate
-report p50, p99, p99.9; median ± BCa; full range; not means
+report p50, p99, p99.9; median ± BCa dispersion; full range; not means
 spread label: (max-min)/median >= 5% marked EXCEEDS_SPREAD
-validity thresholds fixed in advance (benchmark/harness/validity.py)
-CAVEAT: compare only within this Linux machine. Do not merge with existing IOCP numbers.
-CAVEAT: io_uring results depend on kernel 6.12.94+.
-CAVEAT: client and server share this host (loopback).
+validity thresholds fixed in advance (see benchmark/harness/validity.py); virtualisation rejects performance records on this host
+CAVEAT: compare only within this Linux machine. Do not merge with existing IOCP numbers. Do not build a cross-platform table. io_uring results depend on kernel 6.12.94+.
+CAVEAT: client and server share this host (loopback). Same-host numbers are not a two-host network path.
 
-=== cells ===
-(no timed runs yet; accepted cells empty)
+=== campaign summary ===
+runs=194 accepted=0 rejected=194
+offered_rate_used_for_A_B: 120000.0
+raw_jsonl: /workspace/benchmark/results/linux-io-portability.jsonl
+
+=== sub-study A: epoll vs io_uring (buffered, same workload) ===
+A backend=epoll write_path=buffered payload=0 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+A backend=io_uring write_path=buffered payload=0 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+=== sub-study B: zero-copy size sweep (io_uring) ===
+sizes pre-declared, not retuned: 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304
+send_zc + epoll: not scheduled (SEND_ZC requires io_uring). Cell empty by design.
+
+B backend=io_uring write_path=buffered payload=256 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=256 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=256 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=1024 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=1024 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=1024 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=4096 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=4096 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=4096 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=16384 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=16384 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=16384 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=65536 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=65536 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=65536 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=262144 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=262144 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=262144 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=1048576 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=1048576 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=1048576 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=buffered payload=4194304 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=sendfile payload=4194304 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+B backend=io_uring write_path=send_zc payload=4194304 offered_rate=120000.0
+  n_accepted=0  n_rejected=7
+  accepted cell: (empty)
+
+=== ladder (open-loop rate selection) ===
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=10000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=20000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=30000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=40000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=50000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=60000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=70000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=80000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=90000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=100000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=110000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+ladder backend=io_uring write_path=buffered payload=0 offered_rate=120000
+  n_accepted=0  n_rejected=1
+  accepted cell: (empty)
+
+=== rejected-run appendix (not accepted cells) ===
+All timed runs on this host are validity-rejected for virtualisation ('docker'). Numbers below are from rejected records that still completed a measurement. They are not accepted performance claims.
+
+rejected appendix: study=A backend=epoll write_path=buffered payload=0 offered_rate=120000.0 n=6
+  requests_per_second: median=120001.655
+    BCa=[91651.795, 120002.112] method=BCa
+    full_range=[91651.8, 120002]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p50: median=0.0255
+    BCa=[0.0230, 0.0270] method=BCa
+    full_range=[0.023, 0.028]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=0.2980
+    BCa=[0.0525, 4618.7610] method=BCa
+    full_range=[0.045, 9237.3]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=8.8190
+    BCa=[3.2240, 4718.1630] method=BCa
+    full_range=[1.535, 9428.91]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=6.352
+    BCa=[6.235, 6.500] method=BCa
+    full_range=[6.18107, 6.65518]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=15159909.0
+    BCa=[13517250.0, 15263079.0] method=BCa
+    full_range=[1.21994e+07, 1.5296e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_accept: median=64.0
+    BCa=[14.0, 64.0] method=BCa
+    full_range=[14, 65]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_epoll_ctl: median=5520421.5
+    BCa=[4953309.0, 5520490.0] method=BCa
+    full_range=[4.38622e+06, 5.52049e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_epoll_wait: median=4119004.0
+    BCa=[3610681.0, 4222291.0] method=BCa
+    full_range=[3.42694e+06, 4.2552e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_read: median=2760205.0
+    BCa=[2476648.0, 2760238.0] method=BCa
+    full_range=[2.19311e+06, 2.76024e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_write: median=2760079.5
+    BCa=[2476573.0, 2760112.0] method=BCa
+    full_range=[2.19308e+06, 2.76011e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscr: median=4.5
+    BCa=[0.0, 6.0] method=BCa
+    full_range=[0, 7]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=6
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=A backend=io_uring write_path=buffered payload=0 offered_rate=120000.0 n=7
+  requests_per_second: median=120001.414
+    BCa=[60000.834, 120001.749] method=BCa
+    full_range=[60000.8, 120002]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=0.0270
+    BCa=[0.0150, 0.0270] method=BCa
+    full_range=[0.015, 0.028]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=0.0440
+    BCa=[0.0370, 0.0440] method=BCa
+    full_range=[0.037, 0.048]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=5.0840
+    BCa=[1.8600, 6.3520] method=BCa
+    full_range=[1.86, 11.556]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=4.472
+    BCa=[4.104, 4.520] method=BCa
+    full_range=[4.10386, 10.2288]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=10733873.0
+    BCa=[9849636.0, 10848124.0] method=BCa
+    full_range=[9.84964e+06, 1.2275e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=10733873.0
+    BCa=[9849636.0, 10848124.0] method=BCa
+    full_range=[9.84964e+06, 1.2275e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=0.0
+    BCa=[0.0, 0.0] method=percentile (degenerate)
+    full_range=[0, 6]
+    n=7
+  syscall_counts.proc_syscw: median=0.0
+    BCa=[0.0, 0.0] method=percentile (degenerate)
+    full_range=[0, 2]
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=256 offered_rate=120000.0 n=6
+  requests_per_second: median=120002.915
+    BCa=[120001.791, 120003.383] method=BCa
+    full_range=[120002, 120004]
+    n=6
+  latency_ms.p50: median=0.0190
+    BCa=[0.0140, 0.0255] method=BCa
+    full_range=[0.014, 0.027]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=0.0465
+    BCa=[0.0200, 38.2205] method=BCa
+    full_range=[0.017, 76.403]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=4.2720
+    BCa=[1.0600, 70.0710] method=BCa
+    full_range=[0.658, 138.68]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=4.749
+    BCa=[3.708, 5.059] method=BCa
+    full_range=[3.67, 5.07914]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=11397268.0
+    BCa=[8898554.0, 12141231.0] method=BCa
+    full_range=[8.80836e+06, 1.21904e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_io_uring_enter: median=11397268.0
+    BCa=[8898554.0, 12141231.0] method=BCa
+    full_range=[8.80836e+06, 1.21904e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscr: median=0.0
+    BCa=[0.0, 7.0] method=percentile (degenerate)
+    full_range=[0, 8]
+    n=6
+  syscall_counts.proc_syscw: median=0.0
+    BCa=[0.0, 2.0] method=percentile (degenerate)
+    full_range=[0, 2]
+    n=6
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=1024 offered_rate=120000.0 n=6
+  requests_per_second: median=120002.775
+    BCa=[120000.856, 120003.341] method=BCa
+    full_range=[120000, 120004]
+    n=6
+  latency_ms.p50: median=0.0145
+    BCa=[0.0140, 0.0205] method=BCa
+    full_range=[0.014, 0.028]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=0.0430
+    BCa=[0.0170, 0.1610] method=BCa
+    full_range=[0.017, 277.366]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=2.2895
+    BCa=[0.2470, 162.7425] method=BCa
+    full_range=[0.247, 325.177]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=4.817
+    BCa=[4.061, 5.095] method=BCa
+    full_range=[4.04152, 5.36391]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=11562338.0
+    BCa=[9747780.5, 12228094.0] method=BCa
+    full_range=[9.70002e+06, 1.28739e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_io_uring_enter: median=11562338.0
+    BCa=[9747780.5, 12228094.0] method=BCa
+    full_range=[9.70002e+06, 1.28739e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscr: median=1.0
+    BCa=[0.0, 3.0] method=BCa
+    full_range=[0, 7]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=6
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=4096 offered_rate=120000.0 n=7
+  requests_per_second: median=120002.258
+    BCa=[118921.767, 120003.319] method=BCa
+    full_range=[118922, 120003]
+    n=7
+  latency_ms.p50: median=0.0180
+    BCa=[0.0160, 0.0180] method=BCa
+    full_range=[0.016, 0.032]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=0.0510
+    BCa=[0.0240, 0.2620] method=BCa
+    full_range=[0.024, 111.52]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=3.2010
+    BCa=[0.7320, 13.1810] method=BCa
+    full_range=[0.732, 122.826]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=4.633
+    BCa=[3.166, 5.196] method=BCa
+    full_range=[3.16644, 5.27697]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=11119695.0
+    BCa=[7599739.0, 12469755.0] method=BCa
+    full_range=[7.59974e+06, 1.26652e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=11119695.0
+    BCa=[7599739.0, 12469755.0] method=BCa
+    full_range=[7.59974e+06, 1.26652e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=2.0
+    BCa=[1.0, 2.0] method=BCa
+    full_range=[1, 10]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=16384 offered_rate=120000.0 n=7
+  requests_per_second: median=120002.850
+    BCa=[120001.608, 120002.901] method=BCa
+    full_range=[120002, 120003]
+    n=7
+  latency_ms.p50: median=0.0260
+    BCa=[0.0260, 0.0660] method=percentile (degenerate)
+    full_range=[0.026, 0.081]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=0.1810
+    BCa=[0.0350, 0.7440] method=BCa
+    full_range=[0.035, 2.083]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=4.3880
+    BCa=[2.7960, 9.3260] method=BCa
+    full_range=[2.796, 9.443]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=4.192
+    BCa=[3.295, 4.311] method=BCa
+    full_range=[3.29483, 4.89798]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=10060785.0
+    BCa=[7907873.0, 10346560.0] method=BCa
+    full_range=[7.90787e+06, 1.17556e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=10060785.0
+    BCa=[7907873.0, 10346560.0] method=BCa
+    full_range=[7.90787e+06, 1.17556e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=4.0
+    BCa=[1.0, 5.0] method=BCa
+    full_range=[1, 10]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 0.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=65536 offered_rate=120000.0 n=6
+  requests_per_second: median=57564.851
+    BCa=[42976.214, 62626.060] method=BCa
+    full_range=[37225.9, 66045.4]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p50: median=5423.9770
+    BCa=[4736.2505, 6268.5290] method=BCa
+    full_range=[4574.27, 7638.83]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=9852.1890
+    BCa=[8258.0535, 10808.8250] method=BCa
+    full_range=[7515.95, 11878.6]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=9988.8990
+    BCa=[8390.1845, 10990.9060] method=BCa
+    full_range=[7583.85, 12018.3]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=2.706
+    BCa=[2.609, 2.802] method=BCa
+    full_range=[2.60901, 4.60574]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=3270725.0
+    BCa=[2870941.0, 3429239.0] method=BCa
+    full_range=[2.73064e+06, 3.44675e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_io_uring_enter: median=3270725.0
+    BCa=[2870941.0, 3429239.0] method=BCa
+    full_range=[2.73064e+06, 3.44675e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscr: median=2.0
+    BCa=[1.0, 5.5] method=BCa
+    full_range=[1, 10]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=6
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=buffered payload=262144 offered_rate=120000.0 n=4
+  requests_per_second: median=2562.781
+    BCa=[92.845, 6262.489] method=BCa
+    full_range=[92.845, 9054.62]  EXCEEDS_SPREAD
+    n=4
+  latency_ms.p50: median=18283.4380
+    BCa=[15629.4350, 19340.5990] method=BCa
+    full_range=[15629.4, 19884.2]  EXCEEDS_SPREAD
+    n=4
+  latency_ms.p99: median=19634.7390
+    BCa=[18435.0740, 19880.4470] method=BCa
+    full_range=[18435.1, 19967.3]  EXCEEDS_SPREAD
+    n=4
+  latency_ms.p99.9: median=19682.7555
+    BCa=[18536.9450, 19898.3355] method=BCa
+    full_range=[18536.9, 19968.9]  EXCEEDS_SPREAD
+    n=4
+  syscalls_per_request: median=18.429
+    BCa=[6.088, 206.210] method=BCa
+    full_range=[6.08757, 388.542]  EXCEEDS_SPREAD
+    n=4
+  syscalls_total: median=845796.5
+    BCa=[721522.0, 1001849.0] method=BCa
+    full_range=[721522, 1.10262e+06]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.backend_io_uring_enter: median=845796.5
+    BCa=[721522.0, 1001849.0] method=BCa
+    full_range=[721522, 1.10262e+06]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.proc_syscr: median=1.5
+    BCa=[1.0, 4.0] method=BCa
+    full_range=[1, 6]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.proc_syscw: median=1.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=4
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=256 offered_rate=120000.0 n=4
+  requests_per_second: median=120002.727
+    BCa=[120001.538, 120003.231] method=BCa
+    full_range=[120002, 120003]
+    n=4
+  latency_ms.p50: median=0.0250
+    BCa=[0.0160, 0.0300] method=BCa
+    full_range=[0.016, 0.033]  EXCEEDS_SPREAD
+    n=4
+  latency_ms.p99: median=0.0865
+    BCa=[0.0250, 0.2095] method=BCa
+    full_range=[0.025, 0.295]  EXCEEDS_SPREAD
+    n=4
+  latency_ms.p99.9: median=3.7600
+    BCa=[1.0390, 7.1070] method=BCa
+    full_range=[1.039, 9.791]  EXCEEDS_SPREAD
+    n=4
+  syscalls_per_request: median=4.471
+    BCa=[3.567, 5.429] method=BCa
+    full_range=[3.56739, 5.90645]  EXCEEDS_SPREAD
+    n=4
+  syscalls_total: median=10730753.5
+    BCa=[8562063.0, 13028922.0] method=BCa
+    full_range=[8.56206e+06, 1.4176e+07]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.backend_io_uring_enter: median=10730753.5
+    BCa=[8562063.0, 13028922.0] method=BCa
+    full_range=[8.56206e+06, 1.4176e+07]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.backend_send_zc: median=2760054.5
+    BCa=[2760051.0, 2760085.0] method=BCa
+    full_range=[2.76005e+06, 2.76011e+06]
+    n=4
+  syscall_counts.proc_syscr: median=2.5
+    BCa=[0.0, 4.0] method=BCa
+    full_range=[0, 4]  EXCEEDS_SPREAD
+    n=4
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=4
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=1024 offered_rate=120000.0 n=7
+  requests_per_second: median=120003.255
+    BCa=[120001.649, 120003.434] method=BCa
+    full_range=[120002, 120004]
+    n=7
+  latency_ms.p50: median=0.0250
+    BCa=[0.0170, 0.0280] method=BCa
+    full_range=[0.017, 0.06]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=0.0430
+    BCa=[0.0240, 0.1310] method=BCa
+    full_range=[0.024, 0.247]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=1.7800
+    BCa=[0.8350, 1.9160] method=BCa
+    full_range=[0.835, 11.661]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=5.243
+    BCa=[4.263, 5.357] method=BCa
+    full_range=[4.26285, 5.69414]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=12583056.0
+    BCa=[10231221.0, 12856929.0] method=BCa
+    full_range=[1.02312e+07, 1.36664e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=12583056.0
+    BCa=[10231221.0, 12856929.0] method=BCa
+    full_range=[1.02312e+07, 1.36664e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_send_zc: median=2760062.0
+    BCa=[2760047.0, 2760112.0] method=BCa
+    full_range=[2.76005e+06, 2.76011e+06]
+    n=7
+  syscall_counts.proc_syscr: median=1.0
+    BCa=[0.0, 1.0] method=BCa
+    full_range=[0, 10]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=4096 offered_rate=120000.0 n=7
+  requests_per_second: median=120003.316
+    BCa=[116976.615, 120003.360] method=BCa
+    full_range=[116977, 120004]
+    n=7
+  latency_ms.p50: median=0.0240
+    BCa=[0.0190, 0.0240] method=BCa
+    full_range=[0.019, 0.04]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=3.1480
+    BCa=[0.0300, 12.3760] method=BCa
+    full_range=[0.03, 482.795]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=12.4050
+    BCa=[0.6530, 18.9740] method=BCa
+    full_range=[0.653, 502.491]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=4.628
+    BCa=[3.317, 4.751] method=BCa
+    full_range=[3.31743, 4.85786]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=11108292.0
+    BCa=[7761842.0, 11403976.0] method=BCa
+    full_range=[7.76184e+06, 1.16593e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=11108292.0
+    BCa=[7761842.0, 11403976.0] method=BCa
+    full_range=[7.76184e+06, 1.16593e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_send_zc: median=2760051.0
+    BCa=[2699793.0, 2699793.0] method=BCa
+    full_range=[2.69979e+06, 2.76011e+06]
+    n=7
+  syscall_counts.proc_syscr: median=5.0
+    BCa=[1.0, 7.0] method=BCa
+    full_range=[1, 9]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 0.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=16384 offered_rate=120000.0 n=7
+  requests_per_second: median=120002.922
+    BCa=[94618.485, 120003.274] method=BCa
+    full_range=[94618.5, 120003]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=0.0480
+    BCa=[0.0270, 0.0530] method=BCa
+    full_range=[0.027, 2323.89]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=0.0960
+    BCa=[0.0440, 626.1500] method=BCa
+    full_range=[0.044, 4594.46]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=3.3260
+    BCa=[1.6720, 4.6510] method=BCa
+    full_range=[1.672, 4700.65]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=3.446
+    BCa=[2.442, 3.692] method=BCa
+    full_range=[2.44156, 3.72895]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=8270045.0
+    BCa=[4620428.0, 8860803.0] method=BCa
+    full_range=[4.62043e+06, 8.94983e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=8270045.0
+    BCa=[4620428.0, 8860803.0] method=BCa
+    full_range=[4.62043e+06, 8.94983e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_send_zc: median=2760051.0
+    BCa=[2252424.0, 2760051.0] method=BCa
+    full_range=[2.25242e+06, 2.76005e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=10.0
+    BCa=[2.0, 10.0] method=BCa
+    full_range=[2, 11]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[2.0, 2.0] method=percentile (degenerate)
+    full_range=[2, 2]
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=65536 offered_rate=120000.0 n=7
+  requests_per_second: median=58369.909
+    BCa=[36435.737, 60194.716] method=BCa
+    full_range=[36435.7, 62612]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=6337.8490
+    BCa=[5825.2560, 6587.1850] method=BCa
+    full_range=[5825.26, 9253.26]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=10188.1690
+    BCa=[9520.0150, 10595.1230] method=BCa
+    full_range=[9520.01, 13833.9]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=10327.3090
+    BCa=[9659.8770, 10679.3630] method=BCa
+    full_range=[9659.88, 13929.6]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=2.704
+    BCa=[2.643, 2.724] method=BCa
+    full_range=[2.64324, 3.08275]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=3149777.0
+    BCa=[2246583.0, 3209247.0] method=BCa
+    full_range=[2.24658e+06, 3.3101e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=3149777.0
+    BCa=[2246583.0, 3209247.0] method=BCa
+    full_range=[2.24658e+06, 3.3101e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_send_zc: median=1527528.0
+    BCa=[1088838.0, 1563968.0] method=BCa
+    full_range=[1.08884e+06, 1.6123e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=2.0
+    BCa=[1.0, 2.0] method=BCa
+    full_range=[1, 9]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=send_zc payload=262144 offered_rate=120000.0 n=6
+  requests_per_second: median=4866.010
+    BCa=[2341.335, 8300.394] method=BCa
+    full_range=[1057.64, 11656.5]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p50: median=17129.5520
+    BCa=[11615.5810, 17720.2540] method=BCa
+    full_range=[11615.6, 19238.2]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=19233.1290
+    BCa=[16021.0170, 19330.4110] method=BCa
+    full_range=[16021, 19811.8]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=19315.5615
+    BCa=[16105.2950, 19429.2880] method=BCa
+    full_range=[16105.3, 19822.5]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=9.697
+    BCa=[3.868, 16.314] method=BCa
+    full_range=[3.86775, 38.144]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=940380.0
+    BCa=[854349.5, 1042393.0] method=BCa
+    full_range=[806975, 1.18306e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_io_uring_enter: median=940380.0
+    BCa=[854349.5, 1042393.0] method=BCa
+    full_range=[806975, 1.18306e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_send_zc: median=444251.0
+    BCa=[397193.0, 458974.0] method=BCa
+    full_range=[381236, 470539]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscr: median=4.0
+    BCa=[1.0, 7.0] method=BCa
+    full_range=[1, 8]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[0.0, 2.0] method=BCa
+    full_range=[0, 2]  EXCEEDS_SPREAD
+    n=6
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=256 offered_rate=120000.0 n=6
+  requests_per_second: median=120002.874
+    BCa=[80959.157, 120003.213] method=BCa
+    full_range=[74315.6, 120003]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p50: median=0.0740
+    BCa=[0.0310, 2052.9900] method=BCa
+    full_range=[0.031, 4367.2]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99: median=184.5765
+    BCa=[0.1770, 5332.1610] method=BCa
+    full_range=[0.177, 7670.3]  EXCEEDS_SPREAD
+    n=6
+  latency_ms.p99.9: median=194.8005
+    BCa=[2.8100, 5447.3750] method=BCa
+    full_range=[2.81, 7789.63]  EXCEEDS_SPREAD
+    n=6
+  syscalls_per_request: median=4.021
+    BCa=[3.776, 4.225] method=BCa
+    full_range=[3.73877, 4.34337]  EXCEEDS_SPREAD
+    n=6
+  syscalls_total: median=9649762.0
+    BCa=[6119312.0, 10140679.0] method=BCa
+    full_range=[5.55715e+06, 1.04245e+07]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_io_uring_enter: median=6889681.5
+    BCa=[4140090.0, 7380631.0] method=BCa
+    full_range=[3.71079e+06, 7.66441e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_counts.backend_sendfile: median=2760047.5
+    BCa=[1979222.0, 2760080.0] method=BCa
+    full_range=[1.84635e+06, 2.76011e+06]  EXCEEDS_SPREAD
+    n=6
+  syscall_source: backend_io_stats
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=1024 offered_rate=120000.0 n=7
+  requests_per_second: median=120003.349
+    BCa=[76995.265, 120003.509] method=BCa
+    full_range=[76995.3, 120004]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=0.0340
+    BCa=[0.0290, 0.0600] method=BCa
+    full_range=[0.029, 5079.94]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=3.1550
+    BCa=[0.3140, 781.7040] method=BCa
+    full_range=[0.314, 7121.45]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=7.0170
+    BCa=[3.5010, 6612.5650] method=BCa
+    full_range=[3.501, 7242.12]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=3.901
+    BCa=[3.674, 4.064] method=BCa
+    full_range=[3.67408, 4.07548]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=9361981.0
+    BCa=[5738116.0, 9754716.0] method=BCa
+    full_range=[5.73812e+06, 9.78152e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=6601869.0
+    BCa=[3838160.0, 6994665.0] method=BCa
+    full_range=[3.83816e+06, 7.02148e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_sendfile: median=2760045.0
+    BCa=[1899956.0, 2760051.0] method=BCa
+    full_range=[1.89996e+06, 2.76011e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_source: backend_io_stats
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=4096 offered_rate=120000.0 n=7
+  requests_per_second: median=82171.633
+    BCa=[60001.769, 103548.980] method=BCa
+    full_range=[60001.8, 120003]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=2531.2390
+    BCa=[0.0250, 3187.7130] method=BCa
+    full_range=[0.025, 4022.37]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=3734.5680
+    BCa=[0.0660, 6249.1930] method=BCa
+    full_range=[0.066, 7390.08]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=3734.7830
+    BCa=[6.5900, 6343.3750] method=BCa
+    full_range=[6.59, 7508.95]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=3.697
+    BCa=[3.543, 3.709] method=BCa
+    full_range=[3.54253, 11.166]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=7336630.0
+    BCa=[5844788.0, 8793801.0] method=BCa
+    full_range=[5.84479e+06, 1.33997e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=4905561.0
+    BCa=[3903856.0, 6033691.0] method=BCa
+    full_range=[3.90386e+06, 1.20196e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_sendfile: median=2003462.0
+    BCa=[1380026.0, 2431069.0] method=BCa
+    full_range=[1.38003e+06, 2.76011e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=2088685.5
+    BCa=[, ] method=none (n<3)
+    full_range=[1.38286e+06, 2.79452e+06]  EXCEEDS_SPREAD
+    n=2
+  syscall_counts.proc_syscw: median=2088684.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.38285e+06, 2.79452e+06]  EXCEEDS_SPREAD
+    n=2
+  syscall_source: backend_io_stats, backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=16384 offered_rate=120000.0 n=7
+  requests_per_second: median=120003.093
+    BCa=[98183.198, 120003.446] method=BCa
+    full_range=[98183.2, 120004]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=0.0760
+    BCa=[0.0280, 0.0860] method=BCa
+    full_range=[0.028, 1727.92]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=26.0790
+    BCa=[1.1840, 214.8890] method=BCa
+    full_range=[1.184, 3623.4]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=40.1180
+    BCa=[4.5220, 240.4630] method=BCa
+    full_range=[4.522, 3703.69]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=3.814
+    BCa=[3.658, 3.838] method=BCa
+    full_range=[3.65832, 3.91872]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=9154506.0
+    BCa=[7274074.0, 9211442.0] method=BCa
+    full_range=[7.27407e+06, 9.40528e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=6394456.0
+    BCa=[4950281.0, 6451330.0] method=BCa
+    full_range=[4.95028e+06, 6.64517e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_sendfile: median=2760050.0
+    BCa=[2323793.0, 2760050.0] method=BCa
+    full_range=[2.32379e+06, 2.76011e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=2906602.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2.88605e+06, 2.92715e+06]
+    n=2
+  syscall_counts.proc_syscw: median=2906603.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2.88605e+06, 2.92716e+06]
+    n=2
+  syscall_source: backend_io_stats, backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=65536 offered_rate=120000.0 n=5
+  requests_per_second: median=86783.288
+    BCa=[56756.347, 91254.125] method=BCa
+    full_range=[56756.3, 95870.1]  EXCEEDS_SPREAD
+    n=5
+  latency_ms.p50: median=2824.1560
+    BCa=[0.0470, 4011.5740] method=BCa
+    full_range=[0.047, 5624.7]  EXCEEDS_SPREAD
+    n=5
+  latency_ms.p99: median=5109.9510
+    BCa=[25.5010, 5740.4860] method=BCa
+    full_range=[25.501, 10531.2]  EXCEEDS_SPREAD
+    n=5
+  latency_ms.p99.9: median=5185.9170
+    BCa=[39.3420, 5798.0440] method=BCa
+    full_range=[39.342, 10717.3]  EXCEEDS_SPREAD
+    n=5
+  syscalls_per_request: median=3.632
+    BCa=[3.576, 3.991] method=BCa
+    full_range=[3.57602, 8.31631]  EXCEEDS_SPREAD
+    n=5
+  syscalls_total: median=6572974.0
+    BCa=[4530696.0, 6856867.0] method=BCa
+    full_range=[4.5307e+06, 9.97995e+06]  EXCEEDS_SPREAD
+    n=5
+  syscall_counts.backend_io_uring_enter: median=4387833.0
+    BCa=[3035390.0, 4579413.0] method=BCa
+    full_range=[3.03539e+06, 8.59992e+06]  EXCEEDS_SPREAD
+    n=5
+  syscall_counts.backend_sendfile: median=2095734.0
+    BCa=[1380024.0, 2185141.0] method=BCa
+    full_range=[1.38002e+06, 2.27745e+06]  EXCEEDS_SPREAD
+    n=5
+  syscall_counts.proc_syscr: median=1428140.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.42814e+06, 1.42814e+06]
+    n=1
+  syscall_counts.proc_syscw: median=1428137.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.42814e+06, 1.42814e+06]
+    n=1
+  syscall_source: backend_io_stats, backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=B backend=io_uring write_path=sendfile payload=262144 offered_rate=120000.0 n=7
+  requests_per_second: median=32642.327
+    BCa=[14325.077, 33324.527] method=BCa
+    full_range=[14325.1, 43008.2]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p50: median=10090.2720
+    BCa=[8255.0060, 13125.6430] method=BCa
+    full_range=[8255.01, 13695.7]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99: median=14562.3750
+    BCa=[12676.5800, 14717.9450] method=BCa
+    full_range=[12676.6, 17533.2]  EXCEEDS_SPREAD
+    n=7
+  latency_ms.p99.9: median=14683.4020
+    BCa=[12757.6400, 14855.7360] method=BCa
+    full_range=[12757.6, 17604.1]  EXCEEDS_SPREAD
+    n=7
+  syscalls_per_request: median=7.437
+    BCa=[5.946, 11.501] method=BCa
+    full_range=[5.94551, 25.8291]  EXCEEDS_SPREAD
+    n=7
+  syscalls_total: median=5114471.0
+    BCa=[2294392.0, 6065276.0] method=BCa
+    full_range=[2.29439e+06, 1.12102e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_io_uring_enter: median=3398867.0
+    BCa=[1336155.0, 4467538.0] method=BCa
+    full_range=[1.33616e+06, 1.0504e+07]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.backend_sendfile: median=1320595.0
+    BCa=[706267.0, 1452047.0] method=BCa
+    full_range=[706267, 1.7156e+06]  EXCEEDS_SPREAD
+    n=7
+  syscall_counts.proc_syscr: median=1373404.0
+    BCa=[723817.0, 1373404.0] method=BCa
+    full_range=[723817, 1.66416e+06]  EXCEEDS_SPREAD
+    n=3
+  syscall_counts.proc_syscw: median=1373406.0
+    BCa=[723819.0, 1373406.0] method=BCa
+    full_range=[723819, 1.66417e+06]  EXCEEDS_SPREAD
+    n=3
+  syscall_source: backend_io_stats, backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=10000 n=1
+  requests_per_second: median=9999.804
+    BCa=[, ] method=none (n<3)
+    full_range=[9999.8, 9999.8]
+    n=1
+  latency_ms.p50: median=0.0190
+    BCa=[, ] method=none (n<3)
+    full_range=[0.019, 0.019]
+    n=1
+  latency_ms.p99: median=0.0270
+    BCa=[, ] method=none (n<3)
+    full_range=[0.027, 0.027]
+    n=1
+  latency_ms.p99.9: median=0.0340
+    BCa=[, ] method=none (n<3)
+    full_range=[0.034, 0.034]
+    n=1
+  syscalls_per_request: median=79.230
+    BCa=[, ] method=none (n<3)
+    full_range=[79.2301, 79.2301]
+    n=1
+  syscalls_total: median=15846012.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.5846e+07, 1.5846e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=15846012.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.5846e+07, 1.5846e+07]
+    n=1
+  syscall_counts.proc_syscr: median=1.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1, 1]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=30000 n=1
+  requests_per_second: median=29999.031
+    BCa=[, ] method=none (n<3)
+    full_range=[29999, 29999]
+    n=1
+  latency_ms.p50: median=0.0140
+    BCa=[, ] method=none (n<3)
+    full_range=[0.014, 0.014]
+    n=1
+  latency_ms.p99: median=0.0250
+    BCa=[, ] method=none (n<3)
+    full_range=[0.025, 0.025]
+    n=1
+  latency_ms.p99.9: median=0.7140
+    BCa=[, ] method=none (n<3)
+    full_range=[0.714, 0.714]
+    n=1
+  syscalls_per_request: median=24.434
+    BCa=[, ] method=none (n<3)
+    full_range=[24.4336, 24.4336]
+    n=1
+  syscalls_total: median=14660329.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.46603e+07, 1.46603e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=14660329.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.46603e+07, 1.46603e+07]
+    n=1
+  syscall_counts.proc_syscr: median=1.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1, 1]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=40000 n=1
+  requests_per_second: median=39998.863
+    BCa=[, ] method=none (n<3)
+    full_range=[39998.9, 39998.9]
+    n=1
+  latency_ms.p50: median=0.0250
+    BCa=[, ] method=none (n<3)
+    full_range=[0.025, 0.025]
+    n=1
+  latency_ms.p99: median=0.0370
+    BCa=[, ] method=none (n<3)
+    full_range=[0.037, 0.037]
+    n=1
+  latency_ms.p99.9: median=0.5850
+    BCa=[, ] method=none (n<3)
+    full_range=[0.585, 0.585]
+    n=1
+  syscalls_per_request: median=17.987
+    BCa=[, ] method=none (n<3)
+    full_range=[17.9868, 17.9868]
+    n=1
+  syscalls_total: median=14389450.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.43894e+07, 1.43894e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=14389450.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.43894e+07, 1.43894e+07]
+    n=1
+  syscall_counts.proc_syscr: median=4.0
+    BCa=[, ] method=none (n<3)
+    full_range=[4, 4]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=50000 n=1
+  requests_per_second: median=49999.049
+    BCa=[, ] method=none (n<3)
+    full_range=[49999, 49999]
+    n=1
+  latency_ms.p50: median=0.0150
+    BCa=[, ] method=none (n<3)
+    full_range=[0.015, 0.015]
+    n=1
+  latency_ms.p99: median=0.0290
+    BCa=[, ] method=none (n<3)
+    full_range=[0.029, 0.029]
+    n=1
+  latency_ms.p99.9: median=0.1510
+    BCa=[, ] method=none (n<3)
+    full_range=[0.151, 0.151]
+    n=1
+  syscalls_per_request: median=12.865
+    BCa=[, ] method=none (n<3)
+    full_range=[12.8646, 12.8646]
+    n=1
+  syscalls_total: median=12864607.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.28646e+07, 1.28646e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=12864607.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.28646e+07, 1.28646e+07]
+    n=1
+  syscall_counts.proc_syscr: median=9.0
+    BCa=[, ] method=none (n<3)
+    full_range=[9, 9]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=60000 n=1
+  requests_per_second: median=59999.431
+    BCa=[, ] method=none (n<3)
+    full_range=[59999.4, 59999.4]
+    n=1
+  latency_ms.p50: median=0.0200
+    BCa=[, ] method=none (n<3)
+    full_range=[0.02, 0.02]
+    n=1
+  latency_ms.p99: median=0.0320
+    BCa=[, ] method=none (n<3)
+    full_range=[0.032, 0.032]
+    n=1
+  latency_ms.p99.9: median=0.9590
+    BCa=[, ] method=none (n<3)
+    full_range=[0.959, 0.959]
+    n=1
+  syscalls_per_request: median=11.777
+    BCa=[, ] method=none (n<3)
+    full_range=[11.7769, 11.7769]
+    n=1
+  syscalls_total: median=14132377.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.41324e+07, 1.41324e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=14132377.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.41324e+07, 1.41324e+07]
+    n=1
+  syscall_counts.proc_syscr: median=0.0
+    BCa=[, ] method=none (n<3)
+    full_range=[0, 0]
+    n=1
+  syscall_counts.proc_syscw: median=0.0
+    BCa=[, ] method=none (n<3)
+    full_range=[0, 0]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=70000 n=1
+  requests_per_second: median=69997.577
+    BCa=[, ] method=none (n<3)
+    full_range=[69997.6, 69997.6]
+    n=1
+  latency_ms.p50: median=0.0180
+    BCa=[, ] method=none (n<3)
+    full_range=[0.018, 0.018]
+    n=1
+  latency_ms.p99: median=0.0290
+    BCa=[, ] method=none (n<3)
+    full_range=[0.029, 0.029]
+    n=1
+  latency_ms.p99.9: median=0.6960
+    BCa=[, ] method=none (n<3)
+    full_range=[0.696, 0.696]
+    n=1
+  syscalls_per_request: median=8.777
+    BCa=[, ] method=none (n<3)
+    full_range=[8.77721, 8.77721]
+    n=1
+  syscalls_total: median=12288275.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.22883e+07, 1.22883e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=12288275.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.22883e+07, 1.22883e+07]
+    n=1
+  syscall_counts.proc_syscr: median=1.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1, 1]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=80000 n=1
+  requests_per_second: median=79998.813
+    BCa=[, ] method=none (n<3)
+    full_range=[79998.8, 79998.8]
+    n=1
+  latency_ms.p50: median=0.0270
+    BCa=[, ] method=none (n<3)
+    full_range=[0.027, 0.027]
+    n=1
+  latency_ms.p99: median=0.0470
+    BCa=[, ] method=none (n<3)
+    full_range=[0.047, 0.047]
+    n=1
+  latency_ms.p99.9: median=0.2440
+    BCa=[, ] method=none (n<3)
+    full_range=[0.244, 0.244]
+    n=1
+  syscalls_per_request: median=6.883
+    BCa=[, ] method=none (n<3)
+    full_range=[6.88253, 6.88253]
+    n=1
+  syscalls_total: median=11012040.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.1012e+07, 1.1012e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=11012040.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.1012e+07, 1.1012e+07]
+    n=1
+  syscall_counts.proc_syscr: median=8.0
+    BCa=[, ] method=none (n<3)
+    full_range=[8, 8]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=90000 n=1
+  requests_per_second: median=89998.978
+    BCa=[, ] method=none (n<3)
+    full_range=[89999, 89999]
+    n=1
+  latency_ms.p50: median=0.0160
+    BCa=[, ] method=none (n<3)
+    full_range=[0.016, 0.016]
+    n=1
+  latency_ms.p99: median=0.0360
+    BCa=[, ] method=none (n<3)
+    full_range=[0.036, 0.036]
+    n=1
+  latency_ms.p99.9: median=0.9340
+    BCa=[, ] method=none (n<3)
+    full_range=[0.934, 0.934]
+    n=1
+  syscalls_per_request: median=6.580
+    BCa=[, ] method=none (n<3)
+    full_range=[6.58004, 6.58004]
+    n=1
+  syscalls_total: median=11844174.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.18442e+07, 1.18442e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=11844174.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.18442e+07, 1.18442e+07]
+    n=1
+  syscall_counts.proc_syscr: median=0.0
+    BCa=[, ] method=none (n<3)
+    full_range=[0, 0]
+    n=1
+  syscall_counts.proc_syscw: median=0.0
+    BCa=[, ] method=none (n<3)
+    full_range=[0, 0]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=100000 n=1
+  requests_per_second: median=99996.680
+    BCa=[, ] method=none (n<3)
+    full_range=[99996.7, 99996.7]
+    n=1
+  latency_ms.p50: median=0.0170
+    BCa=[, ] method=none (n<3)
+    full_range=[0.017, 0.017]
+    n=1
+  latency_ms.p99: median=0.0370
+    BCa=[, ] method=none (n<3)
+    full_range=[0.037, 0.037]
+    n=1
+  latency_ms.p99.9: median=1.1730
+    BCa=[, ] method=none (n<3)
+    full_range=[1.173, 1.173]
+    n=1
+  syscalls_per_request: median=5.740
+    BCa=[, ] method=none (n<3)
+    full_range=[5.7404, 5.7404]
+    n=1
+  syscalls_total: median=11480791.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.14808e+07, 1.14808e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=11480791.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.14808e+07, 1.14808e+07]
+    n=1
+  syscall_counts.proc_syscr: median=7.0
+    BCa=[, ] method=none (n<3)
+    full_range=[7, 7]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=110000 n=1
+  requests_per_second: median=110000.420
+    BCa=[, ] method=none (n<3)
+    full_range=[110000, 110000]
+    n=1
+  latency_ms.p50: median=0.0200
+    BCa=[, ] method=none (n<3)
+    full_range=[0.02, 0.02]
+    n=1
+  latency_ms.p99: median=0.0370
+    BCa=[, ] method=none (n<3)
+    full_range=[0.037, 0.037]
+    n=1
+  latency_ms.p99.9: median=11.2750
+    BCa=[, ] method=none (n<3)
+    full_range=[11.275, 11.275]
+    n=1
+  syscalls_per_request: median=5.369
+    BCa=[, ] method=none (n<3)
+    full_range=[5.36938, 5.36938]
+    n=1
+  syscalls_total: median=11813146.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.18131e+07, 1.18131e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=11813146.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.18131e+07, 1.18131e+07]
+    n=1
+  syscall_counts.proc_syscr: median=7.0
+    BCa=[, ] method=none (n<3)
+    full_range=[7, 7]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
+
+rejected appendix: study=ladder backend=io_uring write_path=buffered payload=0 offered_rate=120000 n=1
+  requests_per_second: median=120003.345
+    BCa=[, ] method=none (n<3)
+    full_range=[120003, 120003]
+    n=1
+  latency_ms.p50: median=0.0140
+    BCa=[, ] method=none (n<3)
+    full_range=[0.014, 0.014]
+    n=1
+  latency_ms.p99: median=0.0170
+    BCa=[, ] method=none (n<3)
+    full_range=[0.017, 0.017]
+    n=1
+  latency_ms.p99.9: median=1.2600
+    BCa=[, ] method=none (n<3)
+    full_range=[1.26, 1.26]
+    n=1
+  syscalls_per_request: median=5.164
+    BCa=[, ] method=none (n<3)
+    full_range=[5.16367, 5.16367]
+    n=1
+  syscalls_total: median=12393305.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.23933e+07, 1.23933e+07]
+    n=1
+  syscall_counts.backend_io_uring_enter: median=12393305.0
+    BCa=[, ] method=none (n<3)
+    full_range=[1.23933e+07, 1.23933e+07]
+    n=1
+  syscall_counts.proc_syscr: median=7.0
+    BCa=[, ] method=none (n<3)
+    full_range=[7, 7]
+    n=1
+  syscall_counts.proc_syscw: median=2.0
+    BCa=[, ] method=none (n<3)
+    full_range=[2, 2]
+    n=1
+  syscall_source: backend_io_stats+proc_io
+  rejection_lead: ['virtualisation detected (docker); performance records must come from bare metal']
 
 === end ===

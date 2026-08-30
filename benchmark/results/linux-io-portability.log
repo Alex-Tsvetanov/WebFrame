@@ -1,0 +1,364 @@
+design io-ladder: 12 cells x 1 repetitions = 12 runs
+about 5 minutes
+fingerprint 7f265d92f453  virtualisation docker
+affinity server='3' generator='c'
+
+[  1/12] REJ study=ladder  io=io_uring wp=buffered rate= 90000 pay=0       rps=    89999 p99=  0.036ms  virtualisation detected (docker); performance records must come from bare metal
+[  2/12] REJ study=ladder  io=io_uring wp=buffered rate= 70000 pay=0       rps=    69998 p99=  0.029ms  virtualisation detected (docker); performance records must come from bare metal; 53 socket errors during the r
+[  3/12] REJ study=ladder  io=io_uring wp=buffered rate= 30000 pay=0       rps=    29999 p99=  0.025ms  virtualisation detected (docker); performance records must come from bare metal; 56 socket errors during the r
+[  4/12] REJ study=ladder  io=io_uring wp=buffered rate= 10000 pay=0       rps=    10000 p99=  0.027ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[  5/12] REJ study=ladder  io=io_uring wp=buffered rate=120000 pay=0       rps=   120003 p99=  0.017ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[  6/12] REJ study=ladder  io=io_uring wp=buffered rate= 40000 pay=0       rps=    39999 p99=  0.037ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[  7/12] REJ study=ladder  io=io_uring wp=buffered rate= 20000 pay=0       rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[  8/12] REJ study=ladder  io=io_uring wp=buffered rate=100000 pay=0       rps=    99997 p99=  0.037ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[  9/12] REJ study=ladder  io=io_uring wp=buffered rate= 60000 pay=0       rps=    59999 p99=  0.032ms  virtualisation detected (docker); performance records must come from bare metal
+[ 10/12] REJ study=ladder  io=io_uring wp=buffered rate=110000 pay=0       rps=   110000 p99=  0.037ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 11/12] REJ study=ladder  io=io_uring wp=buffered rate= 80000 pay=0       rps=    79999 p99=  0.047ms  virtualisation detected (docker); performance records must come from bare metal; 64 socket errors during the r
+[ 12/12] REJ study=ladder  io=io_uring wp=buffered rate= 50000 pay=0       rps=    49999 p99=  0.029ms  virtualisation detected (docker); performance records must come from bare metal; 65 socket errors during the r
+
+selected offered_rate=120000.0
+design io-a: 2 cells x 7 repetitions = 14 runs
+about 6 minutes
+fingerprint 7f265d92f453  virtualisation docker
+affinity server='3' generator='c'
+
+[  1/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=    91652 p99=9237.301ms  virtualisation detected (docker); performance records must come from bare metal; generator was 9237280us behin
+[  2/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.037ms  virtualisation detected (docker); performance records must come from bare metal
+[  3/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.221ms  virtualisation detected (docker); performance records must come from bare metal
+[  4/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120001 p99=  0.044ms  virtualisation detected (docker); performance records must come from bare metal
+[  5/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.045ms  virtualisation detected (docker); performance records must come from bare metal; 37 socket errors during the r
+[  6/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.043ms  virtualisation detected (docker); performance records must come from bare metal
+[  7/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=    60001 p99=  0.038ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 50.0% of 
+[  8/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.060ms  virtualisation detected (docker); performance records must come from bare metal; 28 socket errors during the r
+[  9/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120001 p99=  0.044ms  virtualisation detected (docker); performance records must come from bare metal
+[ 10/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 11/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.045ms  virtualisation detected (docker); performance records must come from bare metal
+[ 12/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=   120001 p99=  0.486ms  virtualisation detected (docker); performance records must come from bare metal; 47 socket errors during the r
+[ 13/14] REJ study=A       io=epoll    wp=buffered rate=120000 pay=0       rps=   120002 p99=  0.375ms  virtualisation detected (docker); performance records must come from bare metal
+[ 14/14] REJ study=A       io=io_uring wp=buffered rate=120000 pay=0       rps=   120000 p99=  0.048ms  virtualisation detected (docker); performance records must come from bare metal
+design io-b: 24 cells x 7 repetitions = 168 runs
+about 73 minutes
+fingerprint 7f265d92f453  virtualisation docker
+affinity server='3' generator='c'
+
+[  1/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[  2/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=     1058 p99=19811.817ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19811255us behi
+[  3/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[  4/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[  5/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120002 p99=  2.083ms  virtualisation detected (docker); performance records must come from bare metal; generator was 1557us behind i
+[  6/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=626.150ms  virtualisation detected (docker); performance records must come from bare metal; generator was 625636us behind
+[  7/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    40776 p99=13393.770ms  virtualisation detected (docker); performance records must come from bare metal; generator was 13393307us behi
+[  8/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120002 p99=  0.131ms  virtualisation detected (docker); performance records must come from bare metal; 50 socket errors during the r
+[  9/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 10/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=    99302 p99=3486.946ms  virtualisation detected (docker); performance records must come from bare metal; generator was 3486410us behin
+[ 11/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 12/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 13/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   116977 p99=482.795ms  virtualisation detected (docker); performance records must come from bare metal; generator was 482271us behind
+[ 14/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=    81589 p99=6603.557ms  virtualisation detected (docker); performance records must come from bare metal; generator was 6603028us behin
+[ 15/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=    56756 p99=10531.216ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10530680us behi
+[ 16/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120002 p99=  0.055ms  virtualisation detected (docker); performance records must come from bare metal
+[ 17/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 18/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120002 p99=  0.051ms  virtualisation detected (docker); performance records must come from bare metal
+[ 19/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=    74316 p99=7670.301ms  virtualisation detected (docker); performance records must come from bare metal; generator was 7669803us behin
+[ 20/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=     3470 p99=19475.873ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19475266us behi
+[ 21/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 22/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 23/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=    79041 p99=7000.267ms  virtualisation detected (docker); performance records must come from bare metal; generator was 6999732us behin
+[ 24/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    36436 p99=13833.856ms  virtualisation detected (docker); performance records must come from bare metal; generator was 13833301us behi
+[ 25/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120000 p99=  0.059ms  virtualisation detected (docker); performance records must come from bare metal; 63 socket errors during the r
+[ 26/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120002 p99= 11.655ms  virtualisation detected (docker); performance records must come from bare metal; generator was 11129us behind 
+[ 27/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=    87603 p99=5332.161ms  virtualisation detected (docker); performance records must come from bare metal; generator was 5331650us behin
+[ 28/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    14325 p99=17533.164ms  virtualisation detected (docker); performance records must come from bare metal; generator was 17532637us behi
+[ 29/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 30/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=    86783 p99=5740.486ms  virtualisation detected (docker); performance records must come from bare metal; generator was 5739954us behin
+[ 31/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=     9055 p99=18435.074ms  virtualisation detected (docker); performance records must come from bare metal; generator was 18434529us behi
+[ 32/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 33/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=  0.721ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 34/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=   120003 p99=781.704ms  virtualisation detected (docker); performance records must come from bare metal; generator was 781491us behind
+[ 35/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 36/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=   120003 p99=  3.561ms  virtualisation detected (docker); performance records must come from bare metal; generator was 3039us behind i
+[ 37/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 38/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=   103549 p99=3734.568ms  virtualisation detected (docker); performance records must come from bare metal; generator was 3734056us behin
+[ 39/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=     4944 p99=19273.593ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19273023us behi
+[ 40/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    48726 p99=11878.585ms  virtualisation detected (docker); performance records must come from bare metal; generator was 11878062us behi
+[ 41/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 42/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 43/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120002 p99=  0.744ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 44/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    55956 p99=10598.212ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10597712us behi
+[ 45/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120002 p99=  0.247ms  virtualisation detected (docker); performance records must come from bare metal
+[ 46/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   118922 p99=  0.262ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 47/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120003 p99= 76.403ms  virtualisation detected (docker); performance records must come from bare metal; generator was 75801us behind 
+[ 48/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 49/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=    76995 p99=7121.452ms  virtualisation detected (docker); performance records must come from bare metal; generator was 7120914us behin
+[ 50/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120002 p99=111.520ms  virtualisation detected (docker); performance records must come from bare metal; generator was 111022us behind
+[ 51/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 52/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=    60001 p99= 25.501ms  virtualisation detected (docker); performance records must come from bare metal; generator was 25045us behind 
+[ 53/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120001 p99=277.366ms  virtualisation detected (docker); performance records must come from bare metal; generator was 276909us behind
+[ 54/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 55/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 56/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 57/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=    94618 p99=4594.461ms  virtualisation detected (docker); performance records must come from bare metal; generator was 4593930us behin
+[ 58/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    37226 p99=7515.951ms  virtualisation detected (docker); performance records must come from bare metal; generator was 7515404us behin
+[ 59/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 60/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 61/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=    82172 p99=6249.193ms  virtualisation detected (docker); performance records must come from bare metal; generator was 6248659us behin
+[ 62/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    16830 p99=17113.220ms  virtualisation detected (docker); performance records must come from bare metal; generator was 17112677us behi
+[ 63/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 64/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 65/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=   120003 p99=214.889ms  virtualisation detected (docker); performance records must come from bare metal; generator was 214352us behind
+[ 66/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120003 p99=  0.028ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 67/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 68/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 69/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120003 p99=  0.035ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 70/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=     3625 p99=19330.411ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19329495us behi
+[ 71/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120003 p99= 12.376ms  virtualisation detected (docker); performance records must come from bare metal; generator was 11824us behind 
+[ 72/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    56338 p99=10595.123ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10594680us behi
+[ 73/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120003 p99=  3.148ms  virtualisation detected (docker); performance records must come from bare metal; generator was 2648us behind i
+[ 74/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=   120003 p99= 26.079ms  virtualisation detected (docker); performance records must come from bare metal; generator was 25534us behind 
+[ 75/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120003 p99=  0.161ms  virtualisation detected (docker); performance records must come from bare metal
+[ 76/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    60195 p99=10150.779ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10150148us behi
+[ 77/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=     1655 p99=19793.605ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19792947us behi
+[ 78/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 79/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120003 p99=  0.027ms  virtualisation detected (docker); performance records must come from bare metal; 59 socket errors during the r
+[ 80/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120003 p99=  0.017ms  virtualisation detected (docker); performance records must come from bare metal; 63 socket errors during the r
+[ 81/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 82/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 83/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 84/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=   120004 p99=  1.621ms  virtualisation detected (docker); performance records must come from bare metal; generator was 1185us behind i
+[ 85/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=   120003 p99=332.504ms  virtualisation detected (docker); performance records must come from bare metal; generator was 331977us behind
+[ 86/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    59207 p99=10013.405ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10012862us behi
+[ 87/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=    79267 p99=7390.084ms  virtualisation detected (docker); performance records must come from bare metal; generator was 7389464us behin
+[ 88/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    32642 p99=14562.375ms  virtualisation detected (docker); performance records must come from bare metal; generator was 14561883us behi
+[ 89/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120002 p99=  0.082ms  virtualisation detected (docker); performance records must come from bare metal
+[ 90/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=    11657 p99=16021.017ms  virtualisation detected (docker); performance records must come from bare metal; generator was 16020478us behi
+[ 91/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120003 p99=  0.360ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 92/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=   120002 p99=  0.295ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 93/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 94/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=  0.096ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[ 95/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 96/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 97/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120004 p99=  0.024ms  virtualisation detected (docker); performance records must come from bare metal
+[ 98/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[ 99/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120003 p99=  1.247ms  virtualisation detected (docker); performance records must come from bare metal
+[100/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=   120003 p99=  0.979ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[101/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    58370 p99=10188.169ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10187625us behi
+[102/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=     4788 p99=19169.098ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19168536us behi
+[103/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120003 p99=  0.019ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[104/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120003 p99=  0.181ms  virtualisation detected (docker); performance records must come from bare metal; 59 socket errors during the r
+[105/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[106/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[107/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[108/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120003 p99=  0.032ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[109/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[110/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    21700 p99=12676.580ms  virtualisation detected (docker); performance records must come from bare metal; generator was 12676031us behi
+[111/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120002 p99=  0.036ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[112/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=   120003 p99= 36.518ms  virtualisation detected (docker); performance records must come from bare metal; generator was 35999us behind 
+[113/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[114/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[115/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=   120003 p99= 13.987ms  virtualisation detected (docker); performance records must come from bare metal; generator was 13460us behind 
+[116/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    66045 p99=9000.156ms  virtualisation detected (docker); performance records must come from bare metal; generator was 8999574us behin
+[117/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=       93 p99=19967.289ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19967026us behi
+[118/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=  0.093ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[119/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=   120003 p99=  0.025ms  virtualisation detected (docker); performance records must come from bare metal; 54 socket errors during the r
+[120/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=   120003 p99=  1.184ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[121/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120003 p99=  0.049ms  virtualisation detected (docker); performance records must come from bare metal
+[122/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=    60002 p99=  0.066ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 50.0% of 
+[123/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[124/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    33325 p99=14717.945ms  virtualisation detected (docker); performance records must come from bare metal; generator was 14717478us behi
+[125/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[126/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=  0.044ms  virtualisation detected (docker); performance records must come from bare metal; 63 socket errors during the r
+[127/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120004 p99=  0.023ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[128/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=   120003 p99=  0.049ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[129/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[130/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=   120003 p99= 36.649ms  virtualisation detected (docker); performance records must come from bare metal; generator was 36117us behind 
+[131/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=   120004 p99=  3.155ms  virtualisation detected (docker); performance records must come from bare metal; generator was 2620us behind i
+[132/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[133/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120003 p99=  0.024ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[134/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    60490 p99=9842.352ms  virtualisation detected (docker); performance records must come from bare metal; generator was 9841822us behin
+[135/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[136/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=    91254 p99=5109.951ms  virtualisation detected (docker); performance records must come from bare metal; generator was 5109445us behin
+[137/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    62246 p99=9690.973ms  virtualisation detected (docker); performance records must come from bare metal; generator was 9690537us behin
+[138/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=     5526 p99=19192.665ms  virtualisation detected (docker); performance records must come from bare metal; generator was 19192036us behi
+[139/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120003 p99=  0.033ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[140/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=   120004 p99= 10.495ms  virtualisation detected (docker); performance records must come from bare metal; generator was 9965us behind i
+[141/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[142/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120003 p99=  0.027ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[143/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[144/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120003 p99=  0.043ms  virtualisation detected (docker); performance records must come from bare metal; 62 socket errors during the r
+[145/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=16384   rps=   120003 p99=  0.125ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[146/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=256     rps=   120003 p99=  0.177ms  virtualisation detected (docker); performance records must come from bare metal; 62 socket errors during the r
+[147/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4096    rps=   120004 p99=  0.030ms  virtualisation detected (docker); performance records must come from bare metal
+[148/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=65536   rps=    55923 p99=10808.825ms  virtualisation detected (docker); performance records must come from bare metal; generator was 10808121us behi
+[149/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[150/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[151/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4096    rps=   120003 p99=  3.146ms  virtualisation detected (docker); performance records must come from bare metal; generator was 2785us behind i
+[152/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=65536   rps=    95870 p99=4064.893ms  virtualisation detected (docker); performance records must come from bare metal; generator was 4064378us behin
+[153/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[154/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=1024    rps=   120004 p99=  0.017ms  virtualisation detected (docker); performance records must come from bare metal; 41 socket errors during the r
+[155/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4194304 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[156/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=16384   rps=   120003 p99=  0.092ms  virtualisation detected (docker); performance records must come from bare metal; 61 socket errors during the r
+[157/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=65536   rps=    62612 p99=9520.015ms  virtualisation detected (docker); performance records must come from bare metal; generator was 9519463us behin
+[158/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[159/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=262144  rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[160/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1024    rps=   120004 p99=  0.027ms  virtualisation detected (docker); performance records must come from bare metal; 65 socket errors during the r
+[161/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=262144  rps=    43008 p99=12743.079ms  virtualisation detected (docker); performance records must come from bare metal; generator was 12742534us behi
+[162/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=262144  rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+[163/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=1024    rps=   120004 p99=  0.314ms  virtualisation detected (docker); performance records must come from bare metal; 67 socket errors during the r
+[164/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=4096    rps=   120003 p99=681.380ms  virtualisation detected (docker); performance records must come from bare metal; generator was 680854us behind
+[165/168] REJ study=B       io=io_uring wp=sendfile rate=120000 pay=16384   rps=    98183 p99=3623.397ms  virtualisation detected (docker); performance records must come from bare metal; generator was 3622882us behin
+[166/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=256     rps=   120002 p99=  0.124ms  virtualisation detected (docker); performance records must come from bare metal
+[167/168] REJ study=B       io=io_uring wp=buffered rate=120000 pay=256     rps=   120002 p99=  0.038ms  virtualisation detected (docker); performance records must come from bare metal
+[168/168] REJ study=B       io=io_uring wp=send_zc  rate=120000 pay=1048576 rps=        0 p99=  0.000ms  virtualisation detected (docker); performance records must come from bare metal; generator delivered 0.0% of t
+wrote report /workspace/measurements/report.txt
+
+{
+  "runs": 194,
+  "accepted": 0,
+  "rejected": 194,
+  "rejection_reasons": {
+    "virtualisation detected": 194,
+    "61 socket errors during the run": 57,
+    "generator delivered 0.0% of the offered rate, below 99%": 57,
+    "64 socket errors during the run": 23,
+    "62 socket errors during the run": 10,
+    "63 socket errors during the run": 9,
+    "65 socket errors during the run": 5,
+    "53 socket errors during the run": 3,
+    "generator delivered 50.0% of the offered rate, below 99%": 3,
+    "50 socket errors during the run": 2,
+    "66 socket errors during the run": 2,
+    "69 socket errors during the run": 2,
+    "32 socket errors during the run": 2,
+    "generator delivered 46.6% of the offered rate, below 99%": 2,
+    "59 socket errors during the run": 2,
+    "68 socket errors during the run": 2,
+    "70 socket errors during the run": 2,
+    "56 socket errors during the run": 1,
+    "generator was 9237280us behind its own schedule at p99, abov": 1,
+    "generator delivered 76.4% of the offered rate, below 99%": 1,
+    "37 socket errors during the run": 1,
+    "28 socket errors during the run": 1,
+    "47 socket errors during the run": 1,
+    "generator was 19811255us behind its own schedule at p99, abo": 1,
+    "generator delivered 0.9% of the offered rate, below 99%": 1,
+    "generator was 1557us behind its own schedule at p99, above 1": 1,
+    "generator was 625636us behind its own schedule at p99, above": 1,
+    "generator was 13393307us behind its own schedule at p99, abo": 1,
+    "generator delivered 34.0% of the offered rate, below 99%": 1,
+    "generator was 3486410us behind its own schedule at p99, abov": 1,
+    "generator delivered 82.8% of the offered rate, below 99%": 1,
+    "generator was 482271us behind its own schedule at p99, above": 1,
+    "generator delivered 97.5% of the offered rate, below 99%": 1,
+    "generator was 6603028us behind its own schedule at p99, abov": 1,
+    "generator delivered 68.0% of the offered rate, below 99%": 1,
+    "generator was 10530680us behind its own schedule at p99, abo": 1,
+    "generator delivered 47.3% of the offered rate, below 99%": 1,
+    "generator was 7669803us behind its own schedule at p99, abov": 1,
+    "generator delivered 61.9% of the offered rate, below 99%": 1,
+    "generator was 19475266us behind its own schedule at p99, abo": 1,
+    "generator delivered 2.9% of the offered rate, below 99%": 1,
+    "generator was 6999732us behind its own schedule at p99, abov": 1,
+    "generator delivered 65.9% of the offered rate, below 99%": 1,
+    "generator was 13833301us behind its own schedule at p99, abo": 1,
+    "generator delivered 30.4% of the offered rate, below 99%": 1,
+    "generator was 11129us behind its own schedule at p99, above ": 1,
+    "generator was 5331650us behind its own schedule at p99, abov": 1,
+    "generator delivered 73.0% of the offered rate, below 99%": 1,
+    "generator was 17532637us behind its own schedule at p99, abo": 1,
+    "generator delivered 11.9% of the offered rate, below 99%": 1,
+    "generator was 5739954us behind its own schedule at p99, abov": 1,
+    "generator delivered 72.3% of the offered rate, below 99%": 1,
+    "generator was 18434529us behind its own schedule at p99, abo": 1,
+    "generator delivered 7.5% of the offered rate, below 99%": 1,
+    "generator was 781491us behind its own schedule at p99, above": 1,
+    "generator was 3039us behind its own schedule at p99, above 1": 1,
+    "generator was 3734056us behind its own schedule at p99, abov": 1,
+    "generator delivered 86.3% of the offered rate, below 99%": 1,
+    "generator was 19273023us behind its own schedule at p99, abo": 1,
+    "generator delivered 4.1% of the offered rate, below 99%": 1,
+    "generator was 11878062us behind its own schedule at p99, abo": 1,
+    "generator delivered 40.6% of the offered rate, below 99%": 1,
+    "generator was 10597712us behind its own schedule at p99, abo": 1,
+    "generator was 75801us behind its own schedule at p99, above ": 1,
+    "generator was 7120914us behind its own schedule at p99, abov": 1,
+    "generator delivered 64.2% of the offered rate, below 99%": 1,
+    "generator was 111022us behind its own schedule at p99, above": 1,
+    "generator was 25045us behind its own schedule at p99, above ": 1,
+    "generator was 276909us behind its own schedule at p99, above": 1,
+    "generator was 4593930us behind its own schedule at p99, abov": 1,
+    "generator delivered 78.8% of the offered rate, below 99%": 1,
+    "generator was 7515404us behind its own schedule at p99, abov": 1,
+    "generator delivered 31.0% of the offered rate, below 99%": 1,
+    "generator was 6248659us behind its own schedule at p99, abov": 1,
+    "generator delivered 68.5% of the offered rate, below 99%": 1,
+    "generator was 17112677us behind its own schedule at p99, abo": 1,
+    "generator delivered 14.0% of the offered rate, below 99%": 1,
+    "generator was 214352us behind its own schedule at p99, above": 1,
+    "generator was 19329495us behind its own schedule at p99, abo": 1,
+    "generator delivered 3.0% of the offered rate, below 99%": 1,
+    "generator was 11824us behind its own schedule at p99, above ": 1,
+    "generator was 10594680us behind its own schedule at p99, abo": 1,
+    "generator delivered 46.9% of the offered rate, below 99%": 1,
+    "generator was 2648us behind its own schedule at p99, above 1": 1,
+    "generator was 25534us behind its own schedule at p99, above ": 1,
+    "generator was 10150148us behind its own schedule at p99, abo": 1,
+    "generator delivered 50.2% of the offered rate, below 99%": 1,
+    "generator was 19792947us behind its own schedule at p99, abo": 1,
+    "generator delivered 1.4% of the offered rate, below 99%": 1,
+    "generator was 1185us behind its own schedule at p99, above 1": 1,
+    "generator was 331977us behind its own schedule at p99, above": 1,
+    "generator was 10012862us behind its own schedule at p99, abo": 1,
+    "generator delivered 49.3% of the offered rate, below 99%": 1,
+    "generator was 7389464us behind its own schedule at p99, abov": 1,
+    "generator delivered 66.1% of the offered rate, below 99%": 1,
+    "generator was 14561883us behind its own schedule at p99, abo": 1,
+    "generator delivered 27.2% of the offered rate, below 99%": 1,
+    "generator was 16020478us behind its own schedule at p99, abo": 1,
+    "generator delivered 9.7% of the offered rate, below 99%": 1,
+    "46 socket errors during the run": 1,
+    "generator was 10187625us behind its own schedule at p99, abo": 1,
+    "generator delivered 48.6% of the offered rate, below 99%": 1,
+    "generator was 19168536us behind its own schedule at p99, abo": 1,
+    "generator delivered 4.0% of the offered rate, below 99%": 1,
+    "generator was 12676031us behind its own schedule at p99, abo": 1,
+    "generator delivered 18.1% of the offered rate, below 99%": 1,
+    "generator was 35999us behind its own schedule at p99, above ": 1,
+    "generator was 13460us behind its own schedule at p99, above ": 1,
+    "generator was 8999574us behind its own schedule at p99, abov": 1,
+    "generator delivered 55.0% of the offered rate, below 99%": 1,
+    "generator was 19967026us behind its own schedule at p99, abo": 1,
+    "generator delivered 0.1% of the offered rate, below 99%": 1,
+    "54 socket errors during the run": 1,
+    "generator was 14717478us behind its own schedule at p99, abo": 1,
+    "generator delivered 27.8% of the offered rate, below 99%": 1,
+    "generator was 36117us behind its own schedule at p99, above ": 1,
+    "generator was 2620us behind its own schedule at p99, above 1": 1,
+    "generator was 9841822us behind its own schedule at p99, abov": 1,
+    "generator delivered 50.4% of the offered rate, below 99%": 1,
+    "generator was 5109445us behind its own schedule at p99, abov": 1,
+    "generator delivered 76.0% of the offered rate, below 99%": 1,
+    "generator was 9690537us behind its own schedule at p99, abov": 1,
+    "generator delivered 51.9% of the offered rate, below 99%": 1,
+    "generator was 19192036us behind its own schedule at p99, abo": 1,
+    "generator delivered 4.6% of the offered rate, below 99%": 1,
+    "generator was 9965us behind its own schedule at p99, above 1": 1,
+    "35 socket errors during the run": 1,
+    "generator was 10808121us behind its own schedule at p99, abo": 1,
+    "generator was 2785us behind its own schedule at p99, above 1": 1,
+    "44 socket errors during the run": 1,
+    "generator was 4064378us behind its own schedule at p99, abov": 1,
+    "generator delivered 79.9% of the offered rate, below 99%": 1,
+    "41 socket errors during the run": 1,
+    "generator was 9519463us behind its own schedule at p99, abov": 1,
+    "generator delivered 52.2% of the offered rate, below 99%": 1,
+    "generator was 12742534us behind its own schedule at p99, abo": 1,
+    "generator delivered 35.8% of the offered rate, below 99%": 1,
+    "67 socket errors during the run": 1,
+    "generator was 680854us behind its own schedule at p99, above": 1,
+    "generator was 3622882us behind its own schedule at p99, abov": 1,
+    "generator delivered 81.8% of the offered rate, below 99%": 1
+  }
+}
+
+wrote /workspace/benchmark/results/linux-io-portability.jsonl
+EXIT:0
