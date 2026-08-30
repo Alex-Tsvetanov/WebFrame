@@ -31,6 +31,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -733,6 +734,9 @@ namespace
 		    "                      a closed loop, which measures service time\n"
 		    "  --out FILE          write the result as JSON\n"
 		    "  --samples FILE      write every latency sample, one per line, in us\n"
+		    "  --affinity HEX      confine the generator to this hexadecimal CPU mask, so\n"
+		    "                      it does not compete with the server for cores; has no\n"
+		    "                      effect on macOS, which has no process affinity API\n"
 		    "\n"
 		    "In open loop the latency of a request is measured from the time it was due,\n"
 		    "not from the time the socket accepted it. That is the difference between\n"
@@ -783,6 +787,14 @@ int main(int argc, char** argv)
 		std::fprintf(stderr, "WSAStartup failed\n");
 		return 1;
 	}
+#else
+	// Writing to a connection the server has already closed is ordinary here, not a
+	// fault: the server enforces a per-connection request limit, and the close can land
+	// between the poll and the send, which is the same path the server_closes counter
+	// treats as normal. The default disposition of SIGPIPE would end the process on that
+	// path, before it writes its result file, so a routine keep-alive close would be
+	// reported as a failed run and abort the campaign.
+	::signal(SIGPIPE, SIG_IGN);
 #endif
 
 	sockaddr_in addr{};
@@ -910,8 +922,12 @@ int main(int argc, char** argv)
 	// thread count. With an affinity mask narrower than the thread count the two differ,
 	// and dividing by threads reports a generator as idle when it is in fact pinned flat
 	// against the cores it was given.
+	// On macOS there is no affinity API and apply_affinity refuses, so the process is
+	// spread over every core the scheduler chooses. Dividing by the bits of a mask the
+	// process was never confined to would inflate the reported fraction and could refuse
+	// a run that was in fact idle, so the narrowing needs the mask to have been applied.
 	std::size_t usable_cores = opt.threads;
-	if (opt.affinity_mask != 0)
+	if (opt.affinity_mask != 0 && affinity_applied)
 	{
 		std::size_t bits = 0;
 		for (int i = 0; i < 64; ++i)

@@ -225,7 +225,12 @@ include(FetchContent)
 # matcher and different numbers with nothing to say so. Overridable so a measurement can
 # name the exact commit it ran against; the default is still the branch, so an ordinary
 # build keeps tracking upstream.
-set(COROUTE_URL_MATCHER_TAG "main" CACHE STRING
+# Pinned, not floating. A moving ref made HEAD stop building once already: the tag
+# resolved to a newer upstream commit than the one the tree had been written
+# against, and a rebuild that touched nothing fetched it. For a dissertation the
+# stronger reason is that a measurement has to be reproducible from the recorded
+# commit, and it is not if a dependency can change underneath that commit.
+set(COROUTE_URL_MATCHER_TAG "2220b61b962c2e4be9d48b3b2b6394fe0e7785b8" CACHE STRING
     "Git ref for the RegexMatcher dependency; set to a commit SHA to pin a measurement")
 
 # A shallow clone can only ask for a named ref on some servers, so it is turned off when

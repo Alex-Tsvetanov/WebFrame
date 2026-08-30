@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import sys
 from pathlib import Path
 
@@ -33,14 +34,49 @@ REPO = Path(__file__).resolve().parents[1]
 # Ryzen 5 3600: twelve logical CPUs over six physical cores, paired. 0x0FF is logical
 # 0 to 7, four physical cores, for the server. 0xF00 is logical 8 to 11, two physical
 # cores, for the generator. Disjoint, so the two do not take work from each other.
-SERVER_AFFINITY = "0ff"
-GENERATOR_AFFINITY = "f00"
+_WINDOWS_SERVER_AFFINITY = "0ff"
+_WINDOWS_GENERATOR_AFFINITY = "f00"
 GENERATOR_THREADS = 2
+
+# macOS has no CPU affinity API for user processes. thread_policy_set with
+# THREAD_AFFINITY_POLICY is a locality hint and is a documented no-op on Apple Silicon,
+# so requesting a mask there would set affinity_applied false on all 250 runs and trip
+# the isolation rule in validity.py on every one of them. Asking for nothing is the
+# honest encoding of a platform that grants nothing: the record then says no isolation
+# was requested, rather than that isolation was requested and quietly denied.
+_HAS_AFFINITY = platform.system() in ("Windows", "Linux")
+SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY if _HAS_AFFINITY else None
+GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY if _HAS_AFFINITY else None
+
+
+def system_name() -> str:
+    r"""The name every generated \R{} key is prefixed with.
+
+    Windows keeps the bare name because the campaign already published under it and the
+    thesis cites keys of the form coroute.h1.*. The other two are suffixed because the
+    thesis already cites coroute-linux.* and coroute-macos.* as the measurements that are
+    still to come. Deriving this from the host rather than from a flag is deliberate: a
+    Mac run that inherited the Windows name would overwrite published numbers with
+    numbers from a different machine, and nothing downstream could tell.
+    """
+    return {"Darwin": "coroute-macos", "Linux": "coroute-linux"}.get(
+        platform.system(), "coroute"
+    )
 
 # Below the point where the generator stops keeping up. Measured, not chosen: above
 # about 75k on this host its pacing lag at p99 goes from tens of microseconds to
 # milliseconds, and validity.py refuses those runs.
 OFFERED_RATES = (10_000, 25_000, 40_000, 55_000, 70_000)
+
+
+def _io_backend() -> str:
+    """The backend the presets select for this host.
+
+    Recorded rather than assumed, because it is a factor in the record and a mislabelled
+    factor is worse than a missing one: it makes two different measurements look like
+    repetitions of one.
+    """
+    return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
 
 
 def design_windows_h1() -> list[Cell]:
@@ -55,7 +91,7 @@ def design_windows_h1() -> list[Cell]:
     base = dict(
         protocol="http1.1",
         tls=False,
-        io_backend="iocp",
+        io_backend=_io_backend(),
         workers=4,
         connections=64,
         payload_bytes=0,
@@ -68,20 +104,20 @@ def design_windows_h1() -> list[Cell]:
     # offered load. This is the hypothesis the whole dissertation turns on.
     for rate in OFFERED_RATES:
         for detect in (True, False):
-            cells.append(Cell.of("coroute", **base, protocol_detection=detect, offered_rate=rate))
+            cells.append(Cell.of(system_name(), **base, protocol_detection=detect, offered_rate=rate))
 
     # Worker scaling at a fixed offered rate, to show where the server stops benefiting
     # from more threads on four physical cores.
     for workers in (1, 2, 4, 8):
         if workers == base["workers"]:
             continue
-        cells.append(Cell.of("coroute", **{**base, "workers": workers},
+        cells.append(Cell.of(system_name(), **{**base, "workers": workers},
                              protocol_detection=True, offered_rate=40_000))
 
     # Response size, because the classification cost is per connection and the response
     # cost is per request: the ratio between them should move.
     for payload in (256, 1024, 8192):
-        cells.append(Cell.of("coroute", **{**base, "payload_bytes": payload},
+        cells.append(Cell.of(system_name(), **{**base, "payload_bytes": payload},
                              protocol_detection=True, offered_rate=40_000))
 
     # Listen backlog. The default in the io context was 128, which is far too small at
@@ -90,7 +126,7 @@ def design_windows_h1() -> list[Cell]:
     # sweep is expected to show little; measuring it is how that becomes a finding
     # rather than an assumption.
     for backlog in (128, 512, 4096):
-        cells.append(Cell.of("coroute", **{**base, "backlog": backlog},
+        cells.append(Cell.of(system_name(), **{**base, "backlog": backlog},
                              protocol_detection=True, offered_rate=40_000))
 
     return cells
@@ -110,31 +146,58 @@ def design_windows_h1_deep() -> list[Cell]:
     would buy resolution where no claim depends on it.
     """
     base = dict(
-        protocol="http1.1", tls=False, io_backend="iocp", workers=4, connections=64,
+        protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
         payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
     )
     return [
-        Cell.of("coroute", **base, protocol_detection=detect, offered_rate=rate)
+        Cell.of(system_name(), **base, protocol_detection=detect, offered_rate=rate)
         for rate in OFFERED_RATES
         for detect in (True, False)
+    ]
+
+
+def design_ladder() -> list[Cell]:
+    """Where this host's generator stops keeping up, measured rather than assumed.
+
+    The 70k ceiling in the campaigns above is a property of a Ryzen 5 3600 with the
+    generator pinned to two dedicated cores. Nothing about it transfers to another
+    machine, and on a host where the generator cannot be pinned it does not even
+    transfer to itself under different load. Run this first on any new host: the
+    campaign's top offered rate has to sit comfortably below the point where
+    generator_pacing_p99_us leaves the tens of microseconds.
+
+    One repetition per rate, because this is looking for a cliff, not a difference.
+    """
+    base = dict(
+        protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
+        connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
+        netem_profile="none",
+    )
+    return [
+        Cell.of(system_name(), **base, protocol_detection=True, offered_rate=rate)
+        for rate in range(10_000, 130_000, 10_000)
     ]
 
 
 def design_smoke() -> list[Cell]:
     """Two cells, for checking the machinery without spending an hour on it."""
     base = dict(
-        protocol="http1.1", tls=False, io_backend="iocp", workers=4, connections=64,
+        protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
         payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
     )
     return [
-        Cell.of("coroute", **base, protocol_detection=True, offered_rate=10_000),
-        Cell.of("coroute", **base, protocol_detection=False, offered_rate=10_000),
+        Cell.of(system_name(), **base, protocol_detection=True, offered_rate=10_000),
+        Cell.of(system_name(), **base, protocol_detection=False, offered_rate=10_000),
     ]
 
 
+# The two h1 designs are not Windows-specific in anything but their name, which is kept
+# because the committed results were produced under it. The cells they build now carry
+# whichever system name and backend the host implies.
 DESIGNS = {
     "windows-h1": design_windows_h1,
     "windows-h1-deep": design_windows_h1_deep,
+    "ladder": design_ladder,
     "smoke": design_smoke,
 }
 

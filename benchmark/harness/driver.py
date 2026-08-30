@@ -58,6 +58,10 @@ class GeneratorResult:
     pacing_p99_us: float | None = None
     # And whether it delivered the rate it was asked for.
     achieved_share: float | None = None
+    # What isolation was asked for, and what the platform actually granted. Separate,
+    # because on macOS they differ and the difference is not visible in any other field.
+    affinity_requested: str | None = None
+    affinity_applied: bool | None = None
     argv: list[str] = field(default_factory=list)
 
 
@@ -161,6 +165,8 @@ def run_one(
 
     counters_before = validity.read_counters()
     record.cpu_mhz_start = validity.current_cpu_mhz()
+    record.power_source = validity.current_power_source()
+    record.thermal_speed_limit_start = validity.current_speed_limit()
 
     failure: str | None = None
     server: Server | None = None
@@ -184,6 +190,8 @@ def run_one(
         record.generator_cpu_fraction = result.cpu_fraction
         record.generator_pacing_p99_us = result.pacing_p99_us
         record.generator_achieved_share = result.achieved_share
+        record.affinity_requested = result.affinity_requested
+        record.affinity_applied = result.affinity_applied
         record.generator_argv = list(result.argv)
 
     except Exception as exc:  # noqa: BLE001 - a failed run is data, not a crash
@@ -209,6 +217,7 @@ def run_one(
                 failure = f"{failure}; {stop_note}" if failure else stop_note
 
     record.cpu_mhz_end = validity.current_cpu_mhz()
+    record.thermal_speed_limit_end = validity.current_speed_limit()
     record.counter_deltas = validity.counter_deltas(counters_before, validity.read_counters())
 
     verdict = validity.check_run(record.to_dict())

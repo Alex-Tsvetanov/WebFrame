@@ -132,6 +132,20 @@ class RunRecord:
     git_dirty: bool = False
     cpu_mhz_start: float | None = None
     cpu_mhz_end: float | None = None
+    # What isolation was asked for and what the platform granted. These are separate
+    # fields because on macOS they differ: there is no user-process CPU affinity API,
+    # so a mask can be requested and silently not applied. Chapter V promises the reader
+    # that the run records both, so that an unpinned run is distinguishable from a
+    # pinned one rather than assumed to be either.
+    affinity_requested: str | None = None
+    affinity_applied: bool | None = None
+    # A laptop can change its power and thermal regime mid-campaign in a way the desktop
+    # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
+    # and caps clocks, which makes the number uncitable for the same reason a virtualised
+    # host does: the machine under the measurement is not the machine being described.
+    power_source: str | None = None
+    thermal_speed_limit_start: int | None = None
+    thermal_speed_limit_end: int | None = None
     counter_deltas: dict[str, int] = field(default_factory=dict)
     accepted: bool = True
     rejection_reasons: list[str] = field(default_factory=list)

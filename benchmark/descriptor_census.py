@@ -24,19 +24,54 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 
-def wait_until_listening(port: int, timeout_s: float = 15.0) -> bool:
+def wait_until_listening(proc: subprocess.Popen, port: int,
+                         timeout_s: float = 15.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
+        # A child that has already exited will never answer, so sitting out the rest of
+        # the timeout only delays the report and discards nothing useful.
+        if proc.poll() is not None:
+            return False
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.25):
                 return True
         except OSError:
             time.sleep(0.05)
     return False
+
+
+def lsof_count(pid: int, selector: list[str]) -> int:
+    """Files matching one lsof selector for one process, in field mode."""
+    # -a intersects -p with -i. Without it lsof ORs them and reports every socket on the
+    # machine. -w drops warnings, -nP skips host and port name resolution.
+    proc = subprocess.run(
+        ["lsof", "-nP", "-w", "-a", "-p", str(pid), *selector, "-Fn"],
+        capture_output=True, text=True, timeout=60,
+    )
+    # lsof exits 1 both when the selectors simply matched nothing, which is a real zero,
+    # and when lsof itself failed. -w has silenced the warnings, so anything left on
+    # stderr marks the second case, where the empty output is not a count.
+    quiet_empty_match = proc.returncode == 1 and not proc.stderr.strip()
+    if proc.returncode != 0 and not quiet_empty_match:
+        raise RuntimeError(
+            f"lsof exited {proc.returncode} for pid {pid} {' '.join(selector)}: "
+            f"{proc.stderr.strip()}"
+        )
+    return sum(1 for line in proc.stdout.splitlines() if line.startswith("n"))
+
+
+def counting_command() -> str:
+    """Named in failure messages so a zero census points at the tool that produced it."""
+    if os.name == "nt":
+        return "Get-NetTCPConnection -State Listen / Get-NetUDPEndpoint"
+    if sys.platform == "darwin":
+        return "lsof -nP -w -a -p <pid> -iTCP -sTCP:LISTEN -Fn"
+    return "ss -lntupH"
 
 
 def count_listeners(pid: int) -> tuple[int, int]:
@@ -58,21 +93,25 @@ def count_listeners(pid: int) -> tuple[int, int]:
         parts = out.split()
         return (int(parts[0]), int(parts[1])) if len(parts) == 2 else (0, 0)
 
-    # Linux and macOS: count sockets in the listening state owned by this pid.
+    if sys.platform == "darwin":
+        # ss is iproute2 and does not exist here. lsof reads the same kernel file table
+        # the process itself is described by, so the census stays independent of it.
+        return lsof_count(pid, ["-iTCP", "-sTCP:LISTEN"]), lsof_count(pid, ["-iUDP"])
+
+    # Linux: count sockets in the listening state owned by this pid. Nothing catches a
+    # missing ss, because a machine without the counting tool has produced no census and
+    # a returned zero would be indistinguishable from a measured one.
     tcp = udp = 0
-    try:
-        out = subprocess.run(
-            ["ss", "-lntupH"], capture_output=True, text=True, timeout=60
-        ).stdout
-        for line in out.splitlines():
-            if f"pid={pid}," not in line:
-                continue
-            if line.startswith("tcp"):
-                tcp += 1
-            elif line.startswith("udp"):
-                udp += 1
-    except (OSError, subprocess.SubprocessError):
-        pass
+    out = subprocess.run(
+        ["ss", "-lntupH"], capture_output=True, text=True, timeout=60
+    ).stdout
+    for line in out.splitlines():
+        if f"pid={pid}," not in line:
+            continue
+        if line.startswith("tcp"):
+            tcp += 1
+        elif line.startswith("udp"):
+            udp += 1
     return tcp, udp
 
 
@@ -84,10 +123,25 @@ def census(server_bin: Path, port: int, workers: int, detect: bool) -> dict:
     if not detect:
         args.append("--no-detect")
 
-    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # When the server fails to bind, its own output is the only diagnosis there is, so it
+    # goes to a file rather than to DEVNULL. A pipe would deadlock once its buffer filled,
+    # since nothing reads it while the server runs.
+    log = tempfile.TemporaryFile()
+    proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
     try:
-        if not wait_until_listening(port):
-            raise RuntimeError(f"server with {workers} workers did not start")
+        if not wait_until_listening(proc, port):
+            log.seek(0)
+            output = log.read().decode("utf-8", "replace").strip() or "(no output)"
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    f"server with {workers} workers exited with code {proc.returncode} "
+                    f"before listening on port {port}:\n{output}"
+                )
+            raise RuntimeError(
+                f"server with {workers} workers never answered on port {port}. On macOS "
+                f"an unanswered firewall prompt on binding INADDR_ANY leaves the process "
+                f"alive and unreachable exactly like this:\n{output}"
+            )
         # A moment after the port answers, so every worker has had time to bind. Counting
         # too early would report the first descriptor and call it the total.
         time.sleep(1.0)
@@ -105,6 +159,7 @@ def census(server_bin: Path, port: int, workers: int, detect: bool) -> dict:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+        log.close()
         # Windows keeps the port in TIME_WAIT briefly; a fresh port per run would work
         # too but would make the table harder to reproduce by hand.
         time.sleep(0.5)
@@ -116,7 +171,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("build", type=Path)
     ap.add_argument("--workers", default="1,2,4,8")
     ap.add_argument("--port", type=int, default=18200)
-    ap.add_argument("--out", type=Path, default=Path("doc/thesis/data/descriptors.csv"))
+    # Windows keeps the unsuffixed name the committed census and sec:census already use.
+    # Every other platform writes beside it, so a second run cannot overwrite the first.
+    default_out = Path("doc/thesis/data") / (
+        "descriptors.csv" if os.name == "nt" else f"descriptors-{sys.platform}.csv"
+    )
+    ap.add_argument("--out", type=Path, default=default_out)
     args = ap.parse_args(argv)
 
     server_bin = (args.build / "examples" / "Samples" / "benchmark_server"
@@ -135,6 +195,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"workers={row['workers']:<2} detect={row['protocol_detection']} "
                   f"tcp={row['tcp_listeners']} udp={row['udp_listeners']} "
                   f"total={row['total']}")
+
+    # Every row here answered a connection before it was counted, so it held at least one
+    # listening TCP descriptor. A zero is therefore the counting tool failing, never a
+    # result, and a table of zeros would compare equal to itself and read as the
+    # proposition confirmed. Refuse before that table is written or believed.
+    if any(row["tcp_listeners"] == 0 for row in rows):
+        raise RuntimeError(
+            f"counted zero listening TCP descriptors on {sys.platform} for a server that "
+            f"had already answered a connection. The counting command was "
+            f"'{counting_command()}'. This is instrumentation failure, not a measurement."
+        )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="") as fh:

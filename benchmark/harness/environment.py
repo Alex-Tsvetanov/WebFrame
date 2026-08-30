@@ -23,6 +23,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -131,6 +132,116 @@ def _transparent_hugepages() -> str | None:
     return match.group(1) if match else text
 
 
+# --- macOS -------------------------------------------------------------------
+#
+# Everything above reads /proc or /sys, which macOS does not have, so on darwin the same
+# facts come from sysctl and pmset instead. Kept in one block and reached only through
+# _darwin_overlay, so Linux and Windows emit exactly the manifest they emitted before
+# this branch existed.
+
+
+def _sysctl(name: str) -> str | None:
+    return _run(["sysctl", "-n", name])
+
+
+def _sysctl_int(name: str) -> int | None:
+    """A sysctl documented to hold a number, or None if it did not hold one.
+
+    Not int() at the call site: a sysctl that exists and reports something unparseable
+    would then raise out of capture and take the campaign with it, which is a worse
+    outcome than one missing field.
+    """
+    text = _sysctl(name)
+    if text is None:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _power_source(pmset_ps: str | None = None) -> str | None:
+    """Mains or battery, as pmset names it.
+
+    A laptop on battery is a different machine. Discharging biases the scheduler toward
+    the efficiency cores and caps the clocks, so the run measures the power policy rather
+    than the server. The desktop campaign had no equivalent risk and so no such field.
+    """
+    text = pmset_ps if pmset_ps is not None else _run(["pmset", "-g", "ps"])
+    if not text:
+        return None
+    match = re.search(r"Now drawing from '([^']+)'", text)
+    return match.group(1) if match else None
+
+
+def _low_power_mode(pmset_live: str | None = None) -> bool | None:
+    """Low Power Mode, from the lowpowermode setting pmset lists among the live ones.
+
+    None when that line is absent, which is what hardware without the mode looks like.
+    Recording it as off would be a claim about the run that nothing measured.
+    """
+    text = pmset_live if pmset_live is not None else _run(["pmset", "-g"])
+    if not text:
+        return None
+    match = re.search(r"^\s*lowpowermode\s+(\d+)\s*$", text, re.MULTILINE)
+    return match.group(1) != "0" if match else None
+
+
+def _cpu_speed_limit(pmset_therm: str | None = None) -> int | None:
+    """CPU_Speed_Limit as a percentage of full speed, which is how macOS says throttled.
+
+    `pmset -g therm` prints the fields read here without elevated privileges. When the
+    kernel has published no limit it prints a note instead, and the field stays None.
+    That is not the same fact as 100 and is not recorded as 100.
+    """
+    text = pmset_therm if pmset_therm is not None else _run(["pmset", "-g", "therm"])
+    if not text:
+        return None
+    match = re.search(r"CPU_Speed_Limit\s*=\s*(\d+)", text)
+    return int(match.group(1)) if match else None
+
+
+def _set_if_probed(section: dict[str, Any], key: str, value: Any) -> None:
+    """Writes the sysctl answer, or leaves what capture already found if there was none.
+
+    os.cpu_count() already reports the logical cores correctly on macOS, and that is a
+    fingerprinted field. Assigning unconditionally would let one sysctl that failed to
+    answer replace a known value with None and move the fingerprint, which stops the
+    campaign over the probe rather than over the machine.
+    """
+    if value is not None:
+        section[key] = value
+
+
+def _darwin_overlay(env: dict[str, Any]) -> None:
+    """Fills in from sysctl and pmset what /proc fills in on Linux.
+
+    The perflevel counts and the power block have no Linux or Windows equivalent, so they
+    are absent there rather than present and None. None of them joins _FINGERPRINTED: a
+    new fingerprinted key adds itself as null to every manifest already captured and moves
+    every existing hash, which would end the Windows campaign this branch exists to match.
+    """
+    _set_if_probed(env["cpu"], "model", _sysctl("machdep.cpu.brand_string"))
+    _set_if_probed(env["cpu"], "physical_cores", _sysctl_int("hw.physicalcpu"))
+    _set_if_probed(env["cpu"], "logical_cores", _sysctl_int("hw.logicalcpu"))
+    # perflevel0 is the fastest core class and perflevel1 the next one down, so here they
+    # are the P and E counts. Nothing else in the manifest tells the two apart, and on a
+    # heterogeneous chip which kind of core served the load is most of the result. A
+    # uniform part publishes no perflevel1, so there the count stays None.
+    env["cpu"]["performance_cores"] = _sysctl_int("hw.perflevel0.physicalcpu")
+    env["cpu"]["efficiency_cores"] = _sysctl_int("hw.perflevel1.physicalcpu")
+    _set_if_probed(env["memory"], "total_bytes", _sysctl_int("hw.memsize"))
+    # macOS clamps listen() to somaxconn and ships it at 128, while the design sweeps
+    # backlog over 128, 512, 1024 and 4096. Unrecorded, three of those cells measure one
+    # clamped queue while each record claims a different backlog.
+    _set_if_probed(env["tuning"], "somaxconn", _sysctl("kern.ipc.somaxconn"))
+    env["power"] = {
+        "source": _power_source(),
+        "low_power_mode": _low_power_mode(),
+        "cpu_speed_limit": _cpu_speed_limit(),
+    }
+
+
 def _compiler_version() -> str | None:
     """The first line of `c++ --version`, which is the identifying one.
 
@@ -198,7 +309,7 @@ def capture(repo: Path | None = None, build_type: str | None = None,
     meminfo = _read("/proc/meminfo") or ""
     mem_match = re.search(r"^MemTotal:\s+(\d+) kB$", meminfo, re.MULTILINE)
 
-    return {
+    env = {
         "machine": {
             "node": uname.node or None,
             "arch": uname.machine or None,
@@ -240,6 +351,10 @@ def capture(repo: Path | None = None, build_type: str | None = None,
         },
         "virtualisation": detect_virtualisation(),
     }
+
+    if sys.platform == "darwin":
+        _darwin_overlay(env)
+    return env
 
 
 def _lookup(env: dict[str, Any], dotted: str) -> Any:

@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from benchmark.harness import environment
+
 
 # --- Pre-declared thresholds -------------------------------------------------
 #
@@ -151,6 +153,51 @@ def check_run(record: dict[str, Any]) -> Verdict:
                 "the kernel dropped work before the server saw it"
             )
 
+    # A socket error is an absent response, not a slow one, and the non-2xx rate above
+    # cannot see it: a connection that failed produced no status code to classify.
+    # Without this, a run where a third of the connections died reports a clean error
+    # rate over the survivors.
+    socket_errors = record.get("socket_errors")
+    if socket_errors:
+        verdict.reasons.append(
+            f"{socket_errors} socket errors during the run; "
+            "these are absent responses and the non-2xx rate does not count them"
+        )
+
+    # Isolation asked for and not granted. The comparison itself survives an unpinned
+    # host, since both arms meet the same scheduler, but the run must not be recorded as
+    # though it had the isolation the design specifies. A campaign on a platform with no
+    # affinity API asks for no mask at all, so this fires on the mistake it is for:
+    # running the pinned design somewhere pinning does not exist.
+    requested = record.get("affinity_requested")
+    if requested and record.get("affinity_applied") is False:
+        verdict.reasons.append(
+            f"affinity mask {requested} was requested and the platform did not apply it; "
+            "this run did not have the isolation the design specifies"
+        )
+
+    # A laptop on battery is what a virtualised host is to a server: the number describes
+    # something other than the code. On a chip with heterogeneous cores, discharging
+    # shifts placement toward the efficiency cores and caps clocks, and neither shows up
+    # in any criterion above.
+    power = record.get("power_source")
+    if power and "battery" in power.lower():
+        verdict.reasons.append(
+            f"host was on {power} rather than mains; "
+            "clocks and core placement are not the ones this campaign describes"
+        )
+
+    # The macOS counterpart of the frequency drift check, which reads a sysfs path that
+    # does not exist there. CPU_Speed_Limit is a percentage and sits at 100 on an
+    # unthrottled machine, so anything lower at either end means the run and the machine
+    # disagree about what was executing.
+    for label, value in (("start", record.get("thermal_speed_limit_start")),
+                         ("end", record.get("thermal_speed_limit_end"))):
+        if value is not None and value < 100:
+            verdict.reasons.append(
+                f"CPU speed limit was {value}% at {label} of run; the host was throttled"
+            )
+
     return verdict
 
 
@@ -211,3 +258,23 @@ def current_cpu_mhz() -> float | None:
         return None
     values = [float(m) for m in re.findall(r"^cpu MHz\s*:\s*([\d.]+)$", text, re.MULTILINE)]
     return sum(values) / len(values) if values else None
+
+
+def current_power_source() -> str | None:
+    """Mains or battery, on hosts where that can change during a campaign.
+
+    Delegates to environment.py, which owns the parser and has recorded-output checks
+    over it in selfcheck.py. A second parser here would be a second chance to disagree
+    with the manifest that describes the same run.
+    """
+    return environment._power_source()
+
+
+def current_speed_limit() -> int | None:
+    """CPU_Speed_Limit as a percentage, 100 on an unthrottled Mac.
+
+    Stands in for the frequency drift check above, which reads a sysfs path macOS does
+    not have. Without it a laptop that throttled halfway through a three hour campaign
+    satisfies every other rule in this file.
+    """
+    return environment._cpu_speed_limit()

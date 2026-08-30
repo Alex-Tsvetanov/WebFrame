@@ -326,6 +326,39 @@ def ordering_checks() -> None:
     check("a duplicated cell is refused", raised)
 
 
+def darwin_parser_checks() -> None:
+    print("\n== the macOS probes are parsed, not guessed ==")
+
+    # Fed recorded command output so they are checked from any platform. A regex that
+    # stopped matching would otherwise report None forever, and a field that is quietly
+    # always missing is the failure this whole module exists to prevent.
+    check("mains is read from pmset -g ps",
+          env_mod._power_source("Now drawing from 'AC Power'\n") == "AC Power")
+    check("battery is read from the same line",
+          env_mod._power_source("Now drawing from 'Battery Power'\n") == "Battery Power")
+    check("an unrecognised pmset -g ps is unknown, not mains",
+          env_mod._power_source("") is None)
+
+    check("low power mode off is read", env_mod._low_power_mode(" lowpowermode         0\n") is False)
+    check("low power mode on is read", env_mod._low_power_mode(" lowpowermode         1\n") is True)
+    check("hardware without the setting is unknown, not off",
+          env_mod._low_power_mode(" powernap             1\n") is None)
+
+    check("a throttled machine reports its speed limit",
+          env_mod._cpu_speed_limit("\tCPU_Speed_Limit \t= 70\n") == 70)
+    check("no published limit is not 100",
+          env_mod._cpu_speed_limit("Note: No thermal warning level has been recorded") is None)
+
+    known = {"logical_cores": 14}
+    env_mod._set_if_probed(known, "logical_cores", None)
+    check("a sysctl that did not answer leaves the known core count alone",
+          known["logical_cores"] == 14)
+
+    check("a non-darwin capture grows no macOS fields",
+          sys.platform == "darwin"
+          or "power" not in env_mod.capture(build_type="Release"))
+
+
 def live_capture_check() -> None:
     print("\n== capture works on this machine ==")
 
@@ -354,6 +387,7 @@ def main() -> int:
     ordering_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
+    darwin_parser_checks()
     live_capture_check()
     print(f"\n{PASSED} checks passed")
     return 0

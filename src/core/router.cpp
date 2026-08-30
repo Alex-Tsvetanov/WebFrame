@@ -88,27 +88,8 @@ namespace coroute
 	{
 		if (arms_finalised_) return;
 		arms_finalised_ = true;
-
-		if (backend_ == RouterBackend::Dfa)
-		{
-			// The matcher precomputes, per edge, which routes stay alive through it.
-			// Without this every lookup rebuilds that set one character at a time, which
-			// costs a pass over the whole route table per character. It has to happen
-			// here rather than on the first request: it mutates the graph, and matching
-			// is const and runs on every worker at once.
-			get_matcher_.compile();
-			post_matcher_.compile();
-			put_matcher_.compile();
-			delete_matcher_.compile();
-			patch_matcher_.compile();
-			head_matcher_.compile();
-			options_matcher_.compile();
-			view_matcher_.compile();
-			return;
-		}
-
 #ifdef COROUTE_ROUTER_ARMS
-		if (arms_)
+		if (backend_ != RouterBackend::Dfa && arms_)
 		{
 			router_arms_finalise(*arms_, backend_);
 		}

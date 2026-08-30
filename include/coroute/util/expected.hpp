@@ -1,8 +1,16 @@
 #pragma once
 
 // Use std::expected if available (C++23), otherwise our implementation
+//
+// The choice depends on the CMake option alone, never on __cpp_lib_expected. The feature
+// test macro is only defined once <version> or <expected> has been included, and nothing
+// in this tree includes either before this point, so its value here is whatever the
+// including translation unit happened to pull in first. Under libstdc++ that is nothing;
+// under libc++ it varies by file. A macro that resolves differently in two translation
+// units gives coroute::expected two mangled names inside one static library, and the
+// failure is an undefined reference at link time rather than anything readable.
 
-#if defined(COROUTE_HAS_STD_EXPECTED) || __cpp_lib_expected >= 202202L
+#if defined(COROUTE_HAS_STD_EXPECTED)
 
 #include <expected>
 

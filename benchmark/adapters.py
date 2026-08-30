@@ -15,8 +15,10 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import platform as _platform
 import socket
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +93,77 @@ if os.name == "nt":
             return cpu, peak
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
+
+elif _platform.system() == "Darwin":
+
+    class _RUsageInfoV4(ctypes.Structure):
+        """The prefix of rusage_info_v4 up to the two fields this needs.
+
+        Declared in full up to those offsets rather than guessed at, because libproc
+        fills the struct by size and a short declaration would be written past. Fields
+        after ri_lifetime_max_phys_footprint are omitted deliberately: the buffer passed
+        below is sized from the real struct, not from this view of it.
+        """
+
+        _fields_ = [
+            ("ri_uuid", ctypes.c_uint8 * 16),
+            ("ri_user_time", ctypes.c_uint64),
+            ("ri_system_time", ctypes.c_uint64),
+            ("ri_pkg_idle_wkups", ctypes.c_uint64),
+            ("ri_interrupt_wkups", ctypes.c_uint64),
+            ("ri_pageins", ctypes.c_uint64),
+            ("ri_wired_size", ctypes.c_uint64),
+            ("ri_resident_size", ctypes.c_uint64),
+            ("ri_phys_footprint", ctypes.c_uint64),
+            ("ri_proc_start_abstime", ctypes.c_uint64),
+            ("ri_proc_exit_abstime", ctypes.c_uint64),
+            ("ri_child_user_time", ctypes.c_uint64),
+            ("ri_child_system_time", ctypes.c_uint64),
+            ("ri_child_pkg_idle_wkups", ctypes.c_uint64),
+            ("ri_child_interrupt_wkups", ctypes.c_uint64),
+            ("ri_child_pageins", ctypes.c_uint64),
+            ("ri_child_elapsed_abstime", ctypes.c_uint64),
+            ("ri_diskio_bytesread", ctypes.c_uint64),
+            ("ri_diskio_byteswritten", ctypes.c_uint64),
+            ("ri_cpu_time_qos_default", ctypes.c_uint64),
+            ("ri_cpu_time_qos_maintenance", ctypes.c_uint64),
+            ("ri_cpu_time_qos_background", ctypes.c_uint64),
+            ("ri_cpu_time_qos_utility", ctypes.c_uint64),
+            ("ri_cpu_time_qos_legacy", ctypes.c_uint64),
+            ("ri_cpu_time_qos_user_initiated", ctypes.c_uint64),
+            ("ri_cpu_time_qos_user_interactive", ctypes.c_uint64),
+            ("ri_billed_system_time", ctypes.c_uint64),
+            ("ri_serviced_system_time", ctypes.c_uint64),
+            ("ri_logical_writes", ctypes.c_uint64),
+            ("ri_lifetime_max_phys_footprint", ctypes.c_uint64),
+        ]
+
+    _RUSAGE_INFO_V4 = 4
+    _RUSAGE_BUFFER_BYTES = 1024  # comfortably larger than any published rusage_info_v*
+
+    def _process_cost(pid: int) -> tuple[float | None, int | None]:
+        """CPU seconds and peak footprint from libproc, read while the process is alive.
+
+        proc_pid_rusage rather than getrusage(RUSAGE_CHILDREN): that only accounts for
+        children already reaped, so a running server contributes nothing to it, and after
+        the wait it is a cumulative total over every subprocess the campaign has ever
+        started. Neither is the quantity the record claims.
+
+        Times are nanoseconds and the footprint is already bytes, so unlike ru_maxrss
+        there is no unit that differs between Darwin and Linux to get wrong.
+        """
+        buffer = (ctypes.c_uint8 * _RUSAGE_BUFFER_BYTES)()
+        try:
+            libc = ctypes.CDLL("libSystem.dylib", use_errno=True)
+            rc = libc.proc_pid_rusage(ctypes.c_int(pid), ctypes.c_int(_RUSAGE_INFO_V4),
+                                      ctypes.byref(buffer))
+        except (OSError, AttributeError):
+            return None, None
+        if rc != 0:
+            return None, None
+        info = ctypes.cast(buffer, ctypes.POINTER(_RUSAGE_INFO_V4)).contents
+        cpu = (info.ri_user_time + info.ri_system_time) / 1e9
+        return cpu, int(info.ri_lifetime_max_phys_footprint)
 
 else:
 
@@ -286,7 +359,7 @@ class LoadgenGenerator:
         return args
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
-        out = Path(os.environ.get("TEMP", "/tmp")) / f"loadgen-{self.port}.json"
+        out = Path(tempfile.gettempdir()) / f"loadgen-{self.port}.json"
 
         # Removed before the run, not just checked for afterwards.
         #
@@ -355,6 +428,15 @@ class LoadgenGenerator:
             # The open loop rules in validity.py are stated in terms of these two.
             pacing_p99_us=float(data.get("pacing_us", {}).get("p99", 0.0)),
             achieved_share=(achieved / offered) if offered > 0 else None,
+            # Emitted by the generator since it learned it cannot pin itself on macOS.
+            # Read here rather than inferred from the mask we passed, because the whole
+            # point is that asking and getting are two different things. The server's
+            # requested mask is recoverable from server_argv; it has no reporting channel
+            # of its own, which is why the macOS design asks for neither.
+            affinity_requested=(mask_hex if (mask_hex := data.get("affinity_mask"))
+                                and mask_hex.strip("0") else None),
+            affinity_applied=(data.get("affinity_applied") == "true"
+                              if "affinity_applied" in data else None),
             argv=list(argv),
         )
         return result
