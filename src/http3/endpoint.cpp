@@ -180,6 +180,11 @@ namespace coroute::http3
 			// increment and removes the question.
 			auto stored = std::move(*connection);
 			connections_[stored->scid()] = stored;
+			// Additional IDs issued during the handshake must resolve to the same
+			// connection: a migrating client is required to pick a fresh destination
+			// connection ID, and without the alias that packet looks unknown here.
+			stored->set_cid_alias_tracker(
+				[this](Http3Connection* connection, const CidKey& cid) { track_additional_cid(connection, cid); });
 			accepted_.fetch_add(1, std::memory_order_relaxed);
 			(void)co_await stored->flush();
 			co_return;
@@ -227,16 +232,12 @@ namespace coroute::http3
 
 		// Collected first because flushing a connection can close it, and erasing from
 		// the map while iterating it would invalidate the iterator.
-		std::vector<CidKey> expired;
 		std::vector<std::shared_ptr<Http3Connection>> due;
 
 		for (auto& [cid, connection] : connections_)
 		{
-			if (connection->is_closed())
-			{
-				expired.push_back(cid);
-			}
-			else if (connection->expiry() <= now)
+			(void)cid;
+			if (!connection->is_closed() && connection->expiry() <= now)
 			{
 				due.push_back(connection);
 			}
@@ -248,15 +249,43 @@ namespace coroute::http3
 			{
 				(void)co_await connection->flush();
 			}
-			if (connection->is_closed())
-			{
-				expired.push_back(connection->scid());
-			}
 		}
 
+		// Drop every map entry whose connection has closed, including aliases created
+		// by track_additional_cid: leaving those behind would keep the shared_ptr alive
+		// and would also answer a late packet for a dead connection as if it were live.
+		std::vector<CidKey> expired;
+		for (auto& [cid, connection] : connections_)
+		{
+			if (connection->is_closed())
+			{
+				expired.push_back(cid);
+			}
+		}
 		for (const auto& cid : expired)
 		{
 			connections_.erase(cid);
+		}
+	}
+
+	void Http3Endpoint::track_additional_cid(Http3Connection* connection, const CidKey& cid)
+	{
+		// Find the shared_ptr first, finishing the scan before any insert. ngtcp2 issues
+		// a burst of NEW_CONNECTION_ID frames right after handshake completion; inserting
+		// via operator[] mid-range-for can rehash and invalidate the iterator.
+		std::shared_ptr<Http3Connection> found;
+		for (auto& [existing_cid, existing] : connections_)
+		{
+			(void)existing_cid;
+			if (existing.get() == connection)
+			{
+				found = existing;
+				break;
+			}
+		}
+		if (found)
+		{
+			connections_[cid] = std::move(found);
 		}
 	}
 
