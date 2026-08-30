@@ -32,7 +32,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-SCHEMA_VERSION = 1
+# 2 added the routing factors. Bumped rather than left alone because a reader of an
+# older file has to be able to tell that those columns are absent rather than null.
+SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -74,6 +76,16 @@ class RunRecord:
     # figures are service time or response time, so it cannot be left implicit.
     offered_rate: float | None = None
     netem_profile: str = "none"  # none, or a named delay/loss/jitter profile
+
+    # --- Routing factors ----------------------------------------------------
+    # Fields rather than free text in notes, on the same rule as everything above: a
+    # factor recoverable only by parsing prose is a factor the analysis cannot group by.
+    # router_arm is empty on runs that predate the routing experiment.
+    router_arm: str = ""          # dfa, radix, regex
+    route_count: int = 0
+    route_shape: str = ""         # rest (shared prefix) or flat (branches immediately)
+    route_params: bool = False    # routes end in a {id} capture
+    route_depth: int = 0          # path segments per route
 
     # --- Outcomes -----------------------------------------------------------
     requests_total: int = 0

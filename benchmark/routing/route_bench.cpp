@@ -77,39 +77,60 @@ namespace
 		return ns / static_cast<double>(t1 - t0);
 	}
 
-	// Working set now. Reported as a delta across construction, which is what the
-	// question "how much does the structure cost to hold" actually asks.
-	std::uint64_t resident_bytes()
+	// Two memory numbers, because at ten thousand routes they stop agreeing and only
+	// one of them still answers the question.
+	//
+	// Resident is the working set: how much of the process is in physical memory right
+	// now. It is what the machine is actually spending, and it is capped by how much
+	// physical memory there is. A structure larger than free RAM reports a working set
+	// the size of free RAM and looks smaller than a structure half its size.
+	//
+	// Committed is private commit: how much the process has asked the operating system
+	// to back, paged out or not. It is not capped by physical memory, so it is the one
+	// that keeps meaning "how big is this structure" all the way up the sweep.
+	//
+	// Both are recorded. Where they diverge, the process was paging, and that is worth
+	// seeing rather than smoothing over.
+	struct MemorySample
 	{
+		std::uint64_t resident = 0;
+		std::uint64_t committed = 0;
+		std::uint64_t peak_resident = 0;
+		std::uint64_t peak_committed = 0;
+	};
+
+	MemorySample memory_now()
+	{
+		MemorySample s;
 #if defined(_WIN32)
-		PROCESS_MEMORY_COUNTERS c{};
+		PROCESS_MEMORY_COUNTERS_EX c{};
 		c.cb = sizeof(c);
-		if (GetProcessMemoryInfo(GetCurrentProcess(), &c, c.cb)) return c.WorkingSetSize;
-		return 0;
+		if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&c), c.cb))
+		{
+			s.resident = c.WorkingSetSize;
+			s.peak_resident = c.PeakWorkingSetSize;
+			s.committed = c.PrivateUsage;
+			s.peak_committed = c.PeakPagefileUsage;
+		}
 #else
 		long pages = 0;
 		if (FILE* f = std::fopen("/proc/self/statm", "r"))
 		{
 			long total = 0;
-			if (std::fscanf(f, "%ld %ld", &total, &pages) != 2) pages = 0;
+			if (std::fscanf(f, "%ld %ld", &total, &pages) == 2)
+			{
+				const auto page = static_cast<std::uint64_t>(sysconf(_SC_PAGESIZE));
+				s.resident = static_cast<std::uint64_t>(pages) * page;
+				s.committed = static_cast<std::uint64_t>(total) * page;
+			}
 			std::fclose(f);
 		}
-		return static_cast<std::uint64_t>(pages) * static_cast<std::uint64_t>(sysconf(_SC_PAGESIZE));
-#endif
-	}
-
-	std::uint64_t peak_resident_bytes()
-	{
-#if defined(_WIN32)
-		PROCESS_MEMORY_COUNTERS c{};
-		c.cb = sizeof(c);
-		if (GetProcessMemoryInfo(GetCurrentProcess(), &c, c.cb)) return c.PeakWorkingSetSize;
-		return 0;
-#else
 		rusage ru{};
 		getrusage(RUSAGE_SELF, &ru);
-		return static_cast<std::uint64_t>(ru.ru_maxrss) * 1024ull;
+		s.peak_resident = static_cast<std::uint64_t>(ru.ru_maxrss) * 1024ull;
+		s.peak_committed = s.committed;
 #endif
+		return s;
 	}
 
 	// A histogram rather than a sample list. Percentiles come out exact, and 200k
@@ -353,7 +374,7 @@ int main(int argc, char** argv)
 
 	// ---------------------------------------------------------------- build
 
-	const std::uint64_t rss_before = resident_bytes();
+	const MemorySample mem_before = memory_now();
 	const auto build_t0 = std::chrono::steady_clock::now();
 
 	coroute::Router router;
@@ -370,7 +391,7 @@ int main(int argc, char** argv)
 	router.finalise();
 
 	const auto build_t1 = std::chrono::steady_clock::now();
-	const std::uint64_t rss_after = resident_bytes();
+	const MemorySample mem_after = memory_now();
 	const double build_ms = std::chrono::duration<double, std::milli>(build_t1 - build_t0).count();
 
 	// ---------------------------------------------------------------- queries
@@ -435,17 +456,20 @@ int main(int argc, char** argv)
 	const double measured_s =
 		std::chrono::duration<double>(std::chrono::steady_clock::now() - measure_start).count();
 
-	const std::uint64_t peak = peak_resident_bytes();
+	const MemorySample mem_end = memory_now();
 
 	// ---------------------------------------------------------------- output
 
 	auto ns = [&](std::uint32_t cycles) { return double(cycles) * ns_per_tick; };
+	const double rss_mb = double(mem_after.resident - mem_before.resident) / 1048576.0;
+	const double commit_mb = double(mem_after.committed - mem_before.committed) / 1048576.0;
 
 	std::printf("arm=%-5s routes=%6zu shape=%-4s params=%d depth=%2zu  "
-	            "p50=%10.1fns p99=%11.1fns p99.9=%11.1fns  build=%9.2fms rss=%8.1fMB n=%7llu%s misses=%zu\n",
+	            "p50=%10.1fns p99=%11.1fns p99.9=%11.1fns  build=%9.2fms rss=%8.1fMB commit=%9.1fMB "
+	            "n=%7llu%s misses=%zu\n",
 	            opt.arm.c_str(), opt.routes, opt.shape.c_str(), opt.params ? 1 : 0, opt.depth,
 	            ns(hist.percentile(0.50)), ns(hist.percentile(0.99)), ns(hist.percentile(0.999)), build_ms,
-	            double(rss_after - rss_before) / 1048576.0, static_cast<unsigned long long>(hist.total),
+	            rss_mb, commit_mb, static_cast<unsigned long long>(hist.total),
 	            truncated ? "*" : " ", misses);
 
 	if (!opt.hist_path.empty())
@@ -489,9 +513,20 @@ int main(int argc, char** argv)
 		std::fprintf(f, "  \"seed\": %llu,\n", static_cast<unsigned long long>(opt.seed));
 		std::fprintf(f, "  \"ns_per_tick\": %.9f,\n", ns_per_tick);
 		std::fprintf(f, "  \"build_ms\": %.4f,\n", build_ms);
+		// rss is what was in physical memory and is capped by how much there is.
+		// commit is what the process asked to be backed and is not. Above a few
+		// thousand routes the DFA arm's two numbers part company, and the gap is the
+		// paging.
 		std::fprintf(f, "  \"rss_delta_bytes\": %lld,\n",
-		             static_cast<long long>(rss_after) - static_cast<long long>(rss_before));
-		std::fprintf(f, "  \"peak_rss_bytes\": %llu,\n", static_cast<unsigned long long>(peak));
+		             static_cast<long long>(mem_after.resident) - static_cast<long long>(mem_before.resident));
+		std::fprintf(f, "  \"commit_delta_bytes\": %lld,\n",
+		             static_cast<long long>(mem_after.committed) - static_cast<long long>(mem_before.committed));
+		std::fprintf(f, "  \"peak_rss_bytes\": %llu,\n",
+		             static_cast<unsigned long long>(mem_end.peak_resident));
+		std::fprintf(f, "  \"peak_commit_bytes\": %llu,\n",
+		             static_cast<unsigned long long>(mem_end.peak_committed));
+		std::fprintf(f, "  \"baseline_commit_bytes\": %llu,\n",
+		             static_cast<unsigned long long>(mem_before.committed));
 		std::fprintf(f, "  \"timer_overhead_cycles\": {\"p50\": %u, \"p99\": %u},\n",
 		             overhead.percentile(0.50), overhead.percentile(0.99));
 		std::fprintf(f, "  \"cycles\": {\"p50\": %u, \"p90\": %u, \"p99\": %u, \"p999\": %u, \"max\": %u, "

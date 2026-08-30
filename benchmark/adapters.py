@@ -40,6 +40,11 @@ if os.name == "nt":
             return ((self.high << 32) | self.low) / 1e7
 
     class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        # The _EX layout: same as the base one plus PrivateUsage on the end. Asking for
+        # the larger struct is what makes committed private bytes available, and above
+        # a few thousand routes that is the only memory number that still means
+        # anything: a working set is capped by how much physical memory there is, so a
+        # structure larger than free RAM reports a working set the size of free RAM.
         _fields_ = [
             ("cb", ctypes.c_uint32),
             ("PageFaultCount", ctypes.c_uint32),
@@ -51,6 +56,7 @@ if os.name == "nt":
             ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
             ("PagefileUsage", ctypes.c_size_t),
             ("PeakPagefileUsage", ctypes.c_size_t),
+            ("PrivateUsage", ctypes.c_size_t),
         ]
 
     def _process_cost(pid: int) -> tuple[float | None, int | None]:
@@ -77,7 +83,11 @@ if os.name == "nt":
             if ctypes.windll.psapi.GetProcessMemoryInfo(
                 handle, ctypes.byref(counters), counters.cb
             ):
-                peak = int(counters.PeakWorkingSetSize)
+                # The larger of the two. Peak working set is what was resident and is
+                # capped by physical memory; peak pagefile usage is what the process
+                # committed and is not. A route table bigger than free RAM would
+                # otherwise be reported as the size of free RAM.
+                peak = max(int(counters.PeakWorkingSetSize), int(counters.PeakPagefileUsage))
             return cpu, peak
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
@@ -144,6 +154,17 @@ class CorouteServer:
         ]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
+        # Only when the cell carries them, so a campaign that is not about routing
+        # produces the same command line it always did and stays comparable with the
+        # runs already on disk.
+        if factors.get("router_arm"):
+            args += [
+                "--router", str(factors["router_arm"]),
+                "--routes", str(factors.get("route_count", 0)),
+                "--route-shape", str(factors.get("route_shape", "rest")),
+                "--route-params", "1" if factors.get("route_params", True) else "0",
+                "--route-depth", str(factors.get("route_depth", 5)),
+            ]
         if self.affinity_mask:
             args += ["--affinity", self.affinity_mask]
         return args
@@ -189,6 +210,20 @@ class CorouteServer:
 # ------------------------------------------------------------------- generator
 
 
+def to_wsl_path(path: Path) -> str:
+    """C:\\Users\\x\\y as WSL sees it: /mnt/c/Users/x/y.
+
+    Needed because the generator and the harness are on opposite sides of the WSL
+    boundary but have to agree on one result file. Translated rather than copied: a copy
+    would be a second thing that can be stale.
+    """
+    text = str(Path(path).resolve())
+    drive, _, rest = text.partition(":")
+    if len(drive) == 1 and rest:
+        return "/mnt/" + drive.lower() + rest.replace("\\", "/")
+    return text.replace("\\", "/")
+
+
 @dataclass
 class LoadgenGenerator:
     """The load generator from benchmark/generator, invoked once per run.
@@ -196,6 +231,13 @@ class LoadgenGenerator:
     It reports its own admissibility through the exit code as well as through the JSON,
     but the verdict is not taken from here: validity.py decides, from the record, once.
     Two places deciding the same thing is how they come to disagree.
+
+    `command` exists so the generator can live somewhere other than this machine's
+    filesystem. For the routing experiment it is a Linux build inside WSL, invoked
+    through wsl.exe, so that requests leave a network interface instead of going round
+    the loopback adapter. Loopback skips the driver and the interrupt path entirely, and
+    those are exactly the fixed costs the routing difference has to compete with, so a
+    loopback end-to-end number would flatter whichever arm was slower.
     """
 
     binary: Path
@@ -204,22 +246,33 @@ class LoadgenGenerator:
     warmup_s: float = 2.0
     affinity_mask: str | None = None
     samples_dir: Path | None = None
+    host: str = "127.0.0.1"
+    # How to invoke the generator. None means "run self.binary here".
+    command: list[str] | None = None
+    # Whether the paths in the command line have to be rewritten for the other side of
+    # the WSL boundary.
+    translate_paths: bool = False
+    # Request paths, one per line, written by the server from the table it registered.
+    paths_file: Path | None = None
 
     @property
     def name(self) -> str:
-        return "coroute-loadgen"
+        return "coroute-loadgen-wsl" if self.command else "coroute-loadgen"
+
+    def _path(self, path: Path) -> str:
+        return to_wsl_path(path) if self.translate_paths else str(path)
 
     def _argv(self, cell: Cell, duration_s: float, out: Path, samples: Path | None) -> list[str]:
         factors = cell.as_dict()
-        args = [
-            str(self.binary),
-            "--host", "127.0.0.1",
+        args = list(self.command) if self.command else [str(self.binary)]
+        args += [
+            "--host", self.host,
             "--port", str(self.port),
             "--connections", str(factors.get("connections", 64)),
             "--threads", str(self.threads),
             "--duration", f"{duration_s:g}",
             "--warmup", f"{self.warmup_s:g}",
-            "--out", str(out),
+            "--out", self._path(out),
         ]
         rate = factors.get("offered_rate")
         if rate:
@@ -227,7 +280,9 @@ class LoadgenGenerator:
         if self.affinity_mask:
             args += ["--affinity", self.affinity_mask]
         if samples is not None:
-            args += ["--samples", str(samples)]
+            args += ["--samples", self._path(samples)]
+        if self.paths_file is not None:
+            args += ["--paths", self._path(self.paths_file)]
         return args
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
@@ -237,7 +292,10 @@ class LoadgenGenerator:
             self.samples_dir.mkdir(parents=True, exist_ok=True)
             factors = cell.as_dict()
             stem = "-".join(
-                str(factors.get(k, "")) for k in ("workers", "connections", "offered_rate")
+                str(factors.get(k, ""))
+                for k in ("router_arm", "route_count", "route_shape",
+                          "workers", "connections", "offered_rate")
+                if factors.get(k, "") != ""
             )
             samples = self.samples_dir / f"{cell.system}-{stem}-{int(time.time()*1000)}.txt"
 

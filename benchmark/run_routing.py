@@ -104,6 +104,30 @@ def design_large() -> list[Cell]:
     ]
 
 
+def design_large_cheap() -> list[Cell]:
+    """The ten thousand route cells that fit, repeated properly.
+
+    Split out after the first pass measured what the DFA arm's parameterised table costs
+    to hold at this size. Repeating a cell that does not fit in memory would spend hours
+    paging and would still produce no distribution, while the cells that do fit deserve
+    the same five repetitions as everything else. The cells left out are in `large` and
+    their outcome is recorded there.
+    """
+    cells = [
+        _cell(arm, 10000, shape, params=params, depth=5)
+        for shape in ("rest", "flat")
+        for params in (1, 0)
+        for arm in ("radix", "regex")
+    ]
+    cells += [_cell("dfa", 10000, shape, params=0, depth=5) for shape in ("rest", "flat")]
+    return cells
+
+
+def design_large_dfa() -> list[Cell]:
+    """Only the cells that may not fit, so a run that pages cannot spoil its neighbours."""
+    return [_cell("dfa", 10000, shape, params=1, depth=5) for shape in ("rest", "flat")]
+
+
 def design_smoke() -> list[Cell]:
     return [_cell(arm, 100, "rest", params=1, depth=5) for arm in ARMS]
 
@@ -113,6 +137,8 @@ DESIGNS = {
     "static": design_static,
     "depth": design_depth,
     "large": design_large,
+    "large-cheap": design_large_cheap,
+    "large-dfa": design_large_dfa,
     "smoke": design_smoke,
 }
 
