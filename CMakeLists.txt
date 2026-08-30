@@ -230,7 +230,7 @@ include(FetchContent)
 # against, and a rebuild that touched nothing fetched it. For a dissertation the
 # stronger reason is that a measurement has to be reproducible from the recorded
 # commit, and it is not if a dependency can change underneath that commit.
-set(COROUTE_URL_MATCHER_TAG "2220b61b962c2e4be9d48b3b2b6394fe0e7785b8" CACHE STRING
+set(COROUTE_URL_MATCHER_TAG "539170c26d82235584de0f6ef724d6a9f56a02a5" CACHE STRING
     "Git ref for the RegexMatcher dependency; set to a commit SHA to pin a measurement")
 
 # A shallow clone can only ask for a named ref on some servers, so it is turned off when
