@@ -52,6 +52,15 @@ namespace coroute
 		struct Http3Stats;
 	}  // namespace http3
 
+	namespace net
+	{
+		// Same reasoning. The classification window's deadline is an implementation
+		// detail of the accept path, and only the two coroutines that share the window
+		// name the type. io_context.hpp above already declares everything else in net
+		// that this header needs.
+		class Deadline;
+	}  // namespace net
+
 
 	// ============================================================================
 	// Middleware Types
@@ -297,10 +306,21 @@ namespace coroute
 		//
 		// Exists for one experiment: the cost of the demultiplexer is claimed to be
 		// undetectable, and claiming that requires an arm without it. With detection off
-		// every accepted connection is handed straight to the HTTP/1.1 path, so the
-		// endpoint serves cleartext HTTP/1.1 and nothing else. TLS, HTTP/2 over TLS and
-		// prior-knowledge h2c all stop working, which is the point: this is the
-		// before picture, not a supported configuration.
+		// the endpoint becomes a dedicated listener that already knows what is arriving,
+		// which is the arrangement every production server offers today and the one this
+		// is measured against.
+		//
+		// Which dedicated listener depends on enable_tls. Without a certificate it is a
+		// cleartext HTTP/1.1 listener and every accepted connection goes straight to the
+		// parser. With one it is nginx's `listen 443 ssl`: every accepted connection goes
+		// straight into the handshake, and ALPN still selects h2. What is gone in both
+		// cases is the octet read that decides between them, and the replaying wrapper
+		// that read makes necessary. Prior-knowledge h2c is gone too, since nothing looks
+		// for the preface.
+		//
+		// This is the before picture, not a supported configuration: a server started
+		// this way serves one transport, and choosing which one is the operator's job
+		// again rather than the first octet's.
 		//
 		// A runtime flag rather than a build option, deliberately. Build-to-build
 		// variation from code layout and link order is documented at 5 to 10 percent,
@@ -891,6 +911,22 @@ namespace coroute
 		// eleven exits. That is the same lesson as the awaiter race: when the ordinary
 		// use of an interface contains an easy mistake, the fix is the interface.
 		Task<std::optional<Detected>> detect_protocol(std::unique_ptr<net::Connection> conn);
+
+		// The TLS half of the above, without the part that decides it is the TLS half.
+		//
+		// Two callers, and the difference between them is the experiment. detect_protocol
+		// arrives having read one octet and found 0x16. serve_connection arrives, when
+		// detection is off and a certificate is configured, having read nothing: that is
+		// the dedicated TLS listener the demultiplexer is measured against.
+		//
+		// The deadline is the caller's. Opening a second one here would give a peer that
+		// stalls mid-handshake two windows rather than the one the design specifies.
+		//
+		// Taken by reference to a forward-declared type, so deadline.hpp stays out of
+		// this header: it is an implementation detail of the accept path and nothing
+		// that includes app.hpp needs it.
+		Task<std::optional<Detected>> tls_handshake(std::unique_ptr<net::Connection> conn,
+		                                            net::Deadline& deadline);
 
 		// The route-and-middleware dispatch used by every protocol.
 		//

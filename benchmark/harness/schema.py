@@ -34,7 +34,12 @@ from typing import Any, Iterator
 
 # 2 added the routing factors. Bumped rather than left alone because a reader of an
 # older file has to be able to tell that those columns are absent rather than null.
-SCHEMA_VERSION = 2
+#
+# 3 added the TLS arm: the per-connection request limit as a factor, and connection
+# establishment as an outcome in its own right. A file at version 2 or below has no
+# connect_ms column rather than an empty one, and every run in it is tls=False because
+# the harness could not produce anything else.
+SCHEMA_VERSION = 3
 
 
 @dataclass
@@ -76,6 +81,15 @@ class RunRecord:
     # figures are service time or response time, so it cannot be left implicit.
     offered_rate: float | None = None
     netem_profile: str = "none"  # none, or a named delay/loss/jitter profile
+    # Requests the server serves on one connection before closing it. Zero is unlimited,
+    # which is what every keep-alive run uses.
+    #
+    # A factor rather than a constant because it decides what the run is a measurement
+    # of. Classification happens once per connection, so at zero its cost is divided by
+    # every request the connection went on to serve and cannot be seen. At one, every
+    # request pays for a fresh accept and a fresh classification, and the difference
+    # between the arms is no longer divided by anything.
+    max_requests_per_connection: int = 0
 
     # --- Routing factors ----------------------------------------------------
     # Fields rather than free text in notes, on the same rule as everything above: a
@@ -101,6 +115,25 @@ class RunRecord:
     latency_ms: dict[str, float] = field(default_factory=dict)
     latency_histogram: str | None = None   # HdrHistogram, base64
     raw_samples_path: str | None = None
+
+    # --- Connection establishment -------------------------------------------
+    # Kept apart from latency_ms because it answers the question latency_ms cannot.
+    # Request latency across a keep-alive connection divides the per-connection cost of
+    # classification by every request that connection served; this divides it by
+    # nothing. On the TLS arm it includes the handshake, which is the dominant term and
+    # is exactly what the classification octet has to be visible against.
+    #
+    # Empty on a run whose connections were all made during the warmup, which is the
+    # ordinary keep-alive case. connections_established says so rather than leaving an
+    # empty distribution to be read as a zero.
+    connect_ms: dict[str, float] = field(default_factory=dict)
+    connections_established: int = 0
+    handshake_failures: int = 0
+    # What was negotiated, read off the connection rather than assumed from the build.
+    # A record that says tls=True without saying which version and cipher describes a
+    # measurement nobody can reproduce.
+    tls_version: str = ""
+    tls_cipher: str = ""
 
     # --- QUIC ---------------------------------------------------------------
     # forwarded_in over received is the number that decides whether kernel-side

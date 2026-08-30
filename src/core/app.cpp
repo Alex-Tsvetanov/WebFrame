@@ -36,6 +36,62 @@ namespace coroute
 		};
 	}
 
+	Task<std::optional<App::Detected>> App::tls_handshake(std::unique_ptr<net::Connection> stream,
+	                                                     net::Deadline& deadline)
+	{
+		// Everything a TLS connection needs once it is known to be one, and nothing that
+		// decides it is one. Split out because two callers need it and only one of them
+		// classifies: detect_protocol arrives here having read an octet and seen 0x16,
+		// and serve_connection arrives here having read nothing at all, which is the
+		// dedicated listener this experiment measures against.
+		//
+		// The deadline is the caller's rather than a local. A second Deadline here would
+		// give a stalling peer two windows instead of one, and the whole reason the
+		// handshake sits inside the window is that a peer which opens with 0x16 and then
+		// says nothing is the same attack as one that says nothing at all.
+#ifdef COROUTE_HAS_TLS
+		if (!tls_ctx_)
+		{
+			// A TLS client reached a server with no certificate configured. Closing is
+			// the only honest answer: replying in cleartext would be unreadable to the
+			// peer.
+			stream->close();
+			co_return std::nullopt;
+		}
+
+		auto tls = net::TlsConnection::create(std::move(stream), *tls_ctx_, true);
+		if (!tls)
+		{
+			co_return std::nullopt;
+		}
+
+		std::unique_ptr<net::TlsConnection> tls_conn = std::move(*tls);
+		deadline.replace([c = tls_conn.get()] { c->close(); });
+
+		auto handshake = co_await tls_conn->handshake();
+		if (!handshake)
+		{
+			co_return std::nullopt;
+		}
+
+#ifdef COROUTE_HAS_HTTP2
+		if (http2_enabled_)
+		{
+			auto proto = tls_conn->negotiated_protocol();
+			if (proto && *proto == "h2")
+			{
+				co_return Detected{std::move(tls_conn), true};
+			}
+		}
+#endif
+		co_return Detected{std::move(tls_conn), false};
+#else
+		(void)deadline;
+		stream->close();
+		co_return std::nullopt;
+#endif
+	}
+
 	Task<std::optional<App::Detected>> App::detect_protocol(std::unique_ptr<net::Connection> conn)
 	{
 		// The window this deadline covers is exactly this coroutine: from the first read
@@ -69,51 +125,9 @@ namespace coroute
 		switch (net::classify(prefix->bytes))
 		{
 			case net::WireProtocol::Tls:
-			{
-#ifdef COROUTE_HAS_TLS
-				if (!tls_ctx_)
-				{
-					// A TLS client reached a server with no certificate configured.
-					// Closing is the only honest answer: replying in cleartext would
-					// be unreadable to the peer.
-					stream->close();
-					co_return std::nullopt;
-				}
-
-				auto tls = net::TlsConnection::create(std::move(stream), *tls_ctx_, true);
-				if (!tls)
-				{
-					co_return std::nullopt;
-				}
-
-				std::unique_ptr<net::TlsConnection> tls_conn = std::move(*tls);
-
-				// The handshake is inside the window on purpose: a peer that opens with
-				// 0x16 and then stalls is the same attack as one that says nothing.
-				deadline.replace([c = tls_conn.get()] { c->close(); });
-
-				auto handshake = co_await tls_conn->handshake();
-				if (!handshake)
-				{
-					co_return std::nullopt;
-				}
-
-#ifdef COROUTE_HAS_HTTP2
-				if (http2_enabled_)
-				{
-					auto proto = tls_conn->negotiated_protocol();
-					if (proto && *proto == "h2")
-					{
-						co_return Detected{std::move(tls_conn), true};
-					}
-				}
-#endif
-				co_return Detected{std::move(tls_conn), false};
-#else
-				stream->close();
-				co_return std::nullopt;
-#endif
-			}
+				// The handshake is inside the window on purpose, and the window is the
+				// caller's, so it is passed rather than reopened.
+				co_return co_await tls_handshake(std::move(stream), deadline);
 
 			case net::WireProtocol::Cleartext:
 			{
@@ -158,9 +172,52 @@ namespace coroute
 		// here as well would double-count it for the length of the classification.
 		if (!protocol_detection_)
 		{
-			// The arm with the demultiplexer switched off. Straight to HTTP/1.1 without
-			// reading a byte to decide, which is what the cost of classification is
-			// measured against. See App::enable_protocol_detection.
+			// The arm with the demultiplexer switched off: a listener that already knows
+			// what is coming, which is what the cost of classification is measured
+			// against. See App::enable_protocol_detection.
+			//
+			// Which listener that is depends on whether a certificate was configured,
+			// and the two are the two halves of the claim. Without one it is a cleartext
+			// HTTP/1.1 listener and the connection goes straight to the parser. With one
+			// it is nginx's `listen 443 ssl`: straight into the handshake, no octet read
+			// to decide, no replaying wrapper over the stream afterwards.
+			//
+			// ALPN still runs in the TLS arm. The factor under test is first-octet
+			// classification, not protocol negotiation, and a dedicated TLS listener in
+			// production negotiates h2 the same way. Removing it here would put a second
+			// difference into a two-arm comparison.
+#ifdef COROUTE_HAS_TLS
+			if (tls_ctx_)
+			{
+				// The deadline is scoped to the handshake and nothing after it. Leaving
+				// it alive across handle_connection would arm a timer that closes an
+				// established connection at the handshake limit, which on a keep-alive
+				// run is a working connection dropped after thirty seconds. In
+				// detect_protocol the coroutine returning is what disarms it; here the
+				// dispatch happens in the same frame, so the scope has to be explicit.
+				std::optional<Detected> direct;
+				{
+					net::Deadline deadline(*io_ctx_, handshake_timeout_,
+					                       [c = conn.get()] { c->close(); });
+					direct = co_await tls_handshake(std::move(conn), deadline);
+				}
+				if (!direct)
+				{
+					co_return;
+				}
+#ifdef COROUTE_HAS_HTTP2
+				if (direct->http2)
+				{
+					auto h2 = std::make_shared<http2::Http2Connection>(std::move(direct->conn));
+					h2->set_handler(make_request_handler());
+					co_await handle_http2_connection(std::move(h2));
+					co_return;
+				}
+#endif
+				co_await handle_connection(std::move(direct->conn));
+				co_return;
+			}
+#endif
 			co_await handle_connection(std::move(conn));
 			co_return;
 		}

@@ -164,6 +164,26 @@ def check_run(record: dict[str, Any]) -> Verdict:
             "these are absent responses and the non-2xx rate does not count them"
         )
 
+    # A handshake that failed is a connection that never carried a request, and unlike a
+    # socket error it can fail silently in the client's favour: the connections that did
+    # complete are the fast ones, so a run where a tenth of the handshakes were refused
+    # reports a clean and flattering establishment distribution over the survivors.
+    handshake_failures = record.get("handshake_failures")
+    if handshake_failures:
+        verdict.reasons.append(
+            f"{handshake_failures} TLS handshakes failed during the run; "
+            "the establishment distribution is over the connections that survived"
+        )
+
+    # A run recorded as TLS whose generator never negotiated anything did not measure
+    # TLS. This is the check for the failure the whole arm exists to avoid: a client
+    # that quietly connected in cleartext while the record said otherwise.
+    if record.get("tls") and not record.get("tls_version"):
+        verdict.reasons.append(
+            "record claims tls but the generator reported no negotiated version; "
+            "nothing establishes that this run was encrypted"
+        )
+
     # Isolation asked for and not granted. The comparison itself survives an unpinned
     # host, since both arms meet the same scheduler, but the run must not be recorded as
     # though it had the isolation the design specifies. A campaign on a platform with no

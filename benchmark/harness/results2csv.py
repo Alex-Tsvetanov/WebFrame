@@ -76,6 +76,23 @@ def _rows_for(records: list[schema.RunRecord], vary: str,
                 row[f"{pct}_lo{tag}"] = round(low, 3) if low is not None else ""
                 row[f"{pct}_hi{tag}"] = round(high, 3) if high is not None else ""
 
+            # Connection establishment, emitted only where there is any. A keep-alive
+            # run makes every connection during the warmup and contributes no samples,
+            # so on those tables these columns are absent rather than zero: a zero would
+            # read as an establishment that cost nothing.
+            for pct in ("p50", "p90", "p99"):
+                vals = [r.connect_ms[pct] for r in members if pct in r.connect_ms]
+                if not vals:
+                    continue
+                point, low, high = _interval(vals)
+                row[f"c{pct}{tag}"] = round(point, 3)
+                row[f"c{pct}_lo{tag}"] = round(low, 3) if low is not None else ""
+                row[f"c{pct}_hi{tag}"] = round(high, 3) if high is not None else ""
+            established = [r.connections_established for r in members
+                           if r.connections_established]
+            if established:
+                row[f"est{tag}"] = round(_interval([float(v) for v in established])[0])
+
             # The upper mode of a bimodal p99.9 is counted rather than averaged. A
             # median over a two-mode distribution names whichever mode holds more than
             # half the runs and says nothing about the other one.
@@ -129,17 +146,24 @@ def _difference(selected: list[schema.RunRecord], vary: str, value: Any,
 
     base, test = arm(baseline), arm(other)
     out: dict[str, Any] = {}
-    for pct in ("p50", "p99", "p999"):
-        a = [r.latency_ms[pct] for r in base if pct in r.latency_ms]
-        b = [r.latency_ms[pct] for r in test if pct in r.latency_ms]
-        if len(a) < 3 or len(b) < 3:
-            continue
-        c = stats.compare(a, b)
-        out[f"d_{pct}"] = round(c.interval.point, 4)
-        out[f"d_{pct}_lo"] = round(c.interval.low, 4)
-        out[f"d_{pct}_hi"] = round(c.interval.high, 4)
-        out[f"d_{pct}_pct"] = round(100.0 * c.relative, 2)
-        out[f"d_{pct}_reportable"] = int(c.reportable)
+
+    # Request latency and connection establishment, differenced the same way and named
+    # apart. On a churn design the second is the result and the first is context: the
+    # per-connection cost of classification is divided by one there rather than by every
+    # request a keep-alive connection went on to serve.
+    for prefix, source in (("", "latency_ms"), ("c", "connect_ms")):
+        for pct in ("p50", "p99", "p999"):
+            a = [getattr(r, source)[pct] for r in base if pct in getattr(r, source)]
+            b = [getattr(r, source)[pct] for r in test if pct in getattr(r, source)]
+            if len(a) < 3 or len(b) < 3:
+                continue
+            c = stats.compare(a, b)
+            key = f"d_{prefix}{pct}"
+            out[key] = round(c.interval.point, 4)
+            out[f"{key}_lo"] = round(c.interval.low, 4)
+            out[f"{key}_hi"] = round(c.interval.high, 4)
+            out[f"{key}_pct"] = round(100.0 * c.relative, 2)
+            out[f"{key}_reportable"] = int(c.reportable)
     return out
 
 
@@ -186,22 +210,63 @@ def main(argv: Sequence[str]) -> int:
     base_backlog = 1024
     base_rate = 40000.0
 
+    # Cleartext and keep-alive, spelled out rather than left implicit. Both were the only
+    # thing the harness could produce when these tables were written, so nothing was
+    # averaging over them; now that it can produce the alternatives, a table that did not
+    # say so would silently mix two transports the first time both appear in one file.
+    cleartext = {"tls": False, "max_requests_per_connection": 0}
+    keep_alive = {"max_requests_per_connection": 0}
+    churn = {"max_requests_per_connection": 1}
+
     tables: dict[str, tuple[str, dict[str, Any], str | None]] = {
         # The headline: both arms of the demultiplexing comparison across offered load.
         "h1_demux": ("offered_rate",
-                     {"workers": base_workers, "payload_bytes": base_payload,
+                     {**cleartext, "workers": base_workers, "payload_bytes": base_payload,
                       "backlog": base_backlog},
                      "protocol_detection"),
         # One factor at a time around the baseline, which is what the design sweeps.
         "workers": ("workers",
-                    {"offered_rate": base_rate, "payload_bytes": base_payload,
+                    {**cleartext, "offered_rate": base_rate, "payload_bytes": base_payload,
                      "backlog": base_backlog, "protocol_detection": True}, None),
         "payload": ("payload_bytes",
-                    {"offered_rate": base_rate, "workers": base_workers,
+                    {**cleartext, "offered_rate": base_rate, "workers": base_workers,
                      "backlog": base_backlog, "protocol_detection": True}, None),
         "backlog": ("backlog",
-                    {"offered_rate": base_rate, "workers": base_workers,
+                    {**cleartext, "offered_rate": base_rate, "workers": base_workers,
                      "payload_bytes": base_payload, "protocol_detection": True}, None),
+
+        # The same headline with TLS in the path, which is the half of the claim the
+        # cleartext table cannot speak to.
+        "tls_demux": ("offered_rate",
+                      {**keep_alive, "tls": True, "workers": base_workers,
+                       "payload_bytes": base_payload, "backlog": base_backlog},
+                      "protocol_detection"),
+        # What the transport itself costs, with classification held on. Not a claim of
+        # the paper, and the number a reader needs in order to read the two tables above
+        # against each other.
+        "transport": ("offered_rate",
+                      {**keep_alive, "workers": base_workers, "payload_bytes": base_payload,
+                       "backlog": base_backlog, "protocol_detection": True},
+                      "tls"),
+
+        # Establishment, where the per-connection cost is divided by one. The columns
+        # that matter in these two are the c-prefixed ones.
+        "churn_demux": ("offered_rate",
+                        {**churn, "tls": True, "workers": base_workers,
+                         "payload_bytes": base_payload, "backlog": base_backlog},
+                        "protocol_detection"),
+        "churn_demux_cleartext": ("offered_rate",
+                                  {**churn, "tls": False, "workers": base_workers,
+                                   "payload_bytes": base_payload, "backlog": base_backlog},
+                                  "protocol_detection"),
+        # What a handshake costs an establishment, with classification held on. This is
+        # the denominator the churn tables have to be read against: if the handshake is
+        # two orders of magnitude larger than any difference between the arms, that is
+        # the explanation of the null result rather than a restatement of it.
+        "churn_transport": ("offered_rate",
+                            {**churn, "workers": base_workers, "payload_bytes": base_payload,
+                             "backlog": base_backlog, "protocol_detection": True},
+                            "tls"),
     }
 
     written = 0

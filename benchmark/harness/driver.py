@@ -50,6 +50,14 @@ class GeneratorResult:
     latency_ms: dict[str, float] = field(default_factory=dict)
     latency_histogram: str | None = None
     raw_samples_path: str | None = None
+    # Connection establishment, which on the TLS arm includes the handshake. Separate
+    # from latency_ms because a keep-alive run divides the per-connection cost by every
+    # request the connection served and this does not.
+    connect_ms: dict[str, float] = field(default_factory=dict)
+    connections_established: int = 0
+    handshake_failures: int = 0
+    tls_version: str = ""
+    tls_cipher: str = ""
     # The saturation check for a closed loop. A generator at full CPU is measuring
     # itself. It says nothing about an open loop, which paces by spinning.
     cpu_fraction: float | None = None
@@ -149,6 +157,7 @@ def run_one(
         duration_s=duration_s,
         offered_rate=factors.get("offered_rate"),
         netem_profile=str(factors.get("netem_profile", "none")),
+        max_requests_per_connection=int(factors.get("max_requests_per_connection", 0)),
         router_arm=str(factors.get("router_arm", "")),
         route_count=int(factors.get("route_count", 0)),
         route_shape=str(factors.get("route_shape", "")),
@@ -187,6 +196,11 @@ def run_one(
         record.latency_ms = dict(result.latency_ms)
         record.latency_histogram = result.latency_histogram
         record.raw_samples_path = result.raw_samples_path
+        record.connect_ms = dict(result.connect_ms)
+        record.connections_established = result.connections_established
+        record.handshake_failures = result.handshake_failures
+        record.tls_version = result.tls_version
+        record.tls_cipher = result.tls_cipher
         record.generator_cpu_fraction = result.cpu_fraction
         record.generator_pacing_p99_us = result.pacing_p99_us
         record.generator_achieved_share = result.achieved_share

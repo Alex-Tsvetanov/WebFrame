@@ -92,6 +92,32 @@ if(COROUTE_BUILD_EXAMPLES)
                     ${_demux_args})
         set_tests_properties(protocol_demux PROPERTIES TIMEOUT 60)
         unset(_demux_args)
+
+        # The claim itself, asserted: one descriptor answering both transports, and the
+        # two dedicated listeners it is measured against refusing the other one. Only
+        # registered where there is a TLS build to assert it about, and it makes its own
+        # certificate so a fresh checkout needs no setup step.
+        if(COROUTE_ENABLE_TLS)
+            set(_tls_certs "${CMAKE_CURRENT_BINARY_DIR}/tls_demux_certs")
+            add_test(NAME tls_demux_cert
+                COMMAND ${Python3_EXECUTABLE} -m benchmark.make_cert --out ${_tls_certs})
+            set_tests_properties(tls_demux_cert PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 60
+                FIXTURES_SETUP tls_demux_fixture)
+
+            add_test(NAME tls_demux
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/integration/tls_demux.py
+                        $<TARGET_FILE:benchmark_server>
+                        --cert ${_tls_certs}/bench.crt
+                        --key ${_tls_certs}/bench.key
+                        --port 18120)
+            set_tests_properties(tls_demux PROPERTIES
+                TIMEOUT 90
+                FIXTURES_REQUIRED tls_demux_fixture)
+            unset(_tls_certs)
+        endif()
     else()
         message(STATUS "Python3 not found: skipping the protocol_demux integration test")
     endif()

@@ -13,4 +13,21 @@ else()
     target_link_libraries(loadgen PRIVATE Threads::Threads)
 endif()
 
+# OpenSSL is optional here and required nowhere else in this directory. The generator
+# without it runs every cleartext campaign; --tls on that build refuses at startup
+# rather than connecting in cleartext and letting the record claim otherwise.
+#
+# Found independently of COROUTE_ENABLE_TLS on purpose. This is the client, and the
+# rule that the client must not share the server's library is what makes a difference
+# between them attributable to the server. A shared build option would be one more way
+# for the two to be wrong together.
+find_package(OpenSSL)
+if(OpenSSL_FOUND)
+    target_link_libraries(loadgen PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(loadgen PRIVATE COROUTE_LOADGEN_TLS)
+    message(STATUS "loadgen: TLS enabled (OpenSSL ${OPENSSL_VERSION})")
+else()
+    message(STATUS "loadgen: TLS disabled (no OpenSSL); --tls will refuse to run")
+endif()
+
 set_target_properties(loadgen PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/benchmark")

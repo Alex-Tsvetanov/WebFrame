@@ -2,6 +2,33 @@
 
     python -m benchmark.run_campaign --design h1 --repetitions 7
 
+The TLS arm, in the order it has to be done
+-------------------------------------------
+
+    python -m benchmark.make_cert
+    python -m benchmark.run_campaign --design tls-smoke   --repetitions 1
+    python -m benchmark.run_campaign --design tls-ladder  --repetitions 1
+    python -m benchmark.run_campaign --design churn-ladder --repetitions 1
+
+The two ladders are not optional. TLS_OFFERED_RATES and CHURN_OFFERED_RATES below are
+this host's numbers, and on any other machine they are guesses: a generator that cannot
+keep to its own schedule is measuring itself, and validity.py will refuse the runs after
+the machine time has been spent rather than before.
+
+Then the campaigns that carry the claim:
+
+    --design transport   classification on and off, over cleartext and over TLS
+    --design churn       the same four arms with the server closing after one request
+
+churn is the one that can fail. Every other design serves a hundred thousand requests
+over sixty-four connections, so one extra read and one comparison per connection are
+divided by every request that connection went on to serve, and a null result there was
+arithmetic before it was a measurement. churn divides by one.
+
+Add --wsl-distro and --wsl-loadgen to drive the load across a network interface instead
+of the loopback adapter. Both arrangements are worth having and they are not comparable
+with each other, so they go in separate result files.
+
 What this does that the previous script did not: a fresh server and a fresh generator
 for every run, a randomised order that differs per repetition, an environment
 fingerprint that stops the campaign if the machine changed underneath it, and a record
@@ -156,6 +183,135 @@ def design_windows_h1_deep() -> list[Cell]:
     ]
 
 
+# The TLS designs below share one baseline with the cleartext ones and differ from them
+# in the transport and in nothing else, which is the only way the two can be compared.
+def _base(**over) -> dict:
+    return {
+        **dict(
+            protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
+            connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
+            netem_profile="none", max_requests_per_connection=0,
+        ),
+        **over,
+    }
+
+
+# Lower than the cleartext ceiling, and by how much is not a guess: run the tls-ladder
+# design on any host before using these. A TLS record layer costs the generator work per
+# request that a cleartext socket does not, so the rate at which it stops keeping to its
+# own schedule is lower, and validity.py refuses runs above it.
+TLS_OFFERED_RATES = (5_000, 10_000, 20_000, 30_000, 40_000)
+
+# The churn arm offers whole connections rather than requests on existing ones, and each
+# one costs a TCP handshake, an accept and on the TLS arm a full key exchange. Two orders
+# of magnitude below the keep-alive rates because that is what a connection costs.
+#
+# Set from a calibration run rather than guessed: offering a thousand TLS establishments
+# a second on this host delivered about 370 of them, with sixty-four connection slots all
+# occupied and a median establishment of 82 ms, so the ceiling is somewhere below four
+# hundred. These sit under that. Confirm with churn-ladder before trusting them, and
+# especially before trusting them on another machine.
+CHURN_OFFERED_RATES = (50, 100, 200, 300)
+
+
+def design_transport() -> list[Cell]:
+    """The headline comparison, with the transport in it.
+
+    Four arms rather than two: classification on and off, over cleartext and over TLS.
+    The cleartext half repeats what the 250-run campaign already measured, and it is
+    repeated rather than cited because the two halves have to be comparable to each
+    other. A TLS number from this campaign against a cleartext number from that one
+    would differ in the transport, in the binary and in the week, and nothing in the
+    result could say which.
+
+    Rates are the TLS ceiling in both halves, again for comparability: running cleartext
+    at 70k and TLS at 40k would compare two arms at different loads.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=tls), protocol_detection=detect, offered_rate=rate)
+        for rate in TLS_OFFERED_RATES
+        for tls in (False, True)
+        for detect in (True, False)
+    ]
+
+
+def design_tls_deep() -> list[Cell]:
+    """The TLS half alone, for when the cleartext half is already in hand.
+
+    Same shape as h1-deep, so the two files can be analysed by the same code. Half the
+    machine time of the transport design, and it buys a TLS on-off comparison but not a
+    TLS-against-cleartext one.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=True), protocol_detection=detect, offered_rate=rate)
+        for rate in TLS_OFFERED_RATES
+        for detect in (True, False)
+    ]
+
+
+def design_churn() -> list[Cell]:
+    """Connection establishment, which is where the classification cost actually lives.
+
+    Every other design in this file serves a hundred thousand requests over sixty-four
+    connections, so the one extra read and one comparison per connection are divided by
+    every request that connection went on to serve. Whatever the difference between the
+    arms is, that division makes it invisible, and a null result obtained that way says
+    nothing: it was arithmetic before it was a measurement.
+
+    Here the server closes after one request, so every request pays for a fresh accept
+    and a fresh classification, and connect_ms measures that directly rather than
+    inferring it from throughput. This is the cell a reviewer will look for, and the one
+    where the hypothesis could actually fail.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=tls, max_requests_per_connection=1),
+                protocol_detection=detect, offered_rate=rate)
+        for rate in CHURN_OFFERED_RATES
+        for tls in (False, True)
+        for detect in (True, False)
+    ]
+
+
+def design_tls_ladder() -> list[Cell]:
+    """Where the generator stops keeping up with TLS in the path.
+
+    The cleartext ladder found this host's ceiling at about 75k. TLS moves it, because
+    the generator now encrypts every request and decrypts every response, and by how
+    much is a property of the machine and the OpenSSL build rather than something to
+    assume. Run this before any TLS campaign and put the top offered rate comfortably
+    below where generator_pacing_p99_us leaves the tens of microseconds.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=True), protocol_detection=True, offered_rate=rate)
+        for rate in range(5_000, 65_000, 5_000)
+    ]
+
+
+def design_churn_ladder() -> list[Cell]:
+    """The same question for whole connections rather than requests.
+
+    Establishment is bounded by something else entirely: the accept path, the TCP
+    handshake, and on this host a blocking connect in the generator. That ceiling is
+    lower than the request ceiling by two orders of magnitude and has to be found before
+    the churn design can claim a rate.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=True, max_requests_per_connection=1),
+                protocol_detection=True, offered_rate=rate)
+        for rate in (25, 50, 100, 200, 300, 400, 600, 800)
+    ]
+
+
+def design_tls_smoke() -> list[Cell]:
+    """Four cells: enough to prove the TLS rig works before spending a night on it."""
+    return [
+        Cell.of(system_name(), **_base(tls=True, max_requests_per_connection=churn),
+                protocol_detection=detect, offered_rate=1_000)
+        for churn in (0, 1)
+        for detect in (True, False)
+    ]
+
+
 def design_ladder() -> list[Cell]:
     """Where this host's generator stops keeping up, measured rather than assumed.
 
@@ -203,6 +359,15 @@ DESIGNS = {
     "smoke": design_smoke,
     "windows-h1": design_windows_h1,
     "windows-h1-deep": design_windows_h1_deep,
+    # The TLS half of the claim. transport and churn are the two that carry it: the
+    # first says what the demultiplexer costs a connection that is already up, the
+    # second what it costs to bring one up.
+    "transport": design_transport,
+    "tls-deep": design_tls_deep,
+    "churn": design_churn,
+    "tls-ladder": design_tls_ladder,
+    "churn-ladder": design_churn_ladder,
+    "tls-smoke": design_tls_smoke,
 }
 
 
@@ -222,6 +387,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--build", type=Path,
                     default=REPO / "build" / "windows-release",
                     help="build directory holding the server and the generator")
+    ap.add_argument("--cert", type=Path, default=REPO / "benchmark" / "certs" / "bench.crt",
+                    help="certificate for the TLS designs; make it with benchmark.make_cert")
+    ap.add_argument("--key", type=Path, default=REPO / "benchmark" / "certs" / "bench.key")
+
+    # Where the load comes from. The default is loopback and on one host, which is what
+    # the committed campaigns used and what keeps a new run comparable with them. The
+    # alternative is the arrangement run_routing_e2e uses: the generator inside WSL,
+    # reaching the server across the virtual switch, so a request passes through a
+    # network interface, a driver and an interrupt instead of being handed straight up
+    # the loopback adapter. Those fixed costs are what a per-connection difference has
+    # to be visible against, and removing them makes any difference look larger than it
+    # is.
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="the server's address as the generator sees it")
+    ap.add_argument("--wsl-distro", default=None,
+                    help="run the generator inside this WSL distribution, so the load "
+                         "crosses a network interface instead of the loopback adapter")
+    ap.add_argument("--wsl-loadgen", default=None,
+                    help="path to the Linux loadgen build, inside the distribution")
     args = ap.parse_args(argv)
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
@@ -230,12 +414,47 @@ def main(argv: list[str] | None = None) -> int:
         server_bin = server_bin.with_suffix("")
     if not gen_bin.exists():
         gen_bin = gen_bin.with_suffix("")
-    for binary in (server_bin, gen_bin):
-        if not binary.exists():
-            print(f"not built: {binary}", file=sys.stderr)
+    if not server_bin.exists():
+        print(f"not built: {server_bin}", file=sys.stderr)
+        return 2
+
+    gen_command: list[str] | None = None
+    if args.wsl_distro:
+        if not args.wsl_loadgen:
+            print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
             return 2
+        # A POSIX path handed to this script from an MSYS shell is rewritten to a
+        # Windows one before Python sees it, so /home/x/loadgen arrives as
+        # C:/Program Files/Git/home/x/loadgen and the generator quietly fails to start.
+        if not args.wsl_loadgen.startswith("/") or ":" in args.wsl_loadgen:
+            print(f"--wsl-loadgen {args.wsl_loadgen!r} is not a path inside the "
+                  f"distribution. If you are running from Git Bash or MSYS, it rewrote "
+                  f"the argument; prefix the command with MSYS_NO_PATHCONV=1 or run it "
+                  f"from PowerShell.", file=sys.stderr)
+            return 2
+        gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
+    elif not gen_bin.exists():
+        print(f"not built: {gen_bin}", file=sys.stderr)
+        return 2
+
+    loopback = args.host.startswith("127.") or args.host in ("localhost", "::1")
+    if args.wsl_distro and loopback:
+        # The generator would reach the WSL virtual machine's own loopback, not the
+        # server, and every run would fail to connect. Caught here rather than as sixty
+        # identical connection failures.
+        print(f"--host {args.host} is loopback and the generator is in WSL, where that "
+              f"address is the distribution itself. Pass the address the server answers "
+              f"on as WSL sees it.", file=sys.stderr)
+        return 2
 
     env = environment.capture(repo=REPO, build_type="Release")
+    # Part of the record because two campaigns that differ only in this are not
+    # comparable, and nothing else in the environment would say so.
+    env["transport_path"] = {
+        "host": args.host,
+        "loopback": loopback,
+        "generator_location": f"wsl:{args.wsl_distro}" if args.wsl_distro else "host",
+    }
     args.results.parent.mkdir(parents=True, exist_ok=True)
 
     # Refuses to append to a campaign whose machine has changed. Mixing two populations
@@ -246,6 +465,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     cells = DESIGNS[args.design]()
+
+    # Checked before the campaign starts rather than when the first TLS cell comes up.
+    # The shuffle can put that cell an hour in, and an hour of machine time spent to
+    # discover a missing file is an hour nobody gets back.
+    wants_tls = any(cell.as_dict().get("tls") for cell in cells)
+    if wants_tls:
+        missing = [p for p in (args.cert, args.key) if not p.exists()]
+        if missing:
+            print(f"design {args.design} has TLS cells but {', '.join(str(m) for m in missing)} "
+                  f"{'do' if len(missing) > 1 else 'does'} not exist. "
+                  f"Run: python -m benchmark.make_cert", file=sys.stderr)
+            return 2
+
     schedule = plan(cells, repetitions=args.repetitions, seed=args.seed)
 
     print(f"design {args.design}: {len(cells)} cells x {args.repetitions} repetitions "
@@ -253,16 +485,27 @@ def main(argv: list[str] | None = None) -> int:
     print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}")
+    print(f"generator {'wsl:' + args.wsl_distro if args.wsl_distro else 'host'} -> "
+          f"{args.host}{'  (loopback)' if loopback else ''}")
+    if wants_tls:
+        print(f"tls certificate {args.cert}")
     print()
 
     generator = LoadgenGenerator(
         binary=gen_bin, port=args.port, threads=GENERATOR_THREADS,
-        warmup_s=args.warmup, affinity_mask=GENERATOR_AFFINITY, samples_dir=args.samples,
+        warmup_s=args.warmup,
+        # No mask when the generator is in the virtual machine. Its vCPUs are placed by
+        # the hypervisor and a mask over them would name cores that are not the host's,
+        # which the record would then claim as isolation it does not have.
+        affinity_mask=None if args.wsl_distro else GENERATOR_AFFINITY,
+        samples_dir=args.samples, host=args.host, command=gen_command,
+        translate_paths=bool(args.wsl_distro),
     )
 
     def server_factory(cell: Cell) -> CorouteServer:
         return CorouteServer(binary=server_bin, cell=cell, port=args.port,
-                             affinity_mask=SERVER_AFFINITY)
+                             affinity_mask=SERVER_AFFINITY,
+                             cert_file=args.cert, key_file=args.key)
 
     done = {"n": 0}
 
@@ -270,11 +513,18 @@ def main(argv: list[str] | None = None) -> int:
         done["n"] += 1
         mark = "ok " if record.accepted else "REJ"
         detail = "" if record.accepted else "  " + "; ".join(record.rejection_reasons)[:110]
+        # Establishment is shown only when there is any, which is the churn designs. On
+        # a keep-alive run every connection was made during the warmup and the column
+        # would be an empty field on every line.
+        conn = ""
+        if record.connections_established and record.connect_ms:
+            conn = (f" est={record.connections_established:>5d}"
+                    f" cp50={record.connect_ms.get('p50', 0):>7.3f}ms")
         print(f"[{done['n']:3d}/{len(schedule)}] {mark} "
               f"rate={record.offered_rate or 0:>6.0f} detect={record.protocol_detection:d} "
-              f"w={record.workers} pay={record.payload_bytes:<5d} "
+              f"tls={record.tls:d} w={record.workers} pay={record.payload_bytes:<5d} "
               f"rps={record.requests_per_second:>9.0f} "
-              f"p99={record.latency_ms.get('p99', 0):>7.3f}ms{detail}")
+              f"p99={record.latency_ms.get('p99', 0):>7.3f}ms{conn}{detail}")
 
     records = driver.run_campaign(
         schedule,

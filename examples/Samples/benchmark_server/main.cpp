@@ -43,7 +43,8 @@ namespace
 				  << "  --port N          listen port (default: 8080)\n"
 				  << "  --payload BYTES   response body size (default: 13, \"Hello, World!\")\n"
 				  << "  --backlog N       listen backlog (default: 1024)\n"
-				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
+				  << "  --no-detect       skip classification and serve one dedicated listener:\n"
+				  << "                    cleartext HTTP/1.1, or TLS when --tls is also given\n"
 				  << "  --handshake-ms N  limit on the classification window (default: 30000, 0 disables)\n"
 				  << "  --keep-alive-ms N idle limit on an established connection (default: 30000, 0 disables)\n"
 				  << "  --max-requests N  requests per connection before closing (default: 100, 0 unlimited)\n"
@@ -268,11 +269,12 @@ int main(int argc, char** argv)
 		std::cerr << "--http3 requires --tls CERT KEY (QUIC has no cleartext mode)\n";
 		return 2;
 	}
-	if (!detect && !cert_file.empty())
-	{
-		std::cerr << "--no-detect serves cleartext HTTP/1.1 only and cannot be combined with --tls\n";
-		return 2;
-	}
+	// --no-detect with --tls used to be refused, on the reading that detection off meant
+	// cleartext only. That reading left the TLS half of the experiment with no control:
+	// the claim is that one descriptor serves TLS and cleartext at no cost against
+	// dedicated listeners, and the dedicated TLS listener was the one arrangement the
+	// binary could not produce. It can now, and it is what --no-detect --tls means:
+	// straight into the handshake on accept, the way `listen 443 ssl` does it.
 
 	// Built once at startup, not per request: the point of this server is to measure
 	// the framework, not std::string construction.

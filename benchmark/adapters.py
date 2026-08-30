@@ -209,6 +209,10 @@ class CorouteServer:
     cell: Cell
     port: int
     affinity_mask: str | None = None
+    # Where the rig's self-signed certificate lives. Only consulted when the cell asks
+    # for TLS, so a cleartext campaign runs on a machine that has none.
+    cert_file: Path | None = None
+    key_file: Path | None = None
     _proc: subprocess.Popen | None = None
     _cost: tuple[float | None, int | None] = (None, None)
 
@@ -221,12 +225,24 @@ class CorouteServer:
             "--workers", str(factors.get("workers", 4)),
             "--backlog", str(factors.get("backlog", 1024)),
             "--payload", str(factors.get("payload_bytes", 0)),
-            # Unlimited, because a limit forces a reconnect and turns a keep-alive
-            # measurement into a measurement of accept.
-            "--max-requests", "0",
+            # Zero is unlimited. A limit forces a reconnect and turns a keep-alive
+            # measurement into a measurement of accept, which for most cells is the
+            # wrong measurement and for the churn cells is the whole point.
+            "--max-requests", str(factors.get("max_requests_per_connection", 0)),
         ]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
+        if factors.get("tls"):
+            if self.cert_file is None or self.key_file is None:
+                # Refused rather than falling back to cleartext. A server started
+                # without its certificate would answer every request and the record
+                # would say tls=True, which is a full set of plausible numbers for an
+                # experiment that never happened.
+                raise RunFailed(
+                    "cell asks for tls but no certificate was configured; "
+                    "run benchmark/make_cert.py and pass --cert and --key"
+                )
+            args += ["--tls", str(self.cert_file), str(self.key_file)]
         # Only when the cell carries them, so a campaign that is not about routing
         # produces the same command line it always did and stays comparable with the
         # runs already on disk.
@@ -281,6 +297,25 @@ class CorouteServer:
 
 
 # ------------------------------------------------------------------- generator
+
+
+def _as_bool(value: Any) -> bool:
+    """A flag the generator wrote, whether it wrote it as JSON or as text.
+
+    The generator emits affinity_applied unquoted, so it parses as a JSON boolean, and
+    this used to compare it against the string "true". That is False for every run in
+    which the mask was in fact applied, and the isolation rule in validity.py then
+    refuses the run for not having the isolation it does have.
+
+    It had never fired: the affinity fields arrived in schema version 2, after the last
+    campaign that used a host-side generator with a mask, and the campaigns since drove
+    their load from a virtual machine and asked for no mask at all. It fired on the
+    first TLS run and rejected all four.
+
+    Both spellings are accepted rather than one being chosen, because a result file
+    written by either version of the generator has to keep meaning what it says.
+    """
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
 
 
 def to_wsl_path(path: Path) -> str:
@@ -347,6 +382,15 @@ class LoadgenGenerator:
             "--warmup", f"{self.warmup_s:g}",
             "--out", self._path(out),
         ]
+        if factors.get("tls"):
+            args.append("--tls")
+        # One request per connection, and the client rather than the server decides when
+        # the connection ends. Letting the server close at its own limit races the next
+        # request against the close, which the stack answers with a reset and the record
+        # counts as a socket error. The server is still configured with the same limit,
+        # so it agrees rather than being surprised.
+        if int(factors.get("max_requests_per_connection", 0)) == 1:
+            args.append("--reconnect")
         rate = factors.get("offered_rate")
         if rate:
             args += ["--rate", f"{float(rate):g}"]
@@ -413,6 +457,13 @@ class LoadgenGenerator:
         # use. Converted once, here, rather than in each consumer.
         latency_ms = {k: v / 1000.0 for k, v in lat.items() if k != "samples"}
 
+        # Same conversion, same reason. Absent from a generator built before the TLS
+        # arm existed, which is why it is a get with a default rather than an index: a
+        # campaign re-run against an older binary should fail its validity rules, not
+        # its JSON parsing.
+        conn = data.get("connect_us", {})
+        connect_ms = {k: v / 1000.0 for k, v in conn.items() if k != "samples"}
+
         offered = float(data.get("offered_rate", 0.0))
         achieved = float(data.get("rps", 0.0))
 
@@ -423,6 +474,11 @@ class LoadgenGenerator:
             requests_per_second=float(data.get("rps", 0.0)),
             bytes_per_second=float(data.get("bytes_read", 0)) / max(float(data.get("duration_s", 1)), 1e-9),
             latency_ms=latency_ms,
+            connect_ms=connect_ms,
+            connections_established=int(data.get("connections_established", 0)),
+            handshake_failures=int(data.get("handshake_failures", 0)),
+            tls_version=str(data.get("tls_version", "")),
+            tls_cipher=str(data.get("tls_cipher", "")),
             raw_samples_path=str(samples) if samples is not None else None,
             cpu_fraction=float(data.get("generator_cpu_fraction", -1.0)),
             # The open loop rules in validity.py are stated in terms of these two.
@@ -435,8 +491,8 @@ class LoadgenGenerator:
             # of its own, which is why the macOS design asks for neither.
             affinity_requested=(mask_hex if (mask_hex := data.get("affinity_mask"))
                                 and mask_hex.strip("0") else None),
-            affinity_applied=(data.get("affinity_applied") == "true"
-                              if "affinity_applied" in data else None),
+            affinity_applied=_as_bool(data.get("affinity_applied"))
+            if "affinity_applied" in data else None,
             argv=list(argv),
         )
         return result
