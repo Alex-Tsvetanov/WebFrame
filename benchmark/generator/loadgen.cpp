@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -82,6 +83,10 @@ namespace
 	{
 		std::string host = "127.0.0.1";
 		std::string path = "/";
+		// A file of request paths, one per line, cycled by every connection. Written by
+		// the server from the same generator it registered its routes with, so the
+		// client cannot end up asking for a table the server does not have.
+		std::string paths_file;
 		std::uint16_t port = 8080;
 		std::size_t connections = 64;
 		std::size_t threads = 4;
@@ -394,6 +399,7 @@ namespace
 		bool awaiting = false;         // a request is outstanding
 		Clock::time_point issued{};    // when this request was intended to be sent
 		bool connected = false;
+		std::size_t request_index = 0;  // which prebuilt request is in flight
 	};
 
 	// ------------------------------------------------------------------ worker
@@ -401,21 +407,21 @@ namespace
 	// One thread drives a slice of the connections with poll. Not one thread per
 	// connection: at a few hundred connections the scheduler noise from that would be
 	// larger than the differences being measured.
-	void worker(const Options& opt, const sockaddr_in& addr, std::size_t count, double rate_per_thread,
-	            Clock::time_point start, Clock::time_point warmup_end, Clock::time_point stop,
-	            ThreadResult& out)
+	void worker(const Options& opt, const sockaddr_in& addr, const std::vector<std::string>& requests,
+	            std::size_t first_index, std::size_t count, double rate_per_thread, Clock::time_point start,
+	            Clock::time_point warmup_end, Clock::time_point stop, ThreadResult& out)
 	{
-		const std::string request = "GET " + opt.path +
-		                            " HTTP/1.1\r\nHost: " + opt.host +
-		                            "\r\nConnection: keep-alive\r\nUser-Agent: coroute-loadgen\r\n\r\n";
-
 		std::vector<Conn> conns(count);
 		std::vector<poll_fd> pfds(count);
 
-		for (auto& c : conns)
+		for (std::size_t i = 0; i < conns.size(); ++i)
 		{
-			c.fd = connect_to(addr);
-			if (c.fd == kInvalidSocket)
+			// Each connection starts at a different point in the path list, so the
+			// connections do not march through the table in lockstep and hammer the
+			// same route at the same instant.
+			conns[i].request_index = (first_index + i) % requests.size();
+			conns[i].fd = connect_to(addr);
+			if (conns[i].fd == kInvalidSocket)
 			{
 				++out.socket_errors;
 			}
@@ -460,6 +466,9 @@ namespace
 				c.issued = intended;
 				c.sent_offset = 0;
 				c.awaiting = true;
+				// Advanced when the request is issued rather than when it completes, so
+				// a connection that stalls does not keep re-sending the same path.
+				c.request_index = (c.request_index + 1) % requests.size();
 			}
 
 			for (std::size_t i = 0; i < conns.size(); ++i)
@@ -472,7 +481,7 @@ namespace
 				{
 					continue;
 				}
-				if (c.awaiting && c.sent_offset < request.size())
+				if (c.awaiting && c.sent_offset < requests[c.request_index].size())
 				{
 					pfds[i].events |= POLLOUT;
 				}
@@ -539,6 +548,7 @@ namespace
 					continue;
 				}
 
+				const std::string& request = requests[c.request_index];
 				if ((pfds[i].revents & POLLOUT) != 0 && c.awaiting && c.sent_offset < request.size())
 				{
 					const int n = ::send(c.fd, request.data() + c.sent_offset,
@@ -712,6 +722,9 @@ namespace
 		    "  --host HOST         default 127.0.0.1\n"
 		    "  --port N            default 8080\n"
 		    "  --path PATH         default /\n"
+		    "  --paths FILE        request paths, one per line, drawn in turn instead of\n"
+		    "                      --path; for the routing experiment, where a single hot\n"
+		    "                      path would measure one route rather than a table\n"
 		    "  --connections N     total connections, default 64\n"
 		    "  --threads N         default 4\n"
 		    "  --duration S        measured seconds, default 10\n"
@@ -747,6 +760,7 @@ int main(int argc, char** argv)
 		if (a == "--host") opt.host = next("--host");
 		else if (a == "--port") opt.port = static_cast<std::uint16_t>(std::stoi(next("--port")));
 		else if (a == "--path") opt.path = next("--path");
+		else if (a == "--paths") opt.paths_file = next("--paths");
 		else if (a == "--connections") opt.connections = static_cast<std::size_t>(std::stoul(next("--connections")));
 		else if (a == "--threads") opt.threads = static_cast<std::size_t>(std::stoul(next("--threads")));
 		else if (a == "--duration") opt.duration_s = std::stod(next("--duration"));
@@ -795,6 +809,45 @@ int main(int argc, char** argv)
 		             static_cast<unsigned long long>(opt.affinity_mask));
 	}
 
+	// Every request built once, before the clock starts. Formatting a request inside
+	// the send loop would put string construction in the pacing path, and an open loop
+	// that is late because it was building a string reports that lateness as latency.
+	std::vector<std::string> requests;
+	{
+		std::vector<std::string> paths;
+		if (!opt.paths_file.empty())
+		{
+			std::ifstream in(opt.paths_file);
+			if (!in)
+			{
+				std::fprintf(stderr, "could not read --paths %s\n", opt.paths_file.c_str());
+				return 2;
+			}
+			std::string line;
+			while (std::getline(in, line))
+			{
+				if (!line.empty() && line.back() == '\r') line.pop_back();
+				if (!line.empty()) paths.push_back(line);
+			}
+			if (paths.empty())
+			{
+				std::fprintf(stderr, "--paths %s held no paths\n", opt.paths_file.c_str());
+				return 2;
+			}
+		}
+		else
+		{
+			paths.push_back(opt.path);
+		}
+
+		requests.reserve(paths.size());
+		for (const auto& p : paths)
+		{
+			requests.push_back("GET " + p + " HTTP/1.1\r\nHost: " + opt.host +
+			                   "\r\nConnection: keep-alive\r\nUser-Agent: coroute-loadgen\r\n\r\n");
+		}
+	}
+
 	const auto start = Clock::now();
 	const auto warmup_end = start + std::chrono::duration_cast<Clock::duration>(
 	                                    std::chrono::duration<double>(opt.warmup_s));
@@ -810,12 +863,14 @@ int main(int argc, char** argv)
 	std::size_t remainder = opt.connections % opt.threads;
 	const double rate_per_thread = opt.rate > 0.0 ? opt.rate / static_cast<double>(opt.threads) : 0.0;
 
+	std::size_t next_start = 0;
 	for (std::size_t t = 0; t < opt.threads; ++t)
 	{
 		const std::size_t mine = per_thread + (remainder > 0 ? 1 : 0);
 		if (remainder > 0) --remainder;
-		pool.emplace_back(worker, std::cref(opt), std::cref(addr), mine, rate_per_thread, start, warmup_end,
-		                  stop, std::ref(results[t]));
+		pool.emplace_back(worker, std::cref(opt), std::cref(addr), std::cref(requests), next_start, mine,
+		                  rate_per_thread, start, warmup_end, stop, std::ref(results[t]));
+		next_start += mine;
 	}
 	// Sampled across the measured window only. The first version sampled before the
 	// warmup and divided by the post-warmup wall time, which reported more CPU than
@@ -889,7 +944,13 @@ int main(int argc, char** argv)
 		json += name;
 		json += "\": ";
 		if (quote) json += '"';
-		json += value;
+		// Escaped, because one of these fields is a Windows path and a backslash in a
+		// JSON string is not a backslash. The record is only useful if it parses.
+		for (const char c : value)
+		{
+			if (quote && (c == '\\' || c == '"')) json += '\\';
+			json += c;
+		}
 		if (quote) json += '"';
 		json += ",\n";
 	};
@@ -922,6 +983,8 @@ int main(int argc, char** argv)
 	field_s("host", opt.host);
 	field_u("port", opt.port);
 	field_s("path", opt.path);
+	field_s("paths_file", opt.paths_file);
+	field_u("distinct_paths", requests.size());
 	field_u("connections", opt.connections);
 	field_u("threads", opt.threads);
 	field_u("usable_cores", usable_cores);

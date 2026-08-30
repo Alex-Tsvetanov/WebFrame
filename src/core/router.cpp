@@ -1,8 +1,100 @@
 #include "coroute/core/router.hpp"
 #include <sstream>
+#include <stdexcept>
 
 namespace coroute
 {
+
+	// ============================================================================
+	// Router backend selection
+	// ============================================================================
+
+#ifdef COROUTE_ROUTER_ARMS
+	// Defined in router_arms.cpp, which is the only translation unit that sees Crow and
+	// <regex>. Declared here rather than in a header so nothing else can reach them.
+	std::shared_ptr<RouterArms> make_router_arms();
+	void router_arms_add(RouterArms&, RouterBackend, HttpMethod, std::string_view, size_t);
+	void router_arms_finalise(RouterArms&, RouterBackend);
+	size_t router_arms_match(const RouterArms&, RouterBackend, HttpMethod, std::string_view,
+	                         std::vector<std::string>&);
+#endif
+
+	const char* router_backend_name(RouterBackend backend) noexcept
+	{
+		switch (backend)
+		{
+			case RouterBackend::Radix:
+				return "radix";
+			case RouterBackend::Regex:
+				return "regex";
+			case RouterBackend::Dfa:
+			default:
+				return "dfa";
+		}
+	}
+
+	bool parse_router_backend(std::string_view text, RouterBackend& out) noexcept
+	{
+		if (text == "dfa")
+		{
+			out = RouterBackend::Dfa;
+			return true;
+		}
+		if (text == "radix")
+		{
+			out = RouterBackend::Radix;
+			return true;
+		}
+		if (text == "regex")
+		{
+			out = RouterBackend::Regex;
+			return true;
+		}
+		return false;
+	}
+
+	bool Router::arms_available() noexcept
+	{
+#ifdef COROUTE_ROUTER_ARMS
+		return true;
+#else
+		return false;
+#endif
+	}
+
+	void Router::backend(RouterBackend backend)
+	{
+		if (!routes_.empty() || !view_routes_.empty())
+		{
+			throw std::logic_error("Router::backend must be called before any route is added");
+		}
+		if (backend == RouterBackend::Dfa)
+		{
+			backend_ = backend;
+			arms_.reset();
+			return;
+		}
+#ifdef COROUTE_ROUTER_ARMS
+		backend_ = backend;
+		arms_ = make_router_arms();
+#else
+		(void)backend;
+		throw std::logic_error(
+			"this binary was built without COROUTE_ROUTER_ARMS; only the dfa backend exists");
+#endif
+	}
+
+	void Router::finalise()
+	{
+		if (arms_finalised_) return;
+		arms_finalised_ = true;
+#ifdef COROUTE_ROUTER_ARMS
+		if (backend_ != RouterBackend::Dfa && arms_)
+		{
+			router_arms_finalise(*arms_, backend_);
+		}
+#endif
+	}
 
 	// ============================================================================
 	// Router Implementation - DFA-based matching via url-matcher
@@ -138,18 +230,51 @@ namespace coroute
 
 		// Store route info
 		size_t route_id = routes_.size();
+		arms_finalised_ = false;
+
+#ifdef COROUTE_ROUTER_ARMS
+		if (backend_ != RouterBackend::Dfa && arms_)
+		{
+			router_arms_add(*arms_, backend_, method, pattern, route_id);
+		}
+#endif
+
 		routes_.push_back(RouteInfo{.pattern = std::move(pattern),
 		                            .handler = std::move(handler),
 		                            .method = method,
 		                            .param_names = std::move(param_names)});
 
-		// Add to the appropriate matcher
-		get_matcher_for(method).add_regex(matcher_pattern, route_id);
+		// Add to the appropriate matcher. Built for the Dfa backend only: on the other
+		// arms this is the structure under comparison and paying to build it would
+		// charge them for work they do not do.
+		if (backend_ == RouterBackend::Dfa)
+		{
+			get_matcher_for(method).add_regex(matcher_pattern, route_id);
+		}
 	}
 
 	Router::MatchResult Router::match(HttpMethod method, std::string_view path)
 	{
 		MatchResult result;
+
+#ifdef COROUTE_ROUTER_ARMS
+		if (backend_ != RouterBackend::Dfa && arms_)
+		{
+			// No deferred construction here. finalise() does it, once, before the
+			// router is shared; a lazy build on first lookup raced two workers into
+			// the same half-built tree and took the server down with it.
+			const size_t route_id = router_arms_match(*arms_, backend_, method, path, result.params);
+			if (route_id < routes_.size())
+			{
+				result.handler = &routes_[route_id].handler;
+			}
+			else
+			{
+				result.params.clear();
+			}
+			return result;
+		}
+#endif
 
 		// Use url-matcher's DFA-based matching with group capture.
 		// match_with_groups takes its argument by value but only calls std::cbegin/cend

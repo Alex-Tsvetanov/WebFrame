@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -61,6 +62,35 @@ namespace coroute
 	};
 
 	// ============================================================================
+	// Router backend - which matching structure dispatch uses
+	// ============================================================================
+
+	/// The structure the router dispatches with.
+	///
+	/// A runtime choice rather than a build option, and deliberately so. Build-to-build
+	/// variation from code layout and link order is documented at 5 to 10 percent, well
+	/// above the 1 to 2 percent run-to-run noise on a controlled machine, so two
+	/// separately compiled routers cannot be compared at the resolution the routing
+	/// experiment needs. Every arm has to come out of one binary.
+	///
+	/// Only Dfa exists unless the build defines COROUTE_ROUTER_ARMS. The alternatives
+	/// pull in dependencies a framework should not carry for its own sake, so they are
+	/// compiled in for the experiment and left out otherwise.
+	enum class RouterBackend
+	{
+		Dfa,    ///< matcher::RegexMatcher, the framework's own router
+		Radix,  ///< crow::Trie, the compressed prefix tree Crow dispatches with
+		Regex,  ///< std::regex tried in registration order, the naive baseline
+	};
+
+	const char* router_backend_name(RouterBackend backend) noexcept;
+	bool parse_router_backend(std::string_view text, RouterBackend& out) noexcept;
+
+	/// Holds whichever alternative structure the backend selected. Defined only in the
+	/// arms translation unit, so this header stays free of its dependencies.
+	struct RouterArms;
+
+	// ============================================================================
 	// Router - Route collection and matching using DFA-based RegexMatcher
 	// ============================================================================
 
@@ -85,8 +115,43 @@ namespace coroute
 		// View route matcher (GET only)
 		matcher::RegexMatcher<size_t> view_matcher_;
 
+		// Which structure match() dispatches with, and the structure itself when it is
+		// not the default. Null for Dfa, which needs nothing beyond the matchers above.
+		RouterBackend backend_ = RouterBackend::Dfa;
+		std::shared_ptr<RouterArms> arms_;
+		bool arms_finalised_ = false;
+
 	public:
+		// Defaulted still: arms_ is a shared_ptr, whose deleter is captured in the arms
+		// translation unit where RouterArms is complete, so this header does not need
+		// the definition to destroy one.
 		Router() = default;
+
+		/// Selects the dispatch structure. Must be called before the first route is
+		/// added: the alternatives are built as routes arrive and cannot be filled in
+		/// afterwards from what the matchers already hold.
+		///
+		/// Throws if routes are already registered, or if the requested backend was not
+		/// compiled in. Refused rather than quietly falling back to the default, because
+		/// a run that silently measured the wrong arm would produce a full set of
+		/// plausible numbers for an experiment that never happened.
+		void backend(RouterBackend backend);
+
+		RouterBackend backend() const noexcept { return backend_; }
+
+		/// Completes any deferred construction the selected backend needs, so that no
+		/// lookup ever does it.
+		///
+		/// Crow compresses its tree in a pass of its own rather than in add(). Doing
+		/// that on the first lookup instead would be a data race the moment a server
+		/// has two workers, because both would reach an unbuilt tree at once, and it
+		/// would also charge one request for work belonging to startup. Idempotent, and
+		/// must be called before the router is handed to more than one thread. App::run
+		/// calls it; anything driving a Router directly has to.
+		void finalise();
+
+		/// Whether the alternative backends are present in this binary.
+		static bool arms_available() noexcept;
 
 		// Add route with explicit method
 		void add(HttpMethod method, std::string pattern, Handler handler);
@@ -143,6 +208,11 @@ namespace coroute
 
 		/// Get all registered view routes (for template validation)
 		const std::vector<ViewRouteInfo>& view_routes() const noexcept { return view_routes_; }
+
+		/// Get all registered routes. Exposed so a match can be checked against the
+		/// route it was supposed to find, which is how the routing experiment shows
+		/// its three arms agree before it compares their speed.
+		const std::vector<RouteInfo>& routes() const noexcept { return routes_; }
 
 	private:
 		// Get the matcher for a given HTTP method

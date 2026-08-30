@@ -12,7 +12,10 @@
 
 #include <coroute/coroute.hpp>
 
+#include "route_table.hpp"
+
 #include <charconv>
+#include <fstream>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -47,6 +50,17 @@ namespace
 				  << "  --affinity HEX    pin the server to a CPU mask, e.g. ff\n"
 				  << "  --tls CERT KEY    serve TLS on the same port\n"
 				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
+				  << "\n"
+				  << "Routing experiment:\n"
+				  << "  --router ARM      dfa (default), radix or regex; all three are in\n"
+				  << "                    this binary and the choice is made here, at runtime\n"
+				  << "  --routes N        register a generated table of N routes (default 0,\n"
+				  << "                    meaning just \"/\")\n"
+				  << "  --route-shape S   rest (shared /api/v1 prefix) or flat (default rest)\n"
+				  << "  --route-params 0|1  routes end in a {id} capture (default 1)\n"
+				  << "  --route-depth N   path segments per route (default 5)\n"
+				  << "  --dump-routes F   write the concrete request paths to F and exit, so the\n"
+				  << "                    load generator asks for exactly the table that was built\n"
 				  << "\n"
 				  << "The flags exist so that both sides of a comparison come from one binary.\n"
 				  << "--no-detect is the arm the demultiplexer is measured against, and --backlog\n"
@@ -84,6 +98,13 @@ int main(int argc, char** argv)
 	bool http3 = false;
 	std::string cert_file;
 	std::string key_file;
+
+	std::string router_arm = "dfa";
+	size_t route_count = 0;
+	std::string route_shape = "rest";
+	size_t route_params = 1;
+	size_t route_depth = 5;
+	std::string dump_routes;
 
 	// Legacy positional form: <workers> [port], kept so existing scripts still work.
 	int positional = 0;
@@ -185,6 +206,42 @@ int main(int argc, char** argv)
 		{
 			http3 = true;
 		}
+		else if (arg == "--router")
+		{
+			router_arm = std::string(value_for("--router"));
+		}
+		else if (arg == "--routes")
+		{
+			if (!parse_size(value_for("--routes"), route_count))
+			{
+				std::cerr << "invalid --routes\n";
+				return 2;
+			}
+		}
+		else if (arg == "--route-shape")
+		{
+			route_shape = std::string(value_for("--route-shape"));
+		}
+		else if (arg == "--route-params")
+		{
+			if (!parse_size(value_for("--route-params"), route_params) || route_params > 1)
+			{
+				std::cerr << "invalid --route-params (0 or 1)\n";
+				return 2;
+			}
+		}
+		else if (arg == "--route-depth")
+		{
+			if (!parse_size(value_for("--route-depth"), route_depth) || route_depth == 0)
+			{
+				std::cerr << "invalid --route-depth\n";
+				return 2;
+			}
+		}
+		else if (arg == "--dump-routes")
+		{
+			dump_routes = std::string(value_for("--dump-routes"));
+		}
 		else if (!arg.empty() && arg.front() == '-')
 		{
 			std::cerr << "unknown option: " << arg << "\n";
@@ -253,6 +310,66 @@ int main(int argc, char** argv)
 	app.handshake_timeout(std::chrono::milliseconds(handshake_ms));
 	app.keep_alive_timeout(std::chrono::milliseconds(keep_alive_ms));
 	app.max_requests_per_connection(max_requests);
+
+	// --------------------------------------------------------------- routing arm
+	//
+	// Selected here, at runtime, from this one binary. Refused rather than defaulted
+	// when the arm does not exist, on the same reasoning as --http3 above: a run that
+	// silently measured the DFA while its record said radix would produce a full set of
+	// plausible numbers for an experiment that never happened.
+	RouterBackend backend = RouterBackend::Dfa;
+	if (!parse_router_backend(router_arm, backend))
+	{
+		std::cerr << "unknown --router '" << router_arm << "' (dfa, radix or regex)\n";
+		return 2;
+	}
+	if (backend != RouterBackend::Dfa && !Router::arms_available())
+	{
+		std::cerr << "--router " << router_arm
+		          << " needs a build configured with COROUTE_ROUTER_ARMS=ON\n";
+		return 2;
+	}
+
+	routebench::TableSpec spec;
+	spec.count = route_count;
+	spec.params = route_params != 0;
+	spec.depth = route_depth;
+	if (!routebench::parse_shape(route_shape, spec.shape))
+	{
+		std::cerr << "unknown --route-shape '" << route_shape << "' (rest or flat)\n";
+		return 2;
+	}
+
+	const std::vector<routebench::Route> table = routebench::generate(spec);
+
+	// Written before the server starts so the load generator asks for exactly the
+	// table that was registered, rather than for one regenerated from the same
+	// parameters and trusted to match.
+	if (!dump_routes.empty())
+	{
+		std::ofstream out(dump_routes, std::ios::binary);
+		if (!out)
+		{
+			std::cerr << "could not write " << dump_routes << "\n";
+			return 2;
+		}
+		for (const auto& r : table) out << r.path << "\n";
+		return 0;
+	}
+
+	app.router().backend(backend);
+
+	const auto route_build_t0 = std::chrono::steady_clock::now();
+	for (const auto& r : table)
+	{
+		app.get(r.pattern, [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
+	}
+	const auto route_build_t1 = std::chrono::steady_clock::now();
+	const double route_build_ms =
+		std::chrono::duration<double, std::milli>(route_build_t1 - route_build_t0).count();
+
+	// "/" last so a table of zero routes still answers something, and so the readiness
+	// probe has a path that exists whatever the table is.
 	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
 
 #ifdef COROUTE_HAS_TLS
@@ -298,6 +415,9 @@ int main(int argc, char** argv)
 			  << ", max-requests " << max_requests
 			  << ", affinity " << (affinity_hex.empty() ? std::string("none") : affinity_hex)
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
+			  << ", router " << router_backend_name(backend) << ", routes " << table.size() << " "
+			  << routebench::shape_name(spec.shape) << " depth " << spec.depth << " params "
+			  << (spec.params ? "on" : "off") << ", route build " << route_build_ms << "ms"
 			  << ")" << std::endl;
 
 	app.run(static_cast<uint16_t>(port));

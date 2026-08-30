@@ -295,6 +295,11 @@ namespace coroute
 
 	void App::run(uint16_t port)
 	{
+		// Before any worker exists. Whatever the router still has to build, it builds
+		// on one thread here rather than on whichever worker happens to take the first
+		// request, which would be a race and would also charge that request for it.
+		router_.finalise();
+
 		io_ctx_ = net::IoContext::create(thread_count_);
 
 		// One listening descriptor, whatever mix of protocols is configured. TLS and

@@ -444,11 +444,54 @@ if(COROUTE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Alternative router backends, for the routing experiment only.
+#
+# Off by default: they exist to be measured against, not to be shipped. Turning this on
+# puts all three routers in one binary and lets --router pick between them at runtime,
+# which is the only arrangement in which a difference smaller than build-to-build
+# variation (documented at 5-10%) can be attributed to the router rather than to the
+# link order. Two separately compiled binaries cannot answer the question.
+option(COROUTE_ROUTER_ARMS "Compile the radix and sequential-regex routers alongside the DFA one" OFF)
+if(COROUTE_ROUTER_ARMS)
+    include(FetchContent)
+    # Crow, for its Trie: the compressed prefix tree its own router dispatches with.
+    # A named implementation a reader can go and read, rather than a hand-rolled one.
+    # SOURCE_SUBDIR points at a directory with no CMakeLists.txt, so the content is
+    # downloaded and nothing of Crow's or asio's own build is configured. Both are
+    # header-only; only the include trees are wanted.
+    FetchContent_Declare(
+        crow_router
+        GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
+        GIT_TAG v1.2.1
+        GIT_SHALLOW TRUE
+        SOURCE_SUBDIR include
+    )
+    # Crow's headers include asio even for the parts that do no I/O, so asio comes along.
+    FetchContent_Declare(
+        asio_headers
+        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+        GIT_TAG asio-1-30-2
+        GIT_SHALLOW TRUE
+        SOURCE_SUBDIR asio/include
+    )
+    FetchContent_MakeAvailable(crow_router asio_headers)
+
+    target_sources(coroute PRIVATE src/core/router_arms.cpp)
+    target_compile_definitions(coroute PRIVATE COROUTE_ROUTER_ARMS ASIO_STANDALONE)
+    target_include_directories(coroute PRIVATE
+        ${crow_router_SOURCE_DIR}/include
+        ${asio_headers_SOURCE_DIR}/asio/include)
+    message(STATUS "router arms: dfa + radix (Crow v1.2.1 Trie) + sequential std::regex")
+endif()
+
 # The load generator for chapter VI. Built by default because a measurement tool that
 # has to be remembered separately is a measurement tool that is out of date.
 option(COROUTE_BUILD_BENCHMARK_TOOLS "Build the load generator" ON)
 if(COROUTE_BUILD_BENCHMARK_TOOLS)
     add_subdirectory(benchmark/generator)
+    if(COROUTE_ROUTER_ARMS)
+        add_subdirectory(benchmark/routing)
+    endif()
 endif()
 
 # Fuzz harnesses. Clang only, since libFuzzer has no MSVC or GCC equivalent, and off by
