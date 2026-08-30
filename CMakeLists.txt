@@ -218,11 +218,30 @@ endif()
 
 # Fetch url-matcher (RegexMatcher) for DFA-based routing
 include(FetchContent)
+
+# The one dependency here that tracks a branch rather than a tag, and also the one the
+# routing measurements are a measurement OF. A campaign that recorded "fetched at main"
+# recorded nothing: main moves, and a reader re-running it later gets a different
+# matcher and different numbers with nothing to say so. Overridable so a measurement can
+# name the exact commit it ran against; the default is still the branch, so an ordinary
+# build keeps tracking upstream.
+set(COROUTE_URL_MATCHER_TAG "main" CACHE STRING
+    "Git ref for the RegexMatcher dependency; set to a commit SHA to pin a measurement")
+
+# A shallow clone can only ask for a named ref on some servers, so it is turned off when
+# the ref is a raw commit. Left on otherwise, since that is the common case and the
+# clone is the slow part of a cold configure.
+if(COROUTE_URL_MATCHER_TAG MATCHES "^[0-9a-fA-F]{40}$")
+    set(_url_matcher_shallow FALSE)
+else()
+    set(_url_matcher_shallow TRUE)
+endif()
+
 FetchContent_Declare(
     url_matcher
     GIT_REPOSITORY https://github.com/cpp-for-everything/RegexMatcher.git
-    GIT_TAG main
-    GIT_SHALLOW TRUE
+    GIT_TAG ${COROUTE_URL_MATCHER_TAG}
+    GIT_SHALLOW ${_url_matcher_shallow}
     SOURCE_SUBDIR include # Only include the library, skip tests
 )
 FetchContent_MakeAvailable(url_matcher)
