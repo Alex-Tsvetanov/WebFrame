@@ -92,6 +92,21 @@ def design_main() -> list[Cell]:
     ]
 
 
+def design_bracket() -> list[Cell]:
+    """Between a hundred routes and a thousand, which is where the arms separate.
+
+    The main grid answers "does the choice of router show end to end" with "not at ten,
+    not at a hundred, yes at a thousand". That is a range, and the brief asks for a
+    number. These four counts bracket it.
+
+    One offered rate, the low one, on purpose. At the high rate the slower arms are
+    close to what a single worker can serve and the tail is dominated by queueing, which
+    would locate the point where the server saturates rather than the point where the
+    routers become distinguishable.
+    """
+    return [_cell(arm, routes, 1000) for routes in (200, 300, 500, 700) for arm in ARMS]
+
+
 def design_large() -> list[Cell]:
     """Ten thousand routes.
 
@@ -107,7 +122,12 @@ def design_smoke() -> list[Cell]:
     return [_cell(arm, 100, 1000) for arm in ARMS]
 
 
-DESIGNS = {"main": design_main, "large": design_large, "smoke": design_smoke}
+DESIGNS = {
+    "main": design_main,
+    "bracket": design_bracket,
+    "large": design_large,
+    "smoke": design_smoke,
+}
 
 
 def dump_route_paths(server_bin: Path, out_dir: Path, cells: list[Cell]) -> dict[tuple, Path]:
