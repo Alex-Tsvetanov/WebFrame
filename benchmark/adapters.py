@@ -472,9 +472,16 @@ class LoadgenGenerator:
             # requested mask is recoverable from server_argv; it has no reporting channel
             # of its own, which is why the macOS design asks for neither.
             affinity_requested=(mask_hex if (mask_hex := data.get("affinity_mask"))
-                                and mask_hex.strip("0") else None),
-            affinity_applied=(data.get("affinity_applied") == "true"
-                              if "affinity_applied" in data else None),
+                                and str(mask_hex).strip("0") else None),
+            # loadgen emits an unquoted JSON boolean for affinity_applied (field_s with
+            # quote=false). Accept both the boolean and the string form.
+            affinity_applied=(
+                None if "affinity_applied" not in data else (
+                    bool(data["affinity_applied"])
+                    if isinstance(data["affinity_applied"], bool)
+                    else str(data["affinity_applied"]).lower() == "true"
+                )
+            ),
             argv=list(argv),
         )
         return result
