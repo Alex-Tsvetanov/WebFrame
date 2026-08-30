@@ -20,3 +20,8 @@ debug.log
 # than from a build directory. Generated, and it has been sitting untracked long
 # enough to be noise in every git status.
 Testing/
+
+# Campaign output. Raw run records live with the paper that quotes them, not here, and
+# an untracked results directory makes the tree dirty, which is a rejection criterion
+# for every run in the campaign that produced it.
+benchmark/results/
