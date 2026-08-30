@@ -26,6 +26,7 @@
 #endif
 
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -43,6 +44,9 @@ namespace
 				  << "  --port N          listen port (default: 8080)\n"
 				  << "  --payload BYTES   response body size (default: 13, \"Hello, World!\")\n"
 				  << "  --backlog N       listen backlog (default: 1024)\n"
+				  << "  --io-backend B    epoll or io_uring on Linux (runtime; both are in this binary)\n"
+				  << "  --write-path P    buffered, sendfile or send_zc (runtime; same binary)\n"
+				  << "  --io-stats FILE   shared-memory file for I/O operation counters\n"
 				  << "  --no-detect       serve HTTP/1.1 only, skipping protocol classification\n"
 				  << "  --handshake-ms N  limit on the classification window (default: 30000, 0 disables)\n"
 				  << "  --keep-alive-ms N idle limit on an established connection (default: 30000, 0 disables)\n"
@@ -98,6 +102,9 @@ int main(int argc, char** argv)
 	bool http3 = false;
 	std::string cert_file;
 	std::string key_file;
+	std::string io_backend_name;
+	std::string write_path_name = "buffered";
+	std::string io_stats_path;
 
 	std::string router_arm = "dfa";
 	size_t route_count = 0;
@@ -187,6 +194,18 @@ int main(int argc, char** argv)
 		else if (arg == "--affinity")
 		{
 			affinity_hex = value_for("--affinity");
+		}
+		else if (arg == "--io-backend")
+		{
+			io_backend_name = std::string(value_for("--io-backend"));
+		}
+		else if (arg == "--write-path")
+		{
+			write_path_name = std::string(value_for("--write-path"));
+		}
+		else if (arg == "--io-stats")
+		{
+			io_stats_path = std::string(value_for("--io-stats"));
 		}
 		else if (arg == "--no-detect")
 		{
@@ -278,6 +297,48 @@ int main(int argc, char** argv)
 	// the framework, not std::string construction.
 	const std::string body = (payload == 0) ? std::string("Hello, World!") : std::string(payload, 'x');
 
+	net::IoBackend io_backend = net::IoBackend::Default;
+	if (!io_backend_name.empty() && !net::parse_io_backend(io_backend_name, io_backend))
+	{
+		std::cerr << "unknown --io-backend '" << io_backend_name
+		          << "' (epoll, io_uring, iocp, kqueue, default)\n";
+		return 2;
+	}
+
+	WritePath write_path = WritePath::Buffered;
+	if (write_path_name == "buffered")
+	{
+		write_path = WritePath::Buffered;
+	}
+	else if (write_path_name == "sendfile")
+	{
+		write_path = WritePath::Sendfile;
+	}
+	else if (write_path_name == "send_zc")
+	{
+		write_path = WritePath::SendZc;
+	}
+	else
+	{
+		std::cerr << "unknown --write-path '" << write_path_name
+		          << "' (buffered, sendfile, send_zc)\n";
+		return 2;
+	}
+
+	// SEND_ZC is an io_uring opcode. Refusing here rather than falling back to a
+	// buffered write: a run that silently measured the wrong path would produce a full
+	// set of plausible numbers for an experiment that never happened.
+	if (write_path == WritePath::SendZc)
+	{
+		const net::IoBackend effective =
+			(io_backend == net::IoBackend::Default) ? net::platform_default_io_backend() : io_backend;
+		if (effective != net::IoBackend::IoUring)
+		{
+			std::cerr << "--write-path send_zc requires --io-backend io_uring\n";
+			return 2;
+		}
+	}
+
 	App app;
 // Applied before the io context creates its workers, so no thread starts on a
 	// core it will later be moved off. On one host the server and the generator
@@ -310,6 +371,12 @@ int main(int argc, char** argv)
 	app.handshake_timeout(std::chrono::milliseconds(handshake_ms));
 	app.keep_alive_timeout(std::chrono::milliseconds(keep_alive_ms));
 	app.max_requests_per_connection(max_requests);
+	app.io_backend(io_backend);
+	app.set_write_path(write_path);
+	if (!io_stats_path.empty())
+	{
+		app.set_io_stats_path(io_stats_path);
+	}
 
 	// --------------------------------------------------------------- routing arm
 	//
@@ -360,9 +427,32 @@ int main(int argc, char** argv)
 	app.router().backend(backend);
 
 	const auto route_build_t0 = std::chrono::steady_clock::now();
-	for (const auto& r : table)
+	std::filesystem::path payload_file;
+	if (write_path == WritePath::Sendfile)
 	{
-		app.get(r.pattern, [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
+		payload_file = std::filesystem::temp_directory_path() /
+		               ("coroute-payload-" + std::to_string(body.size()) + ".bin");
+		{
+			std::ofstream out(payload_file, std::ios::binary | std::ios::trunc);
+			if (!out)
+			{
+				std::cerr << "could not write payload file " << payload_file << "\n";
+				return 2;
+			}
+			out.write(body.data(), static_cast<std::streamsize>(body.size()));
+		}
+		for (const auto& r : table)
+		{
+			app.get(r.pattern, [payload_file, size = body.size()](Request&) -> Task<Response>
+			        { co_return Response::file(payload_file, "application/octet-stream", size); });
+		}
+	}
+	else
+	{
+		for (const auto& r : table)
+		{
+			app.get(r.pattern, [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
+		}
 	}
 	const auto route_build_t1 = std::chrono::steady_clock::now();
 	const double route_build_ms =
@@ -370,7 +460,15 @@ int main(int argc, char** argv)
 
 	// "/" last so a table of zero routes still answers something, and so the readiness
 	// probe has a path that exists whatever the table is.
-	app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
+	if (write_path == WritePath::Sendfile)
+	{
+		app.get("/", [payload_file, size = body.size()](Request&) -> Task<Response>
+		        { co_return Response::file(payload_file, "application/octet-stream", size); });
+	}
+	else
+	{
+		app.get("/", [&body](Request&) -> Task<Response> { co_return Response::ok(body); });
+	}
 
 #ifdef COROUTE_HAS_TLS
 	if (!cert_file.empty())
@@ -408,12 +506,16 @@ int main(int argc, char** argv)
 
 	// Printed so the run's configuration is recoverable from its own log rather than
 	// from whatever the driver believes it launched.
+	const net::IoBackend effective_backend =
+		(io_backend == net::IoBackend::Default) ? net::platform_default_io_backend() : io_backend;
 	std::cout << "Benchmark server on port " << port << " (" << workers << " workers, " << body.size()
 			  << " byte body, backlog " << backlog << ", detect " << (detect ? "on" : "off")
 			  << ", handshake " << handshake_ms << "ms"
 			  << ", keep-alive " << keep_alive_ms << "ms"
 			  << ", max-requests " << max_requests
 			  << ", affinity " << (affinity_hex.empty() ? std::string("none") : affinity_hex)
+			  << ", io-backend " << net::io_backend_name(effective_backend)
+			  << ", write-path " << write_path_name
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
 			  << ", router " << router_backend_name(backend) << ", routes " << table.size() << " "
 			  << routebench::shape_name(spec.shape) << " depth " << spec.depth << " params "

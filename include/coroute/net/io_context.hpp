@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <functional>
 #include <chrono>
+#include <string_view>
 
 #include "coroute/util/expected.hpp"
 #include "coroute/core/error.hpp"
@@ -16,6 +18,80 @@ namespace coroute::net
 	// Forward declarations
 	class Socket;
 	class Connection;
+	struct IoStatsBlock;
+
+	// ============================================================================
+	// IoBackend - selected at runtime, never by compiling a different binary
+	// ============================================================================
+	//
+	// Build-to-build variation from code layout and link order is documented at 5 to 10
+	// percent, above the effect an epoll-versus-io_uring comparison is trying to resolve.
+	// Both Linux backends therefore ship in one binary and this enum is how a run picks.
+
+	enum class IoBackend : std::uint8_t
+	{
+		Default,  // platform default: io_uring on Linux, IOCP on Windows, kqueue on macOS
+		Epoll,
+		IoUring,
+		Iocp,
+		Kqueue
+	};
+
+	[[nodiscard]] inline const char* io_backend_name(IoBackend backend) noexcept
+	{
+		switch (backend)
+		{
+			case IoBackend::Epoll: return "epoll";
+			case IoBackend::IoUring: return "io_uring";
+			case IoBackend::Iocp: return "iocp";
+			case IoBackend::Kqueue: return "kqueue";
+			case IoBackend::Default: return "default";
+		}
+		return "unknown";
+	}
+
+	[[nodiscard]] inline bool parse_io_backend(std::string_view text, IoBackend& out) noexcept
+	{
+		if (text == "epoll")
+		{
+			out = IoBackend::Epoll;
+			return true;
+		}
+		if (text == "io_uring" || text == "uring")
+		{
+			out = IoBackend::IoUring;
+			return true;
+		}
+		if (text == "iocp")
+		{
+			out = IoBackend::Iocp;
+			return true;
+		}
+		if (text == "kqueue")
+		{
+			out = IoBackend::Kqueue;
+			return true;
+		}
+		if (text == "default")
+		{
+			out = IoBackend::Default;
+			return true;
+		}
+		return false;
+	}
+
+	[[nodiscard]] inline IoBackend platform_default_io_backend() noexcept
+	{
+#if defined(COROUTE_PLATFORM_WINDOWS)
+		return IoBackend::Iocp;
+#elif defined(COROUTE_PLATFORM_MACOS)
+		return IoBackend::Kqueue;
+#elif defined(COROUTE_DEFAULT_BACKEND_EPOLL)
+		return IoBackend::Epoll;
+#else
+		return IoBackend::IoUring;
+#endif
+	}
 
 	// ============================================================================
 	// IoContext - Abstract I/O event loop
@@ -28,6 +104,19 @@ namespace coroute::net
 	{
 	public:
 		virtual ~IoContext() = default;
+
+		// The backend this context is. Used by Listener::create / DatagramSocket::create
+		// to pick the matching implementation when more than one is linked into the
+		// binary, which on Linux is the normal case.
+		[[nodiscard]] virtual std::string_view backend_name() const noexcept = 0;
+
+		// Optional shared-memory counters for syscall-class accounting. Null-safe: a
+		// backend that never receives a block simply does not count.
+		virtual void bind_stats(IoStatsBlock* block) { (void)block; }
+
+		// Whether IORING_OP_SEND_ZC is usable on this context. False everywhere except
+		// an io_uring ring whose kernel and liburing both advertise the opcode.
+		[[nodiscard]] virtual bool supports_send_zc() const noexcept { return false; }
 
 		// Run the event loop (blocking)
 		virtual void run() = 0;
@@ -108,8 +197,9 @@ namespace coroute::net
 		// Check if multi-accept is enabled
 		virtual bool is_multi_accept_enabled() const noexcept { return false; }
 
-		// Factory method - creates platform-appropriate context
-		static std::unique_ptr<IoContext> create(size_t thread_count = 1);
+		// Factory method. On Linux both epoll and io_uring are linked; `backend` picks.
+		static std::unique_ptr<IoContext> create(size_t thread_count = 1,
+		                                        IoBackend backend = IoBackend::Default);
 	};
 
 	// ============================================================================
@@ -194,6 +284,13 @@ namespace coroute::net
 
 		// Async write all data (loops until complete)
 		virtual Task<WriteResult> async_write_all(const void* buffer, size_t len) = 0;
+
+		// Zero-copy send of an in-memory buffer (io_uring SEND_ZC). Default refuses.
+		// Not the same as async_transmit_file: that copies from a file descriptor;
+		// this maps a userspace buffer into the socket path without a byte copy.
+		virtual Task<WriteResult> async_write_zero_copy(const void* buffer, size_t len);
+
+		[[nodiscard]] virtual bool supports_zero_copy_send() const noexcept;
 
 		// Zero-copy file transfer (TransmitFile on Windows, sendfile on Linux)
 		// Returns bytes transmitted

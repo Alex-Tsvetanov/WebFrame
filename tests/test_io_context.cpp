@@ -112,6 +112,29 @@ TEST_CASE("worker_count reports what run() will spawn", "[io_context]")
 	}
 }
 
+#if defined(COROUTE_PLATFORM_LINUX)
+TEST_CASE("Linux epoll and io_uring share one binary", "[io_context][backend]")
+{
+	// The whole point of compiling both: a runtime flag, not a rebuild. If either
+	// create() throws, the comparison arms cannot come from the same binary.
+	auto epoll = IoContext::create(1, IoBackend::Epoll);
+	REQUIRE(epoll);
+	REQUIRE(epoll->backend_name() == "epoll");
+	epoll->stop();
+
+	auto uring = IoContext::create(1, IoBackend::IoUring);
+	REQUIRE(uring);
+	REQUIRE(uring->backend_name() == "io_uring");
+	uring->stop();
+
+	IoBackend parsed = IoBackend::Default;
+	REQUIRE(parse_io_backend("epoll", parsed));
+	REQUIRE(parsed == IoBackend::Epoll);
+	REQUIRE(parse_io_backend("io_uring", parsed));
+	REQUIRE(parsed == IoBackend::IoUring);
+}
+#endif
+
 TEST_CASE("work can be directed at a specific worker thread", "[io_context][affinity]")
 {
 	// The property QUIC connection sharding is built on. A connection's state is owned

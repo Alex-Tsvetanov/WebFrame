@@ -21,7 +21,14 @@ namespace coroute
 
 	// Out of line because http3::Http3EndpointGroup is only forward declared in the header.
 	App::App() = default;
-	App::~App() = default;
+	App::~App()
+	{
+		if (io_stats_ != nullptr)
+		{
+			net::unmap_io_stats(io_stats_);
+			io_stats_ = nullptr;
+		}
+	}
 
 	std::function<Task<Response>(Request&)> App::make_request_handler()
 	{
@@ -300,7 +307,17 @@ namespace coroute
 		// request, which would be a race and would also charge that request for it.
 		router_.finalise();
 
-		io_ctx_ = net::IoContext::create(thread_count_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
+		if (!io_stats_path_.empty())
+		{
+			io_stats_ = net::map_io_stats(io_stats_path_);
+			io_ctx_->bind_stats(io_stats_);
+		}
+		if (write_path_ == WritePath::SendZc && !io_ctx_->supports_send_zc())
+		{
+			throw std::runtime_error(
+				"SEND_ZC is not supported on this kernel/liburing; --write-path send_zc cannot run");
+		}
 
 		// One listening descriptor, whatever mix of protocols is configured. TLS and
 		// cleartext used to be mutually exclusive branches here, so serving both meant
@@ -351,7 +368,17 @@ namespace coroute
 
 	Task<void> App::run_async(uint16_t port)
 	{
-		io_ctx_ = net::IoContext::create(thread_count_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
+		if (!io_stats_path_.empty())
+		{
+			io_stats_ = net::map_io_stats(io_stats_path_);
+			io_ctx_->bind_stats(io_stats_);
+		}
+		if (write_path_ == WritePath::SendZc && !io_ctx_->supports_send_zc())
+		{
+			throw std::runtime_error(
+				"SEND_ZC is not supported on this kernel/liburing; --write-path send_zc cannot run");
+		}
 		listener_ = net::Listener::create(*io_ctx_);
 
 		auto result = listener_->listen(port);
@@ -806,6 +833,15 @@ namespace coroute
 				// Fallback: if transmit fails, we can't recover easily
 				// In production, you'd want better error handling
 				if (!transmit_result)
+				{
+					break;
+				}
+			}
+			else if (write_path_ == WritePath::SendZc && req.method() != HttpMethod::HEAD)
+			{
+				auto data = resp.serialize();
+				auto write_result = co_await conn->async_write_zero_copy(data.data(), data.size());
+				if (!write_result)
 				{
 					break;
 				}

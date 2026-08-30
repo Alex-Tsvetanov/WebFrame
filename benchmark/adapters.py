@@ -211,6 +211,22 @@ class CorouteServer:
     affinity_mask: str | None = None
     _proc: subprocess.Popen | None = None
     _cost: tuple[float | None, int | None] = (None, None)
+    _stats_path: Path | None = None
+
+    @property
+    def pid(self) -> int | None:
+        return None if self._proc is None else self._proc.pid
+
+    def _ensure_stats_path(self) -> Path:
+        if self._stats_path is None:
+            self._stats_path = Path(tempfile.gettempdir()) / (
+                f"coroute-iostats-{self.port}-{os.getpid()}-{time.time_ns()}.bin"
+            )
+            try:
+                self._stats_path.unlink()
+            except FileNotFoundError:
+                pass
+        return self._stats_path
 
     @property
     def argv(self) -> list[str]:
@@ -227,6 +243,16 @@ class CorouteServer:
         ]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
+        backend = factors.get("io_backend")
+        if backend:
+            args += ["--io-backend", str(backend)]
+        write_path = factors.get("write_path")
+        if write_path:
+            args += ["--write-path", str(write_path)]
+        # Linux only: the shared-memory layout is Linux mmap. Leaving the flag off on
+        # other platforms keeps their argv identical to the campaigns already on disk.
+        if _platform.system() == "Linux":
+            args += ["--io-stats", str(self._ensure_stats_path())]
         # Only when the cell carries them, so a campaign that is not about routing
         # produces the same command line it always did and stays comparable with the
         # runs already on disk.
@@ -243,6 +269,8 @@ class CorouteServer:
         return args
 
     def start(self) -> None:
+        if _platform.system() == "Linux":
+            self._ensure_stats_path()
         self._proc = subprocess.Popen(
             self.argv,
             stdout=subprocess.DEVNULL,
@@ -266,9 +294,13 @@ class CorouteServer:
         if self._proc is None:
             return ResourceUsage()
 
-        # Read the cost while the process still exists. After it exits the handle
-        # reports nothing and the run would silently carry no server-side numbers.
+        # Read the cost and the I/O counters while the process still exists. After it
+        # exits the handle reports nothing and a munmap'd stats file is empty.
         cpu, peak = _process_cost(self._proc.pid)
+        io_stats = None
+        if self._stats_path is not None:
+            from benchmark.harness.syscalls import read_io_stats
+            io_stats = read_io_stats(self._stats_path)
 
         self._proc.terminate()
         try:
@@ -277,7 +309,13 @@ class CorouteServer:
             self._proc.kill()
             self._proc.wait(timeout=10)
         self._proc = None
-        return ResourceUsage(cpu_seconds=cpu, memory_peak_bytes=peak)
+        if self._stats_path is not None:
+            try:
+                self._stats_path.unlink()
+            except OSError:
+                pass
+            self._stats_path = None
+        return ResourceUsage(cpu_seconds=cpu, memory_peak_bytes=peak, io_stats=io_stats)
 
 
 # ------------------------------------------------------------------- generator

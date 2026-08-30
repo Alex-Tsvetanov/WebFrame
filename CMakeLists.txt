@@ -23,11 +23,14 @@ if(WIN32)
     set(COROUTE_IO_BACKEND "iocp" CACHE STRING "I/O backend (iocp)")
     add_compile_definitions(COROUTE_PLATFORM_WINDOWS)
 elseif(UNIX AND NOT APPLE)
-    # Linux has two: io_uring by default, epoll selectable with
-    # -DCOROUTE_IO_BACKEND=epoll. Both are kept so the completion and readiness
-    # models can be compared with everything else held constant, and because
-    # io_uring is restricted in enough sandboxes to need a fallback.
-    set(COROUTE_IO_BACKEND "io_uring" CACHE STRING "I/O backend (io_uring or epoll)")
+    # Linux always compiles both epoll and io_uring into the same binary. The
+    # backend is selected at runtime (--io-backend / IoContext::create). Build-to-
+    # build variation from code layout and link order is 5 to 10 percent, above
+    # the effect that comparison is trying to resolve, so two separately compiled
+    # binaries cannot answer it. COROUTE_IO_BACKEND is only the default when a
+    # caller does not name one.
+    set(COROUTE_IO_BACKEND "io_uring" CACHE STRING
+        "Default Linux I/O backend at runtime (epoll and io_uring are both compiled)")
     set_property(CACHE COROUTE_IO_BACKEND PROPERTY STRINGS "io_uring" "epoll")
     add_compile_definitions(COROUTE_PLATFORM_LINUX)
 elseif(APPLE)
@@ -174,6 +177,7 @@ add_library(coroute STATIC
     src/net/accept_pool.cpp
     src/net/protocol_detect.cpp
     src/net/websocket.cpp
+    src/net/io_stats.cpp
 )
 
 target_include_directories(coroute PUBLIC
@@ -191,29 +195,33 @@ if(COROUTE_ENABLE_CLANG_TIDY)
 endif()
 
 # Platform-specific I/O implementation
-if(COROUTE_IO_BACKEND STREQUAL "iocp")
+if(WIN32)
     target_sources(coroute PRIVATE src/net/iocp/iocp_context.cpp)
     target_link_libraries(coroute PRIVATE ws2_32 mswsock)
     # Prevent Windows.h from defining min/max macros
     target_compile_definitions(coroute PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
-elseif(COROUTE_IO_BACKEND STREQUAL "epoll")
-    target_sources(coroute PRIVATE src/net/epoll/epoll_context.cpp)
-    target_compile_definitions(coroute PRIVATE COROUTE_BACKEND_EPOLL)
-elseif(COROUTE_IO_BACKEND STREQUAL "io_uring")
-    target_sources(coroute PRIVATE src/net/io_uring/uring_context.cpp)
+elseif(APPLE)
+    target_sources(coroute PRIVATE src/net/kqueue/kqueue_context.cpp)
+elseif(UNIX)
+    # Both backends, one binary. io_factory.cpp dispatches on the runtime choice.
+    target_sources(coroute PRIVATE
+        src/net/epoll/epoll_context.cpp
+        src/net/io_uring/uring_context.cpp
+        src/net/io_factory.cpp
+    )
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(URING REQUIRED liburing)
     target_link_libraries(coroute PRIVATE ${URING_LIBRARIES})
     target_include_directories(coroute PRIVATE ${URING_INCLUDE_DIRS})
-elseif(COROUTE_IO_BACKEND STREQUAL "kqueue")
-    target_sources(coroute PRIVATE src/net/kqueue/kqueue_context.cpp)
+    if(COROUTE_IO_BACKEND STREQUAL "epoll")
+        target_compile_definitions(coroute PUBLIC COROUTE_DEFAULT_BACKEND_EPOLL)
+    elseif(NOT COROUTE_IO_BACKEND STREQUAL "io_uring")
+        message(FATAL_ERROR
+            "Unknown COROUTE_IO_BACKEND '${COROUTE_IO_BACKEND}'. "
+            "Expected io_uring or epoll on Linux (both are compiled either way).")
+    endif()
 else()
-    # Fail here rather than at link time. Without a backend nothing defines
-    # IoContext::create, and the resulting "undefined reference" points at app.cpp
-    # rather than at the misspelled option that caused it.
-    message(FATAL_ERROR
-        "Unknown COROUTE_IO_BACKEND '${COROUTE_IO_BACKEND}'. "
-        "Expected one of: iocp (Windows), io_uring or epoll (Linux), kqueue (macOS).")
+    message(FATAL_ERROR "Unsupported platform for Coroute I/O backends")
 endif()
 
 # Fetch url-matcher (RegexMatcher) for DFA-based routing

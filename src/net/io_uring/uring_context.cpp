@@ -1,6 +1,7 @@
 #include "coroute/net/io_context.hpp"
 #include "coroute/net/datagram.hpp"
 #include "coroute/net/timer_queue.hpp"
+#include "coroute/net/io_stats.hpp"
 
 #if defined(COROUTE_PLATFORM_LINUX)
 
@@ -14,6 +15,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+#ifndef SO_ZEROCOPY
+#define SO_ZEROCOPY 60
+#endif
 
 #include <thread>
 #include <array>
@@ -50,6 +55,10 @@ namespace coroute::net
 		Error error;
 		int result = 0;
 		size_t ring_index = 0;  // Which ring this operation belongs to
+		// SEND_ZC produces a completion CQE and then a notification CQE. The buffer
+		// must not be reused until the notification arrives, so the awaiter waits for
+		// both when this is set.
+		bool wait_zc_notif = false;
 
 		// For accept
 		int accept_fd = -1;
@@ -261,6 +270,8 @@ namespace coroute::net
 		std::atomic<bool> stopped_{false};
 		std::atomic<size_t> next_ring_{0};
 		size_t thread_count_;
+		IoStatsBlock* stats_ = nullptr;
+		bool send_zc_supported_ = false;
 
 		// SO_REUSEPORT multi-accept
 		ConnectionHandler connection_handler_;
@@ -282,6 +293,19 @@ namespace coroute::net
 				}
 				rings_.push_back(std::move(ring));
 			}
+
+			if (!rings_.empty())
+			{
+				io_uring_probe* probe = io_uring_get_probe_ring(&rings_[0]->ring);
+				if (probe != nullptr)
+				{
+					// IORING_OP_SEND_ZC is an enum value, not a macro: do not gate this
+					// on #ifdef, which is always false and would leave the flag unset
+					// on every kernel that actually supports the opcode.
+					send_zc_supported_ = io_uring_opcode_supported(probe, IORING_OP_SEND_ZC) != 0;
+					io_uring_free_probe(probe);
+				}
+			}
 		}
 
 		~UringContext() override
@@ -300,6 +324,14 @@ namespace coroute::net
 				}
 			}
 		}
+
+		[[nodiscard]] std::string_view backend_name() const noexcept override { return "io_uring"; }
+
+		void bind_stats(IoStatsBlock* block) override { stats_ = block; }
+
+		[[nodiscard]] bool supports_send_zc() const noexcept override { return send_zc_supported_; }
+
+		IoStatsBlock* stats() const noexcept { return stats_; }
 
 		size_t ring_count() const noexcept { return rings_.size(); }
 
@@ -361,6 +393,7 @@ namespace coroute::net
 				// clear, not an error: submitting hands them over and frees the space.
 				// Failing here instead was reporting a transient queue condition as if
 				// the operation itself were impossible.
+				bump(stats_ ? &stats_->io_uring_enter : nullptr);
 				if (io_uring_submit(&worker_ring->ring) < 0)
 				{
 					return false;
@@ -379,6 +412,7 @@ namespace coroute::net
 			// Checked rather than discarded. A failed submit leaves the entry sitting in
 			// the queue, so ignoring it turns one refused submission into a queue that
 			// fills up and starts refusing everything.
+			bump(stats_ ? &stats_->io_uring_enter : nullptr);
 			return io_uring_submit(&worker_ring->ring) >= 0;
 		}
 
@@ -497,6 +531,7 @@ namespace coroute::net
 			int ret = 0;
 			{
 				std::lock_guard lock(worker_ring->sq_mutex);
+				bump(stats_ ? &stats_->io_uring_enter : nullptr);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
 			}
 
@@ -524,16 +559,46 @@ namespace coroute::net
 				auto* op = static_cast<UringOperation*>(io_uring_cqe_get_data(cqe));
 				if (op)
 				{
-					op->result = cqe->res;
-					if (cqe->res < 0)
+					const unsigned flags = cqe->flags;
+					if (op->wait_zc_notif)
 					{
-						op->error = Error::system(std::error_code(-cqe->res, std::system_category()));
+						// SEND_ZC: first CQE carries the send result (often with
+						// IORING_CQE_F_MORE); the IORING_CQE_F_NOTIF CQE releases the
+						// buffer. Resume only once the buffer is free, or on a failure
+						// that produced no follow-up notification.
+						if ((flags & IORING_CQE_F_NOTIF) != 0)
+						{
+							if (op->continuation)
+							{
+								op->continuation.resume();
+							}
+						}
+						else
+						{
+							op->result = cqe->res;
+							if (cqe->res < 0)
+							{
+								op->error = Error::system(std::error_code(-cqe->res, std::system_category()));
+							}
+							if ((flags & IORING_CQE_F_MORE) == 0 && op->continuation)
+							{
+								op->continuation.resume();
+							}
+						}
 					}
-
-					// Resume coroutine inline
-					if (op->continuation)
+					else
 					{
-						op->continuation.resume();
+						op->result = cqe->res;
+						if (cqe->res < 0)
+						{
+							op->error = Error::system(std::error_code(-cqe->res, std::system_category()));
+						}
+
+						// Resume coroutine inline
+						if (op->continuation)
+						{
+							op->continuation.resume();
+						}
 					}
 				}
 				processed++;
@@ -678,6 +743,16 @@ namespace coroute::net
 			inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
 			remote_addr_ = ip;
 			remote_port_ = ntohs(addr.sin_port);
+
+			int one = 1;
+			::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+#ifdef TCP_QUICKACK
+			::setsockopt(fd_, IPPROTO_TCP, TCP_QUICKACK, &one, sizeof(one));
+#endif
+			// MSG_ZEROCOPY / IORING_OP_SEND_ZC require SOCK_ZEROCOPY on the socket.
+			// Without it the opcode completes with an error (or, on some kernels, not
+			// at all) and a send_zc run silently measures connection resets.
+			::setsockopt(fd_, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one));
 		}
 
 		size_t ring_index() const noexcept { return ring_index_; }
@@ -688,6 +763,11 @@ namespace coroute::net
 		Task<ReadResult> async_read_until(void* buffer, size_t len, char delimiter) override;
 		Task<WriteResult> async_write(const void* buffer, size_t len) override;
 		Task<WriteResult> async_write_all(const void* buffer, size_t len) override;
+		Task<WriteResult> async_write_zero_copy(const void* buffer, size_t len) override;
+		[[nodiscard]] bool supports_zero_copy_send() const noexcept override
+		{
+			return ctx_.supports_send_zc();
+		}
 		Task<TransmitResult> async_transmit_file(FileHandle file, size_t offset, size_t length) override;
 
 		void close() override
@@ -879,6 +959,72 @@ namespace coroute::net
 		co_return total;
 	}
 
+	Task<WriteResult> UringConnection::async_write_zero_copy(const void* buffer, size_t len)
+	{
+		if (!is_open())
+		{
+			co_return unexpected(Error::io(IoError::ConnectionReset, "Connection closed"));
+		}
+
+		if (cancel_token_.is_cancelled())
+		{
+			co_return unexpected(Error::cancelled());
+		}
+
+		if (!ctx_.supports_send_zc())
+		{
+			co_return unexpected(Error::io(IoError::InvalidArgument,
+			                               "IORING_OP_SEND_ZC is not supported on this kernel"));
+		}
+
+		const char* buf = static_cast<const char*>(buffer);
+		size_t total = 0;
+
+		while (total < len)
+		{
+			UringOperation op{UringOpType::Write};
+			op.wait_zc_notif = true;
+			int fd = fd_;
+			const void* chunk = buf + total;
+			const size_t remaining = len - total;
+
+			if (!co_await UringSubmitAwaiter{op, [&]
+			                                 {
+												 return ctx_.submit_sqe(ring_index_, &op,
+				                                                        [fd, chunk, remaining](io_uring_sqe* sqe)
+				                                                        {
+																			io_uring_prep_send_zc(
+																				sqe, fd, chunk,
+																				static_cast<unsigned>(remaining),
+																				MSG_NOSIGNAL, 0);
+																		});
+											 }})
+			{
+				co_return unexpected(Error::io(IoError::Unknown, "Failed to get SQE for SEND_ZC"));
+			}
+
+			bump(ctx_.stats() ? &ctx_.stats()->send_zc : nullptr);
+
+			if (op.error)
+			{
+				co_return unexpected(op.error);
+			}
+
+			if (op.result < 0)
+			{
+				co_return unexpected(Error::system(std::error_code(-op.result, std::system_category())));
+			}
+
+			if (op.result == 0)
+			{
+				break;
+			}
+			total += static_cast<size_t>(op.result);
+		}
+
+		co_return total;
+	}
+
 	Task<TransmitResult> UringConnection::async_transmit_file(FileHandle file, size_t offset, size_t length)
 	{
 		if (!is_open())
@@ -899,6 +1045,7 @@ namespace coroute::net
 
 		while (total_sent < length)
 		{
+			bump(ctx_.stats() ? &ctx_.stats()->sendfile : nullptr);
 			ssize_t sent = sendfile(fd_, file, &off, length - total_sent);
 			if (sent < 0)
 			{
@@ -947,6 +1094,7 @@ namespace coroute::net
 #ifdef TCP_QUICKACK
 		setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &opt, sizeof(opt));
 #endif
+		setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &opt, sizeof(opt));
 		// Increase send buffer for better throughput
 		int sndbuf = 256 * 1024;
 		setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
@@ -1376,21 +1524,21 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<IoContext> create_uring_context(size_t thread_count)
 	{
 		return std::make_unique<UringContext>(thread_count);
 	}
 
-	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
+	std::unique_ptr<Listener> create_uring_listener(IoContext& ctx)
 	{
 		return std::make_unique<UringListener>(static_cast<UringContext&>(ctx));
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t worker_index)
+	std::unique_ptr<DatagramSocket> create_uring_datagram(IoContext& ctx, std::size_t worker_index)
 	{
 		return std::make_unique<UringDatagramSocket>(static_cast<UringContext&>(ctx), worker_index);
 	}
 
 }  // namespace coroute::net
 
-#endif  // coroute_PLATFORM_LINUX
+#endif  // COROUTE_PLATFORM_LINUX

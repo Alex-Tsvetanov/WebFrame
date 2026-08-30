@@ -32,6 +32,7 @@ from typing import Any, Callable, Iterable, Protocol
 
 from benchmark.harness import schema, validity
 from benchmark.harness.ordering import Cell, ScheduledRun
+from benchmark.harness.syscalls import read_proc_io, summarise as summarise_syscalls
 
 
 @dataclass
@@ -77,6 +78,7 @@ class ResourceUsage:
     cpu_seconds: float | None = None
     memory_peak_bytes: int | None = None
     quic: dict[str, int] = field(default_factory=dict)
+    io_stats: dict[str, int] | None = None
 
 
 class Server(Protocol):
@@ -149,6 +151,8 @@ def run_one(
         duration_s=duration_s,
         offered_rate=factors.get("offered_rate"),
         netem_profile=str(factors.get("netem_profile", "none")),
+        write_path=str(factors.get("write_path", "")),
+        study=str(factors.get("study", "")),
         router_arm=str(factors.get("router_arm", "")),
         route_count=int(factors.get("route_count", 0)),
         route_shape=str(factors.get("route_shape", "")),
@@ -161,6 +165,16 @@ def run_one(
         build_type=str(_dig(environment, "build", "type") or ""),
         compiler=str(_dig(environment, "toolchain", "compiler") or ""),
         dependency_versions={k: v for k, v in (environment.get("deps") or {}).items() if v},
+        host_machine_name=str(_dig(environment, "host", "machine_name") or ""),
+        host_uname=str(_dig(environment, "host", "uname") or ""),
+        host_kernel=str(_dig(environment, "host", "kernel") or ""),
+        host_hostname=str(_dig(environment, "host", "hostname") or ""),
+        host_cpu_model=str(_dig(environment, "host", "cpu_model") or ""),
+        host_virtualisation=environment.get("virtualisation"),
+        host_docker_image=_dig(environment, "host", "docker_image"),
+        client_server_same_host=_dig(environment, "host", "client_server_same_host"),
+        clock_name=str(_dig(environment, "host", "clock_name") or ""),
+        clock_resolution_ns=_dig(environment, "host", "clock_resolution_ns"),
     )
 
     counters_before = validity.read_counters()
@@ -170,6 +184,9 @@ def run_one(
 
     failure: str | None = None
     server: Server | None = None
+    proc_before: dict[str, int] | None = None
+    proc_after: dict[str, int] | None = None
+    io_stats: dict[str, int] | None = None
     try:
         server = server_factory(cell)
         record.server_argv = list(server.argv)
@@ -178,7 +195,12 @@ def run_one(
         if not server.wait_until_ready(readiness_timeout_s):
             raise RunFailed(f"server did not become ready within {readiness_timeout_s:g}s")
 
+        pid = getattr(server, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            proc_before = read_proc_io(pid)
         result = generator.run(cell, duration_s)
+        if isinstance(pid, int) and pid > 0:
+            proc_after = read_proc_io(pid)
         record.requests_total = result.requests_total
         record.requests_non_2xx = result.requests_non_2xx
         record.socket_errors = result.socket_errors
@@ -210,11 +232,23 @@ def run_one(
                 record.quic_forwarded_in = usage.quic.get("forwarded_in", 0)
                 record.quic_migrations = usage.quic.get("migrations", 0)
                 record.quic_stateless_resets = usage.quic.get("stateless_resets", 0)
+                io_stats = usage.io_stats
             except Exception as exc:  # noqa: BLE001
                 # Reported rather than masking the original failure, which is the more
                 # informative of the two.
                 stop_note = f"stopping the server failed: {type(exc).__name__}: {exc}"
                 failure = f"{failure}; {stop_note}" if failure else stop_note
+
+    syscall = summarise_syscalls(
+        backend_counts=io_stats,
+        proc_io_before=proc_before,
+        proc_io_after=proc_after,
+        requests_total=record.requests_total,
+    )
+    record.syscalls_total = syscall.get("syscalls_total")
+    record.syscalls_per_request = syscall.get("syscalls_per_request")
+    record.syscall_counts = dict(syscall.get("syscall_counts") or {})
+    record.syscall_source = str(syscall.get("syscall_source") or "")
 
     record.cpu_mhz_end = validity.current_cpu_mhz()
     record.thermal_speed_limit_end = validity.current_speed_limit()

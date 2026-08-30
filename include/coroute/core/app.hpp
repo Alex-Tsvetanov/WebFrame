@@ -20,6 +20,7 @@
 #include "coroute/coro/cancellation.hpp"
 #include "coroute/coro/task.hpp"
 #include "coroute/net/io_context.hpp"
+#include "coroute/net/io_stats.hpp"
 #include "coroute/net/websocket.hpp"
 #include "coroute/util/object_pool.hpp"
 
@@ -162,6 +163,16 @@ namespace coroute
 		std::vector<std::string> alpn_protocols;  // e.g., {"h2", "http/1.1"}
 	};
 
+	// How the response body is written. Buffered is the ordinary path. Sendfile and
+	// SendZc exist for the zero-copy size sweep and must come from the same binary as
+	// Buffered for the same reason the I/O backend does.
+	enum class WritePath : std::uint8_t
+	{
+		Buffered,
+		Sendfile,
+		SendZc
+	};
+
 	class App
 	{
 		Router router_;
@@ -191,6 +202,16 @@ namespace coroute
 		// connection forever, and it is also a variable a benchmark has to control,
 		// because forcing a reconnect changes what is being measured.
 		std::size_t max_requests_per_connection_ = 100;
+
+		WritePath write_path_ = WritePath::Buffered;
+
+		// Runtime I/O backend. Default means the platform default. On Linux both epoll
+		// and io_uring are in the binary; this is how a measurement picks between them.
+		net::IoBackend io_backend_ = net::IoBackend::Default;
+
+		// Optional shared-memory I/O counters the harness reads while the process lives.
+		std::string io_stats_path_;
+		net::IoStatsBlock* io_stats_ = nullptr;
 
 		// Connection tracking for graceful shutdown
 		std::atomic<size_t> active_connections_{0};
@@ -355,6 +376,32 @@ namespace coroute
 		[[nodiscard]] std::size_t max_requests_per_connection() const noexcept
 		{
 			return max_requests_per_connection_;
+		}
+
+		// Select the I/O backend at runtime. Same binary, same reason as
+		// enable_protocol_detection: build-to-build variation is too large for the
+		// difference this is measuring.
+		App& io_backend(net::IoBackend backend)
+		{
+			io_backend_ = backend;
+			return *this;
+		}
+
+		[[nodiscard]] net::IoBackend io_backend() const noexcept { return io_backend_; }
+
+		App& set_write_path(WritePath path)
+		{
+			write_path_ = path;
+			return *this;
+		}
+
+		[[nodiscard]] WritePath response_write_path() const noexcept { return write_path_; }
+
+		// Shared-memory file the harness mmaps to read I/O operation counters.
+		App& set_io_stats_path(std::string path)
+		{
+			io_stats_path_ = std::move(path);
+			return *this;
 		}
 
 		// Route registration (simple form)

@@ -1,0 +1,36 @@
+paper-io-portability Linux measurement session
+
+=== machine (recorded before timed runs) ===
+machine_name: docker:cursor
+uname: Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC Fri Aug 28 16:08:20 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+kernel: 6.12.94+
+hostname: cursor
+cpu_model: Intel(R) Xeon(R) Processor
+virtualisation: 'docker'
+docker_image: None (unpublished when None; Docker-named machine is the protocol)
+dockerenv_present: False
+client_server_same_host: True (loopback). Bounded limitation: not a two-host network path.
+clock: CLOCK_MONOTONIC resolution_ns=1
+logical_cores: 4
+physical_cores: 4
+compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+liburing: 2.5
+git_commit: 7e94c2baeac072dadce6347c2384214285ccf1c0
+git_dirty: True
+
+=== protocol ===
+one binary; backend and write path selected at runtime (--io-backend, --write-path)
+open loop; warmup discarded; duration 20s warmup 3s fixed before data
+median of 7 independent runs (fresh server, fresh generator each) for A and B
+ladder: one run per rate
+report p50, p99, p99.9; median ± BCa; full range; not means
+spread label: (max-min)/median >= 5% marked EXCEEDS_SPREAD
+validity thresholds fixed in advance (benchmark/harness/validity.py)
+CAVEAT: compare only within this Linux machine. Do not merge with existing IOCP numbers.
+CAVEAT: io_uring results depend on kernel 6.12.94+.
+CAVEAT: client and server share this host (loopback).
+
+=== cells ===
+(no timed runs yet; accepted cells empty)
+
+=== end ===

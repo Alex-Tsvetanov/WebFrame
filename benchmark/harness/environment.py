@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -243,12 +244,14 @@ def _darwin_overlay(env: dict[str, Any]) -> None:
 
 
 def _compiler_version() -> str | None:
-    """The first line of `c++ --version`, which is the identifying one.
+    """The first line of the compiler's --version, which is the identifying one.
 
-    Only the first line: the rest is licence boilerplate that would go into the
-    fingerprint and change on a distribution rebuild that did not change the compiler.
+    CXX if set, otherwise c++. Only the first line: the rest is licence boilerplate
+    that would go into the fingerprint and change on a distribution rebuild that did
+    not change the compiler.
     """
-    text = _run(["c++", "--version"])
+    binary = os.environ.get("CXX") or "c++"
+    text = _run([binary, "--version"])
     return text.splitlines()[0] if text else None
 
 
@@ -300,18 +303,62 @@ def detect_virtualisation() -> str | None:
     return result
 
 
+def _uname_a() -> str | None:
+    return _run(["uname", "-a"])
+
+
+def _clock_resolution_ns() -> int | None:
+    """CLOCK_MONOTONIC resolution in nanoseconds, or None if Python cannot say.
+
+    Recorded, not used to pick a threshold after seeing numbers. The validity rules
+    do not read this field; hiding a check that was not run is worse than no report.
+    """
+    try:
+        info = time.get_clock_info("monotonic")
+    except Exception:
+        return None
+    if info.resolution is None:
+        return None
+    return int(round(float(info.resolution) * 1e9))
+
+
+def _docker_image() -> str | None:
+    """The image this container was started from, if the runtime published it.
+
+    Often unpublished. Returning a guess would be a claim about the machine that
+    nothing measured, so None stays None and the report says so.
+    """
+    for key in ("DOCKER_IMAGE", "IMAGE_NAME", "CURSOR_DOCKER_IMAGE"):
+        value = os.environ.get(key)
+        if value:
+            return value
+    return None
+
+
+def _machine_name(virt: str | None, hostname: str | None) -> str:
+    """Docker-named machine is the protocol: docker:<hostname> when virt is docker."""
+    host = hostname or "unknown"
+    if virt == "docker":
+        return f"docker:{host}"
+    if virt:
+        return f"{virt}:{host}"
+    return host
+
+
 def capture(repo: Path | None = None, build_type: str | None = None,
             io_backend: str | None = None) -> dict[str, Any]:
     """Everything worth knowing about the machine, in one nested dict."""
     repo = repo or Path(__file__).resolve().parents[2]
     uname = platform.uname()
+    virt = detect_virtualisation()
+    hostname = uname.node or None
 
     meminfo = _read("/proc/meminfo") or ""
     mem_match = re.search(r"^MemTotal:\s+(\d+) kB$", meminfo, re.MULTILINE)
 
     env = {
         "machine": {
-            "node": uname.node or None,
+            "node": hostname,
             "arch": uname.machine or None,
             "system": uname.system or None,
         },
@@ -349,7 +396,24 @@ def capture(repo: Path | None = None, build_type: str | None = None,
             "nghttp3": _pkgconfig_version("libnghttp3"),
             "liburing": _pkgconfig_version("liburing"),
         },
-        "virtualisation": detect_virtualisation(),
+        "virtualisation": virt,
+        # Identity of this measurement machine. Not fingerprinted: it cannot change
+        # mid-campaign without kernel.release / machine.node already moving.
+        "host": {
+            "machine_name": _machine_name(virt, hostname),
+            "uname": _uname_a(),
+            "kernel": uname.release or None,
+            "hostname": hostname,
+            "cpu_model": _cpu_model(),
+            "virtualisation": virt,
+            "docker_image": _docker_image(),
+            "dockerenv_present": Path("/.dockerenv").exists(),
+            # This campaign's generator talks to 127.0.0.1. A two-host path is a
+            # different experiment; same-host loopback is a bounded limitation.
+            "client_server_same_host": True,
+            "clock_name": "CLOCK_MONOTONIC",
+            "clock_resolution_ns": _clock_resolution_ns(),
+        },
     }
 
     if sys.platform == "darwin":

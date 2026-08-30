@@ -32,9 +32,11 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-# 2 added the routing factors. Bumped rather than left alone because a reader of an
-# older file has to be able to tell that those columns are absent rather than null.
-SCHEMA_VERSION = 2
+# 2 added the routing factors. 3 added host identity, write_path, study, and
+# syscall accounting for the Linux I/O-portability session. Bumped rather than left
+# alone because a reader of an older file has to be able to tell that those columns
+# are absent rather than null.
+SCHEMA_VERSION = 3
 
 
 @dataclass
@@ -76,6 +78,13 @@ class RunRecord:
     # figures are service time or response time, so it cannot be left implicit.
     offered_rate: float | None = None
     netem_profile: str = "none"  # none, or a named delay/loss/jitter profile
+    # How the response body is written. Empty on campaigns that predate the field.
+    # buffered, sendfile, or send_zc. A factor, not a note: the zero-copy size sweep
+    # cannot be grouped from prose.
+    write_path: str = ""
+    # Which sub-study a run belongs to. Empty on campaigns that predate the field.
+    # ladder, A, B. Not C: coroutine frames against thread stacks is out of scope.
+    study: str = ""
 
     # --- Routing factors ----------------------------------------------------
     # Fields rather than free text in notes, on the same rule as everything above: a
@@ -126,6 +135,29 @@ class RunRecord:
     # Achieved divided by offered. An open loop that could not keep up was offering
     # a different load than the one this record claims.
     generator_achieved_share: float | None = None
+
+    # --- Syscalls -----------------------------------------------------------
+    # Mechanism, not a substitute for throughput. An io_uring SQE is not a syscall
+    # and must not be added into syscalls_total, or the comparison with epoll invents
+    # equality. send_zc lives in syscall_counts and is excluded from the total.
+    syscalls_total: int | None = None
+    syscalls_per_request: float | None = None
+    syscall_counts: dict[str, int] = field(default_factory=dict)
+    syscall_source: str = ""
+
+    # --- Host identity ------------------------------------------------------
+    # Recorded on every run so a results file is self-describing without the
+    # environment sidecar. Not factors: they do not vary inside a campaign.
+    host_machine_name: str = ""          # Docker-named machine: docker:<hostname>
+    host_uname: str = ""
+    host_kernel: str = ""
+    host_hostname: str = ""
+    host_cpu_model: str = ""
+    host_virtualisation: str | None = None
+    host_docker_image: str | None = None
+    client_server_same_host: bool | None = None
+    clock_name: str = ""
+    clock_resolution_ns: int | None = None
 
     # --- Validity -----------------------------------------------------------
     virtualisation: str | None = None

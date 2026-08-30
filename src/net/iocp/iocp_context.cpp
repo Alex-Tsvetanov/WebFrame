@@ -142,6 +142,8 @@ namespace coroute::net
 
 		HANDLE handle() const noexcept { return completion_port_; }
 
+		[[nodiscard]] std::string_view backend_name() const noexcept override { return "iocp"; }
+
 		void associate(HANDLE h) { CreateIoCompletionPort(h, completion_port_, 0, 0); }
 
 		void run() override
@@ -874,8 +876,12 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<IoContext> IoContext::create(size_t thread_count, IoBackend backend)
 	{
+		if (backend != IoBackend::Default && backend != IoBackend::Iocp)
+		{
+			throw std::runtime_error("Windows build provides only the IOCP I/O backend");
+		}
 		return std::make_unique<IocpContext>(thread_count);
 	}
 
