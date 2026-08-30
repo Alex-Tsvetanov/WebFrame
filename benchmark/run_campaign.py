@@ -200,18 +200,39 @@ def _base(**over) -> dict:
 # design on any host before using these. A TLS record layer costs the generator work per
 # request that a cleartext socket does not, so the rate at which it stops keeping to its
 # own schedule is lower, and validity.py refuses runs above it.
-TLS_OFFERED_RATES = (5_000, 10_000, 20_000, 30_000, 40_000)
+#
+# Measured on this host by tls-ladder, 5k to 60k in 5k steps, one run each. The
+# generator's pacing lag at p99 stays between 81 and 143 microseconds from 5k to 35k,
+# rises to 322 to 499 at 40k, 50k and 55k, and reaches 85 ms at 60k. The rejections at
+# 30k and 45k sit between accepted neighbours at higher rates, so those are the host
+# stalling rather than a ceiling; 60k is the ceiling.
+#
+# The table stops at 35k rather than at 55k, which the gate would still admit. The gate
+# is 1 ms and the last three accepted rates measured within a factor of two to three of
+# it, on a host that produced two isolated 2.5 and 5.2 ms stalls during the same twelve
+# runs. A rate that survives one run with that little margin does not survive twenty-five,
+# and a cell that loses runs to the host loses them from one arm as easily as the other.
+TLS_OFFERED_RATES = (5_000, 10_000, 15_000, 25_000, 35_000)
 
 # The churn arm offers whole connections rather than requests on existing ones, and each
 # one costs a TCP handshake, an accept and on the TLS arm a full key exchange. Two orders
 # of magnitude below the keep-alive rates because that is what a connection costs.
 #
-# Set from a calibration run rather than guessed: offering a thousand TLS establishments
-# a second on this host delivered about 370 of them, with sixty-four connection slots all
-# occupied and a median establishment of 82 ms, so the ceiling is somewhere below four
-# hundred. These sit under that. Confirm with churn-ladder before trusting them, and
-# especially before trusting them on another machine.
-CHURN_OFFERED_RATES = (50, 100, 200, 300)
+# Measured by churn-ladder, and the earlier guess of 50, 100, 200, 300 was wrong at half
+# its entries. This host establishes TLS connections at a hard ceiling of about 330 a
+# second: offering 400, 600 and 800 all delivered between 325 and 340, which is the
+# accept path and the key exchange saturating rather than the generator.
+#
+# The admissible boundary is far below that ceiling and was found separately, because
+# delivering the rate is not the same as delivering it on time. 25, 50, 100, 110, 125 and
+# 150 all pace within 109 to 124 microseconds. 175 paces at 1020, which is over the gate
+# by 2 percent. 200 delivers the full offered rate and paces at 9.7 ms, with the median
+# establishment jumping from 1.7 ms to 11.3 ms: the system is already queueing there
+# while the delivered-rate check still reads clean.
+#
+# So the table is the four verified rates below the boundary, a sixfold span. Every one
+# was measured admissible rather than inferred from its neighbours.
+CHURN_OFFERED_RATES = (25, 50, 100, 150)
 
 
 def design_transport() -> list[Cell]:
