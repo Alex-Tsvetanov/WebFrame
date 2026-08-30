@@ -196,6 +196,17 @@ def main(argv: list[str] | None = None) -> int:
         if not args.wsl_loadgen:
             print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
             return 2
+        # Checked because a POSIX path handed to this script from an MSYS shell
+        # (Git Bash) is rewritten to a Windows one before Python ever sees it, and
+        # /home/x/loadgen arrives as C:/Program Files/Git/home/x/loadgen. The
+        # generator then cannot start, and the failure is quiet. Refused here so it
+        # is loud instead.
+        if not args.wsl_loadgen.startswith("/") or ":" in args.wsl_loadgen:
+            print(f"--wsl-loadgen {args.wsl_loadgen!r} is not a path inside the "
+                  f"distribution. If you are running from Git Bash or MSYS, it rewrote "
+                  f"the argument; prefix the command with MSYS_NO_PATHCONV=1 or run it "
+                  f"from PowerShell.", file=sys.stderr)
+            return 2
         gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
     elif not gen_binary.exists():
         gen_binary = gen_binary.with_suffix("")

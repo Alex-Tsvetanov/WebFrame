@@ -287,6 +287,22 @@ class LoadgenGenerator:
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
         out = Path(os.environ.get("TEMP", "/tmp")) / f"loadgen-{self.port}.json"
+
+        # Removed before the run, not just checked for afterwards.
+        #
+        # The check used to be "did a file appear", which a file left behind by an
+        # earlier campaign passes. A generator that failed to start then produced a full
+        # set of plausible numbers belonging to a different experiment, and nothing in
+        # the record said so: three arms came back with identical percentiles taken from
+        # one week-old file. Deleting first makes a generator that did not run look like
+        # a generator that did not run.
+        try:
+            out.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise RunFailed(f"could not clear the previous result file {out}: {exc}") from exc
+
         samples = None
         if self.samples_dir is not None:
             self.samples_dir.mkdir(parents=True, exist_ok=True)
@@ -307,10 +323,14 @@ class LoadgenGenerator:
             timeout=duration_s + self.warmup_s + 120,
         )
 
+        # Only the missing file is a failure here, not the exit code. The generator
+        # exits non-zero when it judges its own run inadmissible, and that verdict
+        # belongs to validity.py, once, from the record. What this catches is the
+        # generator not running at all, which is a different thing and is not a verdict.
         if not out.exists():
             raise RunFailed(
                 f"generator produced no result file (exit {proc.returncode}): "
-                f"{proc.stderr.strip()[:200]}"
+                f"{(proc.stderr or proc.stdout).strip()[:300]}"
             )
 
         data: dict[str, Any] = json.loads(out.read_text(encoding="utf-8"))
