@@ -84,12 +84,56 @@ namespace coroute
 #endif
 	}
 
+	namespace
+	{
+		/// Calls compile() on a matcher that has one, and does nothing otherwise.
+		///
+		/// A template so the test is made in a dependent context: an if constexpr whose
+		/// condition does not depend on a template parameter still has its discarded
+		/// branch checked, so writing the call directly would not compile against a
+		/// dependency that lacks the method.
+		template <typename Matcher>
+		void compile_if_supported(Matcher& m)
+		{
+			if constexpr (requires { m.compile(); })
+			{
+				m.compile();
+			}
+		}
+	}  // namespace
+
 	void Router::finalise()
 	{
 		if (arms_finalised_) return;
 		arms_finalised_ = true;
+
+		if (backend_ == RouterBackend::Dfa)
+		{
+			// Newer RegexMatcher precomputes, per edge, which routes survive it; without
+			// that, every lookup rebuilds the set one character at a time, which costs a
+			// pass over the whole route table per character. It has to happen here and
+			// not on the first request, because it mutates the graph while matching is
+			// const and runs on every worker at once.
+			//
+			// Guarded rather than assumed. The dependency is pinned to a commit, and an
+			// earlier pin has no compile(): calling it unconditionally is how HEAD once
+			// stopped building for anyone who had not also checked out an unreleased
+			// branch of it. The guard has to sit inside a template, because the
+			// discarded branch of an if constexpr is still checked when nothing in it
+			// depends on a template parameter.
+			compile_if_supported(get_matcher_);
+			compile_if_supported(post_matcher_);
+			compile_if_supported(put_matcher_);
+			compile_if_supported(delete_matcher_);
+			compile_if_supported(patch_matcher_);
+			compile_if_supported(head_matcher_);
+			compile_if_supported(options_matcher_);
+			compile_if_supported(view_matcher_);
+			return;
+		}
+
 #ifdef COROUTE_ROUTER_ARMS
-		if (backend_ != RouterBackend::Dfa && arms_)
+		if (arms_)
 		{
 			router_arms_finalise(*arms_, backend_);
 		}
