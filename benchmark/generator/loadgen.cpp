@@ -73,6 +73,11 @@ using poll_fd = struct pollfd;
 using poll_count_t = nfds_t;
 #endif
 
+#if defined(LOADGEN_HAS_TLS)
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
+
 namespace
 {
 	using Clock = std::chrono::steady_clock;
@@ -100,6 +105,10 @@ namespace
 		// it. On one host the generator and the server compete for the same cores, and
 		// a measurement in which they compete is partly a measurement of the scheduler.
 		std::uint64_t affinity_mask = 0;
+		// Speak TLS on the wire. The schema already carries tls; this is the flag the
+		// adapter passes when a cell asks for it. Verification is off: the material is
+		// self-signed and the measurement is not of PKI.
+		bool tls = false;
 	};
 
 	// ------------------------------------------------------------- per-thread
@@ -161,7 +170,7 @@ namespace
 #endif
 	}
 
-	socket_t connect_to(const sockaddr_in& addr)
+	socket_t connect_tcp(const sockaddr_in& addr)
 	{
 		socket_t s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (s == kInvalidSocket)
@@ -177,19 +186,52 @@ namespace
 
 		if (::connect(s, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0)
 		{
-			if (!would_block())
-			{
-				close_socket(s);
-				return kInvalidSocket;
-			}
-		}
-		if (!set_non_blocking(s))
-		{
 			close_socket(s);
 			return kInvalidSocket;
 		}
 		return s;
 	}
+
+#if defined(LOADGEN_HAS_TLS)
+	SSL_CTX* make_tls_client_ctx()
+	{
+		SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+		if (ctx == nullptr)
+		{
+			return nullptr;
+		}
+		// Self-signed measurement material. The demultiplexer cost is what is being
+		// compared; refusing the handshake for an untrusted CA would measure PKI.
+		SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
+		return ctx;
+	}
+
+	SSL* tls_handshake(socket_t s, SSL_CTX* ctx)
+	{
+		SSL* ssl = SSL_new(ctx);
+		if (ssl == nullptr)
+		{
+			return nullptr;
+		}
+		if (SSL_set_fd(ssl, static_cast<int>(s)) != 1)
+		{
+			SSL_free(ssl);
+			return nullptr;
+		}
+		if (SSL_connect(ssl) != 1)
+		{
+			SSL_free(ssl);
+			return nullptr;
+		}
+		return ssl;
+	}
+
+	bool tls_want_retry(SSL* ssl, int n)
+	{
+		const int err = SSL_get_error(ssl, n);
+		return err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE;
+	}
+#endif
 
 	// ------------------------------------------------------- response scanning
 
@@ -395,6 +437,9 @@ namespace
 	struct Conn
 	{
 		socket_t fd = kInvalidSocket;
+#if defined(LOADGEN_HAS_TLS)
+		SSL* ssl = nullptr;
+#endif
 		ResponseScanner scanner;
 		std::size_t sent_offset = 0;
 		bool awaiting = false;         // a request is outstanding
@@ -403,6 +448,107 @@ namespace
 		std::size_t request_index = 0;  // which prebuilt request is in flight
 	};
 
+	void close_conn(Conn& c)
+	{
+#if defined(LOADGEN_HAS_TLS)
+		if (c.ssl != nullptr)
+		{
+			SSL_free(c.ssl);
+			c.ssl = nullptr;
+		}
+#endif
+		if (c.fd != kInvalidSocket)
+		{
+			close_socket(c.fd);
+			c.fd = kInvalidSocket;
+		}
+	}
+
+	// Opens a TCP connection and, when tls is set, completes the handshake before
+	// the socket is made non-blocking. The handshake cost then sits in reconnect,
+	// not in the poll loop's first write, which is where a non-blocking SSL_connect
+	// would otherwise smear it across the measured window.
+	bool open_conn(Conn& c, const sockaddr_in& addr, bool tls, void* tls_ctx)
+	{
+		close_conn(c);
+		c.fd = connect_tcp(addr);
+		if (c.fd == kInvalidSocket)
+		{
+			return false;
+		}
+#if defined(LOADGEN_HAS_TLS)
+		if (tls)
+		{
+			c.ssl = tls_handshake(c.fd, static_cast<SSL_CTX*>(tls_ctx));
+			if (c.ssl == nullptr)
+			{
+				close_conn(c);
+				return false;
+			}
+		}
+#else
+		(void)tls;
+		(void)tls_ctx;
+#endif
+		if (!set_non_blocking(c.fd))
+		{
+			close_conn(c);
+			return false;
+		}
+		return true;
+	}
+
+	int conn_send(Conn& c, const char* data, int len)
+	{
+#if defined(LOADGEN_HAS_TLS)
+		if (c.ssl != nullptr)
+		{
+			const int n = SSL_write(c.ssl, data, len);
+			if (n <= 0 && tls_want_retry(c.ssl, n))
+			{
+#if defined(_WIN32)
+				::WSASetLastError(WSAEWOULDBLOCK);
+#else
+				errno = EAGAIN;
+#endif
+				return -1;
+			}
+			return n;
+		}
+#endif
+		return ::send(c.fd, data, len, 0);
+	}
+
+	int conn_recv(Conn& c, char* buf, int len)
+	{
+#if defined(LOADGEN_HAS_TLS)
+		if (c.ssl != nullptr)
+		{
+			const int n = SSL_read(c.ssl, buf, len);
+			if (n <= 0)
+			{
+				const int err = SSL_get_error(c.ssl, n);
+				if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
+				{
+#if defined(_WIN32)
+					::WSASetLastError(WSAEWOULDBLOCK);
+#else
+					errno = EAGAIN;
+#endif
+					return -1;
+				}
+				if (err == SSL_ERROR_ZERO_RETURN)
+				{
+					return 0;
+				}
+				return -1;
+			}
+			return n;
+		}
+#endif
+		return ::recv(c.fd, buf, len, 0);
+	}
+
 	// ------------------------------------------------------------------ worker
 
 	// One thread drives a slice of the connections with poll. Not one thread per
@@ -410,7 +556,7 @@ namespace
 	// larger than the differences being measured.
 	void worker(const Options& opt, const sockaddr_in& addr, const std::vector<std::string>& requests,
 	            std::size_t first_index, std::size_t count, double rate_per_thread, Clock::time_point start,
-	            Clock::time_point warmup_end, Clock::time_point stop, ThreadResult& out)
+	            Clock::time_point warmup_end, Clock::time_point stop, ThreadResult& out, void* tls_ctx)
 	{
 		std::vector<Conn> conns(count);
 		std::vector<poll_fd> pfds(count);
@@ -421,8 +567,7 @@ namespace
 			// connections do not march through the table in lockstep and hammer the
 			// same route at the same instant.
 			conns[i].request_index = (first_index + i) % requests.size();
-			conns[i].fd = connect_to(addr);
-			if (conns[i].fd == kInvalidSocket)
+			if (!open_conn(conns[i], addr, opt.tls, tls_ctx))
 			{
 				++out.socket_errors;
 			}
@@ -541,8 +686,10 @@ namespace
 				// response that arrived together with the close is not discarded.
 				if ((pfds[i].revents & (POLLERR | POLLNVAL)) != 0)
 				{
-					close_socket(c.fd);
-					c.fd = connect_to(addr);
+					if (!open_conn(c, addr, opt.tls, tls_ctx))
+					{
+						c.fd = kInvalidSocket;
+					}
 					c.scanner.reset();
 					c.awaiting = false;
 					++out.socket_errors;
@@ -552,8 +699,8 @@ namespace
 				const std::string& request = requests[c.request_index];
 				if ((pfds[i].revents & POLLOUT) != 0 && c.awaiting && c.sent_offset < request.size())
 				{
-					const int n = ::send(c.fd, request.data() + c.sent_offset,
-					                     static_cast<int>(request.size() - c.sent_offset), 0);
+					const int n = conn_send(c, request.data() + c.sent_offset,
+					                        static_cast<int>(request.size() - c.sent_offset));
 					if (n > 0)
 					{
 						c.sent_offset += static_cast<std::size_t>(n);
@@ -568,8 +715,7 @@ namespace
 					}
 					else if (n < 0 && !would_block())
 					{
-						close_socket(c.fd);
-						c.fd = kInvalidSocket;
+						close_conn(c);
 						++out.socket_errors;
 						continue;
 					}
@@ -577,7 +723,7 @@ namespace
 
 				if ((pfds[i].revents & POLLIN) != 0)
 				{
-					const int n = ::recv(c.fd, buf, sizeof(buf), 0);
+					const int n = conn_recv(c, buf, sizeof(buf));
 					if (n > 0)
 					{
 						out.bytes_read += static_cast<std::uint64_t>(n);
@@ -618,16 +764,17 @@ namespace
 					{
 						// Clean close by the server. Reconnect and carry on; an outstanding request
 						// is reissued rather than counted as completed.
-						close_socket(c.fd);
-						c.fd = connect_to(addr);
+						if (!open_conn(c, addr, opt.tls, tls_ctx))
+						{
+							c.fd = kInvalidSocket;
+						}
 						c.scanner.reset();
 						c.awaiting = false;
 						++out.server_closes;
 					}
 					else if (!would_block())
 					{
-						close_socket(c.fd);
-						c.fd = kInvalidSocket;
+						close_conn(c);
 						++out.socket_errors;
 					}
 				}
@@ -636,10 +783,7 @@ namespace
 
 		for (auto& c : conns)
 		{
-			if (c.fd != kInvalidSocket)
-			{
-				close_socket(c.fd);
-			}
+			close_conn(c);
 		}
 	}
 
@@ -737,6 +881,9 @@ namespace
 		    "  --affinity HEX      confine the generator to this hexadecimal CPU mask, so\n"
 		    "                      it does not compete with the server for cores; has no\n"
 		    "                      effect on macOS, which has no process affinity API\n"
+		    "  --tls               speak TLS; certificate verification is off, because the\n"
+		    "                      measurement material is self-signed and the comparison\n"
+		    "                      is the demultiplexer, not PKI\n"
 		    "\n"
 		    "In open loop the latency of a request is measured from the time it was due,\n"
 		    "not from the time the socket accepted it. That is the difference between\n"
@@ -773,12 +920,21 @@ int main(int argc, char** argv)
 		else if (a == "--out") opt.out_path = next("--out");
 		else if (a == "--samples") opt.samples_path = next("--samples");
 		else if (a == "--affinity") opt.affinity_mask = std::strtoull(next("--affinity").c_str(), nullptr, 16);
+		else if (a == "--tls") opt.tls = true;
 		else if (a == "--help" || a == "-h") { usage(); return 0; }
 		else { std::fprintf(stderr, "unknown option: %s\n", a.c_str()); usage(); return 2; }
 	}
 
 	if (opt.threads == 0) opt.threads = 1;
 	if (opt.connections < opt.threads) opt.connections = opt.threads;
+
+#if !defined(LOADGEN_HAS_TLS)
+	if (opt.tls)
+	{
+		std::fprintf(stderr, "--tls needs a loadgen built with OpenSSL\n");
+		return 2;
+	}
+#endif
 
 #if defined(_WIN32)
 	WSADATA wsa;
@@ -866,6 +1022,20 @@ int main(int argc, char** argv)
 	const auto stop = warmup_end + std::chrono::duration_cast<Clock::duration>(
 	                                   std::chrono::duration<double>(opt.duration_s));
 
+#if defined(LOADGEN_HAS_TLS)
+	SSL_CTX* tls_ctx = nullptr;
+	if (opt.tls)
+	{
+		tls_ctx = make_tls_client_ctx();
+		if (tls_ctx == nullptr)
+		{
+			std::fprintf(stderr, "could not create a TLS client context\n");
+			return 2;
+		}
+	}
+#else
+	void* tls_ctx = nullptr;
+#endif
 
 	std::vector<ThreadResult> results(opt.threads);
 	std::vector<std::thread> pool;
@@ -881,7 +1051,7 @@ int main(int argc, char** argv)
 		const std::size_t mine = per_thread + (remainder > 0 ? 1 : 0);
 		if (remainder > 0) --remainder;
 		pool.emplace_back(worker, std::cref(opt), std::cref(addr), std::cref(requests), next_start, mine,
-		                  rate_per_thread, start, warmup_end, stop, std::ref(results[t]));
+		                  rate_per_thread, start, warmup_end, stop, std::ref(results[t]), tls_ctx);
 		next_start += mine;
 	}
 	// Sampled across the measured window only. The first version sampled before the
@@ -1075,6 +1245,14 @@ int main(int argc, char** argv)
 		::timeEndPeriod(1);
 	}
 	::WSACleanup();
+#endif
+
+#if defined(LOADGEN_HAS_TLS)
+	if (tls_ctx != nullptr)
+	{
+		SSL_CTX_free(tls_ctx);
+		tls_ctx = nullptr;
+	}
 #endif
 
 	// A non-zero exit for a run that cannot be a data point, so a driver that ignores

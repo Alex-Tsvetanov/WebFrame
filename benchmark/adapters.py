@@ -194,6 +194,13 @@ else:
 
 # ---------------------------------------------------------------------- server
 
+# Sample material already in the tree. Used only when a cell asks for TLS and the
+# caller has not pointed at its own certificate: the Windows campaign generates its
+# own on that host, but a dry start and a self-check need something that exists.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DEFAULT_TLS_CERT = _REPO_ROOT / "examples" / "Samples" / "https_server" / "certs" / "cert.pem"
+_DEFAULT_TLS_KEY = _REPO_ROOT / "examples" / "Samples" / "https_server" / "certs" / "key.pem"
+
 
 @dataclass
 class CorouteServer:
@@ -209,6 +216,11 @@ class CorouteServer:
     cell: Cell
     port: int
     affinity_mask: str | None = None
+    # Paths passed to --tls when the cell asks for it. None means the sample pair
+    # above. Overridable so a measurement host can point at material it generated,
+    # without baking paths into the design or the schema.
+    tls_cert: Path | None = None
+    tls_key: Path | None = None
     _proc: subprocess.Popen | None = None
     _cost: tuple[float | None, int | None] = (None, None)
 
@@ -227,6 +239,16 @@ class CorouteServer:
         ]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
+        # Runtime arm, same binary as cleartext. The paper's claim is that one
+        # listening descriptor serves both, chosen by the first octet; the cell's
+        # tls field selects whether the load speaks TLS, not whether a different
+        # server was compiled. --no-detect and --tls are refused together by the
+        # binary itself, so a misconfigured cell fails loudly rather than measuring
+        # the wrong arm.
+        if factors.get("tls"):
+            cert = self.tls_cert or _DEFAULT_TLS_CERT
+            key = self.tls_key or _DEFAULT_TLS_KEY
+            args += ["--tls", str(cert), str(key)]
         # Only when the cell carries them, so a campaign that is not about routing
         # produces the same command line it always did and stays comparable with the
         # runs already on disk.
@@ -356,6 +378,12 @@ class LoadgenGenerator:
             args += ["--samples", self._path(samples)]
         if self.paths_file is not None:
             args += ["--paths", self._path(self.paths_file)]
+        # Same runtime switch as the server. The schema field is already there; this is
+        # the missing translation into a flag the generator understands. Verification of
+        # the certificate is off on purpose: the measurement is of the demultiplexer and
+        # the TLS stack cost, not of PKI, and the material is self-signed.
+        if factors.get("tls"):
+            args.append("--tls")
         return args
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
