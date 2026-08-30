@@ -192,6 +192,13 @@ namespace
 		double max_seconds = 20.0;
 		std::string out_path;
 		std::string hist_path;
+		// How many distinct paths the query stream draws from.
+		//
+		// A control, not a tuning knob. A structure that is slow because it does not fit
+		// in cache gets faster when the requests touch less of it; one that is slow
+		// because of the work it does per lookup does not. Holding everything else fixed
+		// and moving only this separates the two.
+		size_t distinct = 4096;
 		std::uint64_t seed = 20260830;
 		double calibrate_s = 0.2;
 		bool verify = false;
@@ -267,6 +274,8 @@ namespace
 			"                          samples were taken\n"
 			"  --out FILE              JSON summary\n"
 			"  --hist FILE             per-lookup histogram, cycles,count\n"
+			"  --distinct N            distinct paths in the query stream (default 4096);\n"
+			"                          a control on working-set size, not a tuning knob\n"
 			"  --seed N                query order seed\n"
 			"  --verify                check all three arms resolve the table identically\n"
 			"                          and exit; no timing\n"
@@ -332,6 +341,7 @@ int main(int argc, char** argv)
 		else if (a == "--max-seconds") opt.max_seconds = std::strtod(next("--max-seconds"), nullptr);
 		else if (a == "--out") opt.out_path = next("--out");
 		else if (a == "--hist") opt.hist_path = next("--hist");
+		else if (a == "--distinct") { if (!parse_size(next("--distinct"), opt.distinct) || opt.distinct == 0) return 2; }
 		else if (a == "--seed") { size_t v = 0; if (!parse_size(next("--seed"), v)) return 2; opt.seed = v; }
 		else if (a == "--verify") opt.verify = true;
 		else
@@ -401,8 +411,8 @@ int main(int argc, char** argv)
 	// caricature it. Uniform is the mean case and is the one a paper can defend.
 	std::mt19937_64 rng(opt.seed);
 	std::vector<std::string_view> queries;
-	queries.reserve(4096);
-	for (size_t k = 0; k < 4096; ++k) queries.push_back(table[rng() % table.size()].path);
+	queries.reserve(opt.distinct);
+	for (size_t k = 0; k < opt.distinct; ++k) queries.push_back(table[rng() % table.size()].path);
 
 	size_t sink = 0;
 	size_t misses = 0;

@@ -61,6 +61,22 @@ def design_main() -> list[Cell]:
     return cells
 
 
+def design_scaling() -> list[Cell]:
+    """The whole route-count sweep in one campaign, all three arms.
+
+    Separate from `main` because `main` splits ten thousand routes off into designs of
+    their own: the DFA's table did not fit in memory at that size and a cell that pushed
+    the machine into its pagefile would have contaminated whatever the shuffle placed
+    after it. It fits now, so the sweep can be one interleaved design again, which is
+    what makes the arms at different route counts comparable with each other.
+    """
+    return [
+        _cell(arm, routes, "rest", params=1, depth=5)
+        for routes in (10, 100, 1000, 10000)
+        for arm in ARMS
+    ]
+
+
 def design_static() -> list[Cell]:
     """The same grid without captures, which isolates what parameter extraction costs.
 
@@ -134,6 +150,7 @@ def design_smoke() -> list[Cell]:
 
 DESIGNS = {
     "main": design_main,
+    "scaling": design_scaling,
     "static": design_static,
     "depth": design_depth,
     "large": design_large,
