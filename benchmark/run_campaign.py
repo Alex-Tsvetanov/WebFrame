@@ -1,6 +1,6 @@
 """Runs a campaign and writes one record per run.
 
-    python -m benchmark.run_campaign --design windows-h1 --repetitions 7
+    python -m benchmark.run_campaign --design h1 --repetitions 7
 
 What this does that the previous script did not: a fresh server and a fresh generator
 for every run, a randomised order that differs per repetition, an environment
@@ -191,14 +191,18 @@ def design_smoke() -> list[Cell]:
     ]
 
 
-# The two h1 designs are not Windows-specific in anything but their name, which is kept
-# because the committed results were produced under it. The cells they build now carry
-# whichever system name and backend the host implies.
+# h1 and h1-deep are the names to use. The windows- prefixed spellings are kept as
+# aliases because the committed Windows results were produced under them and a reader
+# reproducing that campaign will find those names in the commit messages; nothing about
+# either design is Windows-specific, and the cells they build carry whichever system
+# name and I/O backend the host implies.
 DESIGNS = {
-    "windows-h1": design_windows_h1,
-    "windows-h1-deep": design_windows_h1_deep,
+    "h1": design_windows_h1,
+    "h1-deep": design_windows_h1_deep,
     "ladder": design_ladder,
     "smoke": design_smoke,
+    "windows-h1": design_windows_h1,
+    "windows-h1-deep": design_windows_h1_deep,
 }
 
 
