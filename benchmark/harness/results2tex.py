@@ -109,7 +109,7 @@ def cell_key(record: schema.RunRecord, key_factors: Sequence[str]) -> str:
 _CANDIDATE_FACTORS = (
     "system", "protocol", "tls", "io_backend", "protocol_detection", "workers",
     "connections", "streams_per_connection", "payload_bytes", "backlog",
-    "offered_rate", "netem_profile",
+    "offered_rate", "netem_profile", "write_path", "study",
 )
 
 

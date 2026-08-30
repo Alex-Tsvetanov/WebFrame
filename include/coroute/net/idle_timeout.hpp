@@ -86,6 +86,17 @@ namespace coroute::net
 			co_return co_await inner_->async_write_all(buffer, len);
 		}
 
+		Task<WriteResult> async_write_zero_copy(const void* buffer, size_t len) override
+		{
+			touch();
+			co_return co_await inner_->async_write_zero_copy(buffer, len);
+		}
+
+		[[nodiscard]] bool supports_zero_copy_send() const noexcept override
+		{
+			return inner_->supports_zero_copy_send();
+		}
+
 		Task<TransmitResult> async_transmit_file(FileHandle file, size_t offset, size_t length) override
 		{
 			touch();

@@ -20,6 +20,7 @@ namespace
 	class FakeContext final : public IoContext
 	{
 	public:
+		[[nodiscard]] std::string_view backend_name() const noexcept override { return "fake"; }
 		void run() override { }
 		void run_one() override { }
 		void stop() override { }

@@ -5,6 +5,17 @@
 namespace coroute::net
 {
 
+	Task<WriteResult> Connection::async_write_zero_copy(const void* buffer, size_t len)
+	{
+		(void)buffer;
+		(void)len;
+		co_return unexpected(Error::io(IoError::InvalidArgument,
+		                               "zero-copy send is not supported by this backend"));
+	}
+
+	bool Connection::supports_zero_copy_send() const noexcept { return false; }
+
+
 	namespace
 	{
 

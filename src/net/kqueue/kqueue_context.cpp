@@ -149,6 +149,8 @@ namespace coroute::net
 
 		int kq() const noexcept { return kq_; }
 
+		[[nodiscard]] std::string_view backend_name() const noexcept override { return "kqueue"; }
+
 		// Register operation for a file descriptor using thread-local batching
 		void register_read_op(int fd, KqueueOperation* op)
 		{
@@ -681,8 +683,12 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<IoContext> IoContext::create(size_t thread_count, IoBackend backend)
 	{
+		if (backend != IoBackend::Default && backend != IoBackend::Kqueue)
+		{
+			throw std::runtime_error("macOS build provides only the kqueue I/O backend");
+		}
 		return std::make_unique<KqueueContext>(thread_count);
 	}
 

@@ -1,8 +1,9 @@
 #include "coroute/net/io_context.hpp"
 #include "coroute/net/datagram.hpp"
 #include "coroute/net/timer_queue.hpp"
+#include "coroute/net/io_stats.hpp"
 
-#if defined(COROUTE_BACKEND_EPOLL)
+#if defined(COROUTE_PLATFORM_LINUX)
 
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -143,6 +144,7 @@ namespace coroute::net
 		std::vector<std::thread> workers_;
 		std::atomic<bool> stopped_{false};
 		size_t thread_count_;
+		IoStatsBlock* stats_ = nullptr;
 
 		std::mutex callback_mutex_;
 		std::queue<std::function<void()>> callbacks_;
@@ -184,6 +186,12 @@ namespace coroute::net
 			}
 		}
 
+		[[nodiscard]] std::string_view backend_name() const noexcept override { return "epoll"; }
+
+		void bind_stats(IoStatsBlock* block) override { stats_ = block; }
+
+		IoStatsBlock* stats() const noexcept { return stats_; }
+
 		int epfd() const noexcept { return epfd_; }
 
 		// Arm fd for a single notification of `events`, carrying `op` as the payload.
@@ -202,11 +210,18 @@ namespace coroute::net
 			ev.events = events | EPOLLONESHOT;
 			ev.data.ptr = op;
 
+			bump(stats_ ? &stats_->epoll_ctl : nullptr);
+
 			if (epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev) == 0)
 			{
 				return true;
 			}
-			return errno == ENOENT && epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == 0;
+			if (errno == ENOENT)
+			{
+				bump(stats_ ? &stats_->epoll_ctl : nullptr);
+				return epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == 0;
+			}
+			return false;
 		}
 
 		bool arm_read(int fd, EpollOperation* op) { return arm(fd, EPOLLIN, op); }
@@ -287,6 +302,7 @@ namespace coroute::net
 
 			// Bounded wait rather than blocking indefinitely, so stop() is noticed
 			// without needing an eventfd to interrupt the wait.
+			bump(stats_ ? &stats_->epoll_wait : nullptr);
 			int n = epoll_wait(epfd_, events.data(), static_cast<int>(events.size()), 100);
 			if (n < 0)
 			{
@@ -301,7 +317,7 @@ namespace coroute::net
 					continue;
 				}
 
-				perform(op, events[static_cast<size_t>(i)].events);
+				perform(op, events[static_cast<size_t>(i)].events, stats_);
 
 				if (op->continuation)
 				{
@@ -313,7 +329,7 @@ namespace coroute::net
 		// epoll reports only readiness, so the syscall happens here rather than having
 		// been done by the kernel as it would with io_uring. This is precisely the
 		// difference the backend exists to measure.
-		static void perform(EpollOperation* op, uint32_t revents)
+		static void perform(EpollOperation* op, uint32_t revents, IoStatsBlock* stats)
 		{
 			if ((revents & (EPOLLERR | EPOLLHUP)) != 0 && op->type != EpollOpType::Accept)
 			{
@@ -326,6 +342,7 @@ namespace coroute::net
 			{
 				case EpollOpType::Accept:
 				{
+					bump(stats ? &stats->accept : nullptr);
 					op->accept_fd = ::accept4(op->fd, reinterpret_cast<sockaddr*>(&op->client_addr),
 					                          &op->client_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
 					if (op->accept_fd < 0)
@@ -337,6 +354,7 @@ namespace coroute::net
 				}
 				case EpollOpType::Read:
 				{
+					bump(stats ? &stats->read : nullptr);
 					ssize_t bytes = ::recv(op->fd, op->buffer, op->length, 0);
 					if (bytes < 0)
 					{
@@ -358,6 +376,7 @@ namespace coroute::net
 						op->result = 0;
 						break;
 					}
+					bump(stats ? &stats->write : nullptr);
 					ssize_t bytes = ::send(op->fd, op->buffer, op->length, MSG_NOSIGNAL);
 					if (bytes < 0)
 					{
@@ -727,6 +746,7 @@ namespace coroute::net
 
 			// Linux sendfile takes an in/out offset and returns the byte count, which
 			// is the reverse of the macOS signature used by the kqueue backend.
+			bump(ctx_.stats() ? &ctx_.stats()->sendfile : nullptr);
 			off_t pos = static_cast<off_t>(offset + total_sent);
 			ssize_t sent = ::sendfile(fd_, file, &pos, length - total_sent);
 
@@ -1086,21 +1106,21 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<IoContext> create_epoll_context(size_t thread_count)
 	{
 		return std::make_unique<EpollContext>(thread_count);
 	}
 
-	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
+	std::unique_ptr<Listener> create_epoll_listener(IoContext& ctx)
 	{
 		return std::make_unique<EpollListener>(static_cast<EpollContext&>(ctx));
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t)
+	std::unique_ptr<DatagramSocket> create_epoll_datagram(IoContext& ctx, std::size_t)
 	{
 		return std::make_unique<EpollDatagramSocket>(static_cast<EpollContext&>(ctx));
 	}
 
 }  // namespace coroute::net
 
-#endif  // COROUTE_BACKEND_EPOLL
+#endif  // COROUTE_PLATFORM_LINUX

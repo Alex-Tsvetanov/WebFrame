@@ -20,12 +20,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import sys
 from pathlib import Path
 
 from benchmark.adapters import CorouteServer, LoadgenGenerator
 from benchmark.harness import driver, environment, schema
+from benchmark.harness.io_report import (
+    ZERO_COPY_SIZES,
+    select_open_loop_rate,
+    write_report,
+)
 from benchmark.harness.ordering import Cell, plan
 
 
@@ -38,15 +44,32 @@ _WINDOWS_SERVER_AFFINITY = "0ff"
 _WINDOWS_GENERATOR_AFFINITY = "f00"
 GENERATOR_THREADS = 2
 
-# macOS has no CPU affinity API for user processes. thread_policy_set with
-# THREAD_AFFINITY_POLICY is a locality hint and is a documented no-op on Apple Silicon,
-# so requesting a mask there would set affinity_applied false on all 250 runs and trip
-# the isolation rule in validity.py on every one of them. Asking for nothing is the
-# honest encoding of a platform that grants nothing: the record then says no isolation
-# was requested, rather than that isolation was requested and quietly denied.
-_HAS_AFFINITY = platform.system() in ("Windows", "Linux")
-SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY if _HAS_AFFINITY else None
-GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY if _HAS_AFFINITY else None
+
+def _linux_affinity_masks() -> tuple[str | None, str | None]:
+    """Disjoint masks for this host's CPU count.
+
+    The Windows masks must not be reused on Linux: 0xF00 asks for CPUs that do not
+    exist on a 4-CPU box, and 0x0FF collapses to every CPU, so both processes share.
+    """
+    n = os.cpu_count() or 0
+    if n >= 4:
+        return "3", "c"  # server CPUs 0-1, generator CPUs 2-3
+    if n == 2:
+        return "1", "2"
+    return None, None
+
+
+# macOS has no CPU affinity API for user processes. Asking for nothing is the honest
+# encoding of a platform that grants nothing.
+_SYSTEM = platform.system()
+if _SYSTEM == "Windows":
+    SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY
+    GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY
+elif _SYSTEM == "Linux":
+    SERVER_AFFINITY, GENERATOR_AFFINITY = _linux_affinity_masks()
+else:
+    SERVER_AFFINITY = None
+    GENERATOR_AFFINITY = None
 
 
 def system_name() -> str:
@@ -68,6 +91,9 @@ def system_name() -> str:
 # milliseconds, and validity.py refuses those runs.
 OFFERED_RATES = (10_000, 25_000, 40_000, 55_000, 70_000)
 
+# Linux I/O-portability workers match the server affinity width on this 4-CPU box.
+_IO_WORKERS = 2 if (os.cpu_count() or 0) >= 4 else 1
+
 
 def _io_backend() -> str:
     """The backend the presets select for this host.
@@ -77,6 +103,39 @@ def _io_backend() -> str:
     repetitions of one.
     """
     return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
+
+
+def _default_build() -> Path:
+    name = {
+        "Darwin": "macos-release",
+        "Linux": "linux-release",
+        "Windows": "windows-release",
+    }.get(platform.system(), "windows-release")
+    return REPO / "build" / name
+
+
+def _default_results(design: str) -> Path:
+    if design.startswith("io-"):
+        return REPO / "benchmark" / "results" / "linux-io-portability.jsonl"
+    return REPO / "benchmark" / "results" / "runs.jsonl"
+
+
+def _io_base(**extra) -> dict:
+    """Shared factors for the Linux I/O-portability designs."""
+    base = dict(
+        protocol="http1.1",
+        tls=False,
+        workers=_IO_WORKERS,
+        connections=64,
+        payload_bytes=0,
+        backlog=1024,
+        streams_per_connection=1,
+        netem_profile="none",
+        protocol_detection=True,
+        write_path="buffered",
+    )
+    base.update(extra)
+    return base
 
 
 def design_windows_h1() -> list[Cell]:
@@ -191,11 +250,56 @@ def design_smoke() -> list[Cell]:
     ]
 
 
+def design_io_ladder() -> list[Cell]:
+    """Where this Linux host's generator stops keeping up, for the I/O session.
+
+    One repetition per rate. Uses io_uring buffered as the probe arm; the cliff is a
+    property of the generator on this machine, not of the backend under comparison.
+    """
+    base = _io_base(io_backend="io_uring", study="ladder")
+    return [
+        Cell.of(system_name(), **base, offered_rate=rate)
+        for rate in range(10_000, 130_000, 10_000)
+    ]
+
+
+def design_io_a(offered_rate: float) -> list[Cell]:
+    """Sub-study A: epoll against io_uring. Same binary, same workload, runtime flag."""
+    cells: list[Cell] = []
+    for backend in ("epoll", "io_uring"):
+        cells.append(Cell.of(
+            system_name(),
+            **_io_base(io_backend=backend, study="A", write_path="buffered",
+                       payload_bytes=0, offered_rate=offered_rate),
+        ))
+    return cells
+
+
+def design_io_b(offered_rate: float) -> list[Cell]:
+    """Sub-study B: sendfile vs SEND_ZC vs buffered across pre-declared sizes.
+
+    io_uring only. send_zc+epoll is not scheduled: SEND_ZC is an io_uring opcode.
+    Sizes are fixed in advance; they are not retuned after seeing numbers.
+    """
+    cells: list[Cell] = []
+    for size in ZERO_COPY_SIZES:
+        for path in ("buffered", "sendfile", "send_zc"):
+            cells.append(Cell.of(
+                system_name(),
+                **_io_base(io_backend="io_uring", study="B", write_path=path,
+                           payload_bytes=size, offered_rate=offered_rate),
+            ))
+    return cells
+
+
 # h1 and h1-deep are the names to use. The windows- prefixed spellings are kept as
 # aliases because the committed Windows results were produced under them and a reader
 # reproducing that campaign will find those names in the commit messages; nothing about
 # either design is Windows-specific, and the cells they build carry whichever system
 # name and I/O backend the host implies.
+#
+# io-ladder / io-a / io-b / io-portability are the Linux I/O-portability session.
+# io-a and io-b need --offered-rate. io-portability runs the ladder then A and B.
 DESIGNS = {
     "h1": design_windows_h1,
     "h1-deep": design_windows_h1_deep,
@@ -203,6 +307,10 @@ DESIGNS = {
     "smoke": design_smoke,
     "windows-h1": design_windows_h1,
     "windows-h1-deep": design_windows_h1_deep,
+    "io-ladder": design_io_ladder,
+    "io-a": lambda: design_io_a(0),  # placeholder; main rebuilds with --offered-rate
+    "io-b": lambda: design_io_b(0),
+    "io-portability": design_io_ladder,  # orchestrated specially in main
 }
 
 
@@ -216,13 +324,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--warmup", type=float, default=3.0, help="discarded seconds per run")
     ap.add_argument("--seed", type=int, default=20260829)
     ap.add_argument("--port", type=int, default=18080)
-    ap.add_argument("--results", type=Path, default=REPO / "benchmark" / "results" / "runs.jsonl")
+    ap.add_argument("--results", type=Path, default=None)
     ap.add_argument("--samples", type=Path, default=None,
                     help="directory for raw per-request latency samples")
-    ap.add_argument("--build", type=Path,
-                    default=REPO / "build" / "windows-release",
+    ap.add_argument("--build", type=Path, default=None,
                     help="build directory holding the server and the generator")
+    ap.add_argument("--offered-rate", type=float, default=None,
+                    help="open-loop rate for io-a / io-b (required unless io-portability)")
+    ap.add_argument("--report", type=Path,
+                    default=REPO / "measurements" / "report.txt",
+                    help="write the I/O-portability report here after io-* designs")
     args = ap.parse_args(argv)
+
+    if args.build is None:
+        args.build = _default_build()
+    if args.results is None:
+        args.results = _default_results(args.design)
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
     gen_bin = args.build / "benchmark" / "loadgen.exe"
@@ -235,25 +352,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"not built: {binary}", file=sys.stderr)
             return 2
 
-    env = environment.capture(repo=REPO, build_type="Release")
+    # Dual Linux backends share one fingerprint. Per-run backend is a schema field.
+    io_backend_fp = "epoll+io_uring" if args.design.startswith("io-") else None
+    env = environment.capture(repo=REPO, build_type="Release", io_backend=io_backend_fp)
     args.results.parent.mkdir(parents=True, exist_ok=True)
 
-    # Refuses to append to a campaign whose machine has changed. Mixing two populations
-    # into one file is the failure this exists to prevent, and it cannot be noticed
-    # afterwards from the numbers alone.
     campaign = environment.Campaign.open_or_create(
         args.results.with_suffix(".env.json"), env
     )
-
-    cells = DESIGNS[args.design]()
-    schedule = plan(cells, repetitions=args.repetitions, seed=args.seed)
-
-    print(f"design {args.design}: {len(cells)} cells x {args.repetitions} repetitions "
-          f"= {len(schedule)} runs")
-    print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
-    print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
-          f"{env.get('virtualisation') or 'none'}")
-    print()
 
     generator = LoadgenGenerator(
         binary=gen_bin, port=args.port, threads=GENERATOR_THREADS,
@@ -264,30 +370,85 @@ def main(argv: list[str] | None = None) -> int:
         return CorouteServer(binary=server_bin, cell=cell, port=args.port,
                              affinity_mask=SERVER_AFFINITY)
 
-    done = {"n": 0}
+    all_records: list[schema.RunRecord] = []
 
-    def report(record: schema.RunRecord) -> None:
-        done["n"] += 1
-        mark = "ok " if record.accepted else "REJ"
-        detail = "" if record.accepted else "  " + "; ".join(record.rejection_reasons)[:110]
-        print(f"[{done['n']:3d}/{len(schedule)}] {mark} "
-              f"rate={record.offered_rate or 0:>6.0f} detect={record.protocol_detection:d} "
-              f"w={record.workers} pay={record.payload_bytes:<5d} "
-              f"rps={record.requests_per_second:>9.0f} "
-              f"p99={record.latency_ms.get('p99', 0):>7.3f}ms{detail}")
+    def run_cells(cells: list[Cell], repetitions: int, seed: int, label: str) -> list[schema.RunRecord]:
+        schedule = plan(cells, repetitions=repetitions, seed=seed)
+        print(f"design {label}: {len(cells)} cells x {repetitions} repetitions "
+              f"= {len(schedule)} runs")
+        print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
+        print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
+              f"{env.get('virtualisation') or 'none'}")
+        print(f"affinity server={SERVER_AFFINITY!r} generator={GENERATOR_AFFINITY!r}")
+        print()
 
-    records = driver.run_campaign(
-        schedule,
-        results_path=args.results,
-        server_factory=server_factory,
-        generator=generator,
-        environment=env,
-        campaign_fingerprint=campaign.fingerprint,
-        duration_s=args.duration,
-        on_record=report,
-    )
+        done = {"n": 0}
 
-    summary = driver.summarise(records)
+        def on_record(record: schema.RunRecord) -> None:
+            done["n"] += 1
+            mark = "ok " if record.accepted else "REJ"
+            detail = "" if record.accepted else "  " + "; ".join(record.rejection_reasons)[:110]
+            print(f"[{done['n']:3d}/{len(schedule)}] {mark} "
+                  f"study={record.study or '-':7s} "
+                  f"io={record.io_backend:8s} wp={record.write_path or '-':8s} "
+                  f"rate={record.offered_rate or 0:>6.0f} "
+                  f"pay={record.payload_bytes:<7d} "
+                  f"rps={record.requests_per_second:>9.0f} "
+                  f"p99={record.latency_ms.get('p99', 0):>7.3f}ms"
+                  f"{detail}")
+
+        records = driver.run_campaign(
+            schedule,
+            results_path=args.results,
+            server_factory=server_factory,
+            generator=generator,
+            environment=env,
+            campaign_fingerprint=campaign.fingerprint,
+            duration_s=args.duration,
+            on_record=on_record,
+        )
+        all_records.extend(records)
+        return records
+
+    offered = args.offered_rate
+
+    if args.design == "io-portability":
+        run_cells(design_io_ladder(), repetitions=1, seed=args.seed, label="io-ladder")
+        offered = select_open_loop_rate(schema.read(args.results))
+        print(f"\nselected offered_rate={offered!r}")
+        if offered is None:
+            print("no ladder rate kept pacing/achieved-share thresholds; A and B cells stay empty")
+        else:
+            run_cells(design_io_a(offered), repetitions=args.repetitions,
+                      seed=args.seed + 1, label="io-a")
+            run_cells(design_io_b(offered), repetitions=args.repetitions,
+                      seed=args.seed + 2, label="io-b")
+        write_report(args.results, args.report, offered_rate=offered)
+        print(f"wrote report {args.report}")
+    elif args.design == "io-a":
+        if offered is None:
+            print("--offered-rate is required for io-a", file=sys.stderr)
+            return 2
+        run_cells(design_io_a(offered), repetitions=args.repetitions,
+                  seed=args.seed, label="io-a")
+        write_report(args.results, args.report, offered_rate=offered)
+    elif args.design == "io-b":
+        if offered is None:
+            print("--offered-rate is required for io-b", file=sys.stderr)
+            return 2
+        run_cells(design_io_b(offered), repetitions=args.repetitions,
+                  seed=args.seed, label="io-b")
+        write_report(args.results, args.report, offered_rate=offered)
+    elif args.design == "io-ladder":
+        run_cells(design_io_ladder(), repetitions=1, seed=args.seed, label="io-ladder")
+        offered = select_open_loop_rate(schema.read(args.results))
+        write_report(args.results, args.report, offered_rate=offered)
+        print(f"selected offered_rate={offered!r}")
+    else:
+        cells = DESIGNS[args.design]()
+        run_cells(cells, repetitions=args.repetitions, seed=args.seed, label=args.design)
+
+    summary = driver.summarise(all_records)
     print()
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"\nwrote {args.results}")

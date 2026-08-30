@@ -107,6 +107,8 @@ namespace coroute::net
 		Task<ReadResult> async_read_until(void* buffer, size_t len, char delimiter) override;
 		Task<WriteResult> async_write(const void* buffer, size_t len) override;
 		Task<WriteResult> async_write_all(const void* buffer, size_t len) override;
+		Task<WriteResult> async_write_zero_copy(const void* buffer, size_t len) override;
+		[[nodiscard]] bool supports_zero_copy_send() const noexcept override;
 		Task<TransmitResult> async_transmit_file(FileHandle file, size_t offset, size_t length) override;
 
 		void close() override;
