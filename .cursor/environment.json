@@ -1,0 +1,14 @@
+{
+  "name": "Coroute (WebFrame) C++20",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "user": "ubuntu",
+  "install": "cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCOROUTE_BUILD_EXAMPLES=ON -DCOROUTE_BUILD_TESTS=ON -DCOROUTE_ENABLE_TLS=ON -DCOROUTE_ENABLE_HTTP2=ON -DCOROUTE_ENABLE_SIMDJSON=ON && cmake --build build --parallel",
+  "terminals": [
+    {
+      "name": "hello_world server",
+      "command": "./build/examples/Samples/hello_world/hello_world"
+    }
+  ]
+}
