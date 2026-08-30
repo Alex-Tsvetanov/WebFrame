@@ -25,6 +25,21 @@ PREFIX="${1:-$HOME/opt/quic}"
 SRC="$PREFIX/src"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 
+# The examples need C++23 library features (<expected>, <print>). g++-13 on
+# Ubuntu 24.04 has <expected> but not <print>; prefer g++-14 when present.
+CXX_COMPILER="${CMAKE_CXX_COMPILER:-}"
+if [ -z "$CXX_COMPILER" ]; then
+    if command -v g++-14 >/dev/null 2>&1; then
+        CXX_COMPILER=g++-14
+        C_COMPILER=gcc-14
+    else
+        CXX_COMPILER=g++
+        C_COMPILER=gcc
+    fi
+else
+    C_COMPILER="${CMAKE_C_COMPILER:-gcc}"
+fi
+
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 if [ ! -d "$SRC/ngtcp2" ]; then
@@ -71,6 +86,10 @@ cd "$SRC/ngtcp2"
 # ENABLE_LIB_ONLY=OFF is the whole point here: it is what builds examples/.
 cmake -S . -B build-examples \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="$C_COMPILER" \
+    -DCMAKE_CXX_COMPILER="$CXX_COMPILER" \
+    -DCMAKE_CXX_STANDARD=23 \
+    -DCMAKE_CXX_STANDARD_REQUIRED=ON \
     -DENABLE_LIB_ONLY=OFF \
     -DENABLE_STATIC_LIB=OFF -DENABLE_SHARED_LIB=ON \
     -DBUILD_TESTING=OFF \

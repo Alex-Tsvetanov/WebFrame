@@ -96,3 +96,22 @@ if(COROUTE_BUILD_EXAMPLES)
         message(STATUS "Python3 not found: skipping the protocol_demux integration test")
     endif()
 endif()
+
+# ============================================================================
+# Integration: QUIC path migration → userspace CID forwarding
+# ============================================================================
+#
+# Linux-only. Needs a COROUTE_ENABLE_HTTP3 build, ngtcp2's osslclient, and a
+# netns+nft harness that can SNAT the client source port mid-connection. Skips
+# (ctest exit 77) when any of those are missing rather than failing the suite.
+if(COROUTE_ENABLE_HTTP3)
+    add_test(NAME http3_path_migration
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/verify_http3_migration.sh
+                ${CMAKE_BINARY_DIR}
+                $ENV{HOME}/opt/quic)
+    set_tests_properties(http3_path_migration PROPERTIES
+        TIMEOUT 180
+        SKIP_RETURN_CODE 77
+        # Serial: exclusive use of netns names and a fixed UDP port.
+        RUN_SERIAL TRUE)
+endif()

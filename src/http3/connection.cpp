@@ -580,6 +580,13 @@ namespace coroute::http3
 		              "the stateless reset token width is fixed by RFC 9000 and must match ngtcp2's");
 		const auto derived = derive_reset_token(server_reset_secret(), CidKey(cid->data, cidlen));
 		std::memcpy(token->data, derived.data(), derived.size());
+
+		// Register the alias before returning: ngtcp2 may advertise the ID to the peer
+		// immediately, and the next packet can already carry it as the destination.
+		if (cid_alias_tracker_)
+		{
+			cid_alias_tracker_(this, CidKey(cid->data, cidlen));
+		}
 		return 0;
 	}
 
