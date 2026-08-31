@@ -275,6 +275,18 @@ namespace coroute::net
 							// Set non-blocking
 							int flags = fcntl(op->accept_fd, F_GETFL, 0);
 							fcntl(op->accept_fd, F_SETFL, flags | O_NONBLOCK);
+#ifdef SO_NOSIGPIPE
+							// The write path sends with flags 0, and there is no
+							// MSG_NOSIGNAL on this platform to pass there instead. A peer
+							// that disappears mid-response would otherwise raise SIGPIPE
+							// and take the whole server down, which during a campaign
+							// looks like a machine fault rather than a closed connection.
+							// The epoll backend gets the same protection from
+							// MSG_NOSIGNAL on its send; this is the BSD spelling of it.
+							const int nosigpipe = 1;
+							setsockopt(op->accept_fd, SOL_SOCKET, SO_NOSIGPIPE,
+							           &nosigpipe, sizeof(nosigpipe));
+#endif
 							op->result = op->accept_fd;
 						}
 					}

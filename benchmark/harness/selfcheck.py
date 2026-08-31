@@ -343,6 +343,15 @@ def darwin_parser_checks() -> None:
     check("low power mode on is read", env_mod._low_power_mode(" lowpowermode         1\n") is True)
     check("hardware without the setting is unknown, not off",
           env_mod._low_power_mode(" powernap             1\n") is None)
+    # macOS 26 renamed the key and made it tri-state. Both spellings are checked, because
+    # a probe that knows only the retired one returns None for ever, and that absence is
+    # indistinguishable from hardware which has no such mode.
+    check("high power mode is not low power mode",
+          env_mod._low_power_mode(" powermode            2\n") is False)
+    check("powermode 1 is low power mode",
+          env_mod._low_power_mode(" powermode            1\n") is True)
+    check("powermode 0, automatic, is not low power mode",
+          env_mod._low_power_mode(" powermode            0\n") is False)
 
     check("a throttled machine reports its speed limit",
           env_mod._cpu_speed_limit("\tCPU_Speed_Limit \t= 70\n") == 70)

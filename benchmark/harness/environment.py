@@ -175,14 +175,24 @@ def _power_source(pmset_ps: str | None = None) -> str | None:
 
 
 def _low_power_mode(pmset_live: str | None = None) -> bool | None:
-    """Low Power Mode, from the lowpowermode setting pmset lists among the live ones.
+    """Whether Low Power Mode is on, under either spelling pmset has used.
 
-    None when that line is absent, which is what hardware without the mode looks like.
-    Recording it as off would be a claim about the run that nothing measured.
+    macOS 26 renamed the setting: there is no lowpowermode line any more, and the
+    replacement is powermode, which is tri-state rather than boolean. 0 is automatic,
+    1 is low power, 2 is high power. Reading only the old name is the same defect as
+    reading a counting tool that is not installed: it returns None for ever and the
+    absence looks like hardware without the feature rather than like a probe that
+    stopped working.
+
+    None still means not established, which is the honest answer for a machine that
+    reports neither key. Recording it as off would be a claim nothing measured.
     """
     text = pmset_live if pmset_live is not None else _run(["pmset", "-g"])
     if not text:
         return None
+    match = re.search(r"^\s*powermode\s+(\d+)\s*$", text, re.MULTILINE)
+    if match:
+        return match.group(1) == "1"
     match = re.search(r"^\s*lowpowermode\s+(\d+)\s*$", text, re.MULTILINE)
     return match.group(1) != "0" if match else None
 

@@ -90,10 +90,29 @@ def system_name() -> str:
         platform.system(), "coroute"
     )
 
-# Below the point where the generator stops keeping up. Measured, not chosen: above
-# about 75k on this host its pacing lag at p99 goes from tens of microseconds to
-# milliseconds, and validity.py refuses those runs.
-OFFERED_RATES = (10_000, 25_000, 40_000, 55_000, 70_000)
+# Below the point where the generator stops keeping up. Measured, not chosen, and
+# measured separately per host: the ceiling is a property of the machine and of whether
+# the generator can be given cores of its own, not of the code.
+#
+# Windows, Ryzen 5 3600, generator pinned to two dedicated physical cores: pacing lag at
+# p99 leaves the tens of microseconds above about 75k.
+_WINDOWS_RATES = (10_000, 25_000, 40_000, 55_000, 70_000)
+#
+# macOS, M4 Pro, nothing pinned because the platform has no affinity API, so the
+# generator shares performance cores with the server. The ladder found a cliff between
+# 50k and 60k which is not gradual: pacing lag goes from 279us to 1,019,598us in one
+# step and the achieved share from 1.000 to 0.897. Server CPU plateaus from 60k upward
+# while achieved throughput falls, which is a generator that stopped keeping up rather
+# than a server that saturated.
+#
+# So 70k is unusable here and 55k sits one step below a cliff edge. The set below keeps
+# the three rates Windows also runs, which is what makes the two campaigns describe the
+# same offered loads, and tops out at 50k, the highest rate the ladder measured inside
+# the flat region. Faster hardware with a lower ceiling is not a contradiction: the
+# ceiling is set by the isolation the platform grants, not by the silicon.
+_MACOS_RATES = (10_000, 25_000, 40_000, 50_000)
+
+OFFERED_RATES = _MACOS_RATES if platform.system() == "Darwin" else _WINDOWS_RATES
 
 
 def _io_backend() -> str:
