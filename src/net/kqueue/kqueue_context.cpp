@@ -115,6 +115,13 @@ namespace coroute::net
 		// Thread-local buffer for batching kqueue registrations
 		static thread_local std::vector<struct kevent> pending_changes_;
 
+		// Whether this thread is one that drains the buffer above. Only a thread running
+		// process_events() ever submits its own pending changes, so a registration made on
+		// any other thread would sit in a buffer nobody reads and the filter would never be
+		// armed. That is not hypothetical: enable_multi_accept() starts the accept pool on
+		// the caller's thread, before run() has spawned a single worker.
+		static thread_local bool in_event_loop_;
+
 	public:
 		explicit KqueueContext(size_t thread_count) : thread_count_(thread_count)
 		{
@@ -149,26 +156,44 @@ namespace coroute::net
 
 		int kq() const noexcept { return kq_; }
 
+		// Batched on a worker, submitted immediately anywhere else.
+		//
+		// The batching is what lets process_events() carry its changelist in the same
+		// kevent() call that waits for events, which is a syscall saved per operation on the
+		// hot path and worth keeping. It is only safe for a thread that goes on to make that
+		// call. Off the loop the change is submitted on its own rather than deferred to a
+		// drain that never comes; those registrations are the bootstrap ones and are counted
+		// in ones, not in millions.
+		void submit_or_batch(const struct kevent& ev)
+		{
+			if (in_event_loop_)
+			{
+				pending_changes_.push_back(ev);
+				return;
+			}
+			kevent(kq_, &ev, 1, nullptr, 0, nullptr);
+		}
+
 		// Register operation for a file descriptor using thread-local batching
 		void register_read_op(int fd, KqueueOperation* op)
 		{
 			struct kevent ev;
 			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, op);
-			pending_changes_.push_back(ev);
+			submit_or_batch(ev);
 		}
 
 		void register_write_op(int fd, KqueueOperation* op)
 		{
 			struct kevent ev;
 			EV_SET(&ev, fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, op);
-			pending_changes_.push_back(ev);
+			submit_or_batch(ev);
 		}
 
 		void register_accept_op(int fd, KqueueOperation* op)
 		{
 			struct kevent ev;
 			EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, op);
-			pending_changes_.push_back(ev);
+			submit_or_batch(ev);
 		}
 
 		void run() override
@@ -231,6 +256,7 @@ namespace coroute::net
 
 		void worker_thread()
 		{
+			in_event_loop_ = true;
 			while (!stopped_)
 			{
 				process_events();
@@ -688,6 +714,7 @@ namespace coroute::net
 
 	// Definition of thread_local member
 	thread_local std::vector<struct kevent> KqueueContext::pending_changes_;
+	thread_local bool KqueueContext::in_event_loop_ = false;
 
 	// ============================================================================
 	// Factory Functions

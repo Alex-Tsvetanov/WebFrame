@@ -1354,7 +1354,11 @@ int main(int argc, char** argv)
 
 	sockaddr_in addr{};
 	addr.sin_family = AF_INET;
-	addr.sin_port = ::htons(opt.port);
+	// Unqualified, not ::htons. On Darwin htons is a macro expanding to a parenthesised
+	// cast, so the global-scope qualifier would apply to an expression rather than to a
+	// name and the file would not compile. Plain htons is correct on all three: a
+	// function on Windows and glibc, and the macro where there is one.
+	addr.sin_port = htons(opt.port);
 	if (::inet_pton(AF_INET, opt.host.c_str(), &addr.sin_addr) != 1)
 	{
 		std::fprintf(stderr, "--host must be a literal IPv4 address\n");
