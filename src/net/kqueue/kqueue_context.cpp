@@ -529,8 +529,21 @@ namespace coroute::net
 		multi_listener_ = std::move(listener);
 		multi_accept_ = true;
 
-		// Depth above the worker count: see start_accept_pool.
-		start_accept_pool(*this, *multi_listener_, handler, std::max<size_t>(thread_count_ * 2, 4));
+		// Depth one, as on epoll, and for the same reason: a readiness interface cannot
+		// hold several independent waiters on one descriptor.
+		//
+		// kqueue identifies a knote by (ident, filter). udata is carried, not keyed, and
+		// EV_ADD on an existing knote modifies it rather than adding a second. So a pool
+		// of N accept operations on one listening descriptor collapses to a single knote
+		// holding the last operation registered, and the other N-1 coroutine frames
+		// suspend with nothing that will ever resume them. The depth was real on IOCP,
+		// where each AcceptEx is a separate overlapped operation, and this line was
+		// copied from there.
+		//
+		// A deeper pool here would need a dup()ed descriptor per slot so the idents
+		// differ, at the cost of N-1 spurious EAGAIN returns per arrival. That is a
+		// change to the system under measurement and is not made during a campaign.
+		start_accept_pool(*this, *multi_listener_, handler, 1);
 
 		return true;
 	}

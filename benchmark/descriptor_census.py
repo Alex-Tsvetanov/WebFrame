@@ -2,11 +2,17 @@
 
 The central proposition of the dissertation is about a count, not a speed:
 
-    L = W * |T|
+    L = A * |T|
 
-listening descriptors, where W is the worker count and T the set of transports, and
-notably NOT a function of the number of application protocols served. A claim about a
-count is checked by counting, so this asks the operating system rather than the server.
+listening descriptors, where T is the set of transports and A is the number of accepting
+descriptors the platform's accept model requires: the worker count under SO_REUSEPORT,
+one under a shared-listener model such as IOCP or kqueue. Notably NOT a function of the
+number of application protocols served, which is the part the work defends.
+
+The earlier form of that line read W * |T| unconditionally, and this script is what
+disproved it: Windows holds one listening descriptor at one, two, four and eight workers.
+An instrument that still asserted the refuted form would be quoting the hypothesis it
+exists to test.
 
 Asking the operating system matters. The server could be made to report whatever the
 author expected, and a census taken from inside the process being measured is not
@@ -214,8 +220,9 @@ def main(argv: list[str] | None = None) -> int:
         writer.writerows(rows)
     print(f"\nwrote {args.out}")
 
-    # The proposition says the count is proportional to workers and independent of the
-    # protocols served. Stated here as something the data can contradict.
+    # The proposition says the count is independent of the protocols served. It says
+    # nothing about proportionality to workers, which is what A absorbs. Stated here as
+    # something the data can contradict.
     on = {r["workers"]: r["tcp_listeners"] for r in rows if r["protocol_detection"]}
     off = {r["workers"]: r["tcp_listeners"] for r in rows if not r["protocol_detection"]}
     print("\nTCP listeners by worker count:")
