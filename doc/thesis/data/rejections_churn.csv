@@ -1,0 +1,8 @@
+reason,count
+1 socket errors during the run,16
+2 socket errors during the run,7
+"generator was 10437us behind its own schedule at p99, above 1000us",1
+"generator was 3136us behind its own schedule at p99, above 1000us",1
+"generator was 5024us behind its own schedule at p99, above 1000us",1
+"generator was 8045us behind its own schedule at p99, above 1000us",1
+"generator was 9879us behind its own schedule at p99, above 1000us",1
