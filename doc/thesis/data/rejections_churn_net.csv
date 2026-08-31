@@ -1,0 +1,14 @@
+reason,count
+1 socket errors during the run,3
+25 TLS handshakes failed during the run,1
+91 socket errors during the run,1
+"generator delivered 0.0% of the offered rate, below 99%",1
+"generator delivered 72.3% of the offered rate, below 99%",1
+"generator delivered 92.8% of the offered rate, below 99%",1
+"generator was 122175us behind its own schedule at p99, above 1000us",1
+"generator was 1590874us behind its own schedule at p99, above 1000us",1
+"generator was 1599085us behind its own schedule at p99, above 1000us",1
+"generator was 1714433us behind its own schedule at p99, above 1000us",1
+"generator was 2691us behind its own schedule at p99, above 1000us",1
+"generator was 41333us behind its own schedule at p99, above 1000us",1
+"generator was 5679233us behind its own schedule at p99, above 1000us",1
