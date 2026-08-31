@@ -293,6 +293,41 @@ def design_churn() -> list[Cell]:
     ]
 
 
+# The same design over a network interface, where the ceiling is somewhere else
+# entirely. Measured by churn-ladder with the generator inside WSL: 25, 50, 100, 200,
+# 300, 400, 600 and 800 establishments a second were all admissible on the first
+# attempt, with the median establishment flat between 1.50 and 1.70 ms across the whole
+# range, where the loopback arrangement was inadmissible above 150 and saturated hard at
+# about 330.
+#
+# So the loopback establishment ceiling was the arrangement rather than the server. A
+# churn generator pays for a TCP handshake and an asymmetric key exchange per request
+# just as the server does, and on loopback it was pinned to two physical cores of the
+# same six the server was using. Moving it into the virtual machine gives it cores the
+# hypervisor places, and the ceiling moves by more than a factor of five.
+#
+# That is a fact about what the loopback numbers can be asked to support, and it is the
+# argument for running this arrangement at all rather than a detail of it.
+CHURN_NET_OFFERED_RATES = (50, 150, 400, 800)
+
+
+def design_churn_net() -> list[Cell]:
+    """churn over a network interface, at rates loopback could not reach.
+
+    Two of the four rates are shared with the loopback table so the two arrangements can
+    be read against each other for shape. They are not comparable for magnitude and the
+    results files are kept apart: the transport path is part of the environment record
+    precisely so that nothing downstream can merge them by accident.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=tls, max_requests_per_connection=1),
+                protocol_detection=detect, offered_rate=rate)
+        for rate in CHURN_NET_OFFERED_RATES
+        for tls in (False, True)
+        for detect in (True, False)
+    ]
+
+
 def design_tls_ladder() -> list[Cell]:
     """Where the generator stops keeping up with TLS in the path.
 
@@ -386,6 +421,7 @@ DESIGNS = {
     "transport": design_transport,
     "tls-deep": design_tls_deep,
     "churn": design_churn,
+    "churn-net": design_churn_net,
     "tls-ladder": design_tls_ladder,
     "churn-ladder": design_churn_ladder,
     "tls-smoke": design_tls_smoke,
