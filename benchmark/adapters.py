@@ -141,6 +141,30 @@ elif _platform.system() == "Darwin":
     _RUSAGE_INFO_V4 = 4
     _RUSAGE_BUFFER_BYTES = 1024  # comfortably larger than any published rusage_info_v*
 
+    def _mach_timebase() -> tuple[int, int]:
+        """What one unit of ri_user_time is worth, as the kernel reports it.
+
+        proc_pid_rusage returns those times in mach absolute time units rather than in
+        nanoseconds. On Intel the two coincide, because the timebase there is 1/1, which
+        is how the assumption survived: on Apple Silicon it is 125/3, so reading the raw
+        value as nanoseconds under-reports every server CPU figure by a factor of nearly
+        forty-two. Asked of the machine rather than written down, since it is a property
+        of the part and not of the architecture.
+        """
+
+        class _Timebase(ctypes.Structure):
+            _fields_ = [("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32)]
+
+        try:
+            tb = _Timebase()
+            if ctypes.CDLL("libSystem.dylib").mach_timebase_info(ctypes.byref(tb)) != 0:
+                return 1, 1
+            return (tb.numer, tb.denom) if tb.numer and tb.denom else (1, 1)
+        except (OSError, AttributeError):
+            return 1, 1
+
+    _TIMEBASE_NUMER, _TIMEBASE_DENOM = _mach_timebase()
+
     def _process_cost(pid: int) -> tuple[float | None, int | None]:
         """CPU seconds and peak footprint from libproc, read while the process is alive.
 
@@ -149,8 +173,8 @@ elif _platform.system() == "Darwin":
         the wait it is a cumulative total over every subprocess the campaign has ever
         started. Neither is the quantity the record claims.
 
-        Times are nanoseconds and the footprint is already bytes, so unlike ru_maxrss
-        there is no unit that differs between Darwin and Linux to get wrong.
+        Times are mach absolute time units, converted through the timebase above; the
+        footprint is already bytes.
         """
         buffer = (ctypes.c_uint8 * _RUSAGE_BUFFER_BYTES)()
         try:
@@ -161,8 +185,12 @@ elif _platform.system() == "Darwin":
             return None, None
         if rc != 0:
             return None, None
-        info = ctypes.cast(buffer, ctypes.POINTER(_RUSAGE_INFO_V4)).contents
-        cpu = (info.ri_user_time + info.ri_system_time) / 1e9
+        # _RUsageInfoV4 is the struct; _RUSAGE_INFO_V4 is the integer flavour asked of
+        # libproc. Passing the latter here made ctypes.POINTER raise inside stop(), which
+        # the driver recorded as a failure and every run on this platform was rejected.
+        info = ctypes.cast(buffer, ctypes.POINTER(_RUsageInfoV4)).contents
+        ticks = info.ri_user_time + info.ri_system_time
+        cpu = ticks * _TIMEBASE_NUMER / _TIMEBASE_DENOM / 1e9
         return cpu, int(info.ri_lifetime_max_phys_footprint)
 
 else:
