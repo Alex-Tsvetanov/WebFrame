@@ -124,6 +124,28 @@ _MACOS_RATES = (10_000, 25_000, 40_000, 50_000)
 OFFERED_RATES = _MACOS_RATES if platform.system() == "Darwin" else _WINDOWS_RATES
 
 
+def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) -> str | None:
+    """Why this run's arrangement cannot join the campaign on disk, or None.
+
+    The fingerprint answers "same machine" and deliberately leaves the transport path
+    out, so a loopback campaign and a network-path one hash identically and
+    open_or_create accepts the append; the docstring of this module promised otherwise.
+    The two populations differ in exactly the fixed cost a per-connection difference is
+    measured against. Compared on the keys that name the arrangement and not on the
+    address, because a virtual switch or a veth end changes address between sessions of
+    the same arrangement. A file from before the section existed records nothing and is
+    refused, since nothing establishes what it holds.
+    """
+    stored = campaign.environment.get(section) or {}
+    current = env[section]
+    for key in ("loopback", "generator_location"):
+        if stored.get(key) != current[key]:
+            return (f"{campaign.path} records {key}={stored.get(key)!r} and this run is "
+                    f"{key}={current[key]!r}; the two arrangements are not comparable. "
+                    f"Use a different --results.")
+    return None
+
+
 def _io_backend() -> str:
     """The backend the presets select for this host.
 
@@ -577,6 +599,10 @@ def main(argv: list[str] | None = None) -> int:
     campaign = environment.Campaign.open_or_create(
         args.results.with_suffix(".env.json"), env
     )
+    mismatch = transport_mismatch(campaign, env, "transport_path")
+    if mismatch:
+        print(mismatch, file=sys.stderr)
+        return 2
 
     cells = DESIGNS[args.design]()
 

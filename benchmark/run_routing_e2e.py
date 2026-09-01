@@ -43,6 +43,7 @@ from pathlib import Path
 from benchmark.adapters import CorouteServer, LoadgenGenerator
 from benchmark.harness import driver, environment, schema
 from benchmark.harness.ordering import Cell, plan
+from benchmark.run_campaign import transport_mismatch
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -288,6 +289,10 @@ def main(argv: list[str] | None = None) -> int:
         "generator_location": location,
     }
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
+    mismatch = transport_mismatch(campaign, env, "routing_e2e")
+    if mismatch:
+        print(mismatch, file=sys.stderr)
+        return 2
 
     cells = DESIGNS[args.design]()
     schedule = plan(cells, repetitions=args.repetitions, seed=args.seed)
