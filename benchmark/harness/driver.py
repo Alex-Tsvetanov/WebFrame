@@ -139,7 +139,7 @@ class HostProbes:
     nothing has to remember to ask for them.
     """
 
-    cpu_mhz: Callable[[], float | None] = validity.current_cpu_mhz
+    cpu_mhz: Callable[[], float | str | None] = validity.current_cpu_mhz
     power_source: Callable[[], str | None] = validity.current_power_source
     speed_limit: Callable[[], int | None] = validity.current_speed_limit
     counters: Callable[[], dict[str, int]] = validity.read_counters

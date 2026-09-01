@@ -311,6 +311,14 @@ def validity_checks() -> None:
 
     throttled = dict(good, cpu_mhz_end=3800.0)
     check("a thermally throttled run is refused", not validity.check_run(throttled).valid)
+    # The drift rule skipped None, and a failed probe on Linux or Windows returned None,
+    # so a clock nobody read passed as a clock that held. Unchecked is refused; None is
+    # still macOS, where the speed limit stands in.
+    check("a clock the probe could not read is refused",
+          any("could not read the clock" in r for r in validity.check_run(
+              dict(good, cpu_mhz_end=env_mod._UNCHECKED.format("no reading"))).reasons))
+    check("no clock to read is left to the speed limit",
+          validity.check_run(dict(good, cpu_mhz_start=None, cpu_mhz_end=None)).valid)
 
     # The drift rule compares two instants, so under a dynamic governor it fires on the
     # governor and calls it thermal. Only Linux publishes one; None stays clean because
@@ -687,6 +695,14 @@ def power_checks() -> None:
     check("a windows reading that is not two numbers is None, not a guess",
           env_mod._cpu_mhz_windows("99,9") is None)
     check("an empty windows reading is None", env_mod._cpu_mhz_windows("") is None)
+    # And what the wrapper makes of that None on each platform.
+    check("a linux cpuinfo without cpu MHz lines is unchecked",
+          "unchecked" in str(env_mod.cpu_mhz("Linux", "processor\t: 0\n")))
+    check("a windows probe that did not answer is unchecked",
+          "unchecked" in str(env_mod.cpu_mhz("Windows", "")))
+    check("a linux reading is passed through",
+          env_mod.cpu_mhz("Linux", "cpu MHz\t: 3600.0\n") == 3600.0)
+    check("darwin has no clock probe and says None", env_mod.cpu_mhz("Darwin") is None)
 
     check("the desktop string does not trip the rule it is read by",
           "battery" not in env_mod._NO_BATTERY.lower())

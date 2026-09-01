@@ -160,7 +160,15 @@ def check_run(record: dict[str, Any]) -> Verdict:
 
     start = record.get("cpu_mhz_start")
     end = record.get("cpu_mhz_end")
-    if start and end:
+    # Same shape as the power gate: Linux and Windows can read a clock, so a reading
+    # that came back unchecked there is a probe that failed, not a clock that held. None
+    # is macOS, where the speed limit stands in and there is nothing to invent.
+    if isinstance(start, str) or isinstance(end, str):
+        verdict.reasons.append(
+            f"CPU clock reading is {start!r} at start and {end!r} at end; a probe that "
+            "could not read the clock does not establish that it held"
+        )
+    elif start and end:
         drift = abs(end - start) / start
         if drift > MAX_FREQUENCY_DRIFT:
             verdict.reasons.append(
@@ -308,7 +316,7 @@ def _read(path: str) -> str | None:
         return None
 
 
-def current_cpu_mhz() -> float | None:
+def current_cpu_mhz() -> float | str | None:
     """Mean current clock across cores, for the drift check.
 
     Delegates to environment.py, which owns the parsers and has recorded-output checks

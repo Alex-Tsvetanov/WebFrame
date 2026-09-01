@@ -188,8 +188,11 @@ class RunRecord:
     # Windows and macOS, which publish none; unchecked on a Linux host that could not
     # read it, and refused as such.
     governor: str | None = None
-    cpu_mhz_start: float | None = None
-    cpu_mhz_end: float | None = None
+    # A number, or the probe's unchecked string on a platform that should have read one.
+    # ponytail: a str in a float column breaks to_parquet's type inference; such a file
+    # is all rejections anyway, and the string is what the rejection reason cites.
+    cpu_mhz_start: float | str | None = None
+    cpu_mhz_end: float | str | None = None
     # What isolation was asked for and what the platform granted. These are separate
     # fields because on macOS they differ: there is no user-process CPU affinity API,
     # so a mask can be requested and silently not applied. Chapter V promises the reader

@@ -256,7 +256,7 @@ def _cpu_mhz_windows(perf: str | None = None) -> float | None:
         return None
 
 
-def cpu_mhz() -> float | None:
+def cpu_mhz(system: str | None = None, raw: str | None = None) -> float | str | None:
     """The current clock, for the drift check, on the platforms that can say.
 
     This lived in validity.py and read /proc/cpuinfo directly, so it returned None on
@@ -267,13 +267,23 @@ def cpu_mhz() -> float | None:
     macOS is still None here. Intel Macs are covered by CPU_Speed_Limit and Apple
     Silicon publishes neither, which is a gap that belongs in the limitations rather
     than in a probe that guesses.
+
+    On the two platforms that do answer, a parser that found nothing (an aarch64
+    /proc/cpuinfo with no `cpu MHz` lines, a powershell probe that timed out) is
+    unchecked rather than None, and validity refuses it: the drift rule skips None,
+    and a probe failure must not read as a steady clock. `raw` is the parser's text,
+    for checking this from a host that is neither.
     """
-    system = platform.system()
+    system = system or platform.system()
     if system == "Linux":
-        return _cpu_mhz_linux()
-    if system == "Windows":
-        return _cpu_mhz_windows()
-    return None
+        value = _cpu_mhz_linux(raw)
+    elif system == "Windows":
+        value = _cpu_mhz_windows(raw)
+    else:
+        return None
+    if value is None:
+        return _UNCHECKED.format(f"no usable clock reading on {system}")
+    return value
 
 
 def _power_source_darwin(pmset_ps: str | None = None) -> str | None:
