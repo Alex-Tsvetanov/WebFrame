@@ -195,6 +195,12 @@ namespace coroute::net
 
 		bool is_multi_accept_enabled() const noexcept override { return multi_accept_; }
 
+		const char* backend_name() const noexcept override { return "iocp"; }
+
+		// Defined below IocpListener, which this needs to construct. Datagrams are left
+		// to IoContext's default nullptr: this backend has none yet.
+		std::unique_ptr<Listener> make_listener() override;
+
 		void post(std::function<void()> callback) override
 		{
 			{
@@ -874,24 +880,18 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<Listener> IocpContext::make_listener()
 	{
-		return std::make_unique<IocpContext>(thread_count);
+		return std::make_unique<IocpListener>(*this);
 	}
 
-	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
+	namespace detail
 	{
-		return std::make_unique<IocpListener>(static_cast<IocpContext&>(ctx));
-	}
-
-	// Datagrams are not implemented on this backend yet. HTTP/3 is being landed on
-	// Linux first, and a nullptr here is honest: the header documents it, and callers
-	// fall back rather than link against a socket that silently drops packets.
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t)
-	{
-		(void)ctx;
-		return nullptr;
-	}
+		std::unique_ptr<IoContext> make_iocp_context(std::size_t thread_count)
+		{
+			return std::make_unique<IocpContext>(thread_count);
+		}
+	}  // namespace detail
 
 }  // namespace coroute::net
 

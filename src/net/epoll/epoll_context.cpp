@@ -254,6 +254,12 @@ namespace coroute::net
 
 		bool is_multi_accept_enabled() const noexcept override { return multi_accept_; }
 
+		const char* backend_name() const noexcept override { return "epoll"; }
+
+		// Defined below EpollListener and EpollDatagramSocket, which these construct.
+		std::unique_ptr<Listener> make_listener() override;
+		std::unique_ptr<DatagramSocket> make_datagram_socket(std::size_t worker_index) override;
+
 		void post(std::function<void()> callback) override
 		{
 			std::lock_guard lock(callback_mutex_);
@@ -1086,20 +1092,23 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<Listener> EpollContext::make_listener()
 	{
-		return std::make_unique<EpollContext>(thread_count);
+		return std::make_unique<EpollListener>(*this);
 	}
 
-	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
+	std::unique_ptr<DatagramSocket> EpollContext::make_datagram_socket(std::size_t)
 	{
-		return std::make_unique<EpollListener>(static_cast<EpollContext&>(ctx));
+		return std::make_unique<EpollDatagramSocket>(*this);
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t)
+	namespace detail
 	{
-		return std::make_unique<EpollDatagramSocket>(static_cast<EpollContext&>(ctx));
-	}
+		std::unique_ptr<IoContext> make_epoll_context(std::size_t thread_count)
+		{
+			return std::make_unique<EpollContext>(thread_count);
+		}
+	}  // namespace detail
 
 }  // namespace coroute::net
 

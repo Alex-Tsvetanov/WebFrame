@@ -128,6 +128,12 @@ def _io_backend() -> str:
     Recorded rather than assumed, because it is a factor in the record and a mislabelled
     factor is worse than a missing one: it makes two different measurements look like
     repetitions of one.
+
+    A runtime arm now, not a build option: CorouteServer passes whatever the cell
+    carries here to --io-backend, and the driver refuses the run if the server's banner
+    reports it started on a different one. So this must always name a single arm that
+    can be asked for, never the compiled set: "dual" is a valid COROUTE_IO_BACKEND and
+    would not be a valid answer here.
     """
     return environment.default_io_backend()
 

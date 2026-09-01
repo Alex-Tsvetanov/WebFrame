@@ -14,7 +14,9 @@
 
 #include "route_table.hpp"
 
+#include <cerrno>
 #include <charconv>
+#include <cstring>
 #include <fstream>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -51,6 +53,9 @@ namespace
 				  << "  --affinity HEX    pin the server to a CPU mask, e.g. ff\n"
 				  << "  --tls CERT KEY    serve TLS on the same port\n"
 				  << "  --http3           serve HTTP/3 as well (requires --tls)\n"
+				  << "  --io-backend B    io_uring or epoll; both are in this binary under\n"
+				  << "                    -DCOROUTE_IO_BACKEND=dual and the choice is made\n"
+				  << "                    here, at runtime (default: whatever the host allows)\n"
 				  << "\n"
 				  << "Routing experiment:\n"
 				  << "  --router ARM      dfa (default), radix or regex; all three are in\n"
@@ -99,6 +104,9 @@ int main(int argc, char** argv)
 	bool http3 = false;
 	std::string cert_file;
 	std::string key_file;
+
+	// Empty means "ask the host", which is IoBackend::Default.
+	std::string io_backend_arm;
 
 	std::string router_arm = "dfa";
 	size_t route_count = 0;
@@ -207,6 +215,10 @@ int main(int argc, char** argv)
 		{
 			http3 = true;
 		}
+		else if (arg == "--io-backend")
+		{
+			io_backend_arm = std::string(value_for("--io-backend"));
+		}
 		else if (arg == "--router")
 		{
 			router_arm = std::string(value_for("--router"));
@@ -306,6 +318,47 @@ int main(int argc, char** argv)
 		}
 	}
 
+	// ------------------------------------------------------------- I/O backend arm
+	//
+	// Selected here, at runtime, from this one binary, on the same reasoning as
+	// --router below. Refused rather than defaulted when the arm does not exist: a run
+	// that silently measured epoll while its record said io_uring would produce a full
+	// set of plausible numbers for an experiment that never happened.
+	//
+	// Two distinct refusals, because they have different fixes. A backend that is not
+	// in this binary is a build to reconfigure. A backend the kernel will not give this
+	// process, which on a hardened host means io_uring and EPERM, is a machine to change
+	// or a cell to drop.
+	net::IoBackend io_backend = net::IoBackend::Default;
+	if (!io_backend_arm.empty())
+	{
+		if (!net::parse_io_backend(io_backend_arm, io_backend))
+		{
+			std::cerr << "unknown --io-backend '" << io_backend_arm << "' (io_uring or epoll)\n";
+			return 2;
+		}
+		if (!net::io_backend_compiled_in(io_backend))
+		{
+			std::cerr << "--io-backend " << io_backend_arm
+			          << " needs a build configured with COROUTE_IO_BACKEND=" << io_backend_arm
+			          << " or COROUTE_IO_BACKEND=dual\n";
+			return 2;
+		}
+		const int probe = net::io_backend_probe(io_backend);
+		if (probe != 0)
+		{
+			std::cerr << "--io-backend " << io_backend_arm << " is not available on this host: "
+			          << std::strerror(probe);
+			if (probe == EPERM)
+			{
+				std::cerr << " (EPERM; check kernel.io_uring_disabled and kernel.io_uring_group)";
+			}
+			std::cerr << "\n";
+			return 2;
+		}
+	}
+
+	app.io_backend(io_backend);
 	app.threads(workers);
 	app.backlog(static_cast<int>(backlog));
 	app.enable_protocol_detection(detect);
@@ -417,6 +470,7 @@ int main(int argc, char** argv)
 			  << ", max-requests " << max_requests
 			  << ", affinity " << (affinity_hex.empty() ? std::string("none") : affinity_hex)
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
+			  << ", io-backend " << (io_backend_arm.empty() ? std::string("default") : io_backend_arm)
 			  << ", router " << router_backend_name(backend) << ", routes " << table.size() << " "
 			  << routebench::shape_name(spec.shape) << " depth " << spec.depth << " params "
 			  << (spec.params ? "on" : "off") << ", route build " << route_build_ms << "ms"

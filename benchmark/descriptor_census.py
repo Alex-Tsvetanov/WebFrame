@@ -239,12 +239,40 @@ def count_established(pid: int) -> int | None:
     return None
 
 
+def read_banner_backend(log, timeout_s: float = 5.0) -> str | None:
+    """The backend the server named in its own banner, or None if it never said.
+
+    Polled rather than read once. The listening descriptor appears inside
+    enable_multi_accept and the banner is printed just after it returns, so the
+    descriptor wait can win the race by a few milliseconds.
+
+    None is not an error here: a server built before the banner carried a backend still
+    produces a valid census, it just cannot confirm which arm it ran.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        pos = log.tell()
+        log.seek(0)
+        text = log.read().decode("utf-8", "replace")
+        log.seek(pos)
+        match = environment.BANNER_BACKEND.search(text)
+        if match:
+            return match.group(1)
+        time.sleep(0.05)
+    return None
+
+
 def census(server_bin: Path, port: int, workers: int, detect: bool,
-           tls: tuple[Path, Path] | None = None, connections: int = 0) -> dict:
+           tls: tuple[Path, Path] | None = None, connections: int = 0,
+           io_backend: str | None = None) -> dict:
     args = [
         str(server_bin), "--port", str(port), "--workers", str(workers),
         "--max-requests", "0",
     ]
+    # Only the two names --io-backend accepts, for the reason adapters.py has the same
+    # guard: kqueue and iocp are not selectable and passing them is an exit 2.
+    if io_backend in ("io_uring", "epoll"):
+        args += ["--io-backend", io_backend]
     if not detect:
         args.append("--no-detect")
     if tls is not None:
@@ -292,6 +320,16 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
         # the rows labelled "no connections" were really "one connection ago".
         if not wait_until_bound(proc):
             raise fail(f"bound a listening descriptor on port {port}")
+
+        # What ran, against what was asked for. IoBackend::Default resolves against the
+        # host, so a census that asked for io_uring on a machine that refuses it would
+        # otherwise write rows labelled io_uring describing an epoll server, which is
+        # exactly the mislabelled factor the campaign driver refuses at run level.
+        effective = read_banner_backend(log)
+        if io_backend and effective and effective != io_backend:
+            raise fail(f"started on backend {effective} after --io-backend {io_backend} "
+                       f"was asked for; the rows would be mislabelled")
+
         time.sleep(1.0)
         threads_at_rest = count_threads(proc.pid)
 
@@ -313,6 +351,10 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
             tcp, udp = count_listeners(proc.pid)
             row = {
                 "workers": workers,
+                # The arm this row describes. Taken from the banner where there is one,
+                # since that is what ran; it has already been checked against the
+                # request above, so the two agree whenever both exist.
+                "io_backend": effective or io_backend or "",
                 "protocol_detection": int(detect),
                 "tls": int(tls is not None),
                 "connections_offered": connections,
@@ -356,12 +398,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("build", type=Path)
     ap.add_argument("--workers", default="1,2,4,8")
     ap.add_argument("--port", type=int, default=18200)
-    # Windows keeps the unsuffixed name the committed census and sec:census already use.
-    # Every other platform writes beside it, so a second run cannot overwrite the first.
-    default_out = Path("doc/thesis/data") / (
-        "descriptors.csv" if os.name == "nt" else f"descriptors-{sys.platform}.csv"
-    )
-    ap.add_argument("--out", type=Path, default=default_out)
+    # None rather than the path, so the default can pick up the backend arm below.
+    ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--io-backend", dest="io_backend", default=None,
+                    choices=["io_uring", "epoll"],
+                    help="which arm to census, for a build configured with "
+                         "COROUTE_IO_BACKEND=dual; required there, since such a build "
+                         "picks at run time and the rows have to say which arm they describe")
     ap.add_argument("--cert", type=Path, help="server certificate; adds the TLS arm")
     ap.add_argument("--key", type=Path, help="server private key; adds the TLS arm")
     ap.add_argument("--connections", default="",
@@ -375,6 +418,23 @@ def main(argv: list[str] | None = None) -> int:
     # this one is a measurement too.
     env = environment.capture(repo=REPO, build_type="Release",
                               io_backend=environment.resolve_io_backend(args.build))
+
+    # A dual build makes no choice at configure time, so build.io_backend is "dual" and
+    # says nothing about which arm any given row describes. Refused rather than
+    # defaulted: the rows would be a mixture of whatever the host happened to allow,
+    # under one heading, and the descriptor claim is per-backend.
+    if env["build"]["io_backend"] == "dual" and not args.io_backend:
+        print("dual build: pass --io-backend per arm", file=sys.stderr)
+        return 2
+
+    # Windows keeps the unsuffixed name the committed census and sec:census already use.
+    # Every other platform writes beside it, so a second run cannot overwrite the first,
+    # and a dual build writes one file per arm for the same reason.
+    if args.out is None:
+        stem = "descriptors" if os.name == "nt" else f"descriptors-{sys.platform}"
+        if args.io_backend:
+            stem += f"-{args.io_backend}"
+        args.out = Path("doc/thesis/data") / f"{stem}.csv"
     if env["build"]["git_dirty"]:
         print("working tree is dirty; the recorded commit would not describe the binary "
               "this census counted", file=sys.stderr)
@@ -408,7 +468,8 @@ def main(argv: list[str] | None = None) -> int:
     tls_options = [None, tls_pair] if tls_pair else [None]
 
     def show(row: dict) -> None:
-        print(f"workers={row['workers']:<2} detect={row['protocol_detection']} "
+        print(f"backend={row['io_backend'] or '-':<8} "
+              f"workers={row['workers']:<2} detect={row['protocol_detection']} "
               f"tls={row['tls']} conns={row['connections_offered']:<3} "
               f"tcp={row['tcp_listeners']} udp={row['udp_listeners']} "
               f"kq={row['event_ports']} thr={row['threads']} "
@@ -421,7 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     for detect in (True, False):
         for tls in tls_options:
             for workers in worker_list:
-                row = census(server_bin, args.port, workers, detect, tls)
+                row = census(server_bin, args.port, workers, detect, tls,
+                             io_backend=args.io_backend)
                 rows.append(row)
                 show(row)
 
@@ -429,7 +491,8 @@ def main(argv: list[str] | None = None) -> int:
     # connection costs and not how connections are distributed.
     for detect, tls in [(True, None), (False, None)] + ([(False, tls_pair)] if tls_pair else []):
         for count in conn_list:
-            row = census(server_bin, args.port, 1, detect, tls, connections=count)
+            row = census(server_bin, args.port, 1, detect, tls, connections=count,
+                         io_backend=args.io_backend)
             rows.append(row)
             show(row)
 

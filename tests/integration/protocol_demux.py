@@ -167,16 +167,41 @@ def test_concurrent_accepts(port, count=24):
             sock.close()
 
 
+# ctest reads this as "skipped" through the SKIP_RETURN_CODE property. A backend the
+# kernel refuses, which on a hardened host means io_uring and EPERM, is a fact about the
+# machine rather than a failure of the code, and reporting it red would make the suite
+# red on every such host.
+SKIP_EXIT = 77
+
+
+def is_backend_refusal(text):
+    """Whether the host refused the backend, which is a skip, and nothing else.
+
+    Deliberately not "needs a build configured with", which is the other refusal the
+    server can print. That one says the arm is missing from the binary, and a test asked
+    to exercise an arm this build does not contain has not been skipped by the machine,
+    it has been mis-registered by the build system. Treating it as a skip would make the
+    suite green on a build that silently tests one backend twice.
+    """
+    return "--io-backend" in text and "is not available on this host" in text
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("server", help="path to a server binary accepting --port/--workers")
     parser.add_argument("--port", type=int, default=18080)
     parser.add_argument("--tls", action="store_true", help="server was built with TLS enabled")
     parser.add_argument("--http2", action="store_true", help="server was built with HTTP/2 enabled")
+    parser.add_argument("--io-backend", dest="io_backend", default=None,
+                        help="run the server on this I/O backend rather than the host default")
     args = parser.parse_args()
 
+    argv = [args.server, "--port", str(args.port), "--workers", "2"]
+    if args.io_backend:
+        argv += ["--io-backend", args.io_backend]
+
     proc = subprocess.Popen(
-        [args.server, "--port", str(args.port), "--workers", "2"],
+        argv,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
@@ -186,6 +211,11 @@ def main():
     while time.time() < deadline:
         if proc.poll() is not None:
             out = proc.stdout.read().decode(errors="replace")
+            if is_backend_refusal(out):
+                # Not a defect: this host will not give this process that backend. See
+                # SKIP_EXIT.
+                print(f"skipping, {args.io_backend} unavailable here:\n{out}", file=sys.stderr)
+                return SKIP_EXIT
             print(f"server exited early:\n{out}", file=sys.stderr)
             return 1
         try:
