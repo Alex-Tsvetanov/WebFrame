@@ -16,6 +16,7 @@ import ctypes
 import json
 import os
 import platform as _platform
+import signal
 import socket
 import subprocess
 import time
@@ -222,6 +223,14 @@ else:
 # ---------------------------------------------------------------------- server
 
 
+def describe_signal(number: int) -> str:
+    """The signal's name, or its number where the platform has no name for it."""
+    try:
+        return signal.strsignal(number) or f"signal {number}"
+    except ValueError:
+        return f"signal {number}"
+
+
 def refuse_held_port(port: int) -> None:
     """Refuses to start a server on a port something already listens on.
 
@@ -320,11 +329,22 @@ class CorouteServer:
         )
 
     def wait_until_ready(self, timeout_s: float) -> bool:
-        """Connects until it can, so no run measures process startup."""
+        """Connects until it can, so no run measures process startup.
+
+        A child that exited before listening raises rather than returning False, so the
+        record says what killed it. Returning False filed an OOM-killed server, a missing
+        certificate and a bad_alloc under the driver's one reason, that the server did
+        not become ready within the timeout, and the stderr that named the cause was
+        piped and never read.
+        """
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            if self._proc is not None and self._proc.poll() is not None:
-                return False
+            rc = self._proc.poll() if self._proc is not None else None
+            if rc is not None:
+                sig = f" ({describe_signal(-rc)})" if rc < 0 else ""
+                err = (self._proc.stderr.read().decode(errors="replace").strip()[:300]
+                       if self._proc.stderr else "")
+                raise RunFailed(f"server exited {rc}{sig} before listening: {err}")
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
                     return True

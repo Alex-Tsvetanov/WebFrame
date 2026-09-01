@@ -31,6 +31,7 @@ import sys
 import time
 from pathlib import Path
 
+from benchmark.adapters import describe_signal
 from benchmark.harness import environment, validity
 from benchmark.harness.ordering import Cell, plan
 
@@ -308,8 +309,12 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if proc.returncode != 0 or not json_path.exists():
                     record["accepted"] = False
+                    # A negative code is a signal, and -9 with an empty stderr is the
+                    # OOM killer; named so the failure column says so.
+                    rc = proc.returncode
+                    sig = f" ({describe_signal(-rc)})" if rc < 0 else ""
                     record["failure"] = (
-                        f"exit {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:300]}"
+                        f"exit {rc}{sig}: {(proc.stderr or proc.stdout).strip()[:300]}"
                     )
                 else:
                     record["accepted"] = True
