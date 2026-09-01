@@ -133,6 +133,20 @@ def check_run(record: dict[str, Any]) -> Verdict:
                 f"{MIN_ACHIEVED_SHARE:.0%}; it could not sustain the schedule"
             )
 
+    # The drift rule below compares two instants, and under a dynamic governor the first
+    # is the idle clock and the second is taken milliseconds after load, so it fires on
+    # governor behaviour and calls it thermal. It means something only under a fixed
+    # clock, which on Linux is governor=performance. None is left alone: Windows and
+    # macOS publish no scaling governor to read, their fixed-clock arrangement is the
+    # power plan the frequency probe itself was written against, and inventing a value
+    # for a platform that cannot answer would be the mislabel this file exists to stop.
+    governor = record.get("governor")
+    if governor is not None and governor != "performance":
+        verdict.reasons.append(
+            f"cpu governor is {governor!r}; the frequency gate compares two instants and "
+            f"only means anything under a fixed clock"
+        )
+
     start = record.get("cpu_mhz_start")
     end = record.get("cpu_mhz_end")
     if start and end:

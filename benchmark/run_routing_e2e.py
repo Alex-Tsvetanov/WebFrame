@@ -41,7 +41,7 @@ import sys
 from pathlib import Path
 
 from benchmark.adapters import CorouteServer, LoadgenGenerator
-from benchmark.harness import driver, environment, schema
+from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
 from benchmark.run_campaign import transport_mismatch
 
@@ -288,6 +288,19 @@ def main(argv: list[str] | None = None) -> int:
         "loopback": loopback,
         "generator_location": location,
     }
+    # Same preflight as the other two entry points, for the same reason: every run would
+    # be refused for these anyway, and the governor is the one the per-run rules cannot
+    # see because the record has no field for it.
+    blocking = validity.check_run({
+        "virtualisation": env.get("virtualisation"),
+        "git_dirty": env["build"]["git_dirty"],
+        "power_source": validity.current_power_source(),
+        "governor": env["cpu"]["governor"],
+    }).reasons
+    if blocking:
+        for reason in blocking:
+            print(f"refusing to measure: {reason}", file=sys.stderr)
+        return 1
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
     mismatch = transport_mismatch(campaign, env, "routing_e2e")
     if mismatch:

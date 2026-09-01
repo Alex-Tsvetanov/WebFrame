@@ -222,6 +222,14 @@ def validity_checks() -> None:
     throttled = dict(good, cpu_mhz_end=3800.0)
     check("a thermally throttled run is refused", not validity.check_run(throttled).valid)
 
+    # The drift rule compares two instants, so under a dynamic governor it fires on the
+    # governor and calls it thermal. Only Linux publishes one; None stays clean because
+    # Windows and macOS have nothing to read and a value would be invented.
+    check("a dynamic governor is refused",
+          any("governor" in r for r in validity.check_run(dict(good, governor="schedutil")).reasons))
+    check("the performance governor is accepted", validity.check_run(dict(good, governor="performance")).valid)
+    check("no governor to read is left to the other rules", validity.check_run(dict(good, governor=None)).valid)
+
     dropped = dict(good, counter_deltas={"UdpRcvbufErrors": 17, "TcpExtListenOverflows": 0})
     verdict = validity.check_run(dropped)
     check("a run where the kernel dropped datagrams is refused", not verdict.valid)

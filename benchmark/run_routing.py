@@ -238,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         "virtualisation": env.get("virtualisation"),
         "git_dirty": env["build"]["git_dirty"],
         "power_source": validity.current_power_source(),
+        "governor": env["cpu"]["governor"],
     }).reasons
     if blocking:
         for reason in blocking:
