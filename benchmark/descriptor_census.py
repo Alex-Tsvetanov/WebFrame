@@ -56,6 +56,30 @@ def wait_until_listening(proc: subprocess.Popen, port: int,
     return False
 
 
+def wait_until_bound(proc: subprocess.Popen, timeout_s: float = 15.0) -> bool:
+    """Waits for the listening descriptor to appear, without connecting to it.
+
+    Exists because connecting is not free. The connection the old readiness check made
+    was itself classified, armed a Deadline, and started TimerQueue's thread
+    (timer_queue.hpp:24), which never stops. So every row counted afterwards held one
+    thread the server would not otherwise have, and the rows labelled "no connections"
+    were really "one connection ago". Measured on Windows: 5 threads before the probe,
+    6 after, and 6 for ever, including after the connection closed.
+
+    Asking the kernel which descriptors the process holds perturbs nothing, which is the
+    same reason the census asks the kernel rather than the server in the first place.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return False
+        tcp, _ = count_listeners(proc.pid)
+        if tcp:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def lsof_count(pid: int, selector: list[str]) -> int:
     """Files matching one lsof selector for one process, in field mode."""
     # -a intersects -p with -i. Without it lsof ORs them and reports every socket on the
@@ -241,22 +265,40 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
     # since nothing reads it while the server runs.
     log = tempfile.TemporaryFile()
     proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
-    try:
-        if not wait_until_listening(proc, port):
-            log.seek(0)
-            output = log.read().decode("utf-8", "replace").strip() or "(no output)"
-            if proc.poll() is not None:
-                raise RuntimeError(
-                    f"server with {workers} workers exited with code {proc.returncode} "
-                    f"before listening on port {port}:\n{output}"
-                )
-            raise RuntimeError(
-                f"server with {workers} workers never answered on port {port}. On macOS "
-                f"an unanswered firewall prompt on binding INADDR_ANY leaves the process "
-                f"alive and unreachable exactly like this:\n{output}"
+    def fail(what: str) -> RuntimeError:
+        log.seek(0)
+        output = log.read().decode("utf-8", "replace").strip() or "(no output)"
+        if proc.poll() is not None:
+            return RuntimeError(
+                f"server with {workers} workers exited with code {proc.returncode} "
+                f"before {what}:\n{output}"
             )
-        # A moment after the port answers, so every worker has had time to bind. Counting
-        # too early would report the first descriptor and call it the total.
+        return RuntimeError(
+            f"server with {workers} workers never {what}. On macOS an unanswered "
+            f"firewall prompt on binding INADDR_ANY leaves the process alive and "
+            f"unreachable exactly like this:\n{output}"
+        )
+
+    try:
+        # Two-stage readiness, and the order is the whole point. Wait for the
+        # descriptor to appear by asking the kernel, which perturbs nothing, and take
+        # the at-rest thread count there. Only then connect, which validates that the
+        # server really answers and is what makes a later count of zero
+        # instrumentation failure rather than a result.
+        #
+        # The connection is not free and cannot be taken back. It is classified, arms
+        # a Deadline, and starts TimerQueue's thread (timer_queue.hpp:24), which never
+        # stops. Before this split, every row was counted after that had happened, so
+        # the rows labelled "no connections" were really "one connection ago".
+        if not wait_until_bound(proc):
+            raise fail(f"bound a listening descriptor on port {port}")
+        time.sleep(1.0)
+        threads_at_rest = count_threads(proc.pid)
+
+        if not wait_until_listening(proc, port):
+            raise fail(f"answered on port {port}")
+        # A moment after the port answers, so every worker has had time to bind.
+        # Counting too early would report the first descriptor and call it the total.
         time.sleep(1.0)
 
         held = []
@@ -286,6 +328,9 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
                 "udp_listeners": udp,
                 "total": tcp + udp,
                 "event_ports": count_event_ports(proc.pid),
+                # Two readings, because they are two server states and the difference
+                # between them is one thread that a single connection starts for ever.
+                "threads_at_rest": threads_at_rest,
                 "threads": count_threads(proc.pid),
                 "established": count_established(proc.pid),
             }
