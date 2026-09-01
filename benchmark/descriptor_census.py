@@ -27,12 +27,17 @@ import argparse
 import csv
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+from benchmark.harness import environment
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def wait_until_listening(proc: subprocess.Popen, port: int,
@@ -121,13 +126,115 @@ def count_listeners(pid: int) -> tuple[int, int]:
     return tcp, udp
 
 
-def census(server_bin: Path, port: int, workers: int, detect: bool) -> dict:
+def lsof_types(pid: int) -> list[str]:
+    """Every open file's type letter for one process, from lsof field mode."""
+    proc = subprocess.run(
+        ["lsof", "-nP", "-w", "-p", str(pid), "-Ft"],
+        capture_output=True, text=True, timeout=60,
+    )
+    quiet_empty_match = proc.returncode == 1 and not proc.stderr.strip()
+    if proc.returncode != 0 and not quiet_empty_match:
+        raise RuntimeError(f"lsof -Ft exited {proc.returncode} for pid {pid}: "
+                           f"{proc.stderr.strip()}")
+    return [line[1:] for line in proc.stdout.splitlines() if line.startswith("t")]
+
+
+def count_event_ports(pid: int) -> int | None:
+    """Event ports the process holds: kqueue descriptors, epoll fds, io_uring rings.
+
+    The companion count to the listening descriptors. A readiness or completion backend
+    needs somewhere to wait, and how many of those it needs is a property of the accept
+    model rather than of the protocols served: kqueue and IOCP share one, io_uring holds
+    one ring per worker.
+
+    Returns None, never 0, where the platform cannot be asked. A zero here would read as
+    "measured none" and it would be wrong in the direction that flatters the claim.
+    """
+    if sys.platform == "darwin":
+        return sum(1 for kind in lsof_types(pid) if kind == "KQUEUE")
+    if sys.platform.startswith("linux"):
+        fd_dir = Path("/proc") / str(pid) / "fd"
+        try:
+            targets = [os.readlink(str(fd_dir / name)) for name in os.listdir(fd_dir)]
+        except OSError:
+            return None
+        return sum(1 for target in targets
+                   if "eventpoll" in target or "io_uring" in target)
+    # Windows completion ports are kernel handles with no supported enumeration short of
+    # NtQuerySystemInformation. Unavailable is reported as unavailable.
+    return None
+
+
+def count_threads(pid: int) -> int | None:
+    """Threads the process holds at rest.
+
+    "At rest" is load bearing. TimerQueue starts its thread lazily on the first scheduled
+    callback, and every classified connection arms a Deadline, so this constant is not
+    the constant under load.
+    """
+    if sys.platform.startswith("linux"):
+        try:
+            status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+        except OSError:
+            return None
+        match = re.search(r"^Threads:\s+(\d+)$", status, re.MULTILINE)
+        return int(match.group(1)) if match else None
+    if sys.platform == "darwin":
+        out = subprocess.run(["ps", "-M", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=60).stdout
+        lines = [line for line in out.splitlines() if line.strip()]
+        return max(len(lines) - 1, 0) or None
+    if os.name == "nt":
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"@(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Threads.Count"],
+            capture_output=True, text=True, timeout=60).stdout.strip()
+        return int(out) if out.isdigit() else None
+    return None
+
+
+def count_established(pid: int) -> int | None:
+    """Established TCP connections the process holds.
+
+    The per-connection half of the claim. If a demultiplexing wrapper cost a descriptor
+    the slope of this against offered connections would exceed one.
+    """
+    if sys.platform == "darwin":
+        return lsof_count(pid, ["-iTCP", "-sTCP:ESTABLISHED"])
+    if sys.platform.startswith("linux"):
+        out = subprocess.run(["ss", "-tnpH", "state", "established"],
+                             capture_output=True, text=True, timeout=60).stdout
+        return sum(1 for line in out.splitlines() if f"pid={pid}," in line)
+    if os.name == "nt":
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"@(Get-NetTCPConnection -State Established -OwningProcess {pid} "
+             f"-ErrorAction SilentlyContinue).Count"],
+            capture_output=True, text=True, timeout=60).stdout.strip()
+        return int(out) if out.isdigit() else None
+    return None
+
+
+def census(server_bin: Path, port: int, workers: int, detect: bool,
+           tls: tuple[Path, Path] | None = None, connections: int = 0) -> dict:
     args = [
         str(server_bin), "--port", str(port), "--workers", str(workers),
         "--max-requests", "0",
     ]
     if not detect:
         args.append("--no-detect")
+    if tls is not None:
+        args += ["--tls", str(tls[0]), str(tls[1])]
+    if connections:
+        # Silent parked connections are the point: they measure what a connection costs
+        # in descriptors before it has said anything, which is where a demultiplexing
+        # wrapper would show up if it cost one.
+        #
+        # Both deadlines have to be off. The handshake deadline reaps a connection that
+        # has sent no first octet, so with the default a parked connection is gone
+        # before it is counted and the slope comes out below one. That is a control, not
+        # a detail: it would have quietly produced the answer the claim wants.
+        args += ["--handshake-ms", "0", "--keep-alive-ms", "0"]
 
     # When the server fails to bind, its own output is the only diagnosis there is, so it
     # goes to a file rather than to DEVNULL. A pipe would deadlock once its buffer filled,
@@ -151,14 +258,33 @@ def census(server_bin: Path, port: int, workers: int, detect: bool) -> dict:
         # A moment after the port answers, so every worker has had time to bind. Counting
         # too early would report the first descriptor and call it the total.
         time.sleep(1.0)
-        tcp, udp = count_listeners(proc.pid)
-        return {
-            "workers": workers,
-            "protocol_detection": int(detect),
-            "tcp_listeners": tcp,
-            "udp_listeners": udp,
-            "total": tcp + udp,
-        }
+
+        held = []
+        try:
+            for _ in range(connections):
+                sock = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+                held.append(sock)
+            if connections:
+                # After the connections, so they have been accepted and are counted, and
+                # long enough that a reaping deadline would have fired if one were armed.
+                time.sleep(1.0)
+            tcp, udp = count_listeners(proc.pid)
+            row = {
+                "workers": workers,
+                "protocol_detection": int(detect),
+                "tls": int(tls is not None),
+                "connections_offered": connections,
+                "tcp_listeners": tcp,
+                "udp_listeners": udp,
+                "total": tcp + udp,
+                "event_ports": count_event_ports(proc.pid),
+                "threads": count_threads(proc.pid),
+                "established": count_established(proc.pid),
+            }
+        finally:
+            for sock in held:
+                sock.close()
+        return row
     finally:
         proc.terminate()
         try:
@@ -183,7 +309,38 @@ def main(argv: list[str] | None = None) -> int:
         "descriptors.csv" if os.name == "nt" else f"descriptors-{sys.platform}.csv"
     )
     ap.add_argument("--out", type=Path, default=default_out)
+    ap.add_argument("--cert", type=Path, help="server certificate; adds the TLS arm")
+    ap.add_argument("--key", type=Path, help="server private key; adds the TLS arm")
+    ap.add_argument("--connections", default="",
+                    help="comma separated connection counts for the per-connection census, "
+                         "e.g. 0,1,10,50. Loopback, and a count rather than a timing.")
     args = ap.parse_args(argv)
+
+    # The census writes a table asserting what a build holds. Until now it wrote no
+    # provenance at all: no machine, no commit, no dirty flag, so a CSV could not say
+    # which binary produced it. Every campaign entry point in this harness records that;
+    # this one is a measurement too.
+    env = environment.capture(repo=REPO, build_type="Release",
+                              io_backend=environment.resolve_io_backend(args.build))
+    if env["build"]["git_dirty"]:
+        print("working tree is dirty; the recorded commit would not describe the binary "
+              "this census counted", file=sys.stderr)
+        return 2
+    if env.get("virtualisation"):
+        print(f"virtualisation detected ({env['virtualisation']}); a descriptor count "
+              f"from a guest describes the guest", file=sys.stderr)
+        return 2
+
+    if bool(args.cert) != bool(args.key):
+        print("--cert and --key go together", file=sys.stderr)
+        return 2
+    tls_pair = (args.cert, args.key) if args.cert else None
+    if tls_pair and not (args.cert.exists() and args.key.exists()):
+        # A server started without its certificate answers every request in cleartext
+        # while the record says tls=1, which is a full set of plausible numbers
+        # describing the wrong thing.
+        print(f"certificate or key missing: {args.cert}, {args.key}", file=sys.stderr)
+        return 2
 
     server_bin = (args.build / "examples" / "Samples" / "benchmark_server"
                   / "benchmark_server.exe")
@@ -193,14 +350,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"not built: {server_bin}", file=sys.stderr)
         return 2
 
+    worker_list = [int(w) for w in args.workers.split(",")]
+    conn_list = [int(c) for c in args.connections.split(",") if c.strip()]
+    tls_options = [None, tls_pair] if tls_pair else [None]
+
+    def show(row: dict) -> None:
+        print(f"workers={row['workers']:<2} detect={row['protocol_detection']} "
+              f"tls={row['tls']} conns={row['connections_offered']:<3} "
+              f"tcp={row['tcp_listeners']} udp={row['udp_listeners']} "
+              f"kq={row['event_ports']} thr={row['threads']} "
+              f"est={row['established']}")
+
     rows = []
+    # Listener census. The transport set is fixed at one, TCP, in every arm here: TLS and
+    # cleartext are both TCP, so this varies the PROTOCOL set and not |T|. Writing it up
+    # as |T|=2 would be a different and unsupported claim.
     for detect in (True, False):
-        for workers in [int(w) for w in args.workers.split(",")]:
-            row = census(server_bin, args.port, workers, detect)
+        for tls in tls_options:
+            for workers in worker_list:
+                row = census(server_bin, args.port, workers, detect, tls)
+                rows.append(row)
+                show(row)
+
+    # Per-connection census, if asked for. One worker, because the question is what a
+    # connection costs and not how connections are distributed.
+    for detect, tls in [(True, None), (False, None)] + ([(False, tls_pair)] if tls_pair else []):
+        for count in conn_list:
+            row = census(server_bin, args.port, 1, detect, tls, connections=count)
             rows.append(row)
-            print(f"workers={row['workers']:<2} detect={row['protocol_detection']} "
-                  f"tcp={row['tcp_listeners']} udp={row['udp_listeners']} "
-                  f"total={row['total']}")
+            show(row)
 
     # Every row here answered a connection before it was counted, so it held at least one
     # listening TCP descriptor. A zero is therefore the counting tool failing, never a
@@ -213,12 +391,32 @@ def main(argv: list[str] | None = None) -> int:
             f"'{counting_command()}'. This is instrumentation failure, not a measurement."
         )
 
+    # The control the per-connection census turns on. A connection that has sent no
+    # first octet is reaped by the handshake deadline, so if that deadline were armed
+    # the parked connections would be gone before they were counted and the slope would
+    # come out below one, which is the answer the claim would like. Refuse instead.
+    for row in rows:
+        offered, seen = row["connections_offered"], row["established"]
+        if offered and seen is not None and seen != offered:
+            raise RuntimeError(
+                f"offered {offered} connections and the server held {seen}. Either the "
+                f"handshake deadline reaped the parked ones or the counter is wrong. "
+                f"Either way the per-connection slope this would produce is not a "
+                f"measurement."
+            )
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    manifest = args.out.with_suffix(".env.json")
+    manifest.write_text(json.dumps(
+        {"environment": env, "fingerprint": environment.fingerprint(env),
+         "argv": sys.argv[1:], "counting_command": counting_command()},
+        indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nwrote {args.out}")
+    print(f"wrote {manifest}")
 
     # The proposition says the count is independent of the protocols served. It says
     # nothing about proportionality to workers, which is what A absorbs. Stated here as
