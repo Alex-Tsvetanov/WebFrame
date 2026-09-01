@@ -251,7 +251,11 @@ def read_counters(snmp: str | None = None, netstat: str | None = None) -> dict[s
             names = rest_h.split()
             numbers = rest_v.split()
             for name, number in zip(names, numbers):
-                key = name if prefix_h in ("Udp", "Tcp", "Ip") else f"{prefix_h}{name}"
+                # Always prefixed. The Udp section's RcvbufErrors used to be stored bare,
+                # so ZERO_DELTA_COUNTERS' UdpRcvbufErrors never matched anything and the
+                # UDP drop gate could not fire; and Tcp and Udp both publish
+                # InCsumErrors, so a bare key overwrote one with the other.
+                key = f"{prefix_h}{name}"
                 try:
                     out[key] = int(number)
                 except ValueError:

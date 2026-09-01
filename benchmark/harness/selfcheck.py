@@ -258,18 +258,21 @@ def counter_checks() -> None:
         "TcpExt: 0 0 0\n"
     )
     before = validity.read_counters(snmp=snmp, netstat=netstat)
-    check("a UDP counter is found by name", before.get("RcvbufErrors") == 0)
+    # Under the name the watch list uses. This used to expect the bare key, and the
+    # delta below was built by hand with the prefixed one, so the check passed while the
+    # real path never produced the counter the gate watches.
+    check("a UDP counter is found by name", before.get("UdpRcvbufErrors") == 0)
     check("a TcpExt counter is prefixed", before.get("TcpExtListenOverflows") == 0)
 
     after = validity.read_counters(
         snmp=snmp.replace("Udp: 100 1 0 90 0 0", "Udp: 200 1 0 190 42 0"),
         netstat=netstat,
     )
-    deltas = validity.counter_deltas(
-        {"UdpRcvbufErrors": before.get("RcvbufErrors", 0), "TcpExtListenOverflows": 0},
-        {"UdpRcvbufErrors": after.get("RcvbufErrors", 0), "TcpExtListenOverflows": 0},
-    )
+    deltas = validity.counter_deltas(before, after)
     check("a delta is computed", deltas["UdpRcvbufErrors"] == 42)
+    check("and the gate fires on it",
+          any("UdpRcvbufErrors" in r for r in validity.check_run(
+              {"counter_deltas": deltas, "power_source": env_mod._NO_BATTERY}).reasons))
 
     # A counter that moved but is not watched must not appear. Otherwise every run has
     # something to point at and the criteria stop meaning anything.
