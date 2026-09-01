@@ -360,17 +360,17 @@ Linux. Равнището на диспечиране в маршрутизир�
 тази работа.
 
 \begin{table}[H]
-\centering
+\centering\small
 \caption{Какво чете всеки критерий за средата на всяка платформа, след поправките от 1 септември 2026~г.}
 \label{tab:gates-by-platform}
 \begin{tabular}{@{}L{2.7cm}L{2.6cm}L{2.9cm}L{2.6cm}L{2.8cm}@{}}
 \toprule
 \textbf{Критерий} & \textbf{Windows} & \textbf{Linux} & \textbf{macOS Intel} & \textbf{macOS Apple Silicon} \\
 \midrule
-Виртуализация & SMBIOS & \code{systemd-detect-virt}, иначе SMBIOS & \code{kern.hv\_vmm\_present} & \code{kern.hv\_vmm\_present} \\
+Виртуализация & SMBIOS & \code{systemd-}\allowbreak\code{detect-virt}, иначе SMBIOS & \code{kern.hv\_}\allowbreak\code{vmm\_present} & \code{kern.hv\_}\allowbreak\code{vmm\_present} \\
 Захранване & \code{Win32\_Battery} & \code{/sys/class/} \code{power\_supply} & \code{pmset -g ps} & \code{pmset -g ps} \\
 Отклонение на честотата & брояч на производителността & \code{/proc/cpuinfo} & няма & няма \\
-Температурно дроселиране & няма & няма & \code{CPU\_Speed\_Limit} & няма: стойност не се публикува \\
+Температурно дроселиране & няма & няма & \code{CPU\_Speed\_}\allowbreak\code{Limit} & няма: стойност не се публикува \\
 Некоммитнати промени & да & да & да & да \\
 Грешки, закъснение на графика, постигнат дял & да & да & да & да \\
 \bottomrule
