@@ -25,9 +25,10 @@ over sixty-four connections, so one extra read and one comparison per connection
 divided by every request that connection went on to serve, and a null result there was
 arithmetic before it was a measurement. churn divides by one.
 
-Add --wsl-distro and --wsl-loadgen to drive the load across a network interface instead
-of the loopback adapter. Both arrangements are worth having and they are not comparable
-with each other, so they go in separate result files.
+Add --wsl-distro and --wsl-loadgen (Windows) or --generator-command and
+--generator-location (Linux, a network namespace) to drive the load across a network
+interface instead of the loopback adapter. Both arrangements are worth having and they
+are not comparable with each other, so they go in separate result files.
 
 What this does that the previous script did not: a fresh server and a fresh generator
 for every run, a randomised order that differs per repetition, an environment
@@ -48,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shlex
 import sys
 from pathlib import Path
 
@@ -489,6 +491,15 @@ def main(argv: list[str] | None = None) -> int:
                          "crosses a network interface instead of the loopback adapter")
     ap.add_argument("--wsl-loadgen", default=None,
                     help="path to the Linux loadgen build, inside the distribution")
+    # The Linux counterpart. The prefix is whatever enters the namespace and drops back
+    # to the invoking user, e.g. "sudo -n ip netns exec gen runuser -u alex --"; the
+    # build's own loadgen is appended, since the namespace shares the filesystem.
+    ap.add_argument("--generator-command", default=None,
+                    help="command prefix the generator is launched through, e.g. "
+                         "'sudo -n ip netns exec gen runuser -u $USER --'")
+    ap.add_argument("--generator-location", default=None,
+                    help="where that prefix puts the generator, as a label recorded with "
+                         "the campaign, e.g. netns:gen")
     args = ap.parse_args(argv)
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
@@ -502,9 +513,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     gen_command: list[str] | None = None
+    location = "host"
     if args.wsl_distro:
         if not args.wsl_loadgen:
             print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
+            return 2
+        if args.generator_command or args.generator_location:
+            print("--wsl-distro already says where the generator is; drop "
+                  "--generator-command and --generator-location", file=sys.stderr)
             return 2
         # A POSIX path handed to this script from an MSYS shell is rewritten to a
         # Windows one before Python sees it, so /home/x/loadgen arrives as
@@ -516,18 +532,32 @@ def main(argv: list[str] | None = None) -> int:
                   f"from PowerShell.", file=sys.stderr)
             return 2
         gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
-    elif not gen_bin.exists():
-        print(f"not built: {gen_bin}", file=sys.stderr)
-        return 2
+        location = f"wsl:{args.wsl_distro}"
+    else:
+        if not gen_bin.exists():
+            print(f"not built: {gen_bin}", file=sys.stderr)
+            return 2
+        if bool(args.generator_command) != bool(args.generator_location):
+            # One without the other is a launcher nothing records, or a label nothing
+            # earns, and either is a mislabelled campaign.
+            print("--generator-command and --generator-location go together",
+                  file=sys.stderr)
+            return 2
+        if args.generator_command:
+            gen_command = shlex.split(args.generator_command) + [str(gen_bin)]
+            location = args.generator_location
 
-    loopback = args.host.startswith("127.") or args.host in ("localhost", "::1")
-    if args.wsl_distro and loopback:
-        # The generator would reach the WSL virtual machine's own loopback, not the
-        # server, and every run would fail to connect. Caught here rather than as sixty
-        # identical connection failures.
-        print(f"--host {args.host} is loopback and the generator is in WSL, where that "
-              f"address is the distribution itself. Pass the address the server answers "
-              f"on as WSL sees it.", file=sys.stderr)
+    # Derived from the launcher, not from the address alone. A generator on this host
+    # reaches any locally owned address, a veth end included, through the loopback
+    # interface; the address test only decides the case where the generator is elsewhere.
+    loopback = gen_command is None or args.host.startswith("127.") or args.host in ("localhost", "::1")
+    if gen_command is not None and loopback:
+        # The generator would reach its own namespace's or virtual machine's loopback,
+        # not the server, and every run would fail to connect. Caught here rather than
+        # as sixty identical connection failures.
+        print(f"--host {args.host} is loopback and the generator is in {location}, where "
+              f"that address is not this host. Pass the address the server answers on "
+              f"as the generator sees it.", file=sys.stderr)
         return 2
 
     env = environment.capture(repo=REPO, build_type="Release",
@@ -537,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
     env["transport_path"] = {
         "host": args.host,
         "loopback": loopback,
-        "generator_location": f"wsl:{args.wsl_distro}" if args.wsl_distro else "host",
+        "generator_location": location,
     }
     args.results.parent.mkdir(parents=True, exist_ok=True)
 
@@ -569,21 +599,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}")
-    print(f"generator {'wsl:' + args.wsl_distro if args.wsl_distro else 'host'} -> "
-          f"{args.host}{'  (loopback)' if loopback else ''}")
+    print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     if wants_tls:
         print(f"tls certificate {args.cert}")
     print()
 
     generator = LoadgenGenerator(
         binary=gen_bin, port=args.port, threads=GENERATOR_THREADS,
-        warmup_s=args.warmup,
+        work_dir=args.results.parent, warmup_s=args.warmup,
         # No mask when the generator is in the virtual machine. Its vCPUs are placed by
         # the hypervisor and a mask over them would name cores that are not the host's,
-        # which the record would then claim as isolation it does not have.
+        # which the record would then claim as isolation it does not have. A namespace
+        # shares the host's kernel and cores, so there the mask is real and stays.
         affinity_mask=None if args.wsl_distro else GENERATOR_AFFINITY,
         samples_dir=args.samples, host=args.host, command=gen_command,
-        translate_paths=bool(args.wsl_distro),
+        translate_paths=bool(args.wsl_distro), location=location,
     )
 
     def server_factory(cell: Cell) -> CorouteServer:

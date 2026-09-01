@@ -15,7 +15,7 @@ the reasons behind each design are in the docstrings of `run_campaign.py`,
 | Clean tree at the commit you will cite | `git status -sb` | any modified or untracked source file |
 | Release build of that commit | `cmake --build build/<preset> --config Release`; the only preset that also builds `route_bench` and the router arms is `bench` (`cmake --preset bench && cmake --build --preset bench` gives `build/bench`) | binary older than HEAD |
 | TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
-| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair | not built, or reaches the server over loopback |
+| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair, entered with `--generator-command "sudo -n ip netns exec gen runuser -u $USER --" --generator-location netns:gen` | not built, or reaches the server over loopback |
 | Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
 
 The generator inside WSL reaches the Windows host at the vEthernet address, which changes

@@ -18,7 +18,6 @@ import os
 import platform as _platform
 import socket
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -373,12 +372,18 @@ class LoadgenGenerator:
     through wsl.exe, so that requests leave a network interface instead of going round
     the loopback adapter. Loopback skips the driver and the interrupt path entirely, and
     those are exactly the fixed costs the routing difference has to compete with, so a
-    loopback end-to-end number would flatter whichever arm was slower.
+    loopback end-to-end number would flatter whichever arm was slower. On Linux the same
+    role is played by a network namespace, entered with `ip netns exec`.
     """
 
     binary: Path
     port: int
     threads: int
+    # Where the generator writes its result file. A directory the harness owns rather
+    # than the system temp dir: a generator entered through sudo leaves a root-owned
+    # file in sticky /tmp, and from the second run on the unprivileged harness cannot
+    # unlink it. In a directory the user owns, unlinking needs nothing of the file.
+    work_dir: Path
     warmup_s: float = 2.0
     affinity_mask: str | None = None
     samples_dir: Path | None = None
@@ -390,10 +395,17 @@ class LoadgenGenerator:
     translate_paths: bool = False
     # Request paths, one per line, written by the server from the table it registered.
     paths_file: Path | None = None
+    # Where the generator runs, as a label: "host", "wsl:<distro>", "netns:<name>". The
+    # same string the campaign environment records as generator_location, so the record
+    # and the manifest cannot disagree about where the load came from.
+    location: str = "host"
 
     @property
     def name(self) -> str:
-        return "coroute-loadgen-wsl" if self.command else "coroute-loadgen"
+        # The kind alone. Every WSL record already on disk says coroute-loadgen-wsl, and
+        # the distribution or namespace name is in generator_argv and in the manifest.
+        kind = self.location.partition(":")[0]
+        return "coroute-loadgen" if kind == "host" else f"coroute-loadgen-{kind}"
 
     def _path(self, path: Path) -> str:
         return to_wsl_path(path) if self.translate_paths else str(path)
@@ -431,7 +443,8 @@ class LoadgenGenerator:
         return args
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
-        out = Path(tempfile.gettempdir()) / f"loadgen-{self.port}.json"
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        out = self.work_dir / f"loadgen-{self.port}.json"
 
         # Removed before the run, not just checked for afterwards.
         #
@@ -479,6 +492,9 @@ class LoadgenGenerator:
             )
 
         data: dict[str, Any] = json.loads(out.read_text(encoding="utf-8"))
+        # Everything the record keeps has been read; the file would otherwise sit next
+        # to runs.jsonl and be committed with it.
+        out.unlink()
 
         lat = data.get("latency_us", {})
         # Reported in milliseconds, because that is what the record and every figure

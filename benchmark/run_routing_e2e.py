@@ -35,11 +35,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
-from benchmark.adapters import CorouteServer, LoadgenGenerator, to_wsl_path
+from benchmark.adapters import CorouteServer, LoadgenGenerator
 from benchmark.harness import driver, environment, schema
 from benchmark.harness.ordering import Cell, plan
 
@@ -199,20 +200,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="run the generator inside this WSL distribution")
     ap.add_argument("--wsl-loadgen", default=None,
                     help="path to the Linux loadgen build, inside the distribution")
+    ap.add_argument("--generator-command", default=None,
+                    help="command prefix the generator is launched through, e.g. "
+                         "'sudo -n ip netns exec gen runuser -u $USER --'")
+    ap.add_argument("--generator-location", default=None,
+                    help="where that prefix puts the generator, as a label recorded with "
+                         "the campaign, e.g. netns:gen")
     ap.add_argument("--allow-loopback", action="store_true",
                     help="permit a loopback --host; the results then measure a path that "
                          "never reaches a network interface and must say so")
     args = ap.parse_args(argv)
-
-    # Refused rather than warned about. A loopback end-to-end run answers a different
-    # question from the one this level exists to ask, and a warning in a log is not a
-    # mechanism.
-    if args.host.startswith("127.") or args.host in ("localhost", "::1"):
-        if not args.allow_loopback:
-            print(f"--host {args.host} is loopback; this level is not measured over "
-                  f"loopback. Pass --allow-loopback to override, and say so in the paper.",
-                  file=sys.stderr)
-            return 2
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
     if not server_bin.exists():
@@ -222,10 +219,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     gen_command: list[str] | None = None
+    location = "host"
     gen_binary = args.build / "benchmark" / "loadgen.exe"
     if args.wsl_distro:
         if not args.wsl_loadgen:
             print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
+            return 2
+        if args.generator_command or args.generator_location:
+            print("--wsl-distro already says where the generator is; drop "
+                  "--generator-command and --generator-location", file=sys.stderr)
             return 2
         # Checked because a POSIX path handed to this script from an MSYS shell
         # (Git Bash) is rewritten to a Windows one before Python ever sees it, and
@@ -239,11 +241,40 @@ def main(argv: list[str] | None = None) -> int:
                   f"from PowerShell.", file=sys.stderr)
             return 2
         gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
-    elif not gen_binary.exists():
-        gen_binary = gen_binary.with_suffix("")
+        location = f"wsl:{args.wsl_distro}"
+    else:
+        if not gen_binary.exists():
+            gen_binary = gen_binary.with_suffix("")
         if not gen_binary.exists():
             print(f"not built: {gen_binary}", file=sys.stderr)
             return 2
+        if bool(args.generator_command) != bool(args.generator_location):
+            print("--generator-command and --generator-location go together",
+                  file=sys.stderr)
+            return 2
+        if args.generator_command:
+            gen_command = shlex.split(args.generator_command) + [str(gen_binary)]
+            location = args.generator_location
+
+    # Whether the load crosses a network interface is a property of where the generator
+    # runs, not of the address string: a host-side generator reaches any locally owned
+    # address, a veth end included, through the loopback interface.
+    address_is_loopback = args.host.startswith("127.") or args.host in ("localhost", "::1")
+    loopback = gen_command is None or address_is_loopback
+    if gen_command is not None and address_is_loopback:
+        # Nothing to override here: that address is the namespace's or the virtual
+        # machine's own loopback, and the generator would connect to nothing.
+        print(f"--host {args.host} is loopback and the generator is in {location}, where "
+              f"that address is not this host.", file=sys.stderr)
+        return 2
+    # Refused rather than warned about. A loopback end-to-end run answers a different
+    # question from the one this level exists to ask, and a warning in a log is not a
+    # mechanism.
+    if loopback and not args.allow_loopback:
+        print(f"the generator is on this host, so --host {args.host} is reached over "
+              f"loopback; this level is not measured over loopback. Pass --allow-loopback "
+              f"to override, and say so in the paper.", file=sys.stderr)
+        return 2
 
     out_dir = args.results / args.design
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -253,8 +284,8 @@ def main(argv: list[str] | None = None) -> int:
                             io_backend=environment.resolve_io_backend(args.build))
     env["routing_e2e"] = {
         "host": args.host,
-        "loopback": bool(args.host.startswith("127.") or args.host in ("localhost", "::1")),
-        "generator_location": f"wsl:{args.wsl_distro}" if args.wsl_distro else "host",
+        "loopback": loopback,
+        "generator_location": location,
     }
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
 
@@ -273,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
-    print(f"generator {'wsl:' + args.wsl_distro if args.wsl_distro else 'host'} -> {args.host}")
+    print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     print()
 
     samples_dir = out_dir / "samples"
@@ -287,12 +318,14 @@ def main(argv: list[str] | None = None) -> int:
             binary=gen_binary,
             port=args.port,
             threads=args.threads,
+            work_dir=out_dir,
             warmup_s=args.warmup,
             samples_dir=samples_dir,
             host=args.host,
             command=gen_command,
             translate_paths=bool(args.wsl_distro),
             paths_file=paths,
+            location=location,
         )
 
     def key_of(cell: Cell) -> tuple:
