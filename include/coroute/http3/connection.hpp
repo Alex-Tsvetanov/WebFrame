@@ -86,6 +86,15 @@ namespace coroute::http3
 
 		[[nodiscard]] bool is_closed() const noexcept { return closed_; }
 
+		// Called when ngtcp2 asks for an additional server connection ID.
+		//
+		// The endpoint must key the same connection under every ID it issues: after a
+		// migration the client is required to use a fresh destination connection ID
+		// (RFC 9000 section 9.5), and without that alias the owning worker would see an
+		// unknown short-header packet and answer with a Stateless Reset.
+		using CidAliasTracker = std::function<void(Http3Connection* connection, const CidKey& cid)>;
+		void set_cid_alias_tracker(CidAliasTracker tracker) { cid_alias_tracker_ = std::move(tracker); }
+
 		// ---- callback bodies
 		//
 		// Public because ngtcp2 and nghttp3 reach them through C function pointers,
@@ -132,6 +141,7 @@ namespace coroute::http3
 		net::DatagramSocket& socket_;
 		std::size_t worker_index_ = 0;
 		RequestHandler handler_;
+		CidAliasTracker cid_alias_tracker_;
 
 		ngtcp2_conn* conn_ = nullptr;
 		ngtcp2_crypto_conn_ref conn_ref_{};

@@ -111,6 +111,11 @@ namespace coroute::http3
 
 		[[nodiscard]] Http3Stats stats() const noexcept;
 
+		// Keys an already-accepted connection under an additional server connection ID.
+		// Safe to call from on_new_connection_id: the shared_ptr is found before any
+		// insert, so a rehash cannot invalidate an iterator mid-loop.
+		void track_additional_cid(Http3Connection* connection, const CidKey& cid);
+
 	private:
 		Task<void> handle_datagram(const net::Datagram& datagram);
 

@@ -1,0 +1,74 @@
+== HTTP/3 path migration / CID forwarding ==
+build=/workspace/build-h3 prefix=/home/ubuntu/opt/quic port=14666 threads=4
+host=Linux 6.12.94+
+utc=2026-08-30T15:44:15Z
+client=/home/ubuntu/opt/quic/src/ngtcp2/build-examples/examples/osslclient
+== building http3_app (4 workers) ==
+In file included from /workspace/include/coroute/core/router.hpp:10,
+                 from /workspace/include/coroute/core/app.hpp:19,
+                 from /workspace/tests/integration/http3_app.cpp:10:
+/workspace/build-h3/_deps/url_matcher-src/include/matcher/core.hpp: In instantiation of ‘class matcher::RegexMatcher<long unsigned int>’:
+/workspace/include/coroute/core/router.hpp:107:33:   required from here
+  107 |                 matcher::RegexMatcher<size_t> get_matcher_;
+      |                                               ^~~~~~~~~~~~
+/workspace/build-h3/_deps/url_matcher-src/include/matcher/core.hpp:1061:15: warning: ‘matcher::RegexMatcher<long unsigned int>’ has a field ‘{anonymous}::Node<long unsigned int, char> matcher::RegexMatcher<long unsigned int>::root’ whose type uses the anonymous namespace [-Wsubobject-linkage]
+ 1061 |         class RegexMatcher {
+      |               ^~~~~~~~~~~~
+/workspace/build-h3/_deps/url_matcher-src/include/matcher/core.hpp:1061:15: warning: ‘matcher::RegexMatcher<long unsigned int>’ has a field ‘std::deque<{anonymous}::Node<long unsigned int, char>, std::allocator<{anonymous}::Node<long unsigned int, char> > > matcher::RegexMatcher<long unsigned int>::nodes_storage’ whose type has internal linkage [-Wsubobject-linkage]
+/workspace/build-h3/_deps/url_matcher-src/include/matcher/core.hpp:1061:15: warning: ‘matcher::RegexMatcher<long unsigned int>’ has a field ‘std::vector<std::unique_ptr<{anonymous}::Limits> > matcher::RegexMatcher<long unsigned int>::limits_storage’ whose type has internal linkage [-Wsubobject-linkage]
+== starting server in netns coroute-h3mig-39533-srv ==
+server_pid=39594 udp_sockets_on_port=4 (expect 4)
+== baseline quic-stats (before migration) ==
+  received 0
+  forwarded_out 0
+  forwarded_in 0
+  accepted 0
+  version_negotiations 0
+  stateless_resets 0
+  dropped 0
+baseline forwarded_out=0 forwarded_in=0
+
+== attempt 1/12 (SNAT sport 40117) ==
+  nft SNAT udp sport -> 40117
+  client: request completed on remapped path
+  received 15
+  forwarded_out 0
+  forwarded_in 0
+  accepted 1
+  version_negotiations 0
+  stateless_resets 0
+  dropped 0
+  delta forwarded_out=0 forwarded_in=0
+
+== attempt 2/12 (SNAT sport 40134) ==
+  nft SNAT udp sport -> 40134
+  client: request completed on remapped path
+  received 37
+  forwarded_out 6
+  forwarded_in 6
+  accepted 2
+  version_negotiations 0
+  stateless_resets 0
+  dropped 0
+  delta forwarded_out=6 forwarded_in=6
+  userspace forwarding fired
+
+== final quic-stats ==
+  received 37
+  forwarded_out 6
+  forwarded_in 6
+  accepted 2
+  version_negotiations 0
+  stateless_resets 0
+  dropped 0
+
+workers=4
+attempts=2
+client_ok=1
+forwarded_out=6
+forwarded_in=6
+received=37
+accepted=2
+log=/workspace/tests/results/http3_path_migration.log
+
+HTTP/3 path migration: connection survived and userspace CID forwarding fired.
