@@ -44,25 +44,16 @@ repositories, never here.
 
 ## Repository state
 
-`phase0-foundation` = `aee6cea19`, pushed. Contains today's: campaign runbook
+`phase0-foundation` = `a9c964cf6`, pushed. **The runtime-backend work is merged** (`--io-backend`,
+virtual listener/datagram creation, banner cross-check, `linux-epoll`/`linux-dual` presets),
+verified on Linux, macOS and Windows/MinGW before merging, and its branch is deleted. Also:
+the generator's MSVC `NOMINMAX` fix, the Linux memory peak in `route_bench.cpp`, campaign runbook
 (`benchmark/README.md`), thesis gate table (chapter V) and a build that survives missing
 `data/` (chapter VI guards), Linux memory peak in `route_bench.cpp` (merged from the
 laptop's `linux/route-bench-memory`, branch deleted).
 
 Branches in flight:
 
-- `origin/linux/io-backend-runtime` at `137a1686c` (laptop; two commits on `fef3a212e`).
-  Both Linux backends in one binary, `--io-backend` on benchmark_server, banner
-  `(multi-accept, backend X)` read back by the harness (regex shared as
-  `environment.BANNER_BACKEND`), presets `linux-epoll`/`linux-dual`, ctest registered per
-  arm, census takes `--io-backend` and refuses a dual build without it, a plain epoll tree
-  is accepted on Linux. Review (12 confirmed findings) fully addressed in the second commit.
-  Verified on Linux (epoll 178/178, uring 178 with 6 skipped, dual 184 with 6 skipped) and on
-  macOS here (build clean, 178/178, selfchecks 169, census kqueue rows correct). **Merge is
-  gated only on the desktop's MSVC compile check (step 1 of its sequence).** Then
-  `git merge --no-ff origin/linux/io-backend-runtime` into `phase0-foundation`, push,
-  delete the branch. Worktree checkout for re-verification:
-  `.../848236b3-ca09-48d3-bad5-f698c7808b0e/scratchpad/wt-iob`.
 - `origin/harness/linux-readiness` at `9ee8de784`, pushed (23 commits on `fef3a212e`, written
   by a local workflow, worktree `.../848236b3-ca09-48d3-bad5-f698c7808b0e/scratchpad/wt-harness`).
   Implements the 21 verified harness gaps: `--generator-command`/`--generator-location`
@@ -79,11 +70,11 @@ Branches in flight:
   fold the cheap ones (run_routing `git_commit[:12]` guard, vacuous port selfcheck, temp-dir
   leak, census held-port traceback, README `...` elisions now that `--build` is required,
   duplicated port probe in the two integration tests) during the merge.
-  **In progress 02:45: a local workflow (run `wf_89d61877-739`, task `wno89410k`) is merging
-  `origin/linux/io-backend-runtime` INTO this branch in its worktree, resolving the conflicts,
-  folding the cheap lows, verifying on macOS (full ctest, census, loopback smoke) and pushing.
-  Once that lands, this branch merges into `phase0-foundation` cleanly after io-backend does.**
-  Original note: both touch `adapters.py`, `driver.py`, `environment.py`,
+  **In progress: a local workflow (run `wf_6d282512-b0b`, task `w52ynxdbi`; an earlier attempt
+  died on a usage limit and its partial merge was aborted) is merging the runtime-backend work
+  INTO this branch in its worktree, resolving conflicts, folding the cheap lows, verifying on
+  macOS and pushing. Since `phase0-foundation` now contains that work too, the eventual merge
+  of this branch is an ordinary three-way that reuses those resolutions.** Original note: both touch `adapters.py`, `driver.py`, `environment.py`,
   `run_campaign.py`, `descriptor_census.py`, `tests/integration/*.py`; expect conflicts and
   resolve by hand (or with a workflow: merge, resolve, fold lows, selfchecks, build loadgen
   on macOS, macOS loopback smoke). NOTE for the desktop: after this merge the WSL
@@ -159,8 +150,7 @@ been scheduled yet.
 
 ## Next steps, in order
 
-1. Desktop reports MSVC result for `137a1686c` → merge `linux/io-backend-runtime` into
-   `phase0-foundation` (merge commit), delete branch.
+1. (done: merged as `a9c964cf6`, branch deleted)
 2. Merge `harness/linux-readiness` onto the new HEAD, resolve conflicts, fold the cheap lows,
    selfchecks, macOS build + loopback smoke, push, delete branch.
 3. Desktop reports per design → ingest into paper-socket-demux, regenerate chapter VI,
