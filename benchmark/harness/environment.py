@@ -160,18 +160,92 @@ def _sysctl_int(name: str) -> int | None:
         return None
 
 
+# Not "AC" or "mains": validity tests for the substring "battery", so anything this
+# returns for a healthy host must not contain it. "no battery present" would reject the
+# machine it describes.
+_ON_MAINS = "mains"
+_NO_BATTERY = "mains (desktop, no power source to change)"
+
+
+def _power_source_darwin(pmset_ps: str | None = None) -> str | None:
+    """Mains or battery, as pmset names it."""
+    text = pmset_ps if pmset_ps is not None else _run(["pmset", "-g", "ps"])
+    if not text:
+        return _UNCHECKED.format("pmset -g ps did not answer")
+    match = re.search(r"Now drawing from '([^']+)'", text)
+    if match is None:
+        return _UNCHECKED.format("pmset -g ps printed no 'Now drawing from' line")
+    return match.group(1)
+
+
+def _power_source_windows(battery_status: str | None = None) -> str | None:
+    """Mains, battery, or no battery at all, from Win32_Battery.
+
+    A desktop has no Win32_Battery instance, and that is a real answer rather than a
+    missing one: a machine with no battery cannot be discharging.
+    """
+    if battery_status is None:
+        battery_status = _run([
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "$b = @(Get-CimInstance Win32_Battery); "
+            "if ($b.Count -eq 0) { 'none' } else { ($b | ForEach-Object { $_.BatteryStatus }) -join ',' }",
+        ])
+    if battery_status is None:
+        return _UNCHECKED.format("Win32_Battery did not answer")
+    text = battery_status.strip()
+    if text == "none":
+        return _NO_BATTERY
+    # 2 is "AC connected". Everything else means running down or in an odd state, and an
+    # odd state on a benchmark host is not a state to average over.
+    codes = [c.strip() for c in text.split(",") if c.strip()]
+    if codes and all(c == "2" for c in codes):
+        return _ON_MAINS
+    return f"battery (Win32_Battery BatteryStatus={text})"
+
+
+def _power_source_linux(supplies: list[str] | None = None,
+                        reader: "object | None" = None) -> str | None:
+    """Mains, battery, or no battery at all, from /sys/class/power_supply."""
+    root = Path("/sys/class/power_supply")
+    if supplies is None:
+        try:
+            supplies = sorted(entry.name for entry in root.iterdir())
+        except OSError:
+            return _UNCHECKED.format("/sys/class/power_supply is not readable")
+    read = reader if reader is not None else (lambda name, f: _read(str(root / name / f)))
+    batteries = [s for s in supplies if (read(s, "type") or "").strip() == "Battery"]
+    if not batteries:
+        return _NO_BATTERY
+    for name in batteries:
+        status = (read(name, "status") or "").strip()
+        if status == "Discharging":
+            return f"battery ({name} discharging)"
+        if not status:
+            return _UNCHECKED.format(f"{name} published no status")
+    return _ON_MAINS
+
+
 def _power_source(pmset_ps: str | None = None) -> str | None:
-    """Mains or battery, as pmset names it.
+    """Whether the host can change its own power policy mid-campaign.
 
     A laptop on battery is a different machine. Discharging biases the scheduler toward
     the efficiency cores and caps the clocks, so the run measures the power policy rather
-    than the server. The desktop campaign had no equivalent risk and so no such field.
+    than the server.
+
+    This used to be macOS-only and returned None everywhere else, and None reads as
+    clean, which is the same fail-open shape the virtualisation gate had: a host that
+    could not be asked was treated as a host that answered well. A desktop with no
+    battery is genuinely clean and now says so; a host that could not be asked now says
+    that instead, and is refused.
     """
-    text = pmset_ps if pmset_ps is not None else _run(["pmset", "-g", "ps"])
-    if not text:
-        return None
-    match = re.search(r"Now drawing from '([^']+)'", text)
-    return match.group(1) if match else None
+    system = platform.system()
+    if system == "Darwin":
+        return _power_source_darwin(pmset_ps)
+    if system == "Windows":
+        return _power_source_windows()
+    if system == "Linux":
+        return _power_source_linux()
+    return _UNCHECKED.format(f"no power probe for {system or 'this platform'}")
 
 
 def _low_power_mode(pmset_live: str | None = None) -> bool | None:

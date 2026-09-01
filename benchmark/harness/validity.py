@@ -201,7 +201,16 @@ def check_run(record: dict[str, Any]) -> Verdict:
     # shifts placement toward the efficiency cores and caps clocks, and neither shows up
     # in any criterion above.
     power = record.get("power_source")
-    if power and "battery" in power.lower():
+    if power is None or str(power).startswith("unchecked"):
+        # Same shape as the virtualisation gate: this used to pass, because the probe
+        # was macOS-only and returned None everywhere else, and None is falsy. A host
+        # that cannot say whether it is on mains is not thereby on mains. A desktop with
+        # no battery says so explicitly and is accepted.
+        verdict.reasons.append(
+            f"power state is {power!r}; a host that cannot report it is not known to be "
+            "on mains, and unknown is not clean"
+        )
+    elif "battery" in str(power).lower():
         verdict.reasons.append(
             f"host was on {power} rather than mains; "
             "clocks and core placement are not the ones this campaign describes"

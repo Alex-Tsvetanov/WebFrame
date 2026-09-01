@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
 
-from benchmark.harness import schema, validity
+from benchmark.harness import environment, schema, validity
 from benchmark.harness.ordering import Cell, ScheduledRun
 
 
@@ -142,12 +142,16 @@ class HostProbes:
 
 LIVE_PROBES = HostProbes()
 
-# A host that reads as clean and unremarkable. For tests only: it reports nothing, and
-# validity treats a reading it did not get as a reading with nothing wrong in it, so a
-# run rejected under these probes was rejected by its own data.
+# A host that reads as clean and unremarkable. For tests only, so that a run rejected
+# under these probes was rejected by its own data rather than by the machine the test
+# happened to run on.
+#
+# Note it reports a mains desktop rather than reporting nothing. Silence is no longer
+# clean: validity refuses a record whose power state it cannot establish, on the same
+# reasoning that it refuses one whose virtualisation it cannot establish.
 IDLE_PROBES = HostProbes(
     cpu_mhz=lambda: None,
-    power_source=lambda: None,
+    power_source=lambda: environment._NO_BATTERY,
     speed_limit=lambda: None,
     counters=dict,
 )

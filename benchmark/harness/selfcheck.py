@@ -125,8 +125,19 @@ def validity_checks() -> None:
         "generator_cpu_fraction": 0.42,
         "cpu_mhz_start": 4200.0, "cpu_mhz_end": 4190.0,
         "counter_deltas": {"UdpRcvbufErrors": 0, "TcpExtListenOverflows": 0},
+        "power_source": "mains",
     }
     check("a clean run is accepted", validity.check_run(good).valid)
+
+    # power_source had to be added to the record above for it to pass, which is the
+    # point: it was absent, absent was falsy, and the rule never fired. A desktop is
+    # clean because it says it has no battery, not because it said nothing.
+    check("a desktop with no battery is accepted",
+          validity.check_run(dict(good, power_source=env_mod._NO_BATTERY)).valid)
+    check("a host that could not be asked is refused",
+          not validity.check_run(dict(good, power_source=env_mod._UNCHECKED.format("no probe"))).valid)
+    check("a record with no power state at all is refused",
+          not validity.check_run({k: v for k, v in good.items() if k != "power_source"}).valid)
 
     # The criterion that matters most. Without it a server that collapses under load
     # wins on throughput, because failing is cheaper than serving.
@@ -333,11 +344,11 @@ def darwin_parser_checks() -> None:
     # stopped matching would otherwise report None forever, and a field that is quietly
     # always missing is the failure this whole module exists to prevent.
     check("mains is read from pmset -g ps",
-          env_mod._power_source("Now drawing from 'AC Power'\n") == "AC Power")
+          env_mod._power_source_darwin("Now drawing from 'AC Power'\n") == "AC Power")
     check("battery is read from the same line",
-          env_mod._power_source("Now drawing from 'Battery Power'\n") == "Battery Power")
+          env_mod._power_source_darwin("Now drawing from 'Battery Power'\n") == "Battery Power")
     check("an unrecognised pmset -g ps is unknown, not mains",
-          env_mod._power_source("") is None)
+          "unchecked" in str(env_mod._power_source_darwin("")))
 
     check("low power mode off is read", env_mod._low_power_mode(" lowpowermode         0\n") is False)
     check("low power mode on is read", env_mod._low_power_mode(" lowpowermode         1\n") is True)
