@@ -120,6 +120,39 @@ class RunFailed(RuntimeError):
     """The run did not produce a measurement. Recorded, not swallowed."""
 
 
+@dataclass(frozen=True)
+class HostProbes:
+    """The readings a run takes of the machine underneath it.
+
+    Injectable for the same reason the clock is. These were direct calls into validity,
+    so a selfcheck driving run_one with a fake server and a fake generator still picked
+    up the real host: on a laptop on battery the synthetic run that the check asserts
+    must be accepted was correctly rejected, and the check failed. A gate that cannot
+    pass on the machine it is meant to gate is not a gate.
+
+    The live readings are still the default, so a real campaign is unchanged and
+    nothing has to remember to ask for them.
+    """
+
+    cpu_mhz: Callable[[], float | None] = validity.current_cpu_mhz
+    power_source: Callable[[], str | None] = validity.current_power_source
+    speed_limit: Callable[[], int | None] = validity.current_speed_limit
+    counters: Callable[[], dict[str, int]] = validity.read_counters
+
+
+LIVE_PROBES = HostProbes()
+
+# A host that reads as clean and unremarkable. For tests only: it reports nothing, and
+# validity treats a reading it did not get as a reading with nothing wrong in it, so a
+# run rejected under these probes was rejected by its own data.
+IDLE_PROBES = HostProbes(
+    cpu_mhz=lambda: None,
+    power_source=lambda: None,
+    speed_limit=lambda: None,
+    counters=dict,
+)
+
+
 def run_one(
     scheduled: ScheduledRun,
     *,
@@ -130,6 +163,7 @@ def run_one(
     duration_s: float,
     readiness_timeout_s: float = 30.0,
     now: Callable[[], float] = time.time,
+    probes: HostProbes = LIVE_PROBES,
 ) -> schema.RunRecord:
     """Performs one run and returns its record, accepted or not.
 
@@ -172,10 +206,10 @@ def run_one(
         dependency_versions={k: v for k, v in (environment.get("deps") or {}).items() if v},
     )
 
-    counters_before = validity.read_counters()
-    record.cpu_mhz_start = validity.current_cpu_mhz()
-    record.power_source = validity.current_power_source()
-    record.thermal_speed_limit_start = validity.current_speed_limit()
+    counters_before = probes.counters()
+    record.cpu_mhz_start = probes.cpu_mhz()
+    record.power_source = probes.power_source()
+    record.thermal_speed_limit_start = probes.speed_limit()
 
     failure: str | None = None
     server: Server | None = None
@@ -230,9 +264,9 @@ def run_one(
                 stop_note = f"stopping the server failed: {type(exc).__name__}: {exc}"
                 failure = f"{failure}; {stop_note}" if failure else stop_note
 
-    record.cpu_mhz_end = validity.current_cpu_mhz()
-    record.thermal_speed_limit_end = validity.current_speed_limit()
-    record.counter_deltas = validity.counter_deltas(counters_before, validity.read_counters())
+    record.cpu_mhz_end = probes.cpu_mhz()
+    record.thermal_speed_limit_end = probes.speed_limit()
+    record.counter_deltas = validity.counter_deltas(counters_before, probes.counters())
 
     verdict = validity.check_run(record.to_dict())
     reasons = list(verdict.reasons)
@@ -253,6 +287,7 @@ def run_campaign(
     campaign_fingerprint: str,
     duration_s: float,
     on_record: Callable[[schema.RunRecord], None] | None = None,
+    probes: HostProbes = LIVE_PROBES,
 ) -> list[schema.RunRecord]:
     """Walks the schedule, writing each record as it completes.
 
@@ -268,6 +303,7 @@ def run_campaign(
             environment=environment,
             campaign_fingerprint=campaign_fingerprint,
             duration_s=duration_s,
+            probes=probes,
         )
         # allow_incomplete because a run that failed before it could be described still
         # has to leave a trace. A missing record is indistinguishable from a run that

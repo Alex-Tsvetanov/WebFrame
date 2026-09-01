@@ -10,12 +10,20 @@ Imported and run by selfcheck.py.
 
 from __future__ import annotations
 
+import functools
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 from benchmark.harness import driver, ordering, schema
+
+# Everything here runs against a fake server and a fake generator, so it reads a fake
+# host too. Without this the check picked up the real machine underneath it and the run
+# it asserts must be accepted was rejected for being on battery, which made the gate
+# unusable on exactly the kind of host that most needs gating before a campaign.
+_run_one = functools.partial(driver.run_one, probes=driver.IDLE_PROBES)
+_run_campaign = functools.partial(driver.run_campaign, probes=driver.IDLE_PROBES)
 
 
 @dataclass
@@ -106,7 +114,7 @@ def run(check: Callable[[str, bool], None]) -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         results = Path(tmp) / "runs.jsonl"
-        records = driver.run_campaign(
+        records = _run_campaign(
             plan, results_path=results, server_factory=factory,
             generator=FakeGenerator(), environment=_env(),
             campaign_fingerprint="fp", duration_s=30.0,
@@ -137,7 +145,7 @@ def run(check: Callable[[str, bool], None]) -> None:
 
     # --- the server always stops --------------------------------------------
     log: list[str] = []
-    record = driver.run_one(
+    record = _run_one(
         _scheduled(),
         server_factory=lambda cell: FakeServer(cell=cell, log=log),
         generator=FakeGenerator(raises=True), environment=_env(),
@@ -153,7 +161,7 @@ def run(check: Callable[[str, bool], None]) -> None:
 
     # --- a server that never comes up ---------------------------------------
     log = []
-    record = driver.run_one(
+    record = _run_one(
         _scheduled(),
         server_factory=lambda cell: FakeServer(cell=cell, log=log, ready=False),
         generator=FakeGenerator(), environment=_env(),
@@ -167,7 +175,7 @@ def run(check: Callable[[str, bool], None]) -> None:
     check("the generator never ran", record.requests_total == 0)
 
     # --- a failure while stopping does not hide the real one ----------------
-    record = driver.run_one(
+    record = _run_one(
         _scheduled(),
         server_factory=lambda cell: FakeServer(cell=cell, log=[], fail_on_stop=True),
         generator=FakeGenerator(raises=True), environment=_env(),
@@ -178,7 +186,7 @@ def run(check: Callable[[str, bool], None]) -> None:
     check("and the stop failure is reported too", "could not stop" in joined)
 
     # --- guards decide -------------------------------------------------------
-    record = driver.run_one(
+    record = _run_one(
         _scheduled(),
         server_factory=lambda cell: FakeServer(cell=cell, log=[]),
         generator=FakeGenerator(result=driver.GeneratorResult(
@@ -192,7 +200,7 @@ def run(check: Callable[[str, bool], None]) -> None:
           record.requests_per_second == 9999.0)
 
     virtualised = dict(_env(), virtualisation="kvm")
-    record = driver.run_one(
+    record = _run_one(
         _scheduled(),
         server_factory=lambda cell: FakeServer(cell=cell, log=[]),
         generator=FakeGenerator(), environment=virtualised,
@@ -204,11 +212,11 @@ def run(check: Callable[[str, bool], None]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         results = Path(tmp) / "mixed.jsonl"
         good_plan = ordering.plan([_cell()], repetitions=2, seed=1)
-        driver.run_campaign(good_plan, results_path=results,
+        _run_campaign(good_plan, results_path=results,
                             server_factory=lambda c: FakeServer(cell=c, log=[]),
                             generator=FakeGenerator(), environment=_env(),
                             campaign_fingerprint="fp", duration_s=30.0)
-        driver.run_campaign(good_plan, results_path=results,
+        _run_campaign(good_plan, results_path=results,
                             server_factory=lambda c: FakeServer(cell=c, log=[]),
                             generator=FakeGenerator(raises=True), environment=_env(),
                             campaign_fingerprint="fp", duration_s=30.0)
