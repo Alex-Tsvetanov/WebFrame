@@ -22,7 +22,7 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 | Session name | Host | What it is for | State |
 | --- | --- | --- | --- |
 | `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator; repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
-| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch on a hardened kernel, repo `~/GitHub/PhD-WebFrame`, build trees `build/linux-{uring,epoll,dual}` | Linux code work; io_uring is disabled by that kernel, and the other root-gated limits are in the memory note | fixes 1-8 to `linux/io-backend-runtime` done |
+| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch on a hardened kernel, repo `~/GitHub/PhD-WebFrame`, presets `linux-dual` (validated) and `linux-epoll`; since late 2 Sep it has perf, strace, ninja, git-lfs, passwordless sudo and a wired link | Linux code work and, once the harness branch lands, netns runs and the perf syscall counter; io_uring runs only as root on this kernel (restricted, not off); governor still powersave | brief 3 (preset check + perf feasibility probe) running |
 | `Dispatch background conversation` | unknown | never answered a probe | ignore |
 
 Both hosts are Alex's daily machines. No timed run without a window Alex names.
@@ -90,8 +90,7 @@ Branches in flight:
   generator must be rebuilt from the same commit as the server (bytes_read window and
   `responses_total` changed); tonight's campaign runs on `aee6cea19` deliberately, with the
   harness the earlier Windows records were produced by, so its records are schema v3.
-- Excluded from both branches, still to do on the laptop once Alex grants root or boots
-  the stock kernel: perf-based syscalls-per-request counter (audit items B2-B4: `perf stat
+- Excluded from both branches, still to do on the laptop (root is now available via passwordless sudo): perf-based syscalls-per-request counter (audit items B2-B4: `perf stat
   -e raw_syscalls:sys_enter -p <pid>` around a non-timed "mechanism" run, opt-in flag,
   schema field), netns pair creation and a real off-loopback Linux run, the QUIC UDP-seam
   reconciliation between `feature/http3-quic` and HEAD (paper 4, cheapest next step per
@@ -137,9 +136,11 @@ been scheduled yet.
 ## Open questions for Alex
 
 1. How long is tonight's desktop window; morning stop is fine at a design boundary.
-2. Laptop: boot stock kernel + `performance` governor + install `strace perf git-lfs
-   ninja`, or a NOPASSWD sudo rule for `sysctl`, `ip netns`, `pacman -S`?
-3. Can the laptop be wired (Ethernet port is down)? Enables a two-host validity check.
+2. Laptop: may a campaign set the governor to `performance` for its duration
+   (`cpupower frequency-set -g performance`, restored afterwards)? Everything else on the
+   old list is done: tools installed, passwordless sudo, Ethernet up; Alex declined a reboot
+   and the io_uring sysctl, so io_uring arms run as root and the record must say so.
+3. (done: the laptop is wired) A two-host validity check desktop<->laptop over the LAN is now possible; worth a night later.
 4. Protobuf rebuilds: commit or discard.
 
 ## Next steps, in order
