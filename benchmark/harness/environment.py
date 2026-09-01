@@ -297,17 +297,115 @@ def _git_dirty(repo: Path) -> bool | None:
     return bool(out.stdout.strip())
 
 
-def detect_virtualisation() -> str | None:
-    """The virtualisation technology in use, or None on bare metal.
+# Strings that appear in SMBIOS identity fields under a hypervisor.
+#
+# Deliberately NOT "is a hypervisor present". On Windows, enabling WSL2 sets
+# Win32_ComputerSystem.HypervisorPresent to true on bare metal, so that flag would
+# refuse the machine that produced most of this project's data. Identity strings say
+# what the firmware claims to be, which is the question actually being asked.
+#
+# "microsoft corporation" is absent on purpose: Surface hardware reports it as
+# manufacturer on real metal. Hyper-V guests are caught by the model, "Virtual Machine".
+_UNCHECKED = "unchecked ({})"
 
-    Returns a string such as "kvm", "wsl" or "docker". The validity rules refuse to
-    accept a performance record when this is set, which makes publishing numbers from a
-    VM by accident mechanically impossible rather than a matter of remembering.
+_VM_SIGNATURES = (
+    "vmware", "virtualbox", "innotek", "virtual machine", "virtual platform",
+    "qemu", "kvm", "xen", "parallels", "bochs", "bhyve",
+    "amazon ec2", "google compute engine", "openstack", "alibaba cloud",
+)
+
+
+def _virtualisation_from_identity(fields: str | None) -> str | None:
+    """The signature matched by a machine's SMBIOS identity strings, or None.
+
+    None means checked and nothing matched. The caller decides what a probe that could
+    not run at all means, which is a different thing and must not collapse into this one.
     """
-    result = _run(["systemd-detect-virt"])
-    if result in (None, "none"):
+    if not fields:
         return None
-    return result
+    haystack = fields.lower()
+    for signature in _VM_SIGNATURES:
+        if signature in haystack:
+            return signature
+    return None
+
+
+def _virtualisation_darwin(hv_vmm_present: str | None = None) -> str | None:
+    """Darwin's own answer, from kern.hv_vmm_present.
+
+    1 when running under a hypervisor, 0 on metal. Native, cheap, needs no privileges,
+    and it exists precisely because the question has no portable answer.
+    """
+    if hv_vmm_present is None:
+        hv_vmm_present = _run(["sysctl", "-n", "kern.hv_vmm_present"])
+    if hv_vmm_present is None:
+        return _UNCHECKED.format("sysctl kern.hv_vmm_present did not answer")
+    return "hypervisor (kern.hv_vmm_present=1)" if hv_vmm_present.strip() == "1" else None
+
+
+def _virtualisation_windows(identity: str | None = None) -> str | None:
+    """Windows, from the SMBIOS identity WMI reports rather than the hypervisor flag."""
+    if identity is None:
+        identity = _run([
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "$c = Get-CimInstance Win32_ComputerSystem; "
+            "$b = Get-CimInstance Win32_BIOS; "
+            "'{0}|{1}|{2}' -f $c.Manufacturer, $c.Model, $b.Manufacturer",
+        ])
+    if identity is None:
+        return _UNCHECKED.format("Win32_ComputerSystem did not answer")
+    return _virtualisation_from_identity(identity)
+
+
+def _virtualisation_linux(detect_virt: str | None = None,
+                          identity: str | None = None) -> str | None:
+    """Linux, preferring systemd-detect-virt and falling back to DMI without systemd."""
+    if detect_virt is None:
+        detect_virt = _run(["systemd-detect-virt"])
+    if detect_virt is not None:
+        return None if detect_virt.strip() == "none" else detect_virt.strip()
+    if identity is None:
+        identity = " ".join(filter(None, (
+            _read("/sys/class/dmi/id/sys_vendor"),
+            _read("/sys/class/dmi/id/product_name"),
+        )))
+    if not identity.strip():
+        return _UNCHECKED.format("no systemd-detect-virt and no DMI identity")
+    return _virtualisation_from_identity(identity)
+
+
+def detect_virtualisation() -> str | None:
+    """The virtualisation technology in use, None on bare metal, or a refusal.
+
+    The validity rules refuse a performance record when this is set, which is meant to
+    make publishing numbers from a VM by accident mechanically impossible rather than a
+    matter of remembering.
+
+    It did not do that. The only probe was systemd-detect-virt, which exists on Linux
+    and nowhere else, and _run maps an absent binary to None so one missing probe cannot
+    fail a capture. So on Windows and macOS this returned None unconditionally, and None
+    reads as bare metal. Every record this project holds from those two platforms was
+    stamped bare metal without anything ever having checked. The gate fired exactly once
+    in the project's history, on the Linux runs in Docker, which is the one platform
+    where the probe existed.
+
+    So a probe that could not run now returns a string beginning "unchecked", which is
+    truthy and therefore refused by the same rule. Unknown is not clean. A machine that
+    cannot answer the question is not thereby a bare-metal machine.
+
+    The Windows and Linux-without-systemd paths read SMBIOS identity strings, which a
+    hypervisor can be configured to spoof. That is a weaker guarantee than Darwin's
+    sysctl or systemd-detect-virt, and it is stated rather than glossed: the check
+    stops an accident, not an adversary.
+    """
+    system = platform.system()
+    if system == "Darwin":
+        return _virtualisation_darwin()
+    if system == "Windows":
+        return _virtualisation_windows()
+    if system == "Linux":
+        return _virtualisation_linux()
+    return _UNCHECKED.format(f"no probe for {system or 'this platform'}")
 
 
 def default_io_backend() -> str:

@@ -368,6 +368,57 @@ def darwin_parser_checks() -> None:
           or "power" not in env_mod.capture(build_type="Release"))
 
 
+def virtualisation_checks() -> None:
+    print("\n== a host that cannot answer is not a clean host ==")
+
+    # The gate existed and only ever worked on Linux. systemd-detect-virt is Linux-only,
+    # _run maps an absent binary to None, and None read as bare metal, so every Windows
+    # and macOS record this project holds was stamped bare metal unchecked.
+    check("a Hyper-V guest is caught by its model",
+          env_mod._virtualisation_from_identity(
+              "Microsoft Corporation|Virtual Machine|American Megatrends") == "virtual machine")
+    check("VMware is caught",
+          env_mod._virtualisation_from_identity(
+              "VMware, Inc.|VMware Virtual Platform|Phoenix") == "vmware")
+    # Both of these would be false positives on real hardware, and one of them is the
+    # machine that produced most of this project's data.
+    check("a DIY desktop is not a false positive",
+          env_mod._virtualisation_from_identity(
+              "System manufacturer|System Product Name|American Megatrends Inc.") is None)
+    check("a Surface is not a false positive, despite the manufacturer",
+          env_mod._virtualisation_from_identity(
+              "Microsoft Corporation|Surface Laptop Studio|Microsoft Corporation") is None)
+
+    check("darwin reads its own sysctl: 1 is a hypervisor",
+          "hypervisor" in str(env_mod._virtualisation_darwin("1")))
+    check("darwin: 0 is metal", env_mod._virtualisation_darwin("0") is None)
+    check("linux prefers systemd-detect-virt", env_mod._virtualisation_linux("docker") == "docker")
+    check("linux: none is metal", env_mod._virtualisation_linux("none") is None)
+    check("linux without systemd falls back to DMI",
+          env_mod._virtualisation_linux(None, "QEMU Standard PC") == "qemu")
+
+    # The whole point. A probe that could not run must be distinguishable from a probe
+    # that ran and found nothing, and must fail closed.
+    real_run = env_mod._run
+    env_mod._run = lambda cmd: None
+    try:
+        check("a windows probe that does not answer is unchecked, not clean",
+              "unchecked" in str(env_mod._virtualisation_windows()))
+        check("a darwin probe that does not answer is unchecked, not clean",
+              "unchecked" in str(env_mod._virtualisation_darwin()))
+        check("linux with neither probe is unchecked, not clean",
+              "unchecked" in str(env_mod._virtualisation_linux(None, "")))
+    finally:
+        env_mod._run = real_run
+
+    # The rule is a truthiness test, so the sentinel has to be truthy. It is, and this
+    # is what makes fail-closed a mechanism rather than an intention.
+    unchecked = validity.check_run({"virtualisation": env_mod._UNCHECKED.format("no probe"),
+                                    "requests_total": 1, "requests_non_2xx": 0})
+    check("an unchecked host is refused by validity", not unchecked.valid)
+    check("and the reason names it", any("unchecked" in r for r in unchecked.reasons))
+
+
 def live_capture_check() -> None:
     print("\n== capture works on this machine ==")
 
@@ -397,6 +448,7 @@ def main() -> int:
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
     darwin_parser_checks()
+    virtualisation_checks()
     live_capture_check()
     print(f"\n{PASSED} checks passed")
     return 0
