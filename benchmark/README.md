@@ -1,257 +1,151 @@
-# HTTP Server Benchmark Suite
+# Campaign runbook
 
-Comprehensive benchmarking suite for comparing Coroute v2 against popular HTTP server frameworks.
+How a measurement night is run, in the order it has to happen. Everything here is one
+command per step so that a window that opens at midnight is spent measuring and not
+deciding. The method behind each rule is in `doc/thesis/chapters/05_methodology.tex`;
+the reasons behind each design are in the docstrings of `run_campaign.py`,
+`run_routing.py` and `run_routing_e2e.py`.
 
-## Servers Tested
+## Preconditions, all of them, before anything is timed
 
-| Server | Language | Port | Type |
-|--------|----------|------|------|
-| Coroute v2 | C++20 | 8080 | Coroutine-based |
-| Drogon | C++17 | 8081 | Async callback |
-| Crow | C++14 | 8082 | Header-only |
-| Oat++ | C++11 | 8083 | Zero-copy |
-| Express.js | Node.js | 8084 | Event-driven |
-| Flask | Python | 8085 | WSGI |
+| Check | How | Refuse if |
+| --- | --- | --- |
+| Host idle | close the editor, the game, the browser, the agent session's own busy work | anything else is using CPU |
+| Mains power | `pmset -g ps` / `/sys/class/power_supply` / `Win32_Battery` | on battery |
+| Clean tree at the commit you will cite | `git status -sb` | any modified or untracked source file |
+| Release build of that commit | `cmake --build build/<preset> --config Release` | binary older than HEAD |
+| TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
+| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair | not built, or reaches the server over loopback |
+| Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
 
-## Metrics Collected
-
-- **Latency** - Response time (median, p50, p99)
-- **Throughput** - Requests per second
-- **Memory Usage** - Idle, peak, and average RSS/Working Set
-- **CPU Usage** - Average processor utilization
-- **Syscall Profiling** - System call distribution (Linux only)
-- **Stressed Network** - Performance under high connection count
-
-## Why Median?
-
-This benchmark uses **median** values rather than averages because:
-
-1. **Robustness to outliers** - Network benchmarks often have occasional spikes
-2. **Better representation** - Median shows "typical" performance
-3. **Scientific validity** - Preferred in performance research for skewed distributions
-
-## Prerequisites
-
-### Linux Prerequisites
-
-```bash
-# Ubuntu/Debian
-sudo apt install wrk curl strace bc jq cmake build-essential
-
-# Optional: perf for advanced CPU profiling
-sudo apt install linux-tools-common linux-tools-generic
-
-# For Node.js servers
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install nodejs
-
-# For Python servers
-sudo apt install python3 python3-venv python3-pip
-
-# For C++ competitors (optional - requires vcpkg)
-# vcpkg install drogon crow oatpp
-```
-
-### Windows Prerequisites
+The generator inside WSL reaches the Windows host at the vEthernet address, which changes
+between reboots. Read it from inside the distribution rather than from an old note:
 
 ```powershell
-# Install Chocolatey or Scoop first, then:
-
-# Using Scoop (recommended)
-scoop install bombardier cmake nodejs python
-
-# Or using Chocolatey
-choco install bombardier cmake nodejs python
-
-# For C++ competitors (optional)
-# Install vcpkg and run: vcpkg install drogon crow oatpp
+(wsl -d Ubuntu-24.04 -- ip route show default).Split(' ')[2]
 ```
 
-## Usage
+No nested shell, so nothing expands `$3` before `awk` would have seen it; the third
+field of `default via <host> dev eth0` is the host.
 
-### Linux Usage
+That address is `--host` for every off-host design below. If the WSL generator is
+missing, build it inside the distribution from `benchmark/generator` with CMake. It is a
+Linux binary and lives in the WSL filesystem, so a search of the Windows drives will not
+find it.
 
-```bash
-cd v2/benchmark
+## The quiet-host gate is measured first, and the night stops if it fails
 
-# Run full benchmark suite
-./benchmark.sh
-
-# Customize parameters
-BENCHMARK_RUNS=10 TEST_DURATION=60 ./benchmark.sh
-
-# Enable network simulation (requires sudo for tc)
-sudo ENABLE_NETWORK_SIM=true ./benchmark.sh
-
-# Environment variables:
-# - BENCHMARK_RUNS: Number of iterations per server (default: 5)
-# - WARMUP_DURATION: Warmup time in seconds (default: 5)
-# - TEST_DURATION: Test duration in seconds (default: 30)
-# - CONNECTIONS: Normal load connections (default: 100)
-# - THREADS: wrk threads (default: nproc)
-# - STRESSED_CONNECTIONS: High load connections (default: 1000)
-# - STRESSED_THREADS: High load threads (default: nproc)
-#
-# Network simulation (requires tc/netem):
-# - ENABLE_NETWORK_SIM: Enable network simulation (default: false)
-# - NETWORK_DELAY_MS: Base delay in milliseconds (default: 50)
-# - NETWORK_JITTER_MS: Jitter in milliseconds (default: 10)
-# - NETWORK_LOSS_PERCENT: Packet loss percentage (default: 1)
+```
+python -m benchmark.run_campaign --design smoke --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/smoke.jsonl
 ```
 
-### Windows Usage
+Read `generator_pacing_p99_us` in the two records. On this host it is about 40
+microseconds when the machine is idle and about 2000 with an editor and an agent session
+open. **If it is not in the tens of microseconds, stop.** Nothing measured afterwards
+would be admissible, and the gate would refuse it only after the hours were spent.
 
-```powershell
-cd v2\benchmark
+## Ladders: re-run them whenever the binary or the host changed
 
-# Run full benchmark suite
-.\benchmark-windows.ps1
+The offered rates hard-coded in `run_campaign.py` (`TLS_OFFERED_RATES`,
+`CHURN_OFFERED_RATES`, `CHURN_NET_OFFERED_RATES`) were measured on `alex-pc` at an
+earlier commit. They are this host's numbers and nobody else's, and a rebuilt binary can
+move them. The three ladders cost about eight minutes together and turn a guess into a
+measurement:
 
-# Customize parameters
-.\benchmark-windows.ps1 -BenchmarkRuns 10 -TestDuration 60
-
-# Parameters:
-# -ResultsDir: Output directory (default: results\YYYYMMDD_HHMMSS)
-# -BenchmarkRuns: Number of iterations per server (default: 5)
-# -TestDuration: Test duration in seconds (default: 30)
-# -Connections: Normal load connections (default: 100)
-# -StressedConnections: High load connections (default: 1000)
-# -Threads: Number of threads for benchmark tool (default: CPU count)
+```
+python -m benchmark.run_campaign --design tls-smoke    --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/tls-smoke.jsonl
+python -m benchmark.run_campaign --design tls-ladder   --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/tls-ladder.jsonl
+python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder.jsonl
+python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
 ```
 
-### GitHub Actions
+If the admissible boundary moved, change the rate tables in `run_campaign.py`, commit
+that change on its own before the campaigns, and cite the new commit. A campaign run at
+rates the ladder no longer supports is refused by `validity.py` one run at a time.
 
-The benchmark suite runs automatically via GitHub Actions with a comprehensive matrix strategy:
+## Night 1: the socket-demultiplexing claim, establishment first
 
-**Workflow Structure (63 jobs total):**
+Each run is about 26 seconds (20 measured, 3 warmup, 3 process turnover). Twenty-five
+repetitions is what the X1 resolution analysis found necessary; seven was not enough to
+resolve the 5 percent threshold at four of five rates.
 
-1. **Setup Jobs (2)**: Build and cache all C++ servers for Linux and Windows
-2. **Benchmark Matrix (60)**: 6 frameworks × 2 OS × 5 test types
-3. **Summarize (1)**: Aggregate results, generate report, comment on PR
+| Order | Design | Cells | n | Machine time | Why this order |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `churn` | 16 | 25 | 2.9 h | the cell where the hypothesis can fail |
+| 2 | `churn-net` (WSL) | 16 | 25 | 2.9 h | the same cell across a network interface |
+| 3 | `transport` | 20 | 25 | 3.6 h | the headline four-arm comparison |
+| 4 | `h1-deep` | 10 | 25 | 1.8 h | the cleartext X1 table chapter VI quotes |
 
-**Test Types:**
-
-- `low_normal` - 100 connections, normal network
-- `high_normal` - 512 connections, normal network  
-- `low_stressed` - 100 connections, stressed network (50ms delay, 1% loss)
-- `high_stressed` - 512 connections, stressed network
-- `profile` - Syscall/performance profiling
-
-**Triggers:**
-
-```yaml
-on:
-  workflow_dispatch:  # Manual trigger with configurable parameters
-  pull_request:
-    paths:
-      - "v2/**"
-      - "competitors/**"
+```
+python -m benchmark.run_campaign --design churn     --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/churn.jsonl
+python -m benchmark.run_campaign --design churn-net --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/churn-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_campaign --design transport --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/transport.jsonl
+python -m benchmark.run_campaign --design h1-deep   --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/h1-deep.jsonl
 ```
 
-**Outputs:**
+That is eleven hours. If the window is shorter, run them in this order and stop at the
+boundary between designs; a finished design is citable, half of one is not. Loopback and
+WSL arrangements go in separate files and are never merged; the driver records
+`transport_path` in the environment so nothing downstream can merge them by accident.
 
-- Individual results per framework/OS/test uploaded as artifacts
-- Combined report with charts and tables
-- ZIP archive of all results
-- PR comment with summary and download link
+## Night 2: routing, dispatch level then end to end
 
-## Output Structure
+Dispatch-only starts no server and needs no network. It is x86-only because it times with
+`rdtsc`. The 10 000-route DFA cells are split off because the parameterised table does
+not fit in this host's memory and a run that pages would contaminate whatever the shuffle
+placed after it.
 
-```text
-v2/benchmark/
-├── build/                    # Compiled binaries (gitignored)
-│   ├── coroute/
-│   ├── drogon/
-│   ├── crow/
-│   ├── oatpp/
-│   └── flask_venv/
-├── results/                  # Benchmark results (gitignored)
-│   └── YYYYMMDD_HHMMSS/     # Timestamped run
-│       ├── report.csv        # Summary comparison
-│       ├── coroute/
-│       │   ├── summary.csv   # Median metrics
-│       │   ├── raw_data.csv  # All run data
-│       │   ├── wrk_run*.txt  # Raw wrk output
-│       │   ├── resources_run*.csv
-│       │   └── strace.txt    # Syscall profile (Linux)
-│       ├── drogon/
-│       ├── crow/
-│       └── ...
-├── benchmark.sh              # Linux script
-├── benchmark.ps1             # Windows script
-├── analyze.py                # Report generator
-└── README.md
+```
+python -m benchmark.run_routing --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
+python -m benchmark.run_routing --design depth       --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
+python -m benchmark.run_routing --design static      --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
+python -m benchmark.run_routing --design large-cheap --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
+python -m benchmark.run_routing --design large-dfa   --repetitions 1 --build build/windows-routing --results benchmark/results/<dir>/routing
 ```
 
-## Report Format
+End to end runs one worker (the DFA matcher's repeat counters are shared and not
+thread-safe upstream, stated as a limitation) and refuses a loopback `--host`:
 
-### summary.csv
-
-```csv
-metric,value,unit
-latency_median,45.23,us
-throughput_median,125000,req/s
-memory_idle,12.5,KB
-memory_peak,45.2,KB
-memory_avg,28.3,KB
-cpu_avg,85.2,%
-stressed_latency_median,120.5,us
-stressed_throughput_median,95000,req/s
+```
+python -m benchmark.run_routing_e2e --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 ... same generator flags
+python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 ... same generator flags
+python -m benchmark.run_routing_e2e --design large       --repetitions 5 ... same generator flags --readiness-timeout 600
 ```
 
-### report.csv (comparison)
+About two hours in total. The `large` design has never completed: the 10 000-route DFA
+table did not come up inside the default 180-second readiness timeout, and the runs were
+rejected for delivering nothing. Whether a longer timeout is a legitimate fix or a thumb
+on the scale is decided before the run, not after; the flag is there so the decision is
+visible in the command line.
 
-```csv
-server,latency_us,throughput_req_s,mem_idle_kb,mem_peak_kb,mem_avg_kb,cpu_percent,stressed_latency_us,stressed_throughput_req_s
-coroute,45.23,125000,12500,45200,28300,85.2,120.5,95000
-drogon,52.10,118000,15800,52100,35600,82.1,145.2,88000
-...
+## After the night
+
+1. Do not read the numbers first. Count rejections: `grep -c '"accepted": false'` per
+   file, and read every rejection reason. A campaign that rejected a third of its runs is
+   a different campaign.
+2. Commit the results directory, including every `.env.json`, on a branch named
+   `measure/<host>-<yyyy-mm-dd>`, force-adding if the directory is ignored, and push.
+   The coordinator moves the files into the paper repository's `measurements/` with a
+   README entry that names the machine, commit, command and what the table does not show.
+3. Tables and scalars for the thesis are generated, never typed:
+   `python -m benchmark.harness.results2csv <runs.jsonl> doc/thesis/data` and
+   `python -m benchmark.harness.results2tex <runs.jsonl> doc/thesis/generated/results.tex`.
+
+## Structural counts need no quiet host
+
+`descriptor_census.py` counts listening descriptors, event ports and threads by asking
+the kernel. Every column is a count and none is a clock, so battery, governor and load do
+not enter into it. It may run any time:
+
+```
+python -m benchmark.descriptor_census build/windows-tls --workers 1,2,4,8
 ```
 
-## Analyzing Results
+## What this host cannot measure
 
-```bash
-# Generate HTML report with charts
-python3 analyze.py results/YYYYMMDD_HHMMSS/
-
-# Compare multiple runs
-python3 analyze.py results/run1/ results/run2/ --compare
-```
-
-## Notes
-
-1. **Isolation** - Run benchmarks on an idle system for consistent results
-2. **Warmup** - Each server is warmed up before measurements
-3. **Multiple runs** - 5 iterations by default, median taken
-4. **Fair comparison** - All servers use equivalent routes and responses
-5. **Build optimization** - All C++ servers built with `-O3` (Release mode)
-
-## Troubleshooting
-
-### "wrk not found" (Linux)
-
-```bash
-# Build from source if not in package manager
-git clone https://github.com/wg/wrk.git
-cd wrk && make && sudo cp wrk /usr/local/bin/
-```
-
-### "bombardier not found" (Windows)
-
-```powershell
-# Download from GitHub releases
-# https://github.com/codesenberg/bombardier/releases
-# Or use scoop: scoop install bombardier
-```
-
-### Server fails to build
-
-- Ensure vcpkg is installed and `VCPKG_ROOT` is set
-- Install required packages: `vcpkg install drogon crow oatpp`
-- The benchmark will skip servers that fail to build
-
-### Port already in use
-
-The scripts automatically kill processes on benchmark ports before starting.
-If issues persist, manually check: `netstat -tlnp | grep 808` (Linux) or
-`Get-NetTCPConnection -LocalPort 808*` (Windows)
+Windows has no `strace` and no per-process syscall counter the harness can read, so
+`counter_deltas` is empty on every Windows record and the syscalls-per-request
+explanation the socket-demultiplexing and I/O-portability papers rest on has to come from
+Linux. The Windows host also has no thermal-throttle gate; the frequency-drift gate covers
+part of that. Both are stated in the results, not discovered by a reviewer.
