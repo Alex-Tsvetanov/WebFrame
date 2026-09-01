@@ -33,8 +33,8 @@ here. Every brief repeats: never ask Alex or wait on him; send the question to t
 coordinator with the default you will take and continue with it after 10 minutes; push only
 to the branches the brief names; never rebase, force-push or modify `phase0-foundation`;
 never change the system or enter a sudo password (skip and report); a blocked permission
-prompt is reported and skipped; when unsure, stop that step and report. Both sessions were
-told on 02:50.
+prompt is reported and skipped; when unsure, stop that step and report. Both sessions were told; the desktop session keeps its own
+channel to Alex on principle, which is fine because Alex pre-authorised its whole sequence.
 
 **This repository is public.** Nothing that identifies a machine beyond its hardware class
 belongs here or in any commit, branch or inbox file on it: no hostnames, addresses, SSIDs,
@@ -105,8 +105,13 @@ vEthernet gateway, certs, idleness; 3 `smoke` quiet-host gate (pacing p99 tens o
 stop); 4 four ladders with a decision rule (all table rates accepted below 500 µs pacing,
 else stop and report); 5 `churn` → `churn-net` → `transport` → `h1-deep` at n=25, results
 in `benchmark\results\2026-09-02-desktop\`, one message per design, stop at a design
-boundary if Alex wants the machine or if a design rejects >10 %; 6 commit results on
-`measure/desktop-2026-09-02` with `git add -f`, pushed to the private `paper-socket-demux` repository (added as a second remote), never to this public one. About 13 hours.
+boundary if Alex wants the machine or if a design rejects >10 %; 6 commit results LOCALLY on
+`measure/desktop-2026-09-02` with `git add -f`; the desktop session pushes nothing (its own policy, and Alex's
+wording was that the coordinator places records in the paper repos). **Morning step for Alex: push that
+local branch to the private `paper-socket-demux` repository**, then the coordinator copies the files into
+`measurements/`. About 13 hours. The desktop pulled `4645e5e03` (one docs commit past `aee6cea19`,
+code identical), so its records carry that hash. It reports by message only and declined the
+`coord/inbox` practice; the laptop follows it.
 
 When results arrive: copy each `.jsonl` + `.env.json` into
 `Publications/paper-socket-demux/measurements/` with a README entry (machine, commit,
@@ -169,7 +174,7 @@ The switch is mechanical, so it needs nobody awake:
   Each run is stateless; this file is the state.
 - Machine sessions write every report as a file on the orphan branch `coord/inbox`
   (`coordination/inbox/<host>-<UTC>.md`) in addition to messaging, so a report that
-  arrives between coordinator sessions is not lost. Both were told, with the redaction rule above.
+  arrives between coordinator sessions is not lost. The laptop does this (full text, at Alex's choice); the desktop reports by message only, so a successor must ask it to re-send.
 - A probe on 02:21 confirmed a scheduled session runs as `claude-opus-5` with that
   frontmatter and can message peers.
 
