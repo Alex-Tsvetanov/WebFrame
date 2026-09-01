@@ -121,6 +121,20 @@ doc/thesis/data` and `results2tex <runs.jsonl> doc/thesis/generated/results.tex`
 `h1detect.*`, `tail.x1.*` (grep the chapter). Routing (night 2 in the runbook) has not
 been scheduled yet.
 
+## Findings that came out of tonight, worth keeping
+
+- **Every Windows binary in this project is MinGW-w64 g++, not MSVC**, including all
+  committed records (`toolchain.compiler` in the environment files says so, and it is
+  fingerprinted). Chapter V now states it, since a reader meeting "Windows" assumes MSVC.
+- **The load generator could never be compiled by MSVC**: it is deliberately unlinked from
+  the library, so it inherited no `NOMINMAX`, and `windows.h` turned `std::min(` into
+  C2589. Fixed in the source at `40b5dd21e`. It failed on every branch and was invisible
+  because nobody had pointed MSVC at the tree. The runtime-backend seam itself compiled
+  clean under MSVC; 270 of 273 targets built.
+- The MSVC compile check is therefore informational. **The gate that matters is the MinGW
+  build matching `build/windows-tls`**, because that is the toolchain every record comes
+  from.
+
 ## Decisions taken today, with reasons
 
 - Campaign tree is the desktop's tracking checkout at HEAD, not its `-measure` checkout
