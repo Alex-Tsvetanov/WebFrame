@@ -17,10 +17,12 @@ import json
 import os
 import platform as _platform
 import socket
+import re
 import subprocess
 import tempfile
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -223,6 +225,13 @@ else:
 # ---------------------------------------------------------------------- server
 
 
+# "Server listening on port 18080 (multi-accept, backend io_uring)", and the same
+# without the multi-accept clause on the fallback accept path. Matched rather than
+# assumed, because IoBackend::Default resolves against the host: a cell that asked for
+# io_uring on a machine that refuses it must not be recorded as an io_uring run.
+_BANNER_BACKEND = re.compile(r"Server listening on port \d+ \([^)]*backend (\w+)\)")
+
+
 @dataclass
 class CorouteServer:
     """One benchmark_server process, started fresh and stopped for certain.
@@ -243,6 +252,10 @@ class CorouteServer:
     key_file: Path | None = None
     _proc: subprocess.Popen | None = None
     _cost: tuple[float | None, int | None] = (None, None)
+    # The backend the server said it actually started on, read back from its banner.
+    # None until the banner has been seen. See _drain.
+    effective_backend: str | None = None
+    _output: list[str] = field(default_factory=list)
 
     @property
     def argv(self) -> list[str]:
@@ -258,6 +271,11 @@ class CorouteServer:
             # wrong measurement and for the churn cells is the whole point.
             "--max-requests", str(factors.get("max_requests_per_connection", 0)),
         ]
+        # The arm of the I/O-portability comparison, passed rather than built in. Only
+        # when the cell carries it, so a campaign that predates the factor produces the
+        # command line it always did and stays comparable with the runs already on disk.
+        if factors.get("io_backend"):
+            args += ["--io-backend", str(factors["io_backend"])]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
         if factors.get("tls"):
@@ -289,22 +307,53 @@ class CorouteServer:
     def start(self) -> None:
         self._proc = subprocess.Popen(
             self.argv,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        self._output = []
+        self.effective_backend = None
+        # A thread rather than a read in wait_until_ready, for two reasons. It keeps the
+        # pipe drained, so a server that talks more than expected cannot block on a full
+        # buffer half way through a measurement, which discarding stdout used to prevent.
+        # And it never blocks the caller: a readline against a silent process would hang
+        # the campaign, and select() on a pipe is not portable to the Windows hosts this
+        # harness also runs on.
+        reader = threading.Thread(target=self._drain, daemon=True)
+        reader.start()
+
+    def _drain(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stdout is None:
+            return
+        for raw in proc.stdout:
+            line = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+            self._output.append(line)
+            match = _BANNER_BACKEND.search(line)
+            if match:
+                self.effective_backend = match.group(1)
 
     def wait_until_ready(self, timeout_s: float) -> bool:
         """Connects until it can, so no run measures process startup."""
         deadline = time.monotonic() + timeout_s
+        connected = False
         while time.monotonic() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
                 return False
-            try:
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
-                    return True
-            except OSError:
-                time.sleep(0.05)
-        return False
+            if not connected:
+                try:
+                    with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
+                        connected = True
+                except OSError:
+                    time.sleep(0.05)
+                    continue
+            # Listening and having said which backend it is listening on are not the
+            # same instant: the banner is written just after the socket comes up. The
+            # run is only startable once both have happened, because the backend is
+            # what the driver checks the cell against.
+            if self.effective_backend is not None:
+                return True
+            time.sleep(0.01)
+        return connected and self.effective_backend is not None
 
     def stop(self) -> ResourceUsage:
         if self._proc is None:

@@ -1,6 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/generators/catch_generators_range.hpp>
 
 #include <coroute/net/io_context.hpp>
+
+#include "io_backend_arms.hpp"
 
 #include <array>
 #include <atomic>
@@ -52,9 +56,12 @@ namespace
 
 TEST_CASE("the event loop stops when asked", "[io_context]")
 {
+	const IoBackend backend = GENERATE(from_range(coroute::testing::io_backend_arms()));
+	INFO("backend " << io_backend_name(backend));
+
 	SECTION("stop() after the loop is running")
 	{
-		auto ctx = std::shared_ptr<IoContext>(IoContext::create(1));
+		auto ctx = std::shared_ptr<IoContext>(coroute::testing::context_or_skip(1, backend));
 		REQUIRE(run_then(ctx,
 		                 [&]
 		                 {
@@ -73,14 +80,14 @@ TEST_CASE("the event loop stops when asked", "[io_context]")
 		// erased a stop that arrived first and left the workers spinning forever. It
 		// is not a theoretical race: it hung a test for ten minutes, and App::stop()
 		// called soon after App::run() would hit exactly the same thing.
-		auto ctx = std::shared_ptr<IoContext>(IoContext::create(2));
+		auto ctx = std::shared_ptr<IoContext>(coroute::testing::context_or_skip(2, backend));
 		REQUIRE(run_then(ctx, [&] { ctx->stop(); }));
 		REQUIRE(ctx->stopped());
 	}
 
 	SECTION("stop() before run() is ever called")
 	{
-		auto ctx = std::shared_ptr<IoContext>(IoContext::create(1));
+		auto ctx = std::shared_ptr<IoContext>(coroute::testing::context_or_skip(1, backend));
 		ctx->stop();
 		REQUIRE(ctx->stopped());
 		REQUIRE(run_then(ctx, [] { }));
@@ -88,7 +95,7 @@ TEST_CASE("the event loop stops when asked", "[io_context]")
 
 	SECTION("stop() is idempotent")
 	{
-		auto ctx = std::shared_ptr<IoContext>(IoContext::create(1));
+		auto ctx = std::shared_ptr<IoContext>(coroute::testing::context_or_skip(1, backend));
 		REQUIRE(run_then(ctx,
 		                 [&]
 		                 {
@@ -104,9 +111,12 @@ TEST_CASE("worker_count reports what run() will spawn", "[io_context]")
 {
 	// Multi-accept sizes its pool from this, so a backend reporting 1 while running N
 	// would quietly under-provision the accept path.
+	const IoBackend backend = GENERATE(from_range(coroute::testing::io_backend_arms()));
+	INFO("backend " << io_backend_name(backend));
+
 	for (size_t requested : {size_t{1}, size_t{2}, size_t{4}})
 	{
-		auto ctx = IoContext::create(requested);
+		auto ctx = coroute::testing::context_or_skip(requested, backend);
 		INFO("requested " << requested);
 		REQUIRE(ctx->worker_count() == requested);
 	}
@@ -120,7 +130,10 @@ TEST_CASE("work can be directed at a specific worker thread", "[io_context][affi
 	// and not merely to whichever worker is free.
 
 	constexpr size_t workers = 4;
-	auto ctx = std::shared_ptr<IoContext>(IoContext::create(workers));
+	const IoBackend backend = GENERATE(from_range(coroute::testing::io_backend_arms()));
+	INFO("backend " << io_backend_name(backend));
+
+	auto ctx = std::shared_ptr<IoContext>(coroute::testing::context_or_skip(workers, backend));
 	REQUIRE(ctx);
 
 	if (!ctx->supports_worker_affinity())

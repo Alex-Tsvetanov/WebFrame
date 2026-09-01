@@ -562,10 +562,11 @@ def default_io_backend() -> str:
     repetitions of one measurement. Two entry points disagreeing about the name would
     defeat the fingerprint as thoroughly as not recording it at all.
 
-    Note this is the backend the CMake presets select by platform, not a runtime
-    choice. There is no runtime choice: CMakeLists compiles exactly one backend
-    translation unit. When that changes, this has to read the flag instead of the
-    platform.
+    Note this is the backend the CMake presets select by platform, and on Linux it is
+    also the arm a run defaults to. It is no longer the only arm available: a tree
+    configured with COROUTE_IO_BACKEND=dual contains both Linux backends and picks
+    between them per process with --io-backend, so what a given run actually used comes
+    from the server's own banner and not from here. This stays the name of the default.
     """
     return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
 
@@ -603,12 +604,19 @@ def resolve_io_backend(build_dir: Path | None) -> str:
     """
     guessed = default_io_backend()
     read = io_backend_from_build(build_dir)
+    if read == "dual":
+        # Recorded as "dual", which is the honest answer for a build key: the binary
+        # really does contain both backends, and no single name for the compiled set is
+        # more accurate. It says nothing about which arm a given run used, and it must
+        # not: that is a per-run factor carried by the cell and confirmed against the
+        # server's banner, not a property of the build.
+        return read
     if read and read != guessed:
         raise ValueError(
             f"the build in {build_dir} was configured with COROUTE_IO_BACKEND={read}, "
             f"but this host implies {guessed}. Recording either would mislabel the run. "
-            f"Point --build at a tree configured for {guessed}, or record {read} "
-            f"deliberately once the backend is a runtime flag rather than a build option."
+            f"Point --build at a tree configured for {guessed}, or configure it with "
+            f"COROUTE_IO_BACKEND=dual and choose the arm per run with --io-backend."
         )
     return read or guessed
 

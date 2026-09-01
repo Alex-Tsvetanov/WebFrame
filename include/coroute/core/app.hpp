@@ -180,6 +180,9 @@ namespace coroute
 		size_t thread_count_ = 1;
 		CompiledMiddlewareChain middleware_chain_;
 
+		// Which event loop run() will build. See io_backend().
+		net::IoBackend io_backend_ = net::IoBackend::Default;
+
 		// See backlog() and enable_protocol_detection() for why these are here.
 		int backlog_ = 1024;
 		bool protocol_detection_ = true;
@@ -281,6 +284,29 @@ namespace coroute
 		{
 			thread_count_ = count;
 			return *this;
+		}
+
+		// Which I/O backend the event loop runs on.
+		//
+		// The seam the I/O-portability experiment needs: one binary, both Linux
+		// backends compiled in under -DCOROUTE_IO_BACKEND=dual, and the arm chosen per
+		// process rather than per build. The default asks the host, so an ordinary
+		// application never sets this and still gets io_uring where it is allowed and
+		// epoll where it is not.
+		//
+		// Must be called before run(); the context is built there and not rebuilt.
+		App& io_backend(net::IoBackend backend)
+		{
+			io_backend_ = backend;
+			return *this;
+		}
+
+		// The backend the running context actually is, or nullptr before run() builds
+		// it. What ran, not what was asked for: IoBackend::Default resolves against the
+		// host, so this is the only thing that can answer for a fallback.
+		[[nodiscard]] const char* effective_io_backend() const noexcept
+		{
+			return io_ctx_ ? io_ctx_->backend_name() : nullptr;
 		}
 
 		// The listen backlog, used by both accept paths.

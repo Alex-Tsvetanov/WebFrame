@@ -357,7 +357,7 @@ namespace coroute
 		// request, which would be a race and would also charge that request for it.
 		router_.finalise();
 
-		io_ctx_ = net::IoContext::create(thread_count_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
 
 		// One listening descriptor, whatever mix of protocols is configured. TLS and
 		// cleartext used to be mutually exclusive branches here, so serving both meant
@@ -370,7 +370,8 @@ namespace coroute
 
 		if (io_ctx_->enable_multi_accept(port, on_connection, backlog_))
 		{
-			std::cout << "Server listening on port " << port << " (multi-accept)" << '\n' << std::flush;
+			std::cout << "Server listening on port " << port << " (multi-accept, backend "
+			          << io_ctx_->backend_name() << ")" << '\n' << std::flush;
 		}
 		else
 		{
@@ -383,7 +384,8 @@ namespace coroute
 				throw std::runtime_error("Failed to listen: " + result.error().to_string());
 			}
 
-			std::cout << "Server listening on port " << listener_->local_port() << '\n' << std::flush;
+			std::cout << "Server listening on port " << listener_->local_port() << " (backend "
+			          << io_ctx_->backend_name() << ")" << '\n' << std::flush;
 
 			[this, on_connection]() -> Task<void>
 			{
@@ -408,7 +410,7 @@ namespace coroute
 
 	Task<void> App::run_async(uint16_t port)
 	{
-		io_ctx_ = net::IoContext::create(thread_count_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
 		listener_ = net::Listener::create(*io_ctx_);
 
 		auto result = listener_->listen(port);
@@ -417,7 +419,8 @@ namespace coroute
 			throw std::runtime_error("Failed to listen: " + result.error().to_string());
 		}
 
-		std::cout << "Server listening on port " << listener_->local_port() << '\n' << std::flush;
+		std::cout << "Server listening on port " << listener_->local_port() << " (backend "
+		          << io_ctx_->backend_name() << ")" << '\n' << std::flush;
 
 		while (!cancel_source_.is_cancelled())
 		{
