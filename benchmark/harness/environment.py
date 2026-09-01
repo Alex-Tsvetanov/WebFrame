@@ -167,6 +167,63 @@ _ON_MAINS = "mains"
 _NO_BATTERY = "mains (desktop, no power source to change)"
 
 
+def _cpu_mhz_linux(cpuinfo: str | None = None) -> float | None:
+    """Mean current clock across cores, from /proc/cpuinfo."""
+    text = cpuinfo if cpuinfo is not None else _read("/proc/cpuinfo")
+    if not text:
+        return None
+    values = [float(m) for m in re.findall(r"^cpu MHz\s*:\s*([\d.]+)$", text, re.MULTILINE)]
+    return sum(values) / len(values) if values else None
+
+
+def _cpu_mhz_windows(perf: str | None = None) -> float | None:
+    """Effective clock on Windows, as base frequency times the performance percentage.
+
+    Win32_Processor.CurrentClockSpeed is not usable: it reports the nominal figure and
+    does not move, so a machine that throttled to half speed still reads full. The
+    formatted performance counter does move.
+
+    Read through Win32_PerfFormattedData rather than Get-Counter because that returns
+    integers. Get-Counter returns a localised decimal, and this project's own Windows
+    host formats it "99,9", which float() would reject. A probe that fails on a decimal
+    separator is a probe that silently returns None on somebody's machine.
+    """
+    if perf is None:
+        perf = _run([
+            "powershell", "-NoProfile", "-NonInteractive", "-Command",
+            "$x = Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation "
+            "| Where-Object { $_.Name -eq '_Total' }; "
+            "'{0}|{1}' -f $x.ProcessorFrequency, $x.PercentProcessorPerformance",
+        ])
+    if not perf or "|" not in perf:
+        return None
+    base, _, pct = perf.strip().partition("|")
+    try:
+        return float(base) * float(pct) / 100.0
+    except ValueError:
+        return None
+
+
+def cpu_mhz() -> float | None:
+    """The current clock, for the drift check, on the platforms that can say.
+
+    This lived in validity.py and read /proc/cpuinfo directly, so it returned None on
+    Windows and macOS. Combined with the thermal check being pmset-only, that left
+    Windows with no clock-stability gate of any kind, on the platform that produced
+    every measurement this project has and that runs the dispatch microbenchmark.
+
+    macOS is still None here. Intel Macs are covered by CPU_Speed_Limit and Apple
+    Silicon publishes neither, which is a gap that belongs in the limitations rather
+    than in a probe that guesses.
+    """
+    system = platform.system()
+    if system == "Linux":
+        return _cpu_mhz_linux()
+    if system == "Windows":
+        return _cpu_mhz_windows()
+    return None
+
+
 def _power_source_darwin(pmset_ps: str | None = None) -> str | None:
     """Mains or battery, as pmset names it."""
     text = pmset_ps if pmset_ps is not None else _run(["pmset", "-g", "ps"])

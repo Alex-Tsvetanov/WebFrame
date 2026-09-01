@@ -470,6 +470,20 @@ def power_checks() -> None:
     # The trap in the value itself: validity tests for the substring "battery", so a
     # healthy host's string must not contain it. "no battery present" would have refused
     # the machine it describes.
+    # Both clock gates were dead on Windows: the drift check read /proc/cpuinfo and the
+    # thermal check read pmset, so the platform that produced every measurement in this
+    # project had no clock-stability check of any kind, on an rdtsc microbenchmark.
+    check("linux clock is the mean across cores",
+          env_mod._cpu_mhz_linux("cpu MHz\t: 3600.5\ncpu MHz\t: 3599.5\n") == 3600.0)
+    check("windows clock is base times performance percentage",
+          env_mod._cpu_mhz_windows("3950|99") == 3950 * 0.99)
+    # Get-Counter returns a localised decimal and this project's own Windows host
+    # formats it "99,9". Reading the integer counter avoids a probe that works
+    # everywhere except on a comma-decimal machine, which is where it runs.
+    check("a windows reading that is not two numbers is None, not a guess",
+          env_mod._cpu_mhz_windows("99,9") is None)
+    check("an empty windows reading is None", env_mod._cpu_mhz_windows("") is None)
+
     check("the desktop string does not trip the rule it is read by",
           "battery" not in env_mod._NO_BATTERY.lower())
     check("and a desktop is accepted end to end",

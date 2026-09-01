@@ -16,7 +16,6 @@ None of these is about latency being high. Slow is a result.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -281,12 +280,13 @@ def _read(path: str) -> str | None:
 
 
 def current_cpu_mhz() -> float | None:
-    """Mean current clock across cores, for the drift check."""
-    text = _read("/proc/cpuinfo")
-    if not text:
-        return None
-    values = [float(m) for m in re.findall(r"^cpu MHz\s*:\s*([\d.]+)$", text, re.MULTILINE)]
-    return sum(values) / len(values) if values else None
+    """Mean current clock across cores, for the drift check.
+
+    Delegates to environment.py, which owns the parsers and has recorded-output checks
+    over them, for the same reason current_power_source does: a second parser here would
+    be a second chance to disagree with the manifest describing the same run.
+    """
+    return environment.cpu_mhz()
 
 
 def current_power_source() -> str | None:
