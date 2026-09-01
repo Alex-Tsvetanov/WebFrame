@@ -274,6 +274,14 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
                 "protocol_detection": int(detect),
                 "tls": int(tls is not None),
                 "connections_offered": connections,
+                # Recorded because the per-connection rows vary it and the at-rest rows
+                # do not, which confounds the thread column between the two groups.
+                # TimerQueue starts its thread on first use (timer_queue.hpp:24), and
+                # with both deadlines at zero nothing ever arms one, so a server with
+                # connections held reports one thread FEWER than the same server at
+                # rest. That is the timer thread, not a connection effect. Comparing
+                # threads across the two groups would read it backwards.
+                "deadlines": 0 if connections else 1,
                 "tcp_listeners": tcp,
                 "udp_listeners": udp,
                 "total": tcp + udp,
