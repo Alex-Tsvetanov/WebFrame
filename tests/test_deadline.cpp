@@ -24,6 +24,12 @@ namespace
 		bool stopped() const noexcept override { return false; }
 		void post(std::function<void()> callback) override { callback(); }
 
+		// Neither of these has anything to fake. This context exists to control when a
+		// scheduled callback runs; it never accepts a connection, and saying so with a
+		// nullptr is what IoContext already asks of a backend that cannot.
+		const char* backend_name() const noexcept override { return "fake"; }
+		std::unique_ptr<Listener> make_listener() override { return nullptr; }
+
 		void schedule(std::chrono::milliseconds, std::function<void()> callback) override
 		{
 			// Held rather than run, so a test decides when the deadline expires. Real

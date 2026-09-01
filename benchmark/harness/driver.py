@@ -98,6 +98,11 @@ class Server(Protocol):
     @property
     def argv(self) -> list[str]: ...
 
+    # The backend the server reported actually starting on, or None where the server
+    # does not report one. Read through getattr at the call site, so an adapter for a
+    # comparison framework that has no such concept needs nothing.
+    effective_backend: str | None
+
     def start(self) -> None: ...
 
     def wait_until_ready(self, timeout_s: float) -> bool:
@@ -232,6 +237,21 @@ def run_one(
 
         if not server.wait_until_ready(readiness_timeout_s):
             raise RunFailed(f"server did not become ready within {readiness_timeout_s:g}s")
+
+        # What ran against what the cell claims ran.
+        #
+        # The backend is a runtime flag now, and a flag can be refused: asking for
+        # io_uring on a host with kernel.io_uring_disabled=1 gets an epoll server, or on
+        # a build without that arm gets whatever the build had. Either way the record
+        # would carry io_backend=io_uring for a measurement of epoll, and a mislabelled
+        # factor makes two different measurements look like repetitions of one. That is
+        # the same failure resolve_io_backend refuses at build level, at run level.
+        asked = cell.as_dict().get("io_backend")
+        actually = getattr(server, "effective_backend", None)
+        if asked and actually and actually != asked:
+            raise RunFailed(
+                f"cell asks for io_backend={asked} but the server started on {actually}"
+            )
 
         result = generator.run(cell, duration_s)
         record.requests_total = result.requests_total

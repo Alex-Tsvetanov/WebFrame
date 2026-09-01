@@ -87,6 +87,31 @@ def cleartext_get(port):
         return b""
 
 
+# ctest reads this as "skipped" through the SKIP_RETURN_CODE property. A backend the
+# kernel refuses, which on a hardened host means io_uring and EPERM, is a fact about the
+# machine rather than a failure of the code.
+SKIP_EXIT = 77
+
+# Set by main() from --io-backend; empty means the host default.
+IO_BACKEND_ARGS = []
+
+
+class Skipped(Exception):
+    """This host will not run the requested backend. Not a failure."""
+
+
+def is_backend_refusal(text):
+    """Whether the host refused the backend, which is a skip, and nothing else.
+
+    Deliberately not "needs a build configured with", which is the other refusal the
+    server can print. That one says the arm is missing from the binary, and a test asked
+    to exercise an arm this build does not contain has not been skipped by the machine,
+    it has been mis-registered by the build system. Treating it as a skip would make the
+    suite green on a build that silently tests one backend twice.
+    """
+    return "--io-backend" in text and "is not available on this host" in text
+
+
 def start(server, port, extra, wait=15.0):
     # On Linux both backends set SO_REUSEPORT, so a server left behind by a hard-killed
     # run shares the port with this one instead of failing to bind, and the probes below
@@ -100,13 +125,16 @@ def start(server, port, extra, wait=15.0):
     except OSError as exc:
         raise Failure(f"port {port} is already held ({exc}); a stale server is running")
     proc = subprocess.Popen(
-        [server, "--port", str(port), "--workers", "2", "--max-requests", "0", *extra],
+        [server, "--port", str(port), "--workers", "2", "--max-requests", "0",
+         *IO_BACKEND_ARGS, *extra],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
     deadline = time.time() + wait
     while time.time() < deadline:
         if proc.poll() is not None:
             out = proc.stdout.read().decode(errors="replace")
+            if is_backend_refusal(out):
+                raise Skipped(out)
             raise Failure(f"server exited early with {' '.join(extra)}:\n{out}")
         try:
             socket.create_connection((HOST, port), timeout=0.25).close()
@@ -177,7 +205,15 @@ def main():
     ap.add_argument("--cert", required=True)
     ap.add_argument("--key", required=True)
     ap.add_argument("--port", type=int, default=18120)
+    ap.add_argument("--io-backend", dest="io_backend", default=None,
+                    help="run the server on this I/O backend rather than the host default")
     args = ap.parse_args()
+
+    # Module-level because start() is called from each test function and threading the
+    # flag through all of them would touch every one for no gain.
+    global IO_BACKEND_ARGS
+    if args.io_backend:
+        IO_BACKEND_ARGS = ["--io-backend", args.io_backend]
 
     print("one descriptor, both transports:")
     tests = [
@@ -187,9 +223,17 @@ def main():
         ("dedicated_cleartext", lambda: test_dedicated_cleartext(args.server, args.port + 2)),
     ]
     failed = 0
+    skipped = 0
     for name, fn in tests:
         try:
             fn()
+        except Skipped as exc:
+            # Recorded, not returned on the spot. Returning here threw away any failure
+            # already seen in an earlier test and reported the whole run as skipped, so
+            # a genuine defect in test_unified could be hidden by the host refusing the
+            # backend in test_dedicated_cleartext. Failures win; see below.
+            print(f"  [SKIP] {name}  {exc}")
+            skipped += 1
         except Failure as exc:
             print(f"  [FAIL] {name}  {exc}")
             failed += 1
@@ -197,8 +241,10 @@ def main():
             print(f"  [FAIL] {name}  {exc}")
             failed += 1
 
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
+    print(f"{len(tests) - failed - skipped}/{len(tests)} passed, {skipped} skipped")
+    if failed:
+        return 1
+    return SKIP_EXIT if skipped else 0
 
 
 if __name__ == "__main__":

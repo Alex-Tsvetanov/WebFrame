@@ -4,6 +4,7 @@
 #include <memory>
 #include <functional>
 #include <chrono>
+#include <string_view>
 
 #include "coroute/util/expected.hpp"
 #include "coroute/core/error.hpp"
@@ -16,6 +17,53 @@ namespace coroute::net
 	// Forward declarations
 	class Socket;
 	class Connection;
+	class Listener;
+	class DatagramSocket;
+
+	// ============================================================================
+	// I/O backend - which event loop the context runs on
+	// ============================================================================
+
+	/// The event-loop implementation an IoContext dispatches with.
+	///
+	/// A runtime choice rather than a build option, for the reason RouterBackend is:
+	/// build-to-build variation from code layout and link order is documented at 5 to
+	/// 10 percent, well above the 1 to 2 percent run-to-run noise on a controlled
+	/// machine, so a completion-model comparison drawn from two separately compiled
+	/// binaries cannot resolve the effect it is measuring. Both arms have to come out
+	/// of one binary.
+	///
+	/// Only the backends the build compiled in exist. On Linux that is io_uring, epoll,
+	/// or both under -DCOROUTE_IO_BACKEND=dual; elsewhere it is the one the platform
+	/// has, and naming a Linux arm there is refused rather than silently ignored.
+	enum class IoBackend
+	{
+		Default,  ///< whatever this build and host can actually run; see IoContext::create
+		IoUring,  ///< Linux io_uring, the completion model
+		Epoll,    ///< Linux epoll, the readiness model
+	};
+
+	/// The name recorded for a backend: "io_uring", "epoll", or "default".
+	const char* io_backend_name(IoBackend backend) noexcept;
+
+	/// Parses "io_uring" or "epoll". False leaves `out` untouched.
+	bool parse_io_backend(std::string_view text, IoBackend& out) noexcept;
+
+	/// Whether this binary contains the backend at all.
+	///
+	/// Separate from io_backend_probe because the two failures need different words: a
+	/// backend that was never compiled in is a build that has to be reconfigured, and a
+	/// backend the kernel refuses is a host that has to be changed.
+	bool io_backend_compiled_in(IoBackend backend) noexcept;
+
+	/// 0 when `backend` can actually be created on this host right now, otherwise the
+	/// errno explaining why not; ENOSYS when it was not compiled in.
+	///
+	/// For io_uring this really does set up a small ring and free it again, because the
+	/// restriction that matters is not detectable any other way: a host with
+	/// kernel.io_uring_disabled=1 has the syscall, the headers and liburing, and fails
+	/// at io_uring_setup with EPERM. Asking the kernel is the only honest test.
+	int io_backend_probe(IoBackend backend) noexcept;
 
 	// ============================================================================
 	// IoContext - Abstract I/O event loop
@@ -108,8 +156,52 @@ namespace coroute::net
 		// Check if multi-accept is enabled
 		virtual bool is_multi_accept_enabled() const noexcept { return false; }
 
-		// Factory method - creates platform-appropriate context
-		static std::unique_ptr<IoContext> create(size_t thread_count = 1);
+		// Which backend this context actually is: "io_uring", "epoll", "iocp", "kqueue".
+		//
+		// What ran, not what was asked for. Default resolves against the host, so a run
+		// that asked for nothing in particular and got epoll because io_uring was
+		// refused has to be able to say epoll: the harness records this, and a record
+		// that echoed the request instead would label a fallback as the arm it fell
+		// back from.
+		[[nodiscard]] virtual const char* backend_name() const noexcept = 0;
+
+		// Creates a listener bound to this context.
+		//
+		// A virtual member rather than a free function that downcasts. With one backend
+		// compiled in, static_cast<EpollContext&>(ctx) was merely unchecked; with two it
+		// is undefined behaviour the moment a context of the other kind is passed, and
+		// nothing in the type system stops that. Dispatch through the context that
+		// already knows what it is.
+		virtual std::unique_ptr<Listener> make_listener() = 0;
+
+		// Creates a datagram socket bound to this context, or nullptr where the backend
+		// has none.
+		//
+		// Datagrams are not implemented on IOCP or kqueue yet. HTTP/3 is being landed on
+		// Linux first, and a nullptr here is honest: callers fall back rather than talk
+		// to a socket that silently drops packets. See DatagramSocket::create for what
+		// `worker_index` means.
+		//
+		// Defined in io_context.cpp rather than here: returning a unique_ptr by value
+		// instantiates its deleter, which needs DatagramSocket complete, and this header
+		// only forward-declares it. Including datagram.hpp here instead would make the
+		// two headers circular.
+		virtual std::unique_ptr<DatagramSocket> make_datagram_socket(std::size_t worker_index);
+
+		// Factory method - creates a context for the requested backend.
+		//
+		// `backend` names an arm; IoBackend::Default means "whatever this build and host
+		// can actually run". On Linux that is io_uring when io_backend_probe says the
+		// kernel will allow a ring and epoll otherwise, so a host with
+		// kernel.io_uring_disabled=1 still gets a working server instead of an
+		// exception. Elsewhere it is the platform's only backend.
+		//
+		// Throws std::runtime_error when a specific backend is asked for and this build
+		// does not contain it, or the host refuses it. Refused rather than substituted:
+		// a run that silently measured epoll while its record said io_uring would
+		// produce a full set of plausible numbers for an experiment that never happened.
+		static std::unique_ptr<IoContext> create(size_t thread_count = 1,
+		                                         IoBackend backend = IoBackend::Default);
 	};
 
 	// ============================================================================

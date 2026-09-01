@@ -27,8 +27,14 @@ elseif(UNIX AND NOT APPLE)
     # -DCOROUTE_IO_BACKEND=epoll. Both are kept so the completion and readiness
     # models can be compared with everything else held constant, and because
     # io_uring is restricted in enough sandboxes to need a fallback.
-    set(COROUTE_IO_BACKEND "io_uring" CACHE STRING "I/O backend (io_uring or epoll)")
-    set_property(CACHE COROUTE_IO_BACKEND PROPERTY STRINGS "io_uring" "epoll")
+    # 'dual' compiles both and defers the choice to --io-backend at run time. That is
+    # the only arrangement in which the completion and readiness models can be compared
+    # at the resolution the I/O-portability experiment needs, for the same reason
+    # COROUTE_ROUTER_ARMS exists: build-to-build variation from code layout and link
+    # order is documented at 5 to 10 percent, well above the run-to-run noise, so two
+    # separately compiled binaries cannot resolve the difference between them.
+    set(COROUTE_IO_BACKEND "io_uring" CACHE STRING "I/O backend (io_uring, epoll or dual)")
+    set_property(CACHE COROUTE_IO_BACKEND PROPERTY STRINGS "io_uring" "epoll" "dual")
     add_compile_definitions(COROUTE_PLATFORM_LINUX)
 elseif(APPLE)
     set(COROUTE_IO_BACKEND "kqueue" CACHE STRING "I/O backend (kqueue)")
@@ -191,29 +197,69 @@ if(COROUTE_ENABLE_CLANG_TIDY)
 endif()
 
 # Platform-specific I/O implementation
+#
+# COROUTE_IO_BACKEND names a set rather than a single backend, because 'dual' names two.
+# Everything below keys off that set, so adding a value here is the only change a new
+# combination needs, and the single-backend values compile exactly what they did before.
 if(COROUTE_IO_BACKEND STREQUAL "iocp")
+    set(_coroute_backends iocp)
+elseif(COROUTE_IO_BACKEND STREQUAL "epoll")
+    set(_coroute_backends epoll)
+elseif(COROUTE_IO_BACKEND STREQUAL "io_uring")
+    set(_coroute_backends io_uring)
+elseif(COROUTE_IO_BACKEND STREQUAL "dual")
+    if(NOT UNIX OR APPLE)
+        message(FATAL_ERROR
+            "COROUTE_IO_BACKEND=dual is Linux only: it means io_uring and epoll in one "
+            "binary, and no other platform has both.")
+    endif()
+    set(_coroute_backends io_uring epoll)
+elseif(COROUTE_IO_BACKEND STREQUAL "kqueue")
+    set(_coroute_backends kqueue)
+else()
+    # Fail here rather than at link time. Without a backend nothing defines the maker
+    # io_context.cpp dispatches to, and the resulting "undefined reference" points at
+    # the dispatcher rather than at the misspelled option that caused it.
+    message(FATAL_ERROR
+        "Unknown COROUTE_IO_BACKEND '${COROUTE_IO_BACKEND}'. "
+        "Expected one of: iocp (Windows), io_uring, epoll or dual (Linux), kqueue (macOS).")
+endif()
+
+# The dispatcher, on every platform. It holds IoContext::create, Listener::create and
+# DatagramSocket::create, which each backend used to define for itself; with two
+# backends in one binary those three were the symbols that collided at link.
+target_sources(coroute PRIVATE src/net/io_context.cpp)
+
+if("iocp" IN_LIST _coroute_backends)
     target_sources(coroute PRIVATE src/net/iocp/iocp_context.cpp)
     target_link_libraries(coroute PRIVATE ws2_32 mswsock)
     # Prevent Windows.h from defining min/max macros
     target_compile_definitions(coroute PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
-elseif(COROUTE_IO_BACKEND STREQUAL "epoll")
+endif()
+
+if("kqueue" IN_LIST _coroute_backends)
+    target_sources(coroute PRIVATE src/net/kqueue/kqueue_context.cpp)
+endif()
+
+if("epoll" IN_LIST _coroute_backends)
     target_sources(coroute PRIVATE src/net/epoll/epoll_context.cpp)
     target_compile_definitions(coroute PRIVATE COROUTE_BACKEND_EPOLL)
-elseif(COROUTE_IO_BACKEND STREQUAL "io_uring")
+endif()
+
+if("io_uring" IN_LIST _coroute_backends)
     target_sources(coroute PRIVATE src/net/io_uring/uring_context.cpp)
+    # uring_context.cpp used to compile itself on the strength of COROUTE_PLATFORM_LINUX,
+    # which every Linux build defines including the epoll one. It only got away with it
+    # because CMake decided separately whether to hand the file to the compiler at all.
+    # Under 'dual' both files are compiled, so each needs a guard that says which backend
+    # it is rather than which platform it is on.
+    target_compile_definitions(coroute PRIVATE COROUTE_BACKEND_IO_URING)
+    # Discovery sits with the backend that needs it, not inside the io_uring-only branch
+    # of a chain that 'dual' does not take.
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(URING REQUIRED liburing)
     target_link_libraries(coroute PRIVATE ${URING_LIBRARIES})
     target_include_directories(coroute PRIVATE ${URING_INCLUDE_DIRS})
-elseif(COROUTE_IO_BACKEND STREQUAL "kqueue")
-    target_sources(coroute PRIVATE src/net/kqueue/kqueue_context.cpp)
-else()
-    # Fail here rather than at link time. Without a backend nothing defines
-    # IoContext::create, and the resulting "undefined reference" points at app.cpp
-    # rather than at the misspelled option that caused it.
-    message(FATAL_ERROR
-        "Unknown COROUTE_IO_BACKEND '${COROUTE_IO_BACKEND}'. "
-        "Expected one of: iocp (Windows), io_uring or epoll (Linux), kqueue (macOS).")
 endif()
 
 # Fetch url-matcher (RegexMatcher) for DFA-based routing

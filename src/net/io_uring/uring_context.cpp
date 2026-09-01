@@ -2,7 +2,7 @@
 #include "coroute/net/datagram.hpp"
 #include "coroute/net/timer_queue.hpp"
 
-#if defined(COROUTE_PLATFORM_LINUX)
+#if defined(COROUTE_BACKEND_IO_URING)
 
 #include <liburing.h>
 #include <sys/socket.h>
@@ -342,6 +342,12 @@ namespace coroute::net
 
 		bool is_multi_accept_enabled() const noexcept override { return multi_accept_enabled_; }
 		uint16_t listen_port() const noexcept { return listen_port_; }
+
+		const char* backend_name() const noexcept override { return "io_uring"; }
+
+		// Defined below UringListener and UringDatagramSocket, which these construct.
+		std::unique_ptr<Listener> make_listener() override;
+		std::unique_ptr<DatagramSocket> make_datagram_socket(std::size_t worker_index) override;
 
 		// Submit SQE to a specific ring
 		template <typename PrepFunc>
@@ -1376,21 +1382,48 @@ namespace coroute::net
 	// Factory Functions
 	// ============================================================================
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count)
+	std::unique_ptr<Listener> UringContext::make_listener()
 	{
-		return std::make_unique<UringContext>(thread_count);
+		return std::make_unique<UringListener>(*this);
 	}
 
-	std::unique_ptr<Listener> Listener::create(IoContext& ctx)
+	std::unique_ptr<DatagramSocket> UringContext::make_datagram_socket(std::size_t worker_index)
 	{
-		return std::make_unique<UringListener>(static_cast<UringContext&>(ctx));
+		return std::make_unique<UringDatagramSocket>(*this, worker_index);
 	}
 
-	std::unique_ptr<DatagramSocket> DatagramSocket::create(IoContext& ctx, std::size_t worker_index)
+	namespace detail
 	{
-		return std::make_unique<UringDatagramSocket>(static_cast<UringContext&>(ctx), worker_index);
-	}
+		std::unique_ptr<IoContext> make_uring_context(std::size_t thread_count)
+		{
+			return std::make_unique<UringContext>(thread_count);
+		}
+
+		// Sets up the smallest possible ring and frees it again.
+		//
+		// The question is whether this kernel will let this process have a ring at all,
+		// and nothing short of asking answers it. kernel.io_uring_disabled=1 leaves the
+		// syscall present, liburing linked and the headers correct, and refuses
+		// io_uring_setup with EPERM; io_uring_disabled=2 refuses it for everyone; a
+		// seccomp filter or a container policy can refuse it a third way. All of them
+		// arrive here as an errno, which is what the caller needs to print.
+		//
+		// Four entries because the size is irrelevant to the permission check and a
+		// small ring is the cheapest thing to ask for. Called once at startup, not per
+		// connection.
+		int probe_uring() noexcept
+		{
+			struct io_uring ring{};
+			const int ret = io_uring_queue_init(4, &ring, 0);
+			if (ret < 0)
+			{
+				return -ret;  // liburing returns the negated errno
+			}
+			io_uring_queue_exit(&ring);
+			return 0;
+		}
+	}  // namespace detail
 
 }  // namespace coroute::net
 
-#endif  // coroute_PLATFORM_LINUX
+#endif  // COROUTE_BACKEND_IO_URING

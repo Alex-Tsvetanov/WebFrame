@@ -571,6 +571,40 @@ def darwin_parser_checks() -> None:
           or "power" not in env_mod.capture(build_type="Release"))
 
 
+def io_backend_checks() -> None:
+    print("\n== on Linux the build says which backend, not the platform ==")
+
+    def resolve(system: str, cache_value: str | None) -> object:
+        """resolve_io_backend with the platform and the CMakeCache both pinned."""
+        real_system = env_mod.platform.system
+        real_read = env_mod.io_backend_from_build
+        env_mod.platform.system = lambda: system
+        env_mod.io_backend_from_build = lambda _build: cache_value
+        try:
+            return env_mod.resolve_io_backend(Path("build/pretend"))
+        except ValueError as exc:
+            return exc
+        finally:
+            env_mod.platform.system = real_system
+            env_mod.io_backend_from_build = real_read
+
+    # The one that used to be refused. linux-epoll is a supported preset, so a tree
+    # configured with it is a legitimate single-backend build and not a disagreement
+    # with the host.
+    check("a Linux epoll tree resolves to epoll", resolve("Linux", "epoll") == "epoll")
+    check("a Linux io_uring tree resolves to io_uring", resolve("Linux", "io_uring") == "io_uring")
+    check("a Linux dual tree records dual", resolve("Linux", "dual") == "dual")
+
+    # No cache is no answer on Linux, because the platform cannot supply one.
+    check("a Linux tree with no readable cache is refused",
+          isinstance(resolve("Linux", None), ValueError))
+
+    # Elsewhere the platform does decide, so a cache that disagrees is a real conflict.
+    check("macOS agreeing with its only backend is fine", resolve("Darwin", "kqueue") == "kqueue")
+    check("macOS reading io_uring is refused", isinstance(resolve("Darwin", "io_uring"), ValueError))
+    check("Windows with no cache falls back to the platform", resolve("Windows", None) == "iocp")
+
+
 def virtualisation_checks() -> None:
     print("\n== a host that cannot answer is not a clean host ==")
 
@@ -744,6 +778,7 @@ def main() -> int:
     selfcheck_results.run(check)
     darwin_parser_checks()
     virtualisation_checks()
+    io_backend_checks()
     power_checks()
     live_capture_check()
     print(f"\n{PASSED} checks passed")

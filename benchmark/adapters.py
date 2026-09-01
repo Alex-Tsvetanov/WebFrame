@@ -19,11 +19,13 @@ import platform as _platform
 import signal
 import socket
 import subprocess
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from benchmark.harness import environment
 from benchmark.harness.driver import GeneratorResult, ResourceUsage, RunFailed
 from benchmark.harness.ordering import Cell
 
@@ -223,6 +225,15 @@ else:
 # ---------------------------------------------------------------------- server
 
 
+# Matched rather than assumed, because IoBackend::Default resolves against the host: a
+# cell that asked for io_uring on a machine that refuses it must not be recorded as an
+# io_uring run. Shared with the descriptor census; see environment.BANNER_BACKEND.
+_BANNER_BACKEND = environment.BANNER_BACKEND
+
+# Enough to hold the banner and a startup failure, not enough to grow without bound.
+_KEPT_OUTPUT_LINES = 200
+
+
 def describe_signal(number: int) -> str:
     """The signal's name, or its number where the platform has no name for it."""
     try:
@@ -279,6 +290,10 @@ class CorouteServer:
     key_file: Path | None = None
     _proc: subprocess.Popen | None = None
     _cost: tuple[float | None, int | None] = (None, None)
+    # The backend the server said it actually started on, read back from its banner.
+    # None until the banner has been seen. See _drain.
+    effective_backend: str | None = None
+    _output: list[str] = field(default_factory=list)
 
     @property
     def argv(self) -> list[str]:
@@ -294,6 +309,18 @@ class CorouteServer:
             # wrong measurement and for the churn cells is the whole point.
             "--max-requests", str(factors.get("max_requests_per_connection", 0)),
         ]
+        # The arm of the I/O-portability comparison, passed rather than built in. Only
+        # when the cell carries it, so a campaign that predates the factor produces the
+        # command line it always did and stays comparable with the runs already on disk.
+        #
+        # Only the two names --io-backend accepts. The cell carries io_backend on every
+        # platform, so on macOS this used to pass "--io-backend kqueue" and on Windows
+        # "--io-backend iocp", which parse_io_backend refuses with exit 2: every cell of
+        # every campaign died at server start on the two platforms that have no choice
+        # to make. Where the platform has one backend there is nothing to select, and
+        # the banner cross-check in the driver still confirms which one ran.
+        if factors.get("io_backend") in ("io_uring", "epoll"):
+            args += ["--io-backend", str(factors["io_backend"])]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
         if factors.get("tls"):
@@ -326,33 +353,92 @@ class CorouteServer:
         refuse_held_port(self.port)
         self._proc = subprocess.Popen(
             self.argv,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        self._output = []
+        self.effective_backend = None
+        # A thread rather than a read in wait_until_ready, for two reasons. It keeps the
+        # pipe drained, so a server that talks more than expected cannot block on a full
+        # buffer half way through a measurement, which discarding stdout used to prevent.
+        # And it never blocks the caller: a readline against a silent process would hang
+        # the campaign, and select() on a pipe is not portable to the Windows hosts this
+        # harness also runs on.
+        reader = threading.Thread(target=self._drain, daemon=True)
+        reader.start()
+
+    def _drain(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stdout is None:
+            return
+        for raw in proc.stdout:
+            line = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+            # Capped. The pipe still has to be drained for the whole life of the
+            # process or the server blocks on a full buffer, but only the first lines
+            # are ever read back: the banner is among them, and a run that logged for
+            # an hour would otherwise hold every line of it in memory.
+            if len(self._output) < _KEPT_OUTPUT_LINES:
+                self._output.append(line)
+            match = _BANNER_BACKEND.search(line)
+            if match:
+                self.effective_backend = match.group(1)
 
     def wait_until_ready(self, timeout_s: float) -> bool:
         """Connects until it can, so no run measures process startup.
 
         A child that exited before listening raises rather than returning False, so the
         record says what killed it. Returning False filed an OOM-killed server, a missing
-        certificate and a bad_alloc under the driver's one reason, that the server did
-        not become ready within the timeout, and the stderr that named the cause was
-        piped and never read.
+        certificate, a bad_alloc and a refused --io-backend under the driver's one
+        reason, that the server did not become ready within the timeout, and the stderr
+        that named the cause was piped and never read.
         """
         deadline = time.monotonic() + timeout_s
+        connected = False
         while time.monotonic() < deadline:
-            rc = self._proc.poll() if self._proc is not None else None
-            if rc is not None:
-                sig = f" ({describe_signal(-rc)})" if rc < 0 else ""
-                err = (self._proc.stderr.read().decode(errors="replace").strip()[:300]
-                       if self._proc.stderr else "")
-                raise RunFailed(f"server exited {rc}{sig} before listening: {err}")
-            try:
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
-                    return True
-            except OSError:
-                time.sleep(0.05)
-        return False
+            if self._proc is not None and self._proc.poll() is not None:
+                raise RunFailed(self._startup_failure())
+            if not connected:
+                try:
+                    with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
+                        connected = True
+                except OSError:
+                    time.sleep(0.05)
+                    continue
+            # Listening and having said which backend it is listening on are not the
+            # same instant: the banner is written just after the socket comes up. The
+            # run is only startable once both have happened, because the backend is
+            # what the driver checks the cell against.
+            if self.effective_backend is not None:
+                return True
+            time.sleep(0.01)
+        return connected and self.effective_backend is not None
+
+    def _startup_failure(self) -> str:
+        """Why the server is already gone, in the words it used.
+
+        Raised rather than reported as "not ready". A server that refused its
+        --io-backend exits in milliseconds with the reason on stderr, and returning
+        False turned that into "did not become ready within 30s" with the reason never
+        read at all. The caller sits in `except Exception` and records the failure
+        string, so this is the only route by which the real message reaches the record.
+        """
+        proc = self._proc
+        code = proc.returncode if proc is not None else None
+        # A negative code is a signal on POSIX, and "server exited -6" alone says
+        # nothing; "Abort trap: 6" is what tells an OOM kill from an assertion.
+        sig = f" ({describe_signal(-code)})" if code is not None and code < 0 else ""
+        detail = ""
+        if proc is not None and proc.stderr is not None:
+            # Popen was not opened with text=True, so this is bytes.
+            raw = proc.stderr.read()
+            if isinstance(raw, bytes):
+                raw = raw.decode(errors="replace")
+            detail = (raw or "").strip()
+        if not detail:
+            # Nothing on stderr does not mean nothing was said: the backend refusal and
+            # the banner both go to stdout, which the drain thread is holding.
+            detail = "".join(self._output).strip()
+        return f"server exited {code}{sig} before listening: {detail[:500] or '(no output)'}"
 
     def stop(self) -> ResourceUsage:
         if self._proc is None:

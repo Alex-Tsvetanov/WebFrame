@@ -75,6 +75,26 @@
       }
     },
     {
+      "name": "linux-epoll",
+      "displayName": "Linux Release (epoll)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "COROUTE_IO_BACKEND": "epoll",
+        "COROUTE_ROUTER_ARMS": "ON"
+      }
+    },
+    {
+      "name": "linux-dual",
+      "displayName": "Linux Release (io_uring and epoll, chosen at run time)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "COROUTE_IO_BACKEND": "dual",
+        "COROUTE_ROUTER_ARMS": "ON"
+      }
+    },
+    {
       "name": "macos-debug",
       "displayName": "macOS Debug (kqueue)",
       "inherits": "macos-base",
@@ -211,6 +231,8 @@
   "buildPresets": [
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-epoll", "configurePreset": "linux-epoll" },
+    { "name": "linux-dual", "configurePreset": "linux-dual" },
     { "name": "macos-debug", "configurePreset": "macos-debug" },
     { "name": "macos-release", "configurePreset": "macos-release" },
     { "name": "windows-debug", "configurePreset": "windows-debug" },
@@ -238,6 +260,16 @@
     {
       "name": "linux-release",
       "configurePreset": "linux-release",
+      "inherits": "test-base"
+    },
+    {
+      "name": "linux-epoll",
+      "configurePreset": "linux-epoll",
+      "inherits": "test-base"
+    },
+    {
+      "name": "linux-dual",
+      "configurePreset": "linux-dual",
       "inherits": "test-base"
     },
     {

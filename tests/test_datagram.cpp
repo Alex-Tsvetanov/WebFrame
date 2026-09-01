@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/generators/catch_generators_range.hpp>
 
 #include <coroute/net/datagram.hpp>
 #include <coroute/coro/task.hpp>
+
+#include "io_backend_arms.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -69,8 +73,12 @@ namespace
 	// be detected and skipped without ever spinning the loop up.
 	struct LoopHarness
 	{
-		std::unique_ptr<IoContext> ctx = IoContext::create(1);
+		// Taken rather than created, so the caller decides the backend and so a host
+		// that refuses one can skip before anything is constructed.
+		std::unique_ptr<IoContext> ctx;
 		std::thread thread;
+
+		explicit LoopHarness(std::unique_ptr<IoContext> context) : ctx(std::move(context)) { }
 
 		void start()
 		{
@@ -91,7 +99,10 @@ namespace
 
 TEST_CASE("UDP datagram round trip", "[datagram]")
 {
-	LoopHarness harness;
+	const IoBackend backend = GENERATE(from_range(coroute::testing::io_backend_arms()));
+	INFO("backend " << io_backend_name(backend));
+
+	LoopHarness harness{coroute::testing::context_or_skip(1, backend)};
 
 	auto receiver = DatagramSocket::create(*harness.ctx);
 	if (!receiver)

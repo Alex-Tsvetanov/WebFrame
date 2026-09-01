@@ -63,7 +63,50 @@ include(Catch)
 #
 # Catch2's DL_PATHS option looks like the fix but did not take effect here; worth
 # revisiting if Windows sanitizer runs become part of the routine gate.
-catch_discover_tests(unit_tests)
+# The backend-parametrised cases are registered once per compiled arm, so each arm
+# reports its own verdict.
+#
+# A single registration cannot do it. Catch2 marks a whole case skipped when any
+# assertion skipped and none failed (catch_totals.cpp:52-62) and returns 4 when every
+# case in the run skipped (catch_session.cpp:345-349); with one case per ctest entry
+# that is always the whole run. So in a dual tree the epoll arm ran, passed, and still
+# read SKIPPED, which is a green light over an arm nobody has confirmed.
+#
+# Splitting on TEST_SUFFIX and PROPERTIES alone does not work either: Catch.cmake derives
+# its generated tests-file name from a hash of TEST_SPEC, EXTRA_ARGS, REPORTER and the
+# OUTPUT_* options only (Catch.cmake:175-181), so two calls differing in suffix and
+# environment collide on that file and the second overwrites the first. EXTRA_ARGS is in
+# the hash, which is what --name is doing here: it names the suite in the report and,
+# incidentally, makes the two registrations distinct.
+if("io_uring" IN_LIST _coroute_backends AND "epoll" IN_LIST _coroute_backends)
+    # No SKIP_RETURN_CODE. epoll is not restricted by any sysctl, so a skip on this arm
+    # means the parametrisation stopped selecting it, and that must fail loudly rather
+    # than read as an expected skip.
+    catch_discover_tests(unit_tests
+        TEST_SPEC "[io_context],[datagram]"
+        TEST_SUFFIX _epoll
+        EXTRA_ARGS --name unit_tests_epoll
+        PROPERTIES ENVIRONMENT COROUTE_TEST_IO_BACKEND=epoll)
+
+    # --abort so a failure exits 1 rather than the failure count. Catch2 returns
+    # min(255, failed) (catch_session.cpp:354), so exactly four failed assertions would
+    # exit 4 and SKIP_RETURN_CODE would report the run as skipped: a red run wearing a
+    # skip's colours, on the one arm where a skip is routine.
+    catch_discover_tests(unit_tests
+        TEST_SPEC "[io_context],[datagram]"
+        TEST_SUFFIX _io_uring
+        EXTRA_ARGS --name unit_tests_io_uring --abort
+        PROPERTIES ENVIRONMENT COROUTE_TEST_IO_BACKEND=io_uring
+                   SKIP_RETURN_CODE 4)
+
+    # Everything else, once, with no backend in play.
+    catch_discover_tests(unit_tests TEST_SPEC "~[io_context]~[datagram]")
+else()
+    # One backend compiled in, so there is nothing to split and nothing sets
+    # COROUTE_TEST_IO_BACKEND. A case can still skip, on a single-backend io_uring build
+    # against a hardened kernel, and 4 is how Catch2 says so.
+    catch_discover_tests(unit_tests PROPERTIES SKIP_RETURN_CODE 4)
+endif()
 
 # ============================================================================
 # Integration: protocol demultiplexing over one listening socket
@@ -75,28 +118,35 @@ catch_discover_tests(unit_tests)
 if(COROUTE_BUILD_EXAMPLES)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_FOUND)
+        # One registration per compiled backend, because these drive a real server
+        # process and the backend is a property of that process rather than of a
+        # Catch2 run. The unit tests take the other route the same problem allows: a
+        # generator over the compiled set inside one binary. See tests/io_backend_arms.hpp.
+        #
+        # 'host-default' is the sentinel for a platform with one backend and no flag
+        # naming it, which is every platform except Linux.
+        set(_demux_arms "")
+        foreach(_backend io_uring epoll)
+            if("${_backend}" IN_LIST _coroute_backends)
+                list(APPEND _demux_arms "${_backend}")
+            endif()
+        endforeach()
+        if(NOT _demux_arms)
+            set(_demux_arms "host-default")
+        endif()
+
         # Built with if() rather than a generator expression: an unsatisfied
         # $<BOOL:...> genex still yields an empty argv entry, which argparse rejects.
-        set(_demux_args --port 18099)
+        set(_demux_common "")
         if(COROUTE_ENABLE_TLS)
-            list(APPEND _demux_args --tls)
+            list(APPEND _demux_common --tls)
         endif()
         if(COROUTE_ENABLE_HTTP2)
-            list(APPEND _demux_args --http2)
+            list(APPEND _demux_common --http2)
         endif()
 
-        add_test(NAME protocol_demux
-            COMMAND ${Python3_EXECUTABLE}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/integration/protocol_demux.py
-                    $<TARGET_FILE:benchmark_server>
-                    ${_demux_args})
-        set_tests_properties(protocol_demux PROPERTIES TIMEOUT 60)
-        unset(_demux_args)
-
-        # The claim itself, asserted: one descriptor answering both transports, and the
-        # two dedicated listeners it is measured against refusing the other one. Only
-        # registered where there is a TLS build to assert it about, and it makes its own
-        # certificate so a fresh checkout needs no setup step.
+        # The certificate is one fixture for every arm: it is the same certificate, and
+        # making it twice would be two things that can disagree.
         if(COROUTE_ENABLE_TLS)
             set(_tls_certs "${CMAKE_CURRENT_BINARY_DIR}/tls_demux_certs")
             add_test(NAME tls_demux_cert
@@ -105,19 +155,59 @@ if(COROUTE_BUILD_EXAMPLES)
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
                 FIXTURES_SETUP tls_demux_fixture)
-
-            add_test(NAME tls_demux
-                COMMAND ${Python3_EXECUTABLE}
-                        ${CMAKE_CURRENT_SOURCE_DIR}/integration/tls_demux.py
-                        $<TARGET_FILE:benchmark_server>
-                        --cert ${_tls_certs}/bench.crt
-                        --key ${_tls_certs}/bench.key
-                        --port 18120)
-            set_tests_properties(tls_demux PROPERTIES
-                TIMEOUT 90
-                FIXTURES_REQUIRED tls_demux_fixture)
-            unset(_tls_certs)
         endif()
+
+        # Ports are handed out per arm rather than shared, so the arms can run
+        # concurrently under ctest -j. tls_demux uses three consecutive ports.
+        set(_demux_port 18099)
+        set(_tls_port 18120)
+        foreach(_arm IN LISTS _demux_arms)
+            if(_arm STREQUAL "host-default")
+                set(_suffix "")
+                set(_arm_args "")
+            else()
+                set(_suffix "_${_arm}")
+                set(_arm_args --io-backend ${_arm})
+            endif()
+
+            add_test(NAME protocol_demux${_suffix}
+                COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/integration/protocol_demux.py
+                        $<TARGET_FILE:benchmark_server>
+                        --port ${_demux_port}
+                        ${_demux_common}
+                        ${_arm_args})
+            # 77 is the scripts' SKIP_EXIT: the host refused this backend, which is not
+            # a defect. Without this a hardened kernel turns the suite red.
+            set_tests_properties(protocol_demux${_suffix} PROPERTIES
+                TIMEOUT 60
+                SKIP_RETURN_CODE 77)
+            math(EXPR _demux_port "${_demux_port} + 1")
+
+            # The claim itself, asserted: one descriptor answering both transports, and
+            # the two dedicated listeners it is measured against refusing the other one.
+            # Only registered where there is a TLS build to assert it about, and it makes
+            # its own certificate so a fresh checkout needs no setup step.
+            if(COROUTE_ENABLE_TLS)
+                add_test(NAME tls_demux${_suffix}
+                    COMMAND ${Python3_EXECUTABLE}
+                            ${CMAKE_CURRENT_SOURCE_DIR}/integration/tls_demux.py
+                            $<TARGET_FILE:benchmark_server>
+                            --cert ${_tls_certs}/bench.crt
+                            --key ${_tls_certs}/bench.key
+                            --port ${_tls_port}
+                            ${_arm_args})
+                set_tests_properties(tls_demux${_suffix} PROPERTIES
+                    TIMEOUT 90
+                    FIXTURES_REQUIRED tls_demux_fixture
+                    SKIP_RETURN_CODE 77)
+                math(EXPR _tls_port "${_tls_port} + 3")
+            endif()
+        endforeach()
+
+        unset(_demux_common)
+        unset(_demux_arms)
+        unset(_tls_certs)
     else()
         message(STATUS "Python3 not found: skipping the protocol_demux integration test")
     endif()
