@@ -28,7 +28,12 @@
 | **C++ Standard** | C++23 (coroutines are C++20) |
 | **CMake** | 3.25 or higher for presets, 3.20 without |
 | **OpenSSL** | 1.1.1+ or 3.0+, required only when `COROUTE_ENABLE_TLS=ON` |
+| **liburing** | Linux, any build with the default io_uring backend; not needed with `-DCOROUTE_IO_BACKEND=epoll` |
+| **pkg-config** | Linux, same condition (`pkgconf` on Arch) |
+| **Ninja** | any `cmake --preset`; the plain `cmake -B build` above uses the default generator |
 | **Platform** | Linux (kernel 5.1+ for io_uring), macOS 10.13+, Windows 10+ |
+
+Arch: `sudo pacman -S --needed base-devel cmake ninja openssl liburing` (pkgconf is in base-devel).
 ## 📚 Documentation & Resources
 
 - 📖 **[API Documentation](https://cpp-for-everything.github.io/WebFrame/docs/)** - Full Doxygen documentation
