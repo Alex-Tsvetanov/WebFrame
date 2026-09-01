@@ -430,6 +430,53 @@ def virtualisation_checks() -> None:
     check("and the reason names it", any("unchecked" in r for r in unchecked.reasons))
 
 
+def power_checks() -> None:
+    print("\n== a host that cannot say it is on mains is not on mains ==")
+
+    check("darwin mains", env_mod._power_source_darwin("Now drawing from 'AC Power'") == "AC Power")
+    check("darwin battery",
+          "battery" in env_mod._power_source_darwin("Now drawing from 'Battery Power'").lower())
+    check("darwin pmset that says nothing useful is unchecked",
+          "unchecked" in str(env_mod._power_source_darwin("no such line")))
+
+    check("windows desktop has no Win32_Battery instance and says so",
+          env_mod._power_source_windows("none") == env_mod._NO_BATTERY)
+    check("windows on AC", env_mod._power_source_windows("2") == env_mod._ON_MAINS)
+    check("windows discharging is refused",
+          "battery" in env_mod._power_source_windows("1").lower())
+    check("windows WMI that does not answer is unchecked",
+          "unchecked" in str(env_mod._power_source_windows(None)) or sys.platform == "win32")
+
+    # The case the macOS session flagged for the Linux box: on many desktop builds
+    # /sys/class/power_supply exists and is EMPTY rather than missing. An empty
+    # directory must land on the desktop answer, not on a silent pass, because a silent
+    # pass is the exact shape of the three fail-opens already found.
+    check("an empty /sys/class/power_supply is a desktop, not an unknown",
+          env_mod._power_source_linux([], lambda n, f: None) == env_mod._NO_BATTERY)
+    check("a mains supply with no battery device is also a desktop",
+          env_mod._power_source_linux(["AC"], lambda n, f: "Mains" if f == "type" else "x")
+          == env_mod._NO_BATTERY)
+    check("a charging laptop is on mains",
+          env_mod._power_source_linux(
+              ["BAT0"], lambda n, f: {"type": "Battery", "status": "Charging"}.get(f))
+          == env_mod._ON_MAINS)
+    check("a discharging laptop is refused",
+          "battery" in env_mod._power_source_linux(
+              ["BAT0"], lambda n, f: {"type": "Battery", "status": "Discharging"}.get(f)).lower())
+    check("a battery that publishes no status is unchecked, not clean",
+          "unchecked" in str(env_mod._power_source_linux(
+              ["BAT0"], lambda n, f: "Battery" if f == "type" else "")))
+
+    # The trap in the value itself: validity tests for the substring "battery", so a
+    # healthy host's string must not contain it. "no battery present" would have refused
+    # the machine it describes.
+    check("the desktop string does not trip the rule it is read by",
+          "battery" not in env_mod._NO_BATTERY.lower())
+    check("and a desktop is accepted end to end",
+          validity.check_run({"power_source": env_mod._NO_BATTERY,
+                              "requests_total": 1, "requests_non_2xx": 0}).valid)
+
+
 def live_capture_check() -> None:
     print("\n== capture works on this machine ==")
 
@@ -460,6 +507,7 @@ def main() -> int:
     selfcheck_results.run(check)
     darwin_parser_checks()
     virtualisation_checks()
+    power_checks()
     live_capture_check()
     print(f"\n{PASSED} checks passed")
     return 0
