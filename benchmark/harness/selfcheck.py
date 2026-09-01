@@ -541,6 +541,19 @@ def power_checks() -> None:
     check("a battery that publishes no status is unchecked, not clean",
           "unchecked" in str(env_mod._power_source_linux(
               ["BAT0"], lambda n, f: "Battery" if f == "type" else "")))
+    # A wireless mouse is a Battery of scope Device and is Discharging whenever it is
+    # off its cable. It does not power the host and must not put a desktop on battery.
+    hidpp = {"type": "Battery", "scope": "Device", "status": "Discharging"}
+    check("a peripheral's battery is not the host's",
+          env_mod._power_source_linux(["hidpp_battery_0"], lambda n, f: hidpp.get(f))
+          == env_mod._NO_BATTERY)
+    # BAT0 publishes no scope file, so the default must be System or a discharging
+    # laptop with a wireless mouse would read as a desktop.
+    bat0 = {"type": "Battery", "status": "Discharging"}
+    check("a laptop battery without a scope file is still the host's",
+          "battery" in env_mod._power_source_linux(
+              ["BAT0", "hidpp_battery_0"],
+              lambda n, f: (bat0 if n == "BAT0" else hidpp).get(f)).lower())
 
     # The trap in the value itself: validity tests for the substring "battery", so a
     # healthy host's string must not contain it. "no battery present" would have refused

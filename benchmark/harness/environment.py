@@ -285,7 +285,14 @@ def _power_source_linux(supplies: list[str] | None = None,
         except OSError:
             return _UNCHECKED.format("/sys/class/power_supply is not readable")
     read = reader if reader is not None else (lambda name, f: _read(str(root / name / f)))
-    batteries = [s for s in supplies if (read(s, "type") or "").strip() == "Battery"]
+    # A wireless mouse or keyboard registers as hidpp_battery_N with type Battery and
+    # scope Device, and reports Discharging whenever it is off its cable, which would
+    # put a desktop on battery and refuse every run. Only System-scoped supplies power
+    # the host. The default has to be System, because ACPI's BAT0 publishes no scope
+    # file at all and a laptop battery must not vanish for lacking one.
+    batteries = [s for s in supplies
+                 if (read(s, "type") or "").strip() == "Battery"
+                 and (read(s, "scope") or "System").strip() != "Device"]
     if not batteries:
         return _NO_BATTERY
     for name in batteries:
