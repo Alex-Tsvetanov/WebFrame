@@ -514,7 +514,24 @@ option(COROUTE_BUILD_BENCHMARK_TOOLS "Build the load generator" ON)
 if(COROUTE_BUILD_BENCHMARK_TOOLS)
     add_subdirectory(benchmark/generator)
     if(COROUTE_ROUTER_ARMS)
-        add_subdirectory(benchmark/routing)
+        # route_bench is x86 only, and deliberately so. It times with rdtsc because a
+        # radix lookup lands near 100 ns and the platform steady_clock quantises at
+        # 100 ns, so the clock would blur the very arm the experiment exists to
+        # resolve. There is no portable substitute: on Apple Silicon the userspace
+        # counter runs off the 24 MHz timebase at 41.67 ns per tick, so a port would
+        # compile and then report a coarser histogram than the one it is being
+        # compared against.
+        #
+        # So the target is skipped rather than ported. Dispatch-only numbers come from
+        # x86 hosts, and a non-x86 host contributes the end-to-end level instead, where
+        # the quantity measured is milliseconds and the clock is not the limit.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|i[3-6]86)$")
+            add_subdirectory(benchmark/routing)
+        else()
+            message(STATUS
+                "route_bench skipped: needs rdtsc, and CMAKE_SYSTEM_PROCESSOR is "
+                "'${CMAKE_SYSTEM_PROCESSOR}'. The end-to-end routing level still builds.")
+        endif()
     endif()
 endif()
 
