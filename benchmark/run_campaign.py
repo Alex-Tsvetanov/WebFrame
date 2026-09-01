@@ -78,6 +78,46 @@ SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY if _HAS_AFFINITY else None
 GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY if _HAS_AFFINITY else None
 
 
+def mask_cores(mask: str, siblings: list) -> set[str]:
+    """The physical cores a hexadecimal CPU mask covers, as the kernel names them.
+
+    Raises ValueError when the mask names a CPU the host does not have online, since a
+    bit the kernel ignores is isolation the record would claim and not have.
+    """
+    bits = int(mask, 16)
+    cpus = [i for i in range(bits.bit_length()) if bits >> i & 1]
+    for i in cpus:
+        if i >= len(siblings) or siblings[i] is None:
+            raise ValueError(f"mask {mask} names CPU {i}, which this host does not have online")
+    return {siblings[i] for i in cpus}
+
+
+def isolation_problem(env: dict) -> str | None:
+    """Why the two masks do not give the isolation the record will claim, or None.
+
+    The masks name logical CPUs, and the comment on them assumes siblings come in
+    adjacent pairs. Linux numbers CPUs in firmware order and can interleave them, in
+    which case 0ff and f00 put the generator on the SMT siblings of the server's cores
+    and validity's isolation rule, which only checks that a mask was applied, would let
+    the record claim isolation that does not exist. On the Windows campaign the
+    generator ran inside WSL with no mask, so a Linux campaign is the first arrangement
+    in which both masks are natively in force together. Nothing to check where the
+    platform publishes no topology or asks for no mask.
+    """
+    siblings = (env.get("cpu") or {}).get("siblings")
+    if not siblings or not (SERVER_AFFINITY and GENERATOR_AFFINITY):
+        return None
+    try:
+        shared = mask_cores(SERVER_AFFINITY, siblings) & mask_cores(GENERATOR_AFFINITY, siblings)
+    except ValueError as exc:
+        return str(exc)
+    if shared:
+        return (f"server mask {SERVER_AFFINITY} and generator mask {GENERATOR_AFFINITY} share "
+                f"physical core(s) {sorted(shared)}; the record would claim isolation the "
+                f"sibling layout does not give")
+    return None
+
+
 def system_name() -> str:
     r"""The name every generated \R{} key is prefixed with.
 
@@ -584,6 +624,10 @@ def main(argv: list[str] | None = None) -> int:
 
     env = environment.capture(repo=REPO, build_type="Release",
                             io_backend=environment.resolve_io_backend(args.build))
+    problem = isolation_problem(env)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
     env["transport_path"] = {
@@ -639,6 +683,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}")
+    if env["cpu"].get("siblings") and SERVER_AFFINITY and GENERATOR_AFFINITY:
+        print(f"cores server={sorted(mask_cores(SERVER_AFFINITY, env['cpu']['siblings']))} "
+              f"generator={sorted(mask_cores(GENERATOR_AFFINITY, env['cpu']['siblings']))}")
     print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     if wants_tls:
         print(f"tls certificate {args.cert}")

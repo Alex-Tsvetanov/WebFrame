@@ -43,18 +43,19 @@ from pathlib import Path
 from benchmark.adapters import CorouteServer, LoadgenGenerator
 from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
-from benchmark.run_campaign import transport_mismatch
+from benchmark.run_campaign import (GENERATOR_AFFINITY, SERVER_AFFINITY, isolation_problem,
+                                    mask_cores, transport_mismatch)
 
 
 REPO = Path(__file__).resolve().parents[1]
 
 ARMS = ("dfa", "radix", "regex")
 
-# Six physical cores, and the server is the only thing on this side of the boundary that
-# has to be fast. The generator lives in the WSL virtual machine, whose vCPUs the
-# hypervisor places; that placement is not controlled here, which is one more reason the
-# throughput numbers are comparisons rather than capacities.
-SERVER_AFFINITY = "0ff"
+# The masks are run_campaign's, so the two Linux campaigns claim identical isolation and
+# a platform that grants none asks for none. With the generator in WSL its vCPUs are
+# placed by the hypervisor and it gets no mask; on the same kernel it gets its own cores,
+# because otherwise it is an unpinned sibling on the cores the server is pinned to and
+# nothing in the record can show the contention.
 
 BASE = dict(
     protocol="http1.1",
@@ -283,6 +284,10 @@ def main(argv: list[str] | None = None) -> int:
 
     env = environment.capture(repo=REPO, build_type="Release",
                             io_backend=environment.resolve_io_backend(args.build))
+    problem = isolation_problem(env)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
     env["routing_e2e"] = {
         "host": args.host,
         "loopback": loopback,
@@ -322,6 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
+    if env["cpu"].get("siblings") and SERVER_AFFINITY and GENERATOR_AFFINITY:
+        print(f"cores server={sorted(mask_cores(SERVER_AFFINITY, env['cpu']['siblings']))} "
+              f"generator={sorted(mask_cores(GENERATOR_AFFINITY, env['cpu']['siblings']))}")
     print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     print()
 
@@ -338,6 +346,7 @@ def main(argv: list[str] | None = None) -> int:
             threads=args.threads,
             work_dir=out_dir,
             warmup_s=args.warmup,
+            affinity_mask=None if args.wsl_distro else GENERATOR_AFFINITY,
             samples_dir=samples_dir,
             host=args.host,
             command=gen_command,

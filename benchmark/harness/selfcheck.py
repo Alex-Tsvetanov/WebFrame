@@ -80,6 +80,7 @@ def fingerprint_checks() -> None:
         ("build.git_commit", "b" * 40, "a different commit"),
         ("deps.openssl", "3.5.9", "a dependency rebuild"),
         ("cpu.physical_cores", 4, "SMT or core count changing"),
+        ("cpu.siblings", ["0", "1", "2", "3"], "the sibling layout changing"),
         ("tuning.transparent_hugepages", "always", "a hugepage setting change"),
     ]:
         changed = sample_env(**{dotted: value})
@@ -116,6 +117,30 @@ def campaign_checks() -> None:
 
         forced = env_mod.Campaign.open_or_create(path, moved, force=True)
         check("force exists as a deliberate override", forced.fingerprint == first.fingerprint)
+
+    # A key added to _FINGERPRINTED after a manifest was written moves every stored hash
+    # while no field has moved. That is a harness update, not a machine change, and it
+    # must not refuse every campaign on disk; a key that now has a value on one side is
+    # a machine change and must.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "campaign.json"
+        first = env_mod.Campaign.open_or_create(path, sample_env())
+        original = env_mod._FINGERPRINTED
+        env_mod._FINGERPRINTED = original + ("cpu.a_key_from_the_future",)
+        try:
+            grown = env_mod.Campaign.open_or_create(path, sample_env())
+            check("a fingerprint key added since, null on both sides, does not refuse the append",
+                  grown.fingerprint == first.fingerprint)
+            message = ""
+            try:
+                env_mod.Campaign.open_or_create(
+                    path, sample_env(**{"cpu.a_key_from_the_future": "now known"}))
+            except env_mod.EnvironmentChanged as exc:
+                message = str(exc)
+            check("the same key with a value on one side is refused and named",
+                  "a_key_from_the_future" in message)
+        finally:
+            env_mod._FINGERPRINTED = original
 
 
 def transport_checks() -> None:
@@ -178,6 +203,53 @@ def port_checks() -> None:
     check("the refusal names the port", str(port) in message)
     refuse_held_port(port)
     check("the same port passes once the listener is gone", True)
+
+
+def topology_checks() -> None:
+    print("\n== the affinity masks are checked against the sibling layout ==")
+
+    from benchmark import run_campaign
+
+    def fake_sysfs(layout: list[str]) -> Path:
+        root = Path(tempfile.mkdtemp()) / "cpu"
+        for i, siblings in enumerate(layout):
+            (root / f"cpu{i}" / "topology").mkdir(parents=True)
+            (root / f"cpu{i}" / "topology" / "thread_siblings_list").write_text(siblings + "\n")
+        # Files the real directory also holds and the probe must not read as CPUs.
+        (root / "cpufreq").mkdir()
+        (root / "online").write_text("0-11\n")
+        return root
+
+    # Zen and the Windows enumeration: siblings adjacent, 0ff and f00 disjoint.
+    paired = ["0-1", "0-1", "2-3", "2-3", "4-5", "4-5", "6-7", "6-7",
+              "8-9", "8-9", "10-11", "10-11"]
+    siblings = env_mod._siblings(fake_sysfs(paired))
+    check("siblings are read in CPU order, not lexicographic", siblings == paired)
+    check("adjacent pairs keep the masks disjoint",
+          run_campaign.mask_cores("0ff", siblings).isdisjoint(run_campaign.mask_cores("f00", siblings)))
+
+    # Cores first, then their SMT threads: the same two masks now share four cores.
+    interleaved = ["0,6", "1,7", "2,8", "3,9", "4,10", "5,11",
+                   "0,6", "1,7", "2,8", "3,9", "4,10", "5,11"]
+    siblings = env_mod._siblings(fake_sysfs(interleaved))
+    check("an interleaved layout is caught",
+          run_campaign.mask_cores("0ff", siblings) & run_campaign.mask_cores("f00", siblings)
+          == {"2,8", "3,9", "4,10", "5,11"})
+    # With the masks the Linux campaign uses, whatever this platform asks for.
+    masks = run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY
+    run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY = "0ff", "f00"
+    try:
+        problem = run_campaign.isolation_problem({"cpu": {"siblings": siblings}})
+        check("and refused with the shared cores named", problem is not None and "2,8" in problem)
+        check("the paired layout passes",
+              run_campaign.isolation_problem({"cpu": {"siblings": paired}}) is None)
+        check("a mask over CPUs the host does not have is refused",
+              "does not have" in str(run_campaign.isolation_problem({"cpu": {"siblings": paired[:8]}})))
+        check("no topology to read leaves the masks alone",
+              run_campaign.isolation_problem({"cpu": {"siblings": None}}) is None)
+    finally:
+        run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY = masks
+    check("no sysfs is None, not an empty layout", env_mod._siblings(Path(tempfile.mkdtemp()) / "x") is None)
 
 
 def validity_checks() -> None:
@@ -603,6 +675,7 @@ def main() -> int:
     campaign_checks()
     transport_checks()
     port_checks()
+    topology_checks()
     validity_checks()
     counter_checks()
     schema_checks()

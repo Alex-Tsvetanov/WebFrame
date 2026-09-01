@@ -57,6 +57,7 @@ _FINGERPRINTED = (
     "cpu.model",
     "cpu.physical_cores",
     "cpu.logical_cores",
+    "cpu.siblings",
     "cpu.governor",
     "memory.total_bytes",
     "tuning.transparent_hugepages",
@@ -126,6 +127,27 @@ def _physical_cores() -> int | None:
             if physical_id is not None:
                 seen.add((physical_id, core_id))
     return len(seen) or None
+
+
+def _siblings(sysfs: Path = Path("/sys/devices/system/cpu")) -> list[str | None] | None:
+    """thread_siblings_list per logical CPU, indexed by CPU number; None off Linux.
+
+    The affinity masks name logical CPUs, and the claim that 0ff and f00 are four and
+    two disjoint physical cores rests on siblings being enumerated in adjacent pairs.
+    Linux numbers CPUs in firmware order and may interleave them, so the layout is
+    recorded, and fingerprinted because nosmt or a firmware update changes what the same
+    two masks mean. The list is the kernel's own string for each CPU, "0-1" or "0,6",
+    which identifies the physical core without being parsed. An offline CPU has no
+    topology directory and is None at its index.
+    """
+    try:
+        dirs = [d for d in sysfs.iterdir() if re.fullmatch(r"cpu\d+", d.name)]
+    except OSError:
+        return None
+    if not dirs:
+        return None
+    by_index = {int(d.name[3:]): _read(str(d / "topology" / "thread_siblings_list")) for d in dirs}
+    return [by_index.get(i) for i in range(max(by_index) + 1)]
 
 
 def _governor() -> str | None:
@@ -643,6 +665,7 @@ def capture(repo: Path | None = None, build_type: str | None = None,
             "model": _cpu_model(),
             "physical_cores": _physical_cores(),
             "logical_cores": os.cpu_count(),
+            "siblings": _siblings(),
             "governor": _governor(),
         },
         "memory": {
@@ -757,10 +780,14 @@ class Campaign:
 
         stored = json.loads(path.read_text(encoding="utf-8"))
         if stored["fingerprint"] != current and not force:
-            raise EnvironmentChanged(
-                path=path,
-                differences=fingerprint_differences(stored["environment"], environment),
-            )
+            differences = fingerprint_differences(stored["environment"], environment)
+            # The hash and the differences are computed over the same key list, so a hash
+            # that moved while no field moved means only one thing: the list grew since
+            # the manifest was written, and the new key is null on both sides. That is
+            # the same machine, and a manifest must not be refused for a harness update.
+            # A new key that has a value on one side is listed above and refused.
+            if differences:
+                raise EnvironmentChanged(path=path, differences=differences)
         return cls(path=path, environment=stored["environment"],
                    fingerprint=stored["fingerprint"])
 
