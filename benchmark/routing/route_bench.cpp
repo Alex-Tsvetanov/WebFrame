@@ -41,9 +41,6 @@
 #endif
 #include <windows.h>
 #include <psapi.h>
-#else
-#include <sys/resource.h>
-#include <unistd.h>
 #endif
 
 namespace
@@ -91,6 +88,13 @@ namespace
 	//
 	// Both are recorded. Where they diverge, the process was paging, and that is worth
 	// seeing rather than smoothing over.
+	//
+	// The two peak_ fields are high-water marks kept by the operating system, not
+	// samples taken at the end. That distinction is the difference between a number
+	// that answers "how big did this get" and one that answers "how big was it when we
+	// stopped looking", and only the first survives a structure that grows and shrinks.
+	// See memory_now() for what fills them per platform, and memory_source() for the
+	// string that says so in the record.
 	struct MemorySample
 	{
 		std::uint64_t resident = 0;
@@ -98,6 +102,21 @@ namespace
 		std::uint64_t peak_resident = 0;
 		std::uint64_t peak_committed = 0;
 	};
+
+	// What each platform actually measured, carried into the record.
+	//
+	// The two peak numbers are not the same quantity on Windows and Linux and cannot be
+	// made so: one reports pagefile commit charge and the other peak virtual size. A
+	// reader comparing a Linux row against a Windows row has to know that, and the only
+	// place they can learn it is the record itself.
+	const char* memory_source() noexcept
+	{
+#if defined(_WIN32)
+		return "windows:GetProcessMemoryInfo PeakPagefileUsage/PeakWorkingSetSize";
+#else
+		return "linux:/proc/self/status VmPeak/VmHWM";
+#endif
+	}
 
 	MemorySample memory_now()
 	{
@@ -113,22 +132,46 @@ namespace
 			s.peak_committed = c.PeakPagefileUsage;
 		}
 #else
-		long pages = 0;
-		if (FILE* f = std::fopen("/proc/self/statm", "r"))
+		// /proc/self/status, not /proc/self/statm, and the difference is the whole
+		// point: statm has no peak in it. The peak commit used to be filled with
+		// statm's VmSize read at the end of the run, which is a final value wearing a
+		// peak's name, under the same key Windows fills with PeakPagefileUsage. A
+		// structure that grew and shrank reported the size it ended at.
+		//
+		// That is the same class of error the memory finding exists to report: a
+		// 10 000-route table that paged and reported one of the smallest footprints.
+		// Repeating it in the instrument that measures it would be worse than not
+		// measuring at all, because the number would still look plausible.
+		//
+		// VmPeak is peak virtual size and VmHWM is peak resident, both maintained by
+		// the kernel as high-water marks, so neither can be walked back by a free.
+		// VmData replaces statm's total for the running commit figure: it is the
+		// private data segment rather than the whole address space, which is the
+		// nearest thing Linux has to Windows' PrivateUsage and does not move when a
+		// shared library is mapped.
+		if (FILE* f = std::fopen("/proc/self/status", "r"))
 		{
-			long total = 0;
-			if (std::fscanf(f, "%ld %ld", &total, &pages) == 2)
+			char line[256];
+			auto field = [&line](const char* name, std::uint64_t& out)
 			{
-				const auto page = static_cast<std::uint64_t>(sysconf(_SC_PAGESIZE));
-				s.resident = static_cast<std::uint64_t>(pages) * page;
-				s.committed = static_cast<std::uint64_t>(total) * page;
+				const std::size_t n = std::strlen(name);
+				if (std::strncmp(line, name, n) != 0) return;
+				unsigned long long kb = 0;
+				// Every Vm* line in this file is reported in kB.
+				if (std::sscanf(line + n, " %llu", &kb) == 1)
+				{
+					out = static_cast<std::uint64_t>(kb) * 1024ull;
+				}
+			};
+			while (std::fgets(line, sizeof(line), f) != nullptr)
+			{
+				field("VmPeak:", s.peak_committed);
+				field("VmHWM:", s.peak_resident);
+				field("VmRSS:", s.resident);
+				field("VmData:", s.committed);
 			}
 			std::fclose(f);
 		}
-		rusage ru{};
-		getrusage(RUSAGE_SELF, &ru);
-		s.peak_resident = static_cast<std::uint64_t>(ru.ru_maxrss) * 1024ull;
-		s.peak_committed = s.committed;
 #endif
 		return s;
 	}
@@ -535,6 +578,10 @@ int main(int argc, char** argv)
 		             static_cast<unsigned long long>(mem_end.peak_resident));
 		std::fprintf(f, "  \"peak_commit_bytes\": %llu,\n",
 		             static_cast<unsigned long long>(mem_end.peak_committed));
+		// Next to the two numbers rather than in a header block, because these are the
+		// two the paper's memory column is built from and the quantity each one names
+		// differs by platform.
+		std::fprintf(f, "  \"memory_source\": \"%s\",\n", memory_source());
 		std::fprintf(f, "  \"baseline_commit_bytes\": %llu,\n",
 		             static_cast<unsigned long long>(mem_before.committed));
 		std::fprintf(f, "  \"timer_overhead_cycles\": {\"p50\": %u, \"p99\": %u},\n",
