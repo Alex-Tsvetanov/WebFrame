@@ -312,6 +312,11 @@ def validity_checks() -> None:
 
     dirty = dict(good, git_dirty=True)
     check("a run from a dirty tree is refused", not validity.check_run(dirty).valid)
+    # git that could not answer used to be folded to False on its way into the record.
+    check("a tree whose state could not be read is refused, not clean",
+          any("unknown is not clean" in r for r in validity.check_run(dict(good, git_dirty=None)).reasons))
+    check("a record with no tree state at all is refused",
+          not validity.check_run({k: v for k, v in good.items() if k != "git_dirty"}).valid)
 
     # Slow is a result, not a fault. A criterion that rejected slow runs would be
     # rejecting the finding.
@@ -654,7 +659,7 @@ def power_checks() -> None:
     check("the desktop string does not trip the rule it is read by",
           "battery" not in env_mod._NO_BATTERY.lower())
     check("and a desktop is accepted end to end",
-          validity.check_run({"power_source": env_mod._NO_BATTERY,
+          validity.check_run({"power_source": env_mod._NO_BATTERY, "git_dirty": False,
                               "requests_total": 1, "requests_non_2xx": 0}).valid)
 
 

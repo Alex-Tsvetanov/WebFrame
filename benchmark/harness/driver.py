@@ -208,7 +208,8 @@ def run_one(
         route_depth=int(factors.get("route_depth", 0)),
         generator=generator.name,
         virtualisation=environment.get("virtualisation"),
-        git_dirty=bool(_dig(environment, "build", "git_dirty")),
+        # Not bool(): None is git failing to answer, and validity refuses it as unknown.
+        git_dirty=_dig(environment, "build", "git_dirty"),
         git_commit=str(_dig(environment, "build", "git_commit") or ""),
         build_type=str(_dig(environment, "build", "type") or ""),
         compiler=str(_dig(environment, "toolchain", "compiler") or ""),

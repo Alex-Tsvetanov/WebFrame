@@ -173,7 +173,9 @@ class RunRecord:
 
     # --- Validity -----------------------------------------------------------
     virtualisation: str | None = None
-    git_dirty: bool = False
+    # None when git could not say, and refused as such. The default is None so a record
+    # that never set it is refused rather than read as clean.
+    git_dirty: bool | None = None
     cpu_mhz_start: float | None = None
     cpu_mhz_end: float | None = None
     # What isolation was asked for and what the platform granted. These are separate

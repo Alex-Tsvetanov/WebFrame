@@ -379,9 +379,11 @@ def main(argv: list[str] | None = None) -> int:
     # this one is a measurement too.
     env = environment.capture(repo=REPO, build_type="Release",
                               io_backend=environment.resolve_io_backend(args.build))
-    if env["build"]["git_dirty"]:
-        print("working tree is dirty; the recorded commit would not describe the binary "
-              "this census counted", file=sys.stderr)
+    # `is not False`: None is git that could not answer, and an unknown tree is not a
+    # clean one, on the same reasoning validity.check_run applies to every campaign.
+    if env["build"]["git_dirty"] is not False:
+        print("working tree is dirty or its state could not be read; the recorded commit "
+              "would not describe the binary this census counted", file=sys.stderr)
         return 2
     if env.get("virtualisation"):
         print(f"virtualisation detected ({env['virtualisation']}); a descriptor count "

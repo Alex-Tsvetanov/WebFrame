@@ -93,7 +93,16 @@ def check_run(record: dict[str, Any]) -> Verdict:
             f"virtualisation detected ({virt}); performance records must come from bare metal"
         )
 
-    if record.get("git_dirty"):
+    dirty = record.get("git_dirty")
+    if dirty is None:
+        # Same shape as the power gate below: git that could not answer, under a root
+        # context or against a tree owned by another user, returned None, the driver
+        # folded that to False and the run passed as clean. A tree whose state cannot be
+        # established is not thereby clean.
+        verdict.reasons.append(
+            "working tree state could not be established; unknown is not clean"
+        )
+    elif dirty:
         # The commit hash would not describe the binary that ran, which is worse than
         # having no hash: it looks authoritative and is not.
         verdict.reasons.append("working tree was dirty; the recorded commit does not describe the binary")
