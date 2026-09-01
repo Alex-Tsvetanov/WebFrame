@@ -149,6 +149,8 @@ def check_run(record: dict[str, Any]) -> Verdict:
     # macOS publish no scaling governor to read, their fixed-clock arrangement is the
     # power plan the frequency probe itself was written against, and inventing a value
     # for a platform that cannot answer would be the mislabel this file exists to stop.
+    # A Linux host that could not read its governor says unchecked, not None, and the
+    # inequality below refuses it with the rest.
     governor = record.get("governor")
     if governor is not None and governor != "performance":
         verdict.reasons.append(

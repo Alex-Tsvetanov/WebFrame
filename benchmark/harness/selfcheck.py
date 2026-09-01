@@ -312,6 +312,20 @@ def validity_checks() -> None:
           any("governor" in r for r in validity.check_run(dict(good, governor="schedutil")).reasons))
     check("the performance governor is accepted", validity.check_run(dict(good, governor="performance")).valid)
     check("no governor to read is left to the other rules", validity.check_run(dict(good, governor=None)).valid)
+    # Linux always has a governor, so a Linux host that cannot read it is unchecked and
+    # refused; the probe used to return the same None a Windows host does.
+    check("a governor that could not be read is refused",
+          any("governor" in r for r in validity.check_run(
+              dict(good, governor=env_mod._UNCHECKED.format("no scaling_governor"))).reasons))
+    missing = str(Path(tempfile.mkdtemp()) / "scaling_governor")
+    check("an unreadable governor on linux is unchecked",
+          "unchecked" in str(env_mod._governor(missing, system="Linux")))
+    check("and stays None on a platform with none to read",
+          env_mod._governor(missing, system="Windows") is None)
+    present = Path(tempfile.mkdtemp()) / "scaling_governor"
+    present.write_text("performance\n")
+    check("a readable governor is its stripped value",
+          env_mod._governor(str(present), system="Linux") == "performance")
 
     dropped = dict(good, counter_deltas={"UdpRcvbufErrors": 17, "TcpExtListenOverflows": 0})
     verdict = validity.check_run(dropped)

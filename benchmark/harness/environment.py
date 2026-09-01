@@ -154,15 +154,26 @@ def _siblings(sysfs: Path = Path("/sys/devices/system/cpu")) -> list[str | None]
     return [by_index.get(i) for i in range(max(by_index) + 1)]
 
 
-def _governor() -> str | None:
+_GOVERNOR_PATH = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+
+
+def _governor(path: str = _GOVERNOR_PATH, system: str | None = None) -> str | None:
     """The scaling governor of CPU 0.
 
     In the fingerprint because it is the single tuning knob most likely to move without
     anyone touching it: a suspend cycle or a power-profile daemon can put a machine back
     on powersave, and every run after that is slower for a reason that has nothing to do
     with the code being measured.
+
+    None is Windows and macOS, which publish no governor. Linux always has one, so a
+    Linux host where the file cannot be read (no cpufreq driver bound, a restricted
+    sysfs) answers unchecked rather than None: None passes the validity rule, and a
+    host whose governor cannot be established is not thereby on performance.
     """
-    return _read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+    text = _read(path)
+    if text is None and (system or platform.system()) == "Linux":
+        return _UNCHECKED.format(f"no scaling_governor at {path}")
+    return text
 
 
 def _transparent_hugepages() -> str | None:
