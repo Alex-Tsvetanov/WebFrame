@@ -70,6 +70,17 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+// windows.h defines function-like min and max macros unless this is set, and MSVC then
+// reads std::min( as std:: followed by a macro expansion, which is error C2589. The
+// library sets it for its own targets, but this generator is deliberately not linked
+// against the library (see CMakeLists.txt in this directory), so it cannot inherit the
+// definition and has to make it itself, next to the guard it already makes.
+//
+// Latent until someone points MSVC at this file: MinGW's headers leave min and max
+// alone for C++ translation units, so every build this project has ever made compiled.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
