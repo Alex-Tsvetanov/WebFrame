@@ -16,6 +16,7 @@ the reasons behind each design are in the docstrings of `run_campaign.py`,
 | Release build of that commit | `cmake --build build/<preset> --config Release`; the only preset that also builds `route_bench` and the router arms is `bench` (`cmake --preset bench && cmake --build --preset bench` gives `build/bench`) | binary older than HEAD |
 | TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
 | Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair, entered with `--generator-command "sudo -n ip netns exec gen runuser -u $USER --" --generator-location netns:gen` | not built, or reaches the server over loopback |
+| Off-host generator at the same commit | rebuild it from the cited commit before the night: `wsl -d Ubuntu-24.04 -- cmake --build <its build dir>`; then check the smoke record's `requests_total_whole_run` is a number | `requests_total_whole_run` is null, or the two binaries are from different commits: `bytes_per_second` and the whole-run count are defined by the generator, and a night with two generator builds is a night with two definitions of both |
 | Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
 
 The generator inside WSL reaches the Windows host at the vEthernet address, which changes
@@ -32,9 +33,9 @@ ever looks space-separated per character, that is `wsl.exe` emitting UTF-16 for 
 subcommands; a command run inside the distribution should not do that.
 
 That address is `--host` for every off-host design below. If the WSL generator is
-missing, build it inside the distribution from `benchmark/generator` with CMake. It is a
-Linux binary and lives in the WSL filesystem, so a search of the Windows drives will not
-find it.
+missing or older than the commit you will cite, build it inside the distribution from
+`benchmark/generator` with CMake. It is a Linux binary and lives in the WSL filesystem,
+so a search of the Windows drives will not find it.
 
 ## The quiet-host gate is measured first, and the night stops if it fails
 

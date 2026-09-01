@@ -44,7 +44,12 @@ from typing import Any, Iterator
 # lifetime, and made git_dirty nullable. A file at version 3 or below has no whole-run
 # count, so a process-lifetime server counter from it cannot be normalised per request;
 # and its git_dirty=false may be a tree that was read as clean or one that could not be
-# read at all, which from version 4 on are distinct values.
+# read at all, which from version 4 on are distinct values. The same generator change
+# moved bytes_per_second onto the measured window: at version 3 it divided the whole
+# run's bytes, warmup included, by the measured wall, so a version 3 figure is higher
+# than a version 4 one by about (warmup + duration) / duration and the two must not be
+# pooled. The generator defines both fields, so a record's version says what the driver
+# was, and requests_total_whole_run being null says the generator was older.
 SCHEMA_VERSION = 4
 
 
