@@ -1,6 +1,6 @@
 """Level one of the routing experiment: dispatch cost, isolated.
 
-    python -m benchmark.run_routing --design main --repetitions 5
+    python -m benchmark.run_routing --design main --repetitions 5 --build build/<preset>
 
 Same discipline as run_campaign, for the same reasons, on a design that needs no server
 and no network:
@@ -183,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
         help="wall clock per run before it is killed and recorded as failed",
     )
     ap.add_argument("--results", type=Path, default=REPO / "benchmark" / "results" / "routing")
-    ap.add_argument("--build", type=Path, default=REPO / "build" / "windows-routing")
+    ap.add_argument("--build", type=Path, required=True,
+                    help="build directory holding route_bench, configured with "
+                         "-DCOROUTE_ROUTER_ARMS=ON; the bench preset does")
     args = ap.parse_args(argv)
 
     binary = args.build / "benchmark" / "route_bench.exe"

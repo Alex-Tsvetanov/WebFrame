@@ -1,6 +1,6 @@
 """Level two of the routing experiment: the same three arms, through the whole server.
 
-    python -m benchmark.run_routing_e2e --design main --repetitions 5 \
+    python -m benchmark.run_routing_e2e --design main --repetitions 5 --build build/<preset> \
         --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host 172.28.0.1
 
 This is the level the paper's title rests on. Level one says what a lookup costs; this
@@ -191,7 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--threads", type=int, default=2, help="generator threads")
     ap.add_argument("--results", type=Path,
                     default=REPO / "benchmark" / "results" / "routing-e2e")
-    ap.add_argument("--build", type=Path, default=REPO / "build" / "windows-routing")
+    ap.add_argument("--build", type=Path, required=True,
+                    help="build directory holding a benchmark_server with the router arms "
+                         "compiled in, and the generator; the bench preset does both")
     ap.add_argument("--readiness-timeout", type=float, default=180.0,
                     help="a large DFA table takes seconds to build before the port opens")
 

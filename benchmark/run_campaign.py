@@ -1,14 +1,14 @@
 """Runs a campaign and writes one record per run.
 
-    python -m benchmark.run_campaign --design h1 --repetitions 7
+    python -m benchmark.run_campaign --design h1 --repetitions 7 --build build/<preset>
 
 The TLS arm, in the order it has to be done
 -------------------------------------------
 
     python -m benchmark.make_cert
-    python -m benchmark.run_campaign --design tls-smoke   --repetitions 1
-    python -m benchmark.run_campaign --design tls-ladder  --repetitions 1
-    python -m benchmark.run_campaign --design churn-ladder --repetitions 1
+    python -m benchmark.run_campaign --design tls-smoke    --repetitions 1 --build build/<preset>
+    python -m benchmark.run_campaign --design tls-ladder   --repetitions 1 --build build/<preset>
+    python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/<preset>
 
 The two ladders are not optional. TLS_OFFERED_RATES and CHURN_OFFERED_RATES below are
 this host's numbers, and on any other machine they are guesses: a generator that cannot
@@ -531,8 +531,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--results", type=Path, default=REPO / "benchmark" / "results" / "runs.jsonl")
     ap.add_argument("--samples", type=Path, default=None,
                     help="directory for raw per-request latency samples")
-    ap.add_argument("--build", type=Path,
-                    default=REPO / "build" / "windows-release",
+    # Required rather than defaulted to one platform's preset directory. The runbook
+    # passes it on every line, and a default that names a tree the host does not have
+    # exits with "not built" on every other platform.
+    ap.add_argument("--build", type=Path, required=True,
                     help="build directory holding the server and the generator")
     ap.add_argument("--cert", type=Path, default=REPO / "benchmark" / "certs" / "bench.crt",
                     help="certificate for the TLS designs; make it with benchmark.make_cert")
