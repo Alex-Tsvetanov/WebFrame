@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     results_path = out_dir / "runs.jsonl"
 
     env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.default_io_backend())
+                            io_backend=environment.resolve_io_backend(args.build))
     env["routing_e2e"] = {
         "host": args.host,
         "loopback": bool(args.host.startswith("127.") or args.host in ("localhost", "::1")),

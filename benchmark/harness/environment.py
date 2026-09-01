@@ -326,6 +326,49 @@ def default_io_backend() -> str:
     return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
 
 
+def io_backend_from_build(build_dir: Path | None) -> str | None:
+    """The backend a build tree was actually configured with, read from its CMakeCache.
+
+    A reading, where default_io_backend is a guess. The guess is wrong on Linux, which
+    is the platform this matters on: both epoll and io_uring are selectable at
+    configure time, so the operating system does not determine the answer, and a record
+    that said io_uring for an epoll build is precisely the mislabelled factor this key
+    exists to prevent.
+
+    Returns None when there is no cache to read, so the caller can decide whether to
+    fall back or refuse.
+    """
+    if build_dir is None:
+        return None
+    cache = Path(build_dir) / "CMakeCache.txt"
+    try:
+        text = cache.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"^COROUTE_IO_BACKEND:[A-Z]+=(.+)$", text, re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def resolve_io_backend(build_dir: Path | None) -> str:
+    """The backend to record, preferring what the build says over what the host implies.
+
+    Refuses rather than choosing when the two disagree. A campaign whose cells claim one
+    backend against a binary built with another is not a degraded measurement, it is a
+    mislabelled one, and a mislabelled factor makes two different measurements look like
+    repetitions of a single one.
+    """
+    guessed = default_io_backend()
+    read = io_backend_from_build(build_dir)
+    if read and read != guessed:
+        raise ValueError(
+            f"the build in {build_dir} was configured with COROUTE_IO_BACKEND={read}, "
+            f"but this host implies {guessed}. Recording either would mislabel the run. "
+            f"Point --build at a tree configured for {guessed}, or record {read} "
+            f"deliberately once the backend is a runtime flag rather than a build option."
+        )
+    return read or guessed
+
+
 def capture(repo: Path | None = None, build_type: str | None = None,
             io_backend: str | None = None) -> dict[str, Any]:
     """Everything worth knowing about the machine, in one nested dict."""

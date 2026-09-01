@@ -524,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.default_io_backend())
+                            io_backend=environment.resolve_io_backend(args.build))
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
     env["transport_path"] = {

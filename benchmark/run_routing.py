@@ -199,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     records_path = out_dir / "runs.jsonl"
 
     env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.default_io_backend())
+                            io_backend=environment.resolve_io_backend(args.build))
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
 
     # The three arms have to agree on the table before they are compared on speed.
