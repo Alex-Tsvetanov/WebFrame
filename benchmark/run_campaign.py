@@ -112,6 +112,13 @@ _WINDOWS_RATES = (10_000, 25_000, 40_000, 55_000, 70_000)
 # ceiling is set by the isolation the platform grants, not by the silicon.
 _MACOS_RATES = (10_000, 25_000, 40_000, 50_000)
 
+# Both sets were read off ladder campaigns that this repository no longer tracks. The
+# raw records are at tag results-archive-2026-09-01: benchmark/results/macos-ladder.jsonl
+# for the macOS cliff described above, and churn-ladder and tls-ladder alongside it. They
+# were removed when the four papers were reset to zero measurements, because a file that
+# survived a reset is indistinguishable from a file that passed one. The reasoning is
+# kept here rather than in the files, so the constants stay readable without them.
+
 OFFERED_RATES = _MACOS_RATES if platform.system() == "Darwin" else _WINDOWS_RATES
 
 
