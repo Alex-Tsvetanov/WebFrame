@@ -25,3 +25,9 @@ Testing/
 # an untracked results directory makes the tree dirty, which is a rejection criterion
 # for every run in the campaign that produced it.
 benchmark/results/
+
+# Byte cache. tests/integration/protocol_demux.py and tls_demux.py now import a sibling
+# module, so ctest leaves one of these beside them; an untracked directory there makes
+# the tree dirty, which is a rejection criterion for every run in a campaign.
+__pycache__/
+*.pyc

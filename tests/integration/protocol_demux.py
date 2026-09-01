@@ -12,11 +12,12 @@ The server binary must accept --port and --workers, which benchmark_server does.
 """
 
 import argparse
-import os
 import socket
 import subprocess
 import sys
 import time
+
+from held_port import held_reason
 
 PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 # SETTINGS frame: length 0, type 0x04, flags 0, stream id 0.
@@ -197,18 +198,11 @@ def main():
                         help="run the server on this I/O backend rather than the host default")
     args = parser.parse_args()
 
-    # On Linux both backends set SO_REUSEPORT, so a server left behind by a hard-killed
-    # run shares the port with this one instead of failing to bind, and the tests below
-    # land on whichever the kernel picks. A plain bind refuses that; SO_REUSEADDR keeps
-    # TIME_WAIT from counting on POSIX and would permit the sharing on Windows.
-    try:
-        with socket.socket() as probe:
-            if os.name != "nt":
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(("0.0.0.0", args.port))
-    except OSError as exc:
-        print(f"port {args.port} is already held ({exc}); a stale server is running",
-              file=sys.stderr)
+    # A stale server would otherwise share the port under SO_REUSEPORT and the tests
+    # below would land on whichever the kernel picks.
+    held = held_reason(args.port)
+    if held:
+        print(held, file=sys.stderr)
         return 1
 
     argv = [args.server, "--port", str(args.port), "--workers", "2"]

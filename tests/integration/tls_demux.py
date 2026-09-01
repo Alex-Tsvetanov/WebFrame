@@ -28,12 +28,13 @@ it served neither, they would differ in everything.
 """
 
 import argparse
-import os
 import socket
 import ssl
 import subprocess
 import sys
 import time
+
+from held_port import held_reason
 
 HOST = "127.0.0.1"
 TIMEOUT = 5.0
@@ -113,17 +114,11 @@ def is_backend_refusal(text):
 
 
 def start(server, port, extra, wait=15.0):
-    # On Linux both backends set SO_REUSEPORT, so a server left behind by a hard-killed
-    # run shares the port with this one instead of failing to bind, and the probes below
-    # land on whichever the kernel picks. A plain bind refuses that; SO_REUSEADDR keeps
-    # TIME_WAIT from counting on POSIX and would permit the sharing on Windows.
-    try:
-        with socket.socket() as probe:
-            if os.name != "nt":
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(("0.0.0.0", port))
-    except OSError as exc:
-        raise Failure(f"port {port} is already held ({exc}); a stale server is running")
+    # A stale server would otherwise share the port under SO_REUSEPORT and the probes
+    # below would land on whichever the kernel picks.
+    held = held_reason(port)
+    if held:
+        raise Failure(held)
     proc = subprocess.Popen(
         [server, "--port", str(port), "--workers", "2", "--max-requests", "0",
          *IO_BACKEND_ARGS, *extra],
