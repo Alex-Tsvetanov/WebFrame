@@ -244,7 +244,9 @@ def refuse_held_port(port: int) -> None:
     reuseport group exactly as it refuses it against any other listener. SO_REUSEADDR is
     set on POSIX only, so the previous run's connections in TIME_WAIT are not read as a
     holder; on Windows that option would instead permit binding over a live listener,
-    and a plain bind there is what the IOCP server itself does.
+    and a plain bind there is what the IOCP server itself does. That server is a
+    dual-stack listener on [::], which holds the IPv4 wildcard port as well, so an IPv4
+    probe conflicts with it on every platform.
     """
     try:
         with socket.socket() as probe:

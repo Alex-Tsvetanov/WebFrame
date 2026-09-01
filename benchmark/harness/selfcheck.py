@@ -204,6 +204,17 @@ def port_checks() -> None:
     refuse_held_port(port)
     check("the same port passes once the listener is gone", True)
 
+    # The generator's recorded name is its kind of location. Every WSL record on disk
+    # says coroute-loadgen-wsl, and a namespace must not be filed under it.
+    from benchmark.adapters import LoadgenGenerator
+    def named(location: str) -> str:
+        return LoadgenGenerator(binary=Path("x"), port=1, threads=1, work_dir=Path("."),
+                                location=location).name
+    check("a host generator keeps its name", named("host") == "coroute-loadgen")
+    check("a WSL generator keeps the name the records already carry",
+          named("wsl:Ubuntu-24.04") == "coroute-loadgen-wsl")
+    check("a namespace generator is not filed as WSL", named("netns:gen") == "coroute-loadgen-netns")
+
 
 def topology_checks() -> None:
     print("\n== the affinity masks are checked against the sibling layout ==")
