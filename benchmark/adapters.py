@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from benchmark.harness import environment
 from benchmark.harness.driver import GeneratorResult, ResourceUsage, RunFailed
 from benchmark.harness.ordering import Cell
 
@@ -225,11 +226,13 @@ else:
 # ---------------------------------------------------------------------- server
 
 
-# "Server listening on port 18080 (multi-accept, backend io_uring)", and the same
-# without the multi-accept clause on the fallback accept path. Matched rather than
-# assumed, because IoBackend::Default resolves against the host: a cell that asked for
-# io_uring on a machine that refuses it must not be recorded as an io_uring run.
-_BANNER_BACKEND = re.compile(r"Server listening on port \d+ \([^)]*backend (\w+)\)")
+# Matched rather than assumed, because IoBackend::Default resolves against the host: a
+# cell that asked for io_uring on a machine that refuses it must not be recorded as an
+# io_uring run. Shared with the descriptor census; see environment.BANNER_BACKEND.
+_BANNER_BACKEND = environment.BANNER_BACKEND
+
+# Enough to hold the banner and a startup failure, not enough to grow without bound.
+_KEPT_OUTPUT_LINES = 200
 
 
 @dataclass
@@ -274,7 +277,14 @@ class CorouteServer:
         # The arm of the I/O-portability comparison, passed rather than built in. Only
         # when the cell carries it, so a campaign that predates the factor produces the
         # command line it always did and stays comparable with the runs already on disk.
-        if factors.get("io_backend"):
+        #
+        # Only the two names --io-backend accepts. The cell carries io_backend on every
+        # platform, so on macOS this used to pass "--io-backend kqueue" and on Windows
+        # "--io-backend iocp", which parse_io_backend refuses with exit 2: every cell of
+        # every campaign died at server start on the two platforms that have no choice
+        # to make. Where the platform has one backend there is nothing to select, and
+        # the banner cross-check in the driver still confirms which one ran.
+        if factors.get("io_backend") in ("io_uring", "epoll"):
             args += ["--io-backend", str(factors["io_backend"])]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
@@ -327,7 +337,12 @@ class CorouteServer:
             return
         for raw in proc.stdout:
             line = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
-            self._output.append(line)
+            # Capped. The pipe still has to be drained for the whole life of the
+            # process or the server blocks on a full buffer, but only the first lines
+            # are ever read back: the banner is among them, and a run that logged for
+            # an hour would otherwise hold every line of it in memory.
+            if len(self._output) < _KEPT_OUTPUT_LINES:
+                self._output.append(line)
             match = _BANNER_BACKEND.search(line)
             if match:
                 self.effective_backend = match.group(1)
@@ -338,7 +353,13 @@ class CorouteServer:
         connected = False
         while time.monotonic() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
-                return False
+                # Raised rather than reported as "not ready". A server that refused its
+                # --io-backend exits in milliseconds with the reason on stderr, and
+                # returning False turned that into "did not become ready within 30s"
+                # with the reason never read at all. The caller sits in `except
+                # Exception` and records the failure string, so this is the only route
+                # by which the real message reaches the record.
+                raise RunFailed(self._startup_failure())
             if not connected:
                 try:
                     with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
@@ -354,6 +375,21 @@ class CorouteServer:
                 return True
             time.sleep(0.01)
         return connected and self.effective_backend is not None
+
+    def _startup_failure(self) -> str:
+        """Why the server is already gone, in the words it used."""
+        proc = self._proc
+        code = proc.returncode if proc is not None else None
+        detail = ""
+        if proc is not None and proc.stderr is not None:
+            # Popen was not opened with text=True, so this is bytes.
+            raw = proc.stderr.read()
+            if isinstance(raw, bytes):
+                raw = raw.decode(errors="replace")
+            detail = (raw or "").strip()
+        if not detail:
+            detail = "".join(self._output).strip()
+        return f"server exited with code {code} before it was ready: {detail[:500] or '(no output)'}"
 
     def stop(self) -> ResourceUsage:
         if self._proc is None:

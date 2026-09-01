@@ -101,34 +101,18 @@ namespace coroute::net
 	namespace
 	{
 
-		// The backend IoBackend::Default resolves to on this build and this host.
-		//
-		// On Linux with both arms compiled in this is where the fallback lives, and it
-		// is a fallback rather than a failure on purpose: kernel.io_uring_disabled=1 is
-		// a perfectly ordinary hardened-kernel setting, and a framework that threw on
-		// such a host would be unusable there for the sake of a preference. A caller
-		// that needs a specific arm names it and gets an exception instead.
-		IoBackend resolve_default() noexcept
-		{
-#if defined(COROUTE_BACKEND_IO_URING) && defined(COROUTE_BACKEND_EPOLL)
-			return detail::probe_uring() == 0 ? IoBackend::IoUring : IoBackend::Epoll;
-#elif defined(COROUTE_BACKEND_IO_URING)
-			return IoBackend::IoUring;
-#elif defined(COROUTE_BACKEND_EPOLL)
-			return IoBackend::Epoll;
-#else
-			// Windows and macOS have exactly one backend each, and Default is the only
-			// value that names it.
-			return IoBackend::Default;
-#endif
-		}
-
+		// Refuses a backend, saying which of the two reasons it is.
 		[[noreturn]] void refuse(IoBackend backend, int err)
 		{
 			std::string message = "I/O backend '";
 			message += io_backend_name(backend);
 			message += "' ";
-			if (err == ENOSYS)
+			// Asked of the build, not inferred from the errno. io_backend_probe reports a
+			// backend that was never compiled in as ENOSYS, but a kernel or a seccomp
+			// filter can return a real ENOSYS for one that was, and telling somebody to
+			// reconfigure a build that already contains the backend sends them a long way
+			// in the wrong direction.
+			if (!io_backend_compiled_in(backend))
 			{
 				message += "was not compiled into this binary; configure with "
 				           "-DCOROUTE_IO_BACKEND=";
@@ -151,10 +135,59 @@ namespace coroute::net
 			throw std::runtime_error(message);
 		}
 
+
+		// Whether a failed probe is a reason to use the other backend or a reason to
+		// stop.
+		//
+		// Permission and absence are the host saying it will never allow this, which is
+		// what the fallback exists for. EMFILE, ENOMEM and EINVAL are not: they say
+		// something is wrong right now, and quietly running the other backend would turn
+		// a descriptor leak or a memory shortage into an unexplained change of arm in
+		// the middle of a campaign. Those are raised.
+		bool is_unavailable(int err) noexcept
+		{
+			return err == EPERM || err == EACCES || err == ENOSYS;
+		}
+
+		// The backend IoBackend::Default resolves to on this build and this host.
+		//
+		// On Linux with both arms compiled in this is where the fallback lives, and it
+		// is a fallback rather than a failure on purpose: kernel.io_uring_disabled=1 is
+		// a perfectly ordinary hardened-kernel setting, and a framework that threw on
+		// such a host would be unusable there for the sake of a preference. A caller
+		// that needs a specific arm names it and gets an exception instead.
+		IoBackend resolve_default()
+		{
+#if defined(COROUTE_BACKEND_IO_URING) && defined(COROUTE_BACKEND_EPOLL)
+			const int err = detail::probe_uring();
+			if (err == 0)
+			{
+				return IoBackend::IoUring;
+			}
+			if (!is_unavailable(err))
+			{
+				refuse(IoBackend::IoUring, err);
+			}
+			return IoBackend::Epoll;
+#elif defined(COROUTE_BACKEND_IO_URING)
+			return IoBackend::IoUring;
+#elif defined(COROUTE_BACKEND_EPOLL)
+			return IoBackend::Epoll;
+#else
+			// Windows and macOS have exactly one backend each, and Default is the only
+			// value that names it.
+			return IoBackend::Default;
+#endif
+		}
+
 	}  // namespace
 
 	std::unique_ptr<IoContext> IoContext::create(size_t thread_count, IoBackend backend)
 	{
+		// Recorded before the resolve, because after it there is no way to tell an arm
+		// the caller asked for from one this function chose.
+		const bool defaulted = (backend == IoBackend::Default);
+
 		if (backend == IoBackend::Default)
 		{
 			backend = resolve_default();
@@ -174,7 +207,31 @@ namespace coroute::net
 		switch (backend)
 		{
 			case IoBackend::IoUring:
-#if defined(COROUTE_BACKEND_IO_URING)
+#if defined(COROUTE_BACKEND_IO_URING) && defined(COROUTE_BACKEND_EPOLL)
+				// The probe is not the thing it predicts. It sets up one ring of four
+				// entries; UringContext sets up thread_count rings of 8192 and throws on
+				// the first that fails. A host can allow the first and refuse the second,
+				// on RLIMIT_MEMLOCK where the kernel is old enough to charge rings
+				// against it, or simply on memory, and then a caller that asked for
+				// nothing in particular got an exception where the header promises a
+				// fallback.
+				//
+				// Only when defaulted. An explicit --io-backend io_uring still throws,
+				// because a run that asked for io_uring and silently measured epoll is
+				// the mislabelled factor this whole seam exists to prevent.
+				if (defaulted)
+				{
+					try
+					{
+						return detail::make_uring_context(thread_count);
+					}
+					catch (const std::runtime_error&)
+					{
+						return detail::make_epoll_context(thread_count);
+					}
+				}
+				return detail::make_uring_context(thread_count);
+#elif defined(COROUTE_BACKEND_IO_URING)
 				return detail::make_uring_context(thread_count);
 #else
 				break;

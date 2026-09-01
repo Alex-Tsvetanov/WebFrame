@@ -100,10 +100,15 @@ class Skipped(Exception):
 
 
 def is_backend_refusal(text):
-    """Whether the server refused to start because of --io-backend, not because of a bug."""
-    return "--io-backend" in text and (
-        "is not available on this host" in text or "needs a build configured" in text
-    )
+    """Whether the host refused the backend, which is a skip, and nothing else.
+
+    Deliberately not "needs a build configured with", which is the other refusal the
+    server can print. That one says the arm is missing from the binary, and a test asked
+    to exercise an arm this build does not contain has not been skipped by the machine,
+    it has been mis-registered by the build system. Treating it as a skip would make the
+    suite green on a build that silently tests one backend twice.
+    """
+    return "--io-backend" in text and "is not available on this host" in text
 
 
 def start(server, port, extra, wait=15.0):
@@ -206,12 +211,17 @@ def main():
         ("dedicated_cleartext", lambda: test_dedicated_cleartext(args.server, args.port + 2)),
     ]
     failed = 0
+    skipped = 0
     for name, fn in tests:
         try:
             fn()
         except Skipped as exc:
+            # Recorded, not returned on the spot. Returning here threw away any failure
+            # already seen in an earlier test and reported the whole run as skipped, so
+            # a genuine defect in test_unified could be hidden by the host refusing the
+            # backend in test_dedicated_cleartext. Failures win; see below.
             print(f"  [SKIP] {name}  {exc}")
-            return SKIP_EXIT
+            skipped += 1
         except Failure as exc:
             print(f"  [FAIL] {name}  {exc}")
             failed += 1
@@ -219,8 +229,10 @@ def main():
             print(f"  [FAIL] {name}  {exc}")
             failed += 1
 
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
+    print(f"{len(tests) - failed - skipped}/{len(tests)} passed, {skipped} skipped")
+    if failed:
+        return 1
+    return SKIP_EXIT if skipped else 0
 
 
 if __name__ == "__main__":

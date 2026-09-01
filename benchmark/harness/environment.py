@@ -554,6 +554,15 @@ def detect_virtualisation() -> str | None:
     return _UNCHECKED.format(f"no probe for {system or 'this platform'}")
 
 
+# "Server listening on port 18080 (multi-accept, backend io_uring)", and the same
+# without the multi-accept clause on the fallback accept path.
+#
+# Here rather than in adapters.py because two entry points read it now, the campaign
+# driver and the descriptor census, and a second copy of this pattern is a second thing
+# that can drift from what App actually prints.
+BANNER_BACKEND = re.compile(r"Server listening on port \d+ \([^)]*backend (\w+)\)")
+
+
 def default_io_backend() -> str:
     """The backend the presets compile in on this host.
 
@@ -594,6 +603,10 @@ def io_backend_from_build(build_dir: Path | None) -> str | None:
     return match.group(1).strip() if match else None
 
 
+# The values a Linux tree can legitimately be configured with.
+_LINUX_IO_BACKENDS = ("io_uring", "epoll", "dual")
+
+
 def resolve_io_backend(build_dir: Path | None) -> str:
     """The backend to record, preferring what the build says over what the host implies.
 
@@ -601,22 +614,39 @@ def resolve_io_backend(build_dir: Path | None) -> str:
     backend against a binary built with another is not a degraded measurement, it is a
     mislabelled one, and a mislabelled factor makes two different measurements look like
     repetitions of a single one.
+
+    On Linux the reading is the answer and there is nothing to disagree with. The
+    platform does not determine the backend there: io_uring, epoll and dual are all
+    legitimate, and epoll in particular is what the linux-epoll preset builds, so
+    refusing it as a disagreement refused a supported configuration. It follows that a
+    Linux tree whose CMakeCache cannot be read has no answer at all rather than a
+    default, because the operating system alone cannot supply one; that is raised.
+
+    Elsewhere the platform does determine it, one backend per system, so a cache that
+    says otherwise is a real disagreement and is still refused.
     """
     guessed = default_io_backend()
     read = io_backend_from_build(build_dir)
-    if read == "dual":
-        # Recorded as "dual", which is the honest answer for a build key: the binary
-        # really does contain both backends, and no single name for the compiled set is
-        # more accurate. It says nothing about which arm a given run used, and it must
-        # not: that is a per-run factor carried by the cell and confirmed against the
-        # server's banner, not a property of the build.
-        return read
+
+    if platform.system() == "Linux":
+        if read in _LINUX_IO_BACKENDS:
+            # "dual" included, and recorded as "dual": the binary really does contain
+            # both backends and no single name for the compiled set is more accurate. It
+            # says nothing about which arm a given run used, and it must not. That is a
+            # per-run factor carried by the cell and confirmed against the server's
+            # banner.
+            return read
+        raise ValueError(
+            f"cannot read COROUTE_IO_BACKEND from {build_dir}. On Linux the build "
+            f"decides the backend and the host cannot be asked instead, so there is no "
+            f"safe default to record. Point --build at a configured build tree."
+        )
+
     if read and read != guessed:
         raise ValueError(
             f"the build in {build_dir} was configured with COROUTE_IO_BACKEND={read}, "
             f"but this host implies {guessed}. Recording either would mislabel the run. "
-            f"Point --build at a tree configured for {guessed}, or configure it with "
-            f"COROUTE_IO_BACKEND=dual and choose the arm per run with --io-backend."
+            f"Point --build at a tree configured for {guessed}."
         )
     return read or guessed
 

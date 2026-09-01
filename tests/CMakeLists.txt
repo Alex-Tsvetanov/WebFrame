@@ -63,13 +63,50 @@ include(Catch)
 #
 # Catch2's DL_PATHS option looks like the fix but did not take effect here; worth
 # revisiting if Windows sanitizer runs become part of the routine gate.
+# The backend-parametrised cases are registered once per compiled arm, so each arm
+# reports its own verdict.
 #
-# SKIP_RETURN_CODE 4 is Catch2's "no test case ran to completion", which is what it
-# returns when every arm of a test case skipped. On a host with kernel.io_uring_disabled=1
-# that is exactly what the io_context and datagram cases do, and without this ctest reads
-# the 4 as a failure and the suite is red on every hardened kernel for a reason that is
-# not a defect. See tests/io_backend_arms.hpp.
-catch_discover_tests(unit_tests PROPERTIES SKIP_RETURN_CODE 4)
+# A single registration cannot do it. Catch2 marks a whole case skipped when any
+# assertion skipped and none failed (catch_totals.cpp:52-62) and returns 4 when every
+# case in the run skipped (catch_session.cpp:345-349); with one case per ctest entry
+# that is always the whole run. So in a dual tree the epoll arm ran, passed, and still
+# read SKIPPED, which is a green light over an arm nobody has confirmed.
+#
+# Splitting on TEST_SUFFIX and PROPERTIES alone does not work either: Catch.cmake derives
+# its generated tests-file name from a hash of TEST_SPEC, EXTRA_ARGS, REPORTER and the
+# OUTPUT_* options only (Catch.cmake:175-181), so two calls differing in suffix and
+# environment collide on that file and the second overwrites the first. EXTRA_ARGS is in
+# the hash, which is what --name is doing here: it names the suite in the report and,
+# incidentally, makes the two registrations distinct.
+if("io_uring" IN_LIST _coroute_backends AND "epoll" IN_LIST _coroute_backends)
+    # No SKIP_RETURN_CODE. epoll is not restricted by any sysctl, so a skip on this arm
+    # means the parametrisation stopped selecting it, and that must fail loudly rather
+    # than read as an expected skip.
+    catch_discover_tests(unit_tests
+        TEST_SPEC "[io_context],[datagram]"
+        TEST_SUFFIX _epoll
+        EXTRA_ARGS --name unit_tests_epoll
+        PROPERTIES ENVIRONMENT COROUTE_TEST_IO_BACKEND=epoll)
+
+    # --abort so a failure exits 1 rather than the failure count. Catch2 returns
+    # min(255, failed) (catch_session.cpp:354), so exactly four failed assertions would
+    # exit 4 and SKIP_RETURN_CODE would report the run as skipped: a red run wearing a
+    # skip's colours, on the one arm where a skip is routine.
+    catch_discover_tests(unit_tests
+        TEST_SPEC "[io_context],[datagram]"
+        TEST_SUFFIX _io_uring
+        EXTRA_ARGS --name unit_tests_io_uring --abort
+        PROPERTIES ENVIRONMENT COROUTE_TEST_IO_BACKEND=io_uring
+                   SKIP_RETURN_CODE 4)
+
+    # Everything else, once, with no backend in play.
+    catch_discover_tests(unit_tests TEST_SPEC "~[io_context]~[datagram]")
+else()
+    # One backend compiled in, so there is nothing to split and nothing sets
+    # COROUTE_TEST_IO_BACKEND. A case can still skip, on a single-backend io_uring build
+    # against a hardened kernel, and 4 is how Catch2 says so.
+    catch_discover_tests(unit_tests PROPERTIES SKIP_RETURN_CODE 4)
+endif()
 
 # ============================================================================
 # Integration: protocol demultiplexing over one listening socket

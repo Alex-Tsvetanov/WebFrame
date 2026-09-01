@@ -175,10 +175,15 @@ SKIP_EXIT = 77
 
 
 def is_backend_refusal(text):
-    """Whether the server refused to start because of --io-backend, not because of a bug."""
-    return "--io-backend" in text and (
-        "is not available on this host" in text or "needs a build configured" in text
-    )
+    """Whether the host refused the backend, which is a skip, and nothing else.
+
+    Deliberately not "needs a build configured with", which is the other refusal the
+    server can print. That one says the arm is missing from the binary, and a test asked
+    to exercise an arm this build does not contain has not been skipped by the machine,
+    it has been mis-registered by the build system. Treating it as a skip would make the
+    suite green on a build that silently tests one backend twice.
+    """
+    return "--io-backend" in text and "is not available on this host" in text
 
 
 def main():

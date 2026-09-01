@@ -301,14 +301,6 @@ namespace coroute
 			return *this;
 		}
 
-		// The backend the running context actually is, or nullptr before run() builds
-		// it. What ran, not what was asked for: IoBackend::Default resolves against the
-		// host, so this is the only thing that can answer for a fallback.
-		[[nodiscard]] const char* effective_io_backend() const noexcept
-		{
-			return io_ctx_ ? io_ctx_->backend_name() : nullptr;
-		}
-
 		// The listen backlog, used by both accept paths.
 		//
 		// One value on purpose. The two paths used to disagree: multi-accept defaulted

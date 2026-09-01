@@ -71,20 +71,33 @@ namespace coroute::testing
 	}
 
 	/// Builds a context on `backend`, or skips this run when the host refuses it.
+	///
+	/// Skips only where the host will never allow this backend. Any other errno is a
+	/// failure: EMFILE means the suite is leaking descriptors, ENOMEM means the machine
+	/// is out of memory, EINVAL means the probe itself is wrong, and every one of those
+	/// is a defect that a skip would hide behind a green run for as long as the
+	/// hardened-kernel skip is also expected.
 	inline std::unique_ptr<net::IoContext> context_or_skip(std::size_t threads, net::IoBackend backend)
 	{
 		const int err = net::io_backend_probe(backend);
 		if (err != 0)
 		{
+			// Asked of the build rather than read off the errno: a real kernel or
+			// seccomp ENOSYS is not the same thing as an arm that was never compiled in.
+			const bool absent = !net::io_backend_compiled_in(backend);
 			std::string reason = std::string("backend ") + net::io_backend_name(backend) + " is ";
-			reason += err == ENOSYS ? "not compiled into this binary" : "unavailable on this host";
+			reason += absent ? "not compiled into this binary" : "unavailable on this host";
 			reason += ": ";
 			reason += std::strerror(err);
 			if (err == EPERM)
 			{
 				reason += " (EPERM; check kernel.io_uring_disabled)";
 			}
-			SKIP(reason);
+			if (err == EPERM || err == EACCES || absent)
+			{
+				SKIP(reason);
+			}
+			FAIL(reason);
 		}
 		return net::IoContext::create(threads, backend);
 	}
