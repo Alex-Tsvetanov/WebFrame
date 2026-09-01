@@ -120,6 +120,7 @@
 Причината е, че единственото число не различава генератор, който е далеч от границата си
 навсякъде, от генератор, който я приближава точно там, където се правят твърденията.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering\small
 \caption{Изоставане на генератора от собствения му график, 99-и персентил в микросекунди}
@@ -136,6 +137,7 @@
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
 Медианата расте от около четиридесет микросекунди при най-ниското натоварване до около
 седемдесет при най-високото, тоест генераторът се затруднява точно там, където се очаква, и
@@ -155,6 +157,7 @@
 влошаване спрямо същия сървър без класификация. Двете рамена са един и същ двоичен файл,
 разграничен с флаг при изпълнение, при еднакво предложено натоварване в отворен цикъл.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering\small
 \caption{Пропускателна способност и латентност с и без класификация, \(n = 25\) на клетка}
@@ -173,7 +176,9 @@
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
@@ -202,6 +207,7 @@
 хипотеза Х1. Лентите са 95\% BCa доверителни интервали върху медианите на изпълненията.}
 \label{fig:h1-p99}
 \end{figure}
+}{\missingdata{h1_demux.csv}}
 
 \paragraph{Как се чете.} Хипотезата се отхвърля само ако доверителният интервал на разликата
 изключва нулата \emph{и} относителната големина надхвърля пет процента. И двете условия са
@@ -210,6 +216,7 @@
 се интервали наистина означават разлика, но покриващи се не означават нейната липса, и
 проверката по застъпване е по-консервативната от двете без принципно основание за това.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering
 \caption{Разлика между двете рамена по p99, с класификация минус без нея}
@@ -226,6 +233,7 @@
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
 \paragraph{Резултат.} При всяко от петте предложени натоварвания доверителният интервал на
 разликата съдържа нулата и относителната разлика е под пет процента. Тя е между \R{h1detect.x1.rel-min}\%
@@ -268,6 +276,7 @@
 персентила, е описан наполовина: разликата между рамената може да е нула в средата и различна
 в опашката, и обратното.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering\small
 \caption{Персентили на латентността, двете рамена, в милисекунди}
@@ -290,6 +299,7 @@
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
 Формата на разпределението е една и съща в двете рамена. Медианата остава около 0,05\,ms до
 40\,000 заявки в секунда и се повишава до около 0,06\,ms при 70\,000. Деветдесетият персентил
@@ -301,6 +311,7 @@
 Персентилът 99,9 не следва тази форма и не бива да се чете от тази таблица като величина.
 Раздел~\ref{sec:tail} обяснява защо.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
@@ -323,6 +334,7 @@
 което е твърдението на Х1, представено така, както се чете при избор на работна точка.}
 \label{fig:pareto}
 \end{figure}
+}{\missingdata{h1_demux.csv}}
 
 \subsection{Процесорно време и памет}
 \label{sec:cpu-mem}
@@ -331,6 +343,7 @@
 паметта описват какво струва това, и се съобщават отделно, защото равна латентност при
 различна цена е различен резултат от равна латентност при равна цена.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering\small
 \caption{Процесорно време на сървъра за изпълнение, в секунди, и връх на работното
@@ -351,6 +364,7 @@
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
 \paragraph{Паметта не зависи от натоварването.} Върхът на работното множество остава около
 седем мебибайта при всяко предложено натоварване, тоест при седемкратна разлика в обема
@@ -408,6 +422,7 @@ Linux.
 \emph{Дялът е от един и същ порядък в двете рамена.} Броенето е по клетки, а не общо, защото
 общият брой би скрил зависимост от натоварването, ако такава има.
 
+\IfFileExists{\datadir/h1_demux.csv}{%
 \begin{table}[H]
 \centering
 \caption{Изпълнения с p99.9 над една милисекунда, от 25 на клетка}
@@ -423,6 +438,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/h1_demux.csv}
 \end{table}
+}{\missingdata{h1_demux.csv}}
 
 Дялът расте с натоварването, което е очаквано, ако причината е конкуренция за процесорно
 време. Разликата между двете рамена в отделна клетка достига шест изпълнения от двадесет и
@@ -448,6 +464,7 @@ Linux.
 \subsection{Мащабиране по работни нишки}
 \label{sec:workers}
 
+\IfFileExists{\datadir/workers.csv}{%
 \begin{table}[H]
 \centering
 \caption{Пропускателна способност и латентност спрямо броя работни нишки}
@@ -465,6 +482,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/workers.csv}
 \end{table}
+}{\missingdata{workers.csv}}
 
 Сървърът е закрепен към четири физически ядра, тоест над четири работни нишки се очаква
 насищане, а не подобрение. Стойността на измерването е в това дали кривата се държи както
@@ -487,6 +505,7 @@ Linux.
 \subsection{Размер на отговора}
 \label{sec:payload}
 
+\IfFileExists{\datadir/payload.csv}{%
 \begin{table}[H]
 \centering
 \caption{Пропускателна способност и латентност спрямо размера на отговора}
@@ -503,6 +522,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/payload.csv}
 \end{table}
+}{\missingdata{payload.csv}}
 
 Размерът на отговора е включен, защото цената на класификацията е на връзка, а цената на
 отговора е на заявка. Ако първата изобщо е разграничима, съотношението между двете трябва да
@@ -523,6 +543,7 @@ Linux.
 \subsection{Дължина на опашката за приемане}
 \label{sec:backlog}
 
+\IfFileExists{\datadir/backlog.csv}{%
 \begin{table}[H]
 \centering
 \caption{Пропускателна способност и латентност спрямо \code{backlog}}
@@ -539,6 +560,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/backlog.csv}
 \end{table}
+}{\missingdata{backlog.csv}}
 
 Подразбиращата се стойност в интерфейса за вход и изход беше 128, което е малко при няколко
 хиляди едновременни връзки, затова параметърът е обхождан, а не приет за константа. При
@@ -566,6 +588,7 @@ Linux.
 процес. Сървър, който съобщава собствения си брой дескриптори, потвърждава очакването на
 автора си, а не състоянието на машината.
 
+\IfFileExists{\datadir/descriptors.csv}{%
 \begin{table}[H]
 \centering
 \caption{Слушащи дескриптори на работещ процес, отчетени от ядрото}
@@ -582,6 +605,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/descriptors.csv}
 \end{table}
+}{\missingdata{descriptors.csv}}
 
 \paragraph{Първото, което таблицата казва.} Броят не се мени при включване и изключване на
 класификацията. Това е твърдението, заради което броенето съществува, и то се потвърждава:
@@ -610,6 +634,7 @@ Linux.
 дескриптор при една, две, четири и осем работни нишки, с включена и с изключена
 класификация: таблицата е побайтово еднаква с тази по-горе.
 
+\IfFileExists{\datadir/descriptors-darwin.csv}{%
 \begin{table}[H]
 \centering\small
 \caption{Слушащи дескриптори под macOS и \code{kqueue}, отчетени от ядрото. Стойностите
@@ -628,6 +653,7 @@ Linux.
   every last row/.style={after row=\bottomrule},
 ]{\datadir/descriptors-darwin.csv}
 \end{table}
+}{\missingdata{descriptors-darwin.csv}}
 
 \paragraph{Какво това добавя и какво не.} Добавя следното: броят вече не е свойство само на
 IOCP. Той е преброен на две платформи с различни ядра, различни компилатори и различни

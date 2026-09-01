@@ -237,6 +237,11 @@
 \providecommand{\R}[1]{\textcolor{red}{\textbf{[?#1]}}}
 \IfFileExists{generated/results.tex}{\input{generated/results}}{}
 
+% Таблица или графика, чийто CSV още не е произведен, се отпечатва като същия червен
+% маркер вместо да спре компилацията: pgfplots третира липсващ файл като фатална грешка,
+% а документът трябва да се строи и на машина, на която не са пускани измервания.
+\newcommand{\missingdata}[1]{\begin{center}\textcolor{red}{\textbf{[?\code{\datadir/\detokenize{#1}}]}}\end{center}}
+
 % Видим маркер за незапълнено място. Търси се с: grep -rn 'TODO' chapters/
 \newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
 
