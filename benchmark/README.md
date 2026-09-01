@@ -22,11 +22,14 @@ The generator inside WSL reaches the Windows host at the vEthernet address, whic
 between reboots. Read it from inside the distribution rather than from an old note:
 
 ```powershell
-(wsl -d Ubuntu-24.04 -- ip route show default).Split(' ')[2]
+$wslHost = ([regex]::Match((wsl -d Ubuntu-24.04 -- ip route show default) -join ' ', '\bvia\s+(\d{1,3}(?:\.\d{1,3}){3})\b')).Groups[1].Value
+if (-not $wslHost) { throw "could not resolve the WSL default gateway" }
 ```
 
-No nested shell, so nothing expands `$3` before `awk` would have seen it; the third
-field of `default via <host> dev eth0` is the host.
+No nested shell, so nothing expands before the pattern sees it, and a route line without
+a `via` address stops loudly instead of handing `--host` an interface name. If the output
+ever looks space-separated per character, that is `wsl.exe` emitting UTF-16 for its own
+subcommands; a command run inside the distribution should not do that.
 
 That address is `--host` for every off-host design below. If the WSL generator is
 missing, build it inside the distribution from `benchmark/generator` with CMake. It is a
