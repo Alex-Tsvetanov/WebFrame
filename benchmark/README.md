@@ -113,9 +113,9 @@ thread-safe upstream, stated as a limitation) and refuses a loopback `--host`:
 
 ```
 python -m benchmark.run_routing_e2e --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
-python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 ... same generator flags
-python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 ... same generator flags
-python -m benchmark.run_routing_e2e --design large       --repetitions 5 ... same generator flags --readiness-timeout 600
+python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_routing_e2e --design large       --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address> --readiness-timeout 600
 ```
 
 About two hours in total. The `large` design has never completed: the 10 000-route DFA
