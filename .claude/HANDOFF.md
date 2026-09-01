@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 02:25 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 02:45 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -21,11 +21,17 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 
 | Session name | Host | What it is for | State |
 | --- | --- | --- | --- |
-| `Windows machine` | alex-pc, Ryzen 5 3600, Win 11, repo `D:\Dev\GitHub\PhD-WebFrame`, WSL Ubuntu-24.04 generator at `/home/alex/loadgen` | IOCP measurements, the campaign nights | Alex released it 02:15; running steps 0-6 below |
-| `ArchLinux` | alex-laptop, Ryzen 7 5800H, Arch on `linux-hardened`, repo `~/GitHub/PhD-WebFrame`, build trees `build/linux-{uring,epoll,dual}` | Linux code work; io_uring blocked by `kernel.io_uring_disabled=1`, no unprivileged netns, no perf/strace, sudo needs password | Working on fixes 1-8 to `linux/io-backend-runtime` |
+| `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator; repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
+| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch on a hardened kernel, repo `~/GitHub/PhD-WebFrame`, build trees `build/linux-{uring,epoll,dual}` | Linux code work; io_uring is disabled by that kernel, and the other root-gated limits are in the memory note | fixes 1-8 to `linux/io-backend-runtime` done |
 | `Dispatch background conversation` | unknown | never answered a probe | ignore |
 
 Both hosts are Alex's daily machines. No timed run without a window Alex names.
+
+**This repository is public.** Nothing that identifies a machine beyond its hardware class
+belongs here or in any commit, branch or inbox file on it: no hostnames, addresses, SSIDs,
+login state or security posture. Those live in the local memory notes. Measurement result
+branches (whose environment records carry the host name) go to the private paper
+repositories, never here.
 
 ## Repository state
 
@@ -64,7 +70,11 @@ Branches in flight:
   fold the cheap ones (run_routing `git_commit[:12]` guard, vacuous port selfcheck, temp-dir
   leak, census held-port traceback, README `...` elisions now that `--build` is required,
   duplicated port probe in the two integration tests) during the merge.
-  **Merge AFTER io-backend**: both touch `adapters.py`, `driver.py`, `environment.py`,
+  **In progress 02:45: a local workflow (run `wf_89d61877-739`, task `wno89410k`) is merging
+  `origin/linux/io-backend-runtime` INTO this branch in its worktree, resolving the conflicts,
+  folding the cheap lows, verifying on macOS (full ctest, census, loopback smoke) and pushing.
+  Once that lands, this branch merges into `phase0-foundation` cleanly after io-backend does.**
+  Original note: both touch `adapters.py`, `driver.py`, `environment.py`,
   `run_campaign.py`, `descriptor_census.py`, `tests/integration/*.py`; expect conflicts and
   resolve by hand (or with a workflow: merge, resolve, fold lows, selfchecks, build loadgen
   on macOS, macOS loopback smoke). NOTE for the desktop: after this merge the WSL
@@ -85,9 +95,9 @@ Branches in flight:
 vEthernet gateway, certs, idleness; 3 `smoke` quiet-host gate (pacing p99 tens of µs or
 stop); 4 four ladders with a decision rule (all table rates accepted below 500 µs pacing,
 else stop and report); 5 `churn` → `churn-net` → `transport` → `h1-deep` at n=25, results
-in `benchmark\results\2026-09-02-alex-pc\`, one message per design, stop at a design
+in `benchmark\results\2026-09-02-desktop\`, one message per design, stop at a design
 boundary if Alex wants the machine or if a design rejects >10 %; 6 commit results on
-`measure/alex-pc-2026-09-02` with `git add -f`, push. About 13 hours.
+`measure/desktop-2026-09-02` with `git add -f`, pushed to the private `paper-socket-demux` repository (added as a second remote), never to this public one. About 13 hours.
 
 When results arrive: copy each `.jsonl` + `.env.json` into
 `Publications/paper-socket-demux/measurements/` with a README entry (machine, commit,
@@ -100,7 +110,7 @@ been scheduled yet.
 
 ## Decisions taken today, with reasons
 
-- Campaign tree is `D:\Dev\GitHub\PhD-WebFrame` at HEAD, not `PhD-WebFrame-measure`
+- Campaign tree is the desktop's tracking checkout at HEAD, not its `-measure` checkout
   (detached at `b14002aab`, which predates the three gate fixes of 1 Sep).
 - Laptop timing numbers are pipeline validation only until Alex boots stock `linux`
   7.2.2 with the `performance` governor; the harness will get a run-level governor gate.
@@ -136,7 +146,7 @@ been scheduled yet.
 
 ## Succession, automated (set up 02:30 EEST)
 
-Alex will not be awake for the switch, so it is mechanical:
+The switch is mechanical, so it needs nobody awake:
 
 - The primary session refreshes
   `~/.claude/projects/-Users-Alex-Tsvetanov-Documents-GitHub-PhD-WebFrame/coordinator-alive`
@@ -150,7 +160,7 @@ Alex will not be awake for the switch, so it is mechanical:
   Each run is stateless; this file is the state.
 - Machine sessions write every report as a file on the orphan branch `coord/inbox`
   (`coordination/inbox/<host>-<UTC>.md`) in addition to messaging, so a report that
-  arrives between coordinator sessions is not lost. Both were told on 02:30.
+  arrives between coordinator sessions is not lost. Both were told, with the redaction rule above.
 - A probe on 02:21 confirmed a scheduled session runs as `claude-opus-5` with that
   frontmatter and can message peers.
 
