@@ -222,6 +222,32 @@ else:
 # ---------------------------------------------------------------------- server
 
 
+def refuse_held_port(port: int) -> None:
+    """Refuses to start a server on a port something already listens on.
+
+    On Windows and macOS a second server on a held port fails to bind and the run fails
+    loudly. On Linux both backends set SO_REUSEPORT, so a leftover benchmark_server and
+    the new one bind side by side and the kernel splits the generator's connections
+    between two servers with different factors, under one record, and the readiness
+    probe is satisfied by whichever answers.
+
+    The probe is a throwaway bind without SO_REUSEPORT, which Linux refuses against a
+    reuseport group exactly as it refuses it against any other listener. SO_REUSEADDR is
+    set on POSIX only, so the previous run's connections in TIME_WAIT are not read as a
+    holder; on Windows that option would instead permit binding over a live listener,
+    and a plain bind there is what the IOCP server itself does.
+    """
+    try:
+        with socket.socket() as probe:
+            if os.name != "nt":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("0.0.0.0", port))
+    except OSError as exc:
+        raise RunFailed(
+            f"port {port} is already held ({exc.strerror or exc}); a stale server is running"
+        ) from exc
+
+
 @dataclass
 class CorouteServer:
     """One benchmark_server process, started fresh and stopped for certain.
@@ -286,6 +312,7 @@ class CorouteServer:
         return args
 
     def start(self) -> None:
+        refuse_held_port(self.port)
         self._proc = subprocess.Popen(
             self.argv,
             stdout=subprocess.DEVNULL,

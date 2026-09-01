@@ -35,6 +35,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from benchmark.adapters import refuse_held_port
 from benchmark.harness import environment
 
 REPO = Path(__file__).resolve().parents[1]
@@ -263,6 +264,9 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
     # When the server fails to bind, its own output is the only diagnosis there is, so it
     # goes to a file rather than to DEVNULL. A pipe would deadlock once its buffer filled,
     # since nothing reads it while the server runs.
+    # On Linux a stale server would share the port under SO_REUSEPORT and be counted
+    # under this row's factors; refused before anything is started.
+    refuse_held_port(port)
     log = tempfile.TemporaryFile()
     proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
     def fail(what: str) -> RuntimeError:

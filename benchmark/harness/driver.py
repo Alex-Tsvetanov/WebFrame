@@ -12,8 +12,9 @@ The rules it enforces, each of which the previous harness broke:
                             n=5 was five looks at one process's page placement.
 
   the server always stops   Even when the generator raises. A leaked server holds the
-                            port and every later run in the campaign fails for a reason
-                            that has nothing to do with the code.
+                            port; on Linux it would even share it under SO_REUSEPORT,
+                            so the adapter refuses a held port before starting and
+                            every later run fails for a reason that is at least loud.
 
   every run leaves a record Including the ones that failed or were rejected. A campaign
                             with silent gaps cannot be told apart from one that was
@@ -251,7 +252,9 @@ def run_one(
 
     finally:
         # In a finally block because a leaked server holds the port and every later run
-        # in the campaign then fails for a reason unrelated to the code being measured.
+        # in the campaign is then refused for a reason unrelated to the code being
+        # measured. Refused rather than shared: on Linux the leak would otherwise be
+        # measured under the next cell's factors.
         if server is not None:
             try:
                 usage = server.stop()

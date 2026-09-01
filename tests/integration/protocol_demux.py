@@ -12,6 +12,7 @@ The server binary must accept --port and --workers, which benchmark_server does.
 """
 
 import argparse
+import os
 import socket
 import subprocess
 import sys
@@ -174,6 +175,20 @@ def main():
     parser.add_argument("--tls", action="store_true", help="server was built with TLS enabled")
     parser.add_argument("--http2", action="store_true", help="server was built with HTTP/2 enabled")
     args = parser.parse_args()
+
+    # On Linux both backends set SO_REUSEPORT, so a server left behind by a hard-killed
+    # run shares the port with this one instead of failing to bind, and the tests below
+    # land on whichever the kernel picks. A plain bind refuses that; SO_REUSEADDR keeps
+    # TIME_WAIT from counting on POSIX and would permit the sharing on Windows.
+    try:
+        with socket.socket() as probe:
+            if os.name != "nt":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("0.0.0.0", args.port))
+    except OSError as exc:
+        print(f"port {args.port} is already held ({exc}); a stale server is running",
+              file=sys.stderr)
+        return 1
 
     proc = subprocess.Popen(
         [args.server, "--port", str(args.port), "--workers", "2"],
