@@ -122,8 +122,15 @@ been scheduled yet.
   (`D:\GitHub\...` before it moved), so no tree could be incrementally rebuilt and the
   binaries were frozen at 30 August while HEAD is 35 commits later. A campaign run without
   noticing would have stamped records with a commit whose validity gates the binary predates.
-  **To add: a preflight that refuses when a server or generator executable is older than the
-  commit the record will claim.**
+  **To add: a preflight that refuses when an executable is older than the commit the record
+  will claim OR older than its own `CMakeCache.txt`.** Both halves are needed, and the desktop
+  proved why: that routing tree's binary is dated 30 Aug 11:43, its cache holds a value that
+  only became the default at 15:17, and the variable holding it did not exist until 14:19. The
+  binary predates its own cache by three and a half hours, so the tree was reconfigured and
+  never rebuilt, and anyone reading that cache to learn what the binary was built from would
+  have been wrong. A check against the commit alone catches the frozen-tree case; only the
+  cache comparison catches reconfigured-but-not-rebuilt, which is the one that actually
+  happened.
 - **The matcher commit is not recorded either.** `COROUTE_URL_MATCHER_TAG` decides the DFA
   router's performance and is the dependency the routing paper's claim turns on, yet the
   environment captures `openssl`, `ngtcp2`, `nghttp3`, `liburing` and not it. **To add: read it
