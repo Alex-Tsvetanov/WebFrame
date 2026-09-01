@@ -638,8 +638,8 @@ def main(argv: list[str] | None = None) -> int:
         "generator_location": location,
     }
     # What every run would be refused for anyway, asked once before the hours are spent.
-    # The governor is the one the per-run rules cannot see: the record has no field for
-    # it, the manifest does, and a dynamic governor makes the drift gate fire on itself.
+    # The governor is asked again per run by the driver; here it stops the night before
+    # it starts, since a dynamic governor makes the drift gate fire on itself.
     blocking = validity.check_run({
         "virtualisation": env.get("virtualisation"),
         "git_dirty": env["build"]["git_dirty"],

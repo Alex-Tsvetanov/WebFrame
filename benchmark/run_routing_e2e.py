@@ -296,8 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         "generator_location": location,
     }
     # Same preflight as the other two entry points, for the same reason: every run would
-    # be refused for these anyway, and the governor is the one the per-run rules cannot
-    # see because the record has no field for it.
+    # be refused for these anyway, and hours are cheaper to lose here than at run one.
     blocking = validity.check_run({
         "virtualisation": env.get("virtualisation"),
         "git_dirty": env["build"]["git_dirty"],

@@ -143,6 +143,7 @@ class HostProbes:
     power_source: Callable[[], str | None] = validity.current_power_source
     speed_limit: Callable[[], int | None] = validity.current_speed_limit
     counters: Callable[[], dict[str, int]] = validity.read_counters
+    governor: Callable[[], str | None] = environment._governor
 
 
 LIVE_PROBES = HostProbes()
@@ -159,6 +160,7 @@ IDLE_PROBES = HostProbes(
     power_source=lambda: environment._NO_BATTERY,
     speed_limit=lambda: None,
     counters=dict,
+    governor=lambda: None,
 )
 
 
@@ -279,6 +281,9 @@ def run_one(
 
     record.cpu_mhz_end = probes.cpu_mhz()
     record.thermal_speed_limit_end = probes.speed_limit()
+    # After the run for the same reason as the two above: the preflight read it once,
+    # and a governor that moved mid-campaign was caught only at the next invocation.
+    record.governor = probes.governor()
     record.counter_deltas = validity.counter_deltas(counters_before, probes.counters())
 
     verdict = validity.check_run(record.to_dict())

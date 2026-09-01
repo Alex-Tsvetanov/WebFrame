@@ -10,6 +10,7 @@ Imported and run by selfcheck.py.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import tempfile
 from dataclasses import dataclass, field
@@ -231,6 +232,20 @@ def run(check: Callable[[str, bool], None]) -> None:
         campaign_fingerprint="fp", duration_s=30.0,
     )
     check("a run under virtualisation is rejected", not record.accepted)
+
+    # The governor is read after every run, not once at preflight. A power-profile daemon
+    # flipping it at run 10 of 25 used to pass the remaining fifteen until the fingerprint
+    # caught it at the next invocation.
+    record = driver.run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=FakeGenerator(), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+        probes=dataclasses.replace(driver.IDLE_PROBES, governor=lambda: "powersave"),
+    )
+    check("a governor that moved during the campaign rejects the run",
+          not record.accepted and any("governor" in r for r in record.rejection_reasons))
+    check("and the record says which governor it was", record.governor == "powersave")
 
     # --- rejected runs are kept and counted ---------------------------------
     with tempfile.TemporaryDirectory() as tmp:

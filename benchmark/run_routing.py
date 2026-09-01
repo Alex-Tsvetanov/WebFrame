@@ -336,6 +336,9 @@ def main(argv: list[str] | None = None) -> int:
             # others. Which one a number came from belongs in the record.
             record["thermal_speed_limit_end"] = validity.current_speed_limit()
             record["cpu_mhz_end"] = validity.current_cpu_mhz()
+            # Per run, like the driver: the preflight above read it once, and the drift
+            # rule means nothing under a governor that moved at cell ten.
+            record["governor"] = environment._governor()
             verdict = validity.check_run(record)
             if verdict.reasons:
                 record["accepted"] = False

@@ -49,7 +49,8 @@ from typing import Any, Iterator
 # run's bytes, warmup included, by the measured wall, so a version 3 figure is higher
 # than a version 4 one by about (warmup + duration) / duration and the two must not be
 # pooled. The generator defines both fields, so a record's version says what the driver
-# was, and requests_total_whole_run being null says the generator was older.
+# was, and requests_total_whole_run being null says the generator was older. Version 4
+# also carries the governor per run; earlier files have it in the manifest only.
 SCHEMA_VERSION = 4
 
 
@@ -181,6 +182,12 @@ class RunRecord:
     # None when git could not say, and refused as such. The default is None so a record
     # that never set it is refused rather than read as clean.
     git_dirty: bool | None = None
+    # Read after the run, not once at preflight. The manifest fingerprints the governor,
+    # so a change is caught at the next invocation; a daemon or a suspend cycle that
+    # flips it at run 10 of 25 would otherwise pass the remaining fifteen. None on
+    # Windows and macOS, which publish none; unchecked on a Linux host that could not
+    # read it, and refused as such.
+    governor: str | None = None
     cpu_mhz_start: float | None = None
     cpu_mhz_end: float | None = None
     # What isolation was asked for and what the platform granted. These are separate
