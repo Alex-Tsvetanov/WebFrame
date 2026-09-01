@@ -132,11 +132,20 @@ been scheduled yet.
   a deliberate pin and is a fossil, the repository's own default until `48ec1c81a` on 30 Aug;
   three pins have landed since. The 30 August routing records were produced with it, and
   nothing in them says so.
-- **Syscalls per request is measurable and has been measured** (laptop, loopback, pipeline
-  validation only): churn costs about 4.5x the syscalls per request of keep-alive on both
-  Linux backends, while epoll and io_uring differ by under 4% within a shape. If that holds on
-  a controlled machine it is the mechanism section both papers need, and it says the axis is
-  connection lifetime rather than which backend is compiled in. `io_uring_enter` at 4.75 per
+- **Syscalls per request is measurable and has been measured** (laptop, loopback, one worker,
+  pipeline validation only, corrected once by its author): epoll keep-alive 6.514, io_uring
+  keep-alive 6.759, epoll churn 29.713, io_uring churn 27.097 syscalls per request. So churn
+  costs 4.562x keep-alive on epoll and 4.009x on io_uring, and the backends differ by +3.76%
+  (io_uring worse) in keep-alive and -8.80% (io_uring better) in churn. **Shape dominates
+  backend, because 4x dwarfs 9%, and that is the part to carry forward.** Do not repeat the
+  first readback, "under 4% within a shape" and "about 4.5x on both": the spread is
+  shape-dependent and the sign flips between shapes. The churn difference is **confounded and
+  must not be quoted as a controlled comparison**: both churn cells were throughput-limited
+  below the offered rate and achieved different rates (10512 against 11005), and a server
+  batches differently at different load. A rate both arms sustain, on the desktop, is what
+  would settle it. The direction, if it survives, is a hypothesis for the portability paper:
+  the ring's fixed per-enter cost may amortise badly across a keep-alive request needing one
+  receive and one send, and well across a churn request that also accepts and closes. `io_uring_enter` at 4.75 per
   request in keep-alive is a finding about this implementation, not about io_uring.
   Instrument: `perf stat` on the server pid, which needs root because tracefs permissions
   block it whatever `perf_event_paranoid` says; `strace -c -f` costs 82% of throughput and is
