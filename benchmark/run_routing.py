@@ -296,6 +296,10 @@ def main(argv: list[str] | None = None) -> int:
                 "virtualisation": env.get("virtualisation"),
                 "power_source": power_before,
                 "thermal_speed_limit_start": validity.current_speed_limit(),
+                # The drift rule keys on these two and the record never carried them,
+                # so an rdtsc microbenchmark had no clock gate on any platform: the
+                # speed limit below is pmset-only and None everywhere else.
+                "cpu_mhz_start": validity.current_cpu_mhz(),
             }
 
             try:
@@ -324,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
             # Apple Silicon does not, so this fires on some hosts and is inert on
             # others. Which one a number came from belongs in the record.
             record["thermal_speed_limit_end"] = validity.current_speed_limit()
+            record["cpu_mhz_end"] = validity.current_cpu_mhz()
             verdict = validity.check_run(record)
             if verdict.reasons:
                 record["accepted"] = False
