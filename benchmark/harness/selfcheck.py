@@ -10,6 +10,8 @@ campaign, which is exactly when an unrunnable test suite is no help.
 from __future__ import annotations
 
 import json
+import os
+import socket
 import sys
 import tempfile
 from collections import Counter
@@ -114,6 +116,68 @@ def campaign_checks() -> None:
 
         forced = env_mod.Campaign.open_or_create(path, moved, force=True)
         check("force exists as a deliberate override", forced.fingerprint == first.fingerprint)
+
+
+def transport_checks() -> None:
+    print("\n== a campaign refuses to mix transport paths ==")
+
+    from benchmark.run_campaign import transport_mismatch
+
+    # The fingerprint leaves the transport path out on purpose, so a loopback campaign
+    # and a network-path one hash identically and the append is accepted. This is the
+    # check that stands in for the fingerprint there.
+    def env_with(loopback: bool, location: str, host: str = "10.0.0.1") -> dict:
+        env = sample_env()
+        env["transport_path"] = {"host": host, "loopback": loopback,
+                                 "generator_location": location}
+        return env
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "runs.env.json"
+        campaign = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen"))
+        check("a new campaign matches itself",
+              transport_mismatch(campaign, env_with(False, "netns:gen"), "transport_path") is None)
+        reopened = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen", "10.0.0.2"))
+        check("the address may change between sessions of one arrangement",
+              transport_mismatch(reopened, env_with(False, "netns:gen", "10.0.0.2"), "transport_path") is None)
+        message = transport_mismatch(reopened, env_with(True, "host"), "transport_path")
+        check("a loopback run cannot join a network-path campaign", message is not None)
+        check("and the refusal names the key", "loopback" in message)
+        # A manifest from before the section existed says nothing about its arrangement.
+        older = env_mod.Campaign.open_or_create(Path(tmp) / "old.env.json", sample_env())
+        check("a manifest without the section is refused, not assumed",
+              transport_mismatch(older, env_with(False, "netns:gen"), "transport_path") is not None)
+
+
+def port_checks() -> None:
+    print("\n== a held port is refused before a server is started on it ==")
+
+    from benchmark.adapters import refuse_held_port
+    from benchmark.harness.driver import RunFailed
+
+    # A real listener on the wildcard address, the way the servers bind. On BSD a probe
+    # with SO_REUSEADDR could coexist with a 127.0.0.1 listener, so a loopback holder
+    # would let this pass without checking anything.
+    holder = socket.socket()
+    if os.name != "nt":
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    holder.bind(("0.0.0.0", 0))
+    holder.listen()
+    port = holder.getsockname()[1]
+    message = ""
+    try:
+        try:
+            refuse_held_port(port)
+            raised = False
+        except RunFailed as exc:
+            raised = True
+            message = str(exc)
+    finally:
+        holder.close()
+    check("a port with a listener is refused", raised)
+    check("the refusal names the port", str(port) in message)
+    refuse_held_port(port)
+    check("the same port passes once the listener is gone", True)
 
 
 def validity_checks() -> None:
@@ -513,6 +577,8 @@ def main() -> int:
 
     fingerprint_checks()
     campaign_checks()
+    transport_checks()
+    port_checks()
     validity_checks()
     counter_checks()
     schema_checks()
