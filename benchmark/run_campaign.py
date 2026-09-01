@@ -122,7 +122,7 @@ def _io_backend() -> str:
     factor is worse than a missing one: it makes two different measurements look like
     repetitions of one.
     """
-    return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
+    return environment.default_io_backend()
 
 
 def design_windows_h1() -> list[Cell]:
@@ -523,7 +523,8 @@ def main(argv: list[str] | None = None) -> int:
               f"on as WSL sees it.", file=sys.stderr)
         return 2
 
-    env = environment.capture(repo=REPO, build_type="Release")
+    env = environment.capture(repo=REPO, build_type="Release",
+                            io_backend=environment.default_io_backend())
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
     env["transport_path"] = {

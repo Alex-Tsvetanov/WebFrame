@@ -310,6 +310,22 @@ def detect_virtualisation() -> str | None:
     return result
 
 
+def default_io_backend() -> str:
+    """The backend the presets compile in on this host.
+
+    One source of truth, because build.io_backend is a fingerprinted key: it is what
+    stops a kqueue run being compared against an IOCP run as if the two were
+    repetitions of one measurement. Two entry points disagreeing about the name would
+    defeat the fingerprint as thoroughly as not recording it at all.
+
+    Note this is the backend the CMake presets select by platform, not a runtime
+    choice. There is no runtime choice: CMakeLists compiles exactly one backend
+    translation unit. When that changes, this has to read the flag instead of the
+    platform.
+    """
+    return {"Darwin": "kqueue", "Linux": "io_uring"}.get(platform.system(), "iocp")
+
+
 def capture(repo: Path | None = None, build_type: str | None = None,
             io_backend: str | None = None) -> dict[str, Any]:
     """Everything worth knowing about the machine, in one nested dict."""

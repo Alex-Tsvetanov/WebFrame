@@ -198,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
     raw_dir.mkdir(parents=True, exist_ok=True)
     records_path = out_dir / "runs.jsonl"
 
-    env = environment.capture(repo=REPO, build_type="Release")
+    env = environment.capture(repo=REPO, build_type="Release",
+                            io_backend=environment.default_io_backend())
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
 
     # The three arms have to agree on the table before they are compared on speed.

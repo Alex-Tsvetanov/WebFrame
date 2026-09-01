@@ -57,7 +57,7 @@ SERVER_AFFINITY = "0ff"
 BASE = dict(
     protocol="http1.1",
     tls=False,
-    io_backend="iocp",
+    io_backend=environment.default_io_backend(),
     protocol_detection=True,
     workers=1,
     connections=64,
@@ -249,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / "runs.jsonl"
 
-    env = environment.capture(repo=REPO, build_type="Release")
+    env = environment.capture(repo=REPO, build_type="Release",
+                            io_backend=environment.default_io_backend())
     env["routing_e2e"] = {
         "host": args.host,
         "loopback": bool(args.host.startswith("127.") or args.host in ("localhost", "::1")),
