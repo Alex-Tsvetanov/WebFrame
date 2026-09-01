@@ -256,8 +256,15 @@ def topology_checks() -> None:
               run_campaign.isolation_problem({"cpu": {"siblings": paired}}) is None)
         check("a mask over CPUs the host does not have is refused",
               "does not have" in str(run_campaign.isolation_problem({"cpu": {"siblings": paired[:8]}})))
-        check("no topology to read leaves the masks alone",
-              run_campaign.isolation_problem({"cpu": {"siblings": None}}) is None)
+        # Windows publishes no topology and the masks are applied unchecked, as every
+        # record on disk was. Linux publishes one, so failing to read it is a refusal:
+        # the masks would still be applied and the record would claim disjoint cores.
+        check("no topology to publish leaves the masks alone",
+              run_campaign.isolation_problem(
+                  {"machine": {"system": "Windows"}, "cpu": {"siblings": None}}) is None)
+        check("a linux layout that could not be read is refused",
+              "could not be read" in str(run_campaign.isolation_problem(
+                  {"machine": {"system": "Linux"}, "cpu": {"siblings": None}})))
     finally:
         run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY = masks
     check("no sysfs is None, not an empty layout", env_mod._siblings(Path(tempfile.mkdtemp()) / "x") is None)

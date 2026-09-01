@@ -102,10 +102,18 @@ def isolation_problem(env: dict) -> str | None:
     the record claim isolation that does not exist. On the Windows campaign the
     generator ran inside WSL with no mask, so a Linux campaign is the first arrangement
     in which both masks are natively in force together. Nothing to check where the
-    platform publishes no topology or asks for no mask.
+    platform publishes no topology or asks for no mask; on Linux, which does publish
+    one, a layout that could not be read is refused, since both masks would still be
+    applied and the record would claim an isolation nothing established.
     """
+    if not (SERVER_AFFINITY and GENERATOR_AFFINITY):
+        return None
     siblings = (env.get("cpu") or {}).get("siblings")
-    if not siblings or not (SERVER_AFFINITY and GENERATOR_AFFINITY):
+    if not siblings:
+        if (env.get("machine") or {}).get("system") == "Linux":
+            return ("sibling layout could not be read from /sys/devices/system/cpu; "
+                    f"the isolation of masks {SERVER_AFFINITY} and {GENERATOR_AFFINITY} "
+                    "cannot be established")
         return None
     try:
         shared = mask_cores(SERVER_AFFINITY, siblings) & mask_cores(GENERATOR_AFFINITY, siblings)
