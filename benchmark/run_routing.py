@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-from benchmark.harness import environment
+from benchmark.harness import environment, validity
 from benchmark.harness.ordering import Cell, plan
 
 
@@ -228,6 +228,22 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     print()
 
+    # Level one used to gate on nothing. It printed the virtualisation and DIRTY state
+    # and then measured anyway, so its `accepted` field meant "the subprocess exited 0"
+    # while the same word elsewhere in this harness means "the method allows this run".
+    # That is worse than an absent field: dispatch is an rdtsc microbenchmark, the
+    # measurement in this project most sensitive to clock and thermal state, and it was
+    # the one level with no check on either.
+    blocking = validity.check_run({
+        "virtualisation": env.get("virtualisation"),
+        "git_dirty": env["build"]["git_dirty"],
+        "power_source": validity.current_power_source(),
+    }).reasons
+    if blocking:
+        for reason in blocking:
+            print(f"refusing to measure: {reason}", file=sys.stderr)
+        return 1
+
     cells = DESIGNS[args.design]()
     schedule = plan(cells, repetitions=args.repetitions, seed=args.seed)
 
@@ -264,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
                 "--hist", str(hist_path),
             ]
 
+            power_before = validity.current_power_source()
+
             record = {
                 "campaign_fingerprint": campaign.fingerprint,
                 "started_unix": time.time(),
@@ -275,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
                 "git_commit": env["build"]["git_commit"],
                 "git_dirty": env["build"]["git_dirty"],
                 "virtualisation": env.get("virtualisation"),
+                "power_source": power_before,
+                "thermal_speed_limit_start": validity.current_speed_limit(),
             }
 
             try:
@@ -297,6 +317,16 @@ def main(argv: list[str] | None = None) -> int:
             except MemoryError as exc:  # pragma: no cover - the driver itself is small
                 record["accepted"] = False
                 record["failure"] = f"{type(exc).__name__}: {exc}"
+
+            # Taken after the run, because a laptop that throttled during a cell was
+            # not throttled when it started. Intel Macs publish CPU_Speed_Limit and
+            # Apple Silicon does not, so this fires on some hosts and is inert on
+            # others. Which one a number came from belongs in the record.
+            record["thermal_speed_limit_end"] = validity.current_speed_limit()
+            verdict = validity.check_run(record)
+            if verdict.reasons:
+                record["accepted"] = False
+                record["rejection_reasons"] = verdict.reasons
 
             sink.write(json.dumps(record, ensure_ascii=False) + "\n")
             sink.flush()
