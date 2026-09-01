@@ -13,7 +13,7 @@ the reasons behind each design are in the docstrings of `run_campaign.py`,
 | Host idle | close the editor, the game, the browser, the agent session's own busy work | anything else is using CPU |
 | Mains power | `pmset -g ps` / `/sys/class/power_supply` / `Win32_Battery` | on battery |
 | Clean tree at the commit you will cite | `git status -sb` | any modified or untracked source file |
-| Release build of that commit | `cmake --build build/<preset> --config Release` | binary older than HEAD |
+| Release build of that commit | `cmake --build build/<preset> --config Release`; the only preset that also builds `route_bench` and the router arms is `bench` (`cmake --preset bench && cmake --build --preset bench` gives `build/bench`) | binary older than HEAD |
 | TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
 | Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair | not built, or reaches the server over loopback |
 | Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
@@ -96,7 +96,8 @@ WSL arrangements go in separate files and are never merged; the driver records
 Dispatch-only starts no server and needs no network. It is x86-only because it times with
 `rdtsc`. The 10 000-route DFA cells are split off because the parameterised table does
 not fit in this host's memory and a run that pages would contaminate whatever the shuffle
-placed after it.
+placed after it. `build/windows-routing` is the tree alex-pc already has with the router arms
+compiled in; on Linux and macOS the equivalent is `build/bench` from the `bench` preset.
 
 ```
 python -m benchmark.run_routing --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
