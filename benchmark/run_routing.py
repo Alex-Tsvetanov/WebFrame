@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"design {args.design}: {len(cells)} cells x {args.repetitions} repetitions "
           f"= {len(schedule)} runs")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
-          f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
+          f"{env.get('virtualisation') or 'none'}  git {(env['build']['git_commit'] or '?')[:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
     print()
 

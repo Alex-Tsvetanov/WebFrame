@@ -326,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
           f"= {len(schedule)} runs")
     print(f"about {len(schedule) * (args.duration + args.warmup + 6) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
-          f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
+          f"{env.get('virtualisation') or 'none'}  git {(env['build']['git_commit'] or '?')[:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
     if env["cpu"].get("siblings") and SERVER_AFFINITY and GENERATOR_AFFINITY:
         print(f"cores server={sorted(mask_cores(SERVER_AFFINITY, env['cpu']['siblings']))} "
