@@ -35,6 +35,21 @@ from typing import Any
 # Chosen by asking one question of each candidate: if this changed halfway through,
 # would the two halves still be one experiment? Kernel, CPU, governor and toolchain all
 # fail that test. Load average and uptime pass it, so they are recorded and left out.
+#
+# Note what this therefore is NOT. The fingerprint answers "is this the same machine",
+# not "was this run admissible", and those are different questions answered in different
+# places. Power source is the clearest case: it is captured, it is not here, and it is
+# checked per run by validity.check_run. That is right, because a laptop is the same
+# machine plugged in or not, and fingerprinting it would refuse to append to a campaign
+# for the entirely legitimate act of connecting a charger.
+#
+# The consequence, which is easier to write down than to rediscover: two runs can share
+# a fingerprint and still differ in a way the rules refuse. A campaign file will happily
+# accept the append; validity will reject the record. Demonstrated deliberately, and
+# harmlessly, by the descriptor census, whose two runs on battery-with-low-power-mode and
+# on mains produced the same fingerprint and byte-identical tables. For a count that is
+# the correct outcome. For a timing campaign it is the whole difference between a run
+# that may join the population and one that must not.
 _FINGERPRINTED = (
     "machine.node",
     "machine.arch",
