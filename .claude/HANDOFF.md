@@ -27,6 +27,15 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 
 Both hosts are Alex's daily machines. No timed run without a window Alex names.
 
+**Machine sessions must never block on a question.** Alex is often unavailable, and a
+session that calls AskUserQuestion stops processing everything, including messages from
+here. Every brief repeats: never ask Alex or wait on him; send the question to the
+coordinator with the default you will take and continue with it after 10 minutes; push only
+to the branches the brief names; never rebase, force-push or modify `phase0-foundation`;
+never change the system or enter a sudo password (skip and report); a blocked permission
+prompt is reported and skipped; when unsure, stop that step and report. Both sessions were
+told on 02:50.
+
 **This repository is public.** Nothing that identifies a machine beyond its hardware class
 belongs here or in any commit, branch or inbox file on it: no hostnames, addresses, SSIDs,
 login state or security posture. Those live in the local memory notes. Measurement result
