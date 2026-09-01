@@ -538,8 +538,12 @@ class LoadgenGenerator:
         offered = float(data.get("offered_rate", 0.0))
         achieved = float(data.get("rps", 0.0))
 
+        whole_run = data.get("responses_total")
         result = GeneratorResult(
             requests_total=int(data.get("completed", 0)) + int(data.get("non_2xx", 0)),
+            # None rather than zero from a generator built before the counter existed:
+            # a zero would read as measured.
+            requests_total_whole_run=int(whole_run) if whole_run is not None else None,
             requests_non_2xx=int(data.get("non_2xx", 0)),
             socket_errors=int(data.get("socket_errors", 0)),
             requests_per_second=float(data.get("rps", 0.0)),

@@ -39,7 +39,13 @@ from typing import Any, Iterator
 # establishment as an outcome in its own right. A file at version 2 or below has no
 # connect_ms column rather than an empty one, and every run in it is tls=False because
 # the harness could not produce anything else.
-SCHEMA_VERSION = 3
+#
+# 4 added requests_total_whole_run, the response count over the generator's whole
+# lifetime, and made git_dirty nullable. A file at version 3 or below has no whole-run
+# count, so a process-lifetime server counter from it cannot be normalised per request;
+# and its git_dirty=false may be a tree that was read as clean or one that could not be
+# read at all, which from version 4 on are distinct values.
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -103,6 +109,11 @@ class RunRecord:
 
     # --- Outcomes -----------------------------------------------------------
     requests_total: int = 0
+    # Every response the generator saw, warmup included. requests_total is the measured
+    # window, and dividing a counter that runs for the server's whole lifetime by it
+    # inflates the ratio by (warmup + duration) / duration. None where the generator did
+    # not report it.
+    requests_total_whole_run: int | None = None
     requests_non_2xx: int = 0
     socket_errors: int = 0
     requests_per_second: float = 0.0

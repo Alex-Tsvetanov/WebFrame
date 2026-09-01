@@ -48,6 +48,10 @@ class GeneratorResult:
     socket_errors: int = 0
     requests_per_second: float = 0.0
     bytes_per_second: float = 0.0
+    # Responses over the whole process lifetime, warmup included, where requests_total
+    # is the measured window. The denominator for any server-side counter that also
+    # runs for the whole lifetime; None from a generator that predates it.
+    requests_total_whole_run: int | None = None
     latency_ms: dict[str, float] = field(default_factory=dict)
     latency_histogram: str | None = None
     raw_samples_path: str | None = None
@@ -228,6 +232,7 @@ def run_one(
 
         result = generator.run(cell, duration_s)
         record.requests_total = result.requests_total
+        record.requests_total_whole_run = result.requests_total_whole_run
         record.requests_non_2xx = result.requests_non_2xx
         record.socket_errors = result.socket_errors
         record.requests_per_second = result.requests_per_second

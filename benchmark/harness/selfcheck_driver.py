@@ -61,9 +61,9 @@ class FakeGenerator:
     raises: bool = False
     result: driver.GeneratorResult = field(
         default_factory=lambda: driver.GeneratorResult(
-            requests_total=100_000, requests_non_2xx=0, requests_per_second=3333.0,
-            latency_ms={"p50": 1.2, "p99": 4.5}, cpu_fraction=0.4,
-            argv=["fake", "-c", "256"],
+            requests_total=100_000, requests_total_whole_run=115_000, requests_non_2xx=0,
+            requests_per_second=3333.0, latency_ms={"p50": 1.2, "p99": 4.5},
+            cpu_fraction=0.4, argv=["fake", "-c", "256"],
         )
     )
 
@@ -140,6 +140,11 @@ def run(check: Callable[[str, bool], None]) -> None:
               all(r.git_commit == "c" * 40 and r.compiler for r in on_disk))
         check("server-side resource usage is recorded",
               all(r.server_cpu_seconds == 12.5 for r in on_disk))
+        # The denominator for a process-lifetime server counter is the whole-run count,
+        # not the measured window; both are carried so neither has to be inferred.
+        check("the whole-run response count is carried beside the measured one",
+              all(r.requests_total_whole_run == 115_000 and r.requests_total == 100_000
+                  for r in on_disk))
         check("QUIC counters are carried",
               all(r.quic_forwarded_in == 3 for r in on_disk))
 
