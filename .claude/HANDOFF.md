@@ -114,6 +114,37 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The harness records no binary provenance.** `_FINGERPRINTED` carries `build.git_commit`,
+  `build.type`, `build.io_backend`, `toolchain.compiler` and four dependency versions, and
+  nothing about the executable: no hash, no mtime, no size. `git_commit` describes the source
+  the tree is checked out at, never the source the binary was built from. The desktop found
+  this the hard way: every build tree there was pinned to the repository's old path
+  (`D:\GitHub\...` before it moved), so no tree could be incrementally rebuilt and the
+  binaries were frozen at 30 August while HEAD is 35 commits later. A campaign run without
+  noticing would have stamped records with a commit whose validity gates the binary predates.
+  **To add: a preflight that refuses when a server or generator executable is older than the
+  commit the record will claim.**
+- **The matcher commit is not recorded either.** `COROUTE_URL_MATCHER_TAG` decides the DFA
+  router's performance and is the dependency the routing paper's claim turns on, yet the
+  environment captures `openssl`, `ngtcp2`, `nghttp3`, `liburing` and not it. **To add: read it
+  from `CMakeCache.txt` beside the others** (same shape as `resolve_io_backend`).
+  Consequence found tonight: the desktop's routing tree still had `2220b61b`, which looked like
+  a deliberate pin and is a fossil, the repository's own default until `48ec1c81a` on 30 Aug;
+  three pins have landed since. The 30 August routing records were produced with it, and
+  nothing in them says so.
+- **Syscalls per request is measurable and has been measured** (laptop, loopback, pipeline
+  validation only): churn costs about 4.5x the syscalls per request of keep-alive on both
+  Linux backends, while epoll and io_uring differ by under 4% within a shape. If that holds on
+  a controlled machine it is the mechanism section both papers need, and it says the axis is
+  connection lifetime rather than which backend is compiled in. `io_uring_enter` at 4.75 per
+  request in keep-alive is a finding about this implementation, not about io_uring.
+  Instrument: `perf stat` on the server pid, which needs root because tracefs permissions
+  block it whatever `perf_event_paranoid` says; `strace -c -f` costs 82% of throughput and is
+  a discovery tool only. Two quiet failures to guard against: a pid that is the `sudo`
+  wrapper, and `/proc/PID/comm` truncated to 15 characters; both give a confident wrong
+  answer, so assert `raw_syscalls` is non-zero before believing a cell, and make the perf
+  window match the measured window rather than overhang it.
+
 - **Every Windows binary in this project is MinGW-w64 g++, not MSVC**, including all
   committed records (`toolchain.compiler` in the environment files says so, and it is
   fingerprinted). Chapter V now states it, since a reader meeting "Windows" assumes MSVC.
