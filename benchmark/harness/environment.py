@@ -73,12 +73,16 @@ _FINGERPRINTED = (
 )
 
 
-def _run(cmd: list[str]) -> str | None:
+def _run(cmd: list[str], ok: tuple[int, ...] = (0,)) -> str | None:
     """Runs a command and returns its stripped stdout, or None if it did not work.
 
     None rather than an exception on purpose: capture must not fail because one probe
     is unavailable. A missing field is recorded as missing and shows up in the
     fingerprint as such, which is a difference the driver will notice if it changes.
+
+    `ok` is the set of exit codes that count as an answer. Some tools answer a yes/no
+    question with the exit code, and then a non-zero exit with output is the answer no
+    rather than a failure.
     """
     if shutil.which(cmd[0]) is None:
         return None
@@ -86,7 +90,7 @@ def _run(cmd: list[str]) -> str | None:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
-    if out.returncode != 0:
+    if out.returncode not in ok:
         return None
     return out.stdout.strip() or None
 
@@ -534,9 +538,16 @@ def _virtualisation_windows(identity: str | None = None) -> str | None:
 
 def _virtualisation_linux(detect_virt: str | None = None,
                           identity: str | None = None) -> str | None:
-    """Linux, preferring systemd-detect-virt and falling back to DMI without systemd."""
+    """Linux, preferring systemd-detect-virt and falling back to DMI without systemd.
+
+    systemd-detect-virt exits 0 only when it detects something and prints `none` with
+    exit 1 on bare metal, so accepting exit 0 alone read every bare-metal answer as no
+    answer and took the verdict from the SMBIOS heuristic below, which this module
+    documents as spoofable, while claiming it came from systemd. A genuine failure still
+    prints nothing to stdout and stays None.
+    """
     if detect_virt is None:
-        detect_virt = _run(["systemd-detect-virt"])
+        detect_virt = _run(["systemd-detect-virt"], ok=(0, 1))
     if detect_virt is not None:
         return None if detect_virt.strip() == "none" else detect_virt.strip()
     if identity is None:

@@ -554,11 +554,18 @@ def virtualisation_checks() -> None:
     check("linux: none is metal", env_mod._virtualisation_linux("none") is None)
     check("linux without systemd falls back to DMI",
           env_mod._virtualisation_linux(None, "QEMU Standard PC") == "qemu")
+    # systemd-detect-virt says `none` with exit 1, so the bare-metal answer used to be
+    # read as no answer and the verdict came from the SMBIOS heuristic instead.
+    if sys.platform != "win32":
+        check("exit 1 with output is an answer when the probe says so",
+              env_mod._run(["sh", "-c", "echo none; exit 1"], ok=(0, 1)) == "none")
+        check("exit 1 is still a failure by default",
+              env_mod._run(["sh", "-c", "echo none; exit 1"]) is None)
 
     # The whole point. A probe that could not run must be distinguishable from a probe
     # that ran and found nothing, and must fail closed.
     real_run = env_mod._run
-    env_mod._run = lambda cmd: None
+    env_mod._run = lambda cmd, **kw: None
     try:
         check("a windows probe that does not answer is unchecked, not clean",
               "unchecked" in str(env_mod._virtualisation_windows()))
