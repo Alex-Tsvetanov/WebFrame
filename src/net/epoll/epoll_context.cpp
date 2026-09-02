@@ -312,7 +312,12 @@ namespace coroute::net
 			// The lock is released first on purpose. A woken worker's first act is to
 			// take this mutex, and waking it while still holding it only buys a
 			// contended acquire.
+#if !defined(COROUTE_EPOLL_NO_WAKE)
 			wake();
+#endif
+			// COROUTE_EPOLL_NO_WAKE reproduces the pre-fix behaviour for measurement:
+			// the queue is filled and nothing is woken, so a parked worker finds the
+			// callback whenever its own timeout expires. Experiment branch only.
 		}
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override

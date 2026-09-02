@@ -612,7 +612,11 @@ namespace coroute::net
 			// syscall count went away.
 			__kernel_timespec ts;
 			ts.tv_sec = 0;
+#if defined(COROUTE_URING_WAIT_NS)
+			ts.tv_nsec = COROUTE_URING_WAIT_NS;  // set by the timeout experiment
+#else
 			ts.tv_nsec = 1000000;  // 1ms
+#endif
 
 			// The wait needs the submission lock because it takes an SQE for its timeout
 			// on kernels without IORING_FEAT_EXT_ARG, but it must not still hold it
@@ -666,6 +670,23 @@ namespace coroute::net
 			// across that would deadlock the worker against itself. The completion queue
 			// needs no lock regardless, having exactly one consumer, this worker.
 			int ret = 0;
+#if defined(COROUTE_URING_WAIT_BLOCKING)
+			// The third point of the timeout experiment: no timeout at all, so the wait
+			// returns only when something completes.
+			//
+			// Possible only because wake() no longer needs the submission queue. While
+			// wake() submitted a no-op, an untimed wait was not a long wait but a
+			// deadlock: the worker would hold sq_mutex until a completion arrived, and
+			// the only thing that would produce one is a submission that could not be
+			// made while the lock was held.
+			//
+			// No lock here for the same reason the feature-gated branch below takes
+			// none: io_uring_wait_cqe submits nothing, so it is not a producer. Taking
+			// the lock would reintroduce exactly the deadlock described above, since
+			// this wait has no timeout to end it.
+			(void)ts;
+			ret = io_uring_wait_cqe(&worker_ring->ring, &cqe);
+#else
 			if (worker_ring->ext_arg)
 			{
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
@@ -675,6 +696,7 @@ namespace coroute::net
 				std::lock_guard lock(worker_ring->sq_mutex);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
 			}
+#endif
 
 			// Deliberately no early return on -ETIME.
 			//

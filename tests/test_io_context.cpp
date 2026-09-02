@@ -146,7 +146,16 @@ TEST_CASE("posted work reaches an idle worker without waiting out the poll timeo
 	std::thread loop([ctx] { ctx->run(); });
 	std::this_thread::sleep_for(50ms);
 
+	// Raised from 21 by COROUTE_POST_SAMPLES so the shape of the distribution can be
+	// read, not only its middle. A blocking wait lets a core reach a deeper idle state
+	// than a 1us one does, and if some deliveries catch it deeper than others the
+	// distribution is bimodal and the depth is the thing worth reporting. 21 is enough
+	// for a median and nothing else.
+#if defined(COROUTE_POST_SAMPLES)
+	constexpr int posts = COROUTE_POST_SAMPLES;
+#else
 	constexpr int posts = 21;
+#endif
 	std::vector<std::int64_t> latencies_us;
 	latencies_us.reserve(posts);
 
@@ -167,7 +176,14 @@ TEST_CASE("posted work reaches an idle worker without waiting out the poll timeo
 		}
 		latencies_us.push_back(
 			std::chrono::duration_cast<std::chrono::microseconds>(took.get()).count());
+#if defined(COROUTE_POST_GAP_MS)
+		// The interval sweep: parking depth may grow with how long the core has been
+		// idle, in which case a single "cost of idling" figure means nothing without the
+		// interval that produced it.
+		std::this_thread::sleep_for(std::chrono::milliseconds(COROUTE_POST_GAP_MS));
+#else
 		std::this_thread::sleep_for(2ms);
+#endif
 	}
 
 	ctx->stop();
@@ -178,8 +194,14 @@ TEST_CASE("posted work reaches an idle worker without waiting out the poll timeo
 
 	std::sort(latencies_us.begin(), latencies_us.end());
 	const std::int64_t median = latencies_us[latencies_us.size() / 2];
-	INFO("median delivery " << median << "us, first " << latencies_us.front() << "us, worst "
-	                        << latencies_us.back() << "us");
+	const auto at = [&latencies_us](double q) {
+		return latencies_us[std::min(latencies_us.size() - 1,
+		                             static_cast<std::size_t>(latencies_us.size() * q))];
+	};
+	INFO("delivery us: n=" << latencies_us.size() << " min=" << latencies_us.front()
+	                       << " p10=" << at(0.10) << " p25=" << at(0.25) << " p50=" << median
+	                       << " p75=" << at(0.75) << " p90=" << at(0.90) << " p99=" << at(0.99)
+	                       << " max=" << latencies_us.back());
 
 	// A fifth of io_uring's 1ms timeout and a fiftieth of epoll's 100ms one, so neither
 	// backend can pass by waiting one out.
