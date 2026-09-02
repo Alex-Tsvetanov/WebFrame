@@ -693,6 +693,25 @@ been scheduled yet.
   first, 310 self-checks passing. **The admissibility declaration was committed BEFORE the design
   ran**, reasoning, exemption and price in one place, because an exemption written afterwards is an
   excuse.
+- **PAPER 1 IS DRAFTED: `paper-dfa-routing` draft/v1, `d60d9d7`, 7 pages, build clean, pages checked
+  visually.** Every section but results, which is a numberless skeleton naming the record each future
+  table comes from (`measure/desktop-2026-09-02-routing`, committed on the desktop, not yet filed).
+  40 edits applied from three review lenses. **The one root cause worth knowing: the scaffold's
+  results TODO claimed a full factorial the drivers never run** -- `run_routing.py:65-78` returns the
+  10 000-route cell for all three arms, so the parameterised DFA at 10 000 has five interleaved runs,
+  which the campaign record confirms; six sentences across five files were corrected from it.
+  **Two coordinator edits after the workflow:** the abstract was a comment block, so the built PDF
+  printed "Abstract--" followed by nothing; it now states the problem, the arrangement and the limits
+  in words with no measured number and a marked finding sentence to be written when the record is
+  filed. And the running head printed "TELECOM 2026" inherited from the scaffold; Alex ruled venues
+  stay TODO, and **a printed venue is a claim**, so it is now empty with the reason, matching paper 2.
+  (The coordinator's own first attempt at that edit broke the head block with a stray brace and was
+  repaired in the next commit.)
+  **Privacy check, resolved as no action:** the reviewer flagged hostnames, private addresses and
+  local paths in `INDEX.md`, `BLOCKERS.md` and `README.md`. Those are the repository's working notes
+  and `paper-dfa-routing` is confirmed private (`isPrivate: true`), which is exactly where machine
+  identity is allowed to live. **The paper itself is clean**: no hostname, address, MAC, username or
+  local path in any `.tex`, the `.bib` or the PDF. Nobody should "fix" the notes.
 - **Overnight queue for the laptop, in order, stop when it empties.** (1) **The spaced-TLS probe:** one
   cell, transport TLS at 10 000, io_uring, 7 repetitions with a deliberate ~30 s gap between runs,
   about six minutes. It could recover the whole TLS half of paper 3's cross-arm table, currently
