@@ -148,14 +148,75 @@ def addresses(subnet: str) -> tuple[str, str, int]:
     return str(hosts[0]), str(hosts[1]), net.prefixlen
 
 
+def expected_tokens(netem: list[str] | None, limit: int) -> set[str]:
+    """What observed_profile reports for a freshly applied profile.
+
+    A set rather than a string, because iproute2's dump order is its own and refusing a
+    pair over the order it printed its arguments in would be a gate that cannot be
+    satisfied, which is a gate that gets removed. `distribution <table>` is dropped
+    because tc does not echo it back.
+    """
+    if netem is None:
+        return {"none"}
+    kept: list[str] = []
+    skip = False
+    for token in netem:
+        if skip:
+            skip = False
+            continue
+        if token == "distribution":
+            skip = True
+            continue
+        kept.append(token)
+    return {"netem", "root", "limit", str(limit), *kept}
+
+
+def configured(ns: str, iface: str, ip_addr: str,
+               netem: list[str] | None, limit: int) -> bool:
+    """Whether one end of the pair is the end this profile asks for.
+
+    Address, link state and qdisc, because the existence of a namespace is not evidence
+    that anything inside it was set up. Anything unreadable is not configured: a pair
+    nobody could inspect is not a pair anybody should measure over.
+    """
+    addr = _run(["ip", "-n", ns, "-br", "addr", "show", iface], check=False)
+    if addr.returncode != 0 or ip_addr not in addr.stdout or "UP" not in addr.stdout.split():
+        return False
+    qdisc = _run(["ip", "netns", "exec", ns, "tc", "qdisc", "show", "dev", iface],
+                 check=False)
+    if qdisc.returncode != 0:
+        return False
+    return set(observed_profile(qdisc.stdout).split()) == expected_tokens(netem, limit)
+
+
 def up(subnet: str, profile: str, limit: int) -> int:
     server_ip, generator_ip, prefix = addresses(subnet)
+
+    if profile not in PROFILES:
+        print(f"unknown profile {profile!r}; one of {', '.join(sorted(PROFILES))}",
+              file=sys.stderr)
+        return 2
+    netem = PROFILES[profile]
+    ends = ((SERVER_NS, SERVER_IF, server_ip), (GENERATOR_NS, GENERATOR_IF, generator_ip))
 
     if namespace_exists(SERVER_NS) and namespace_exists(GENERATOR_NS):
         # Idempotent on purpose. A campaign script that calls this before every run must
         # not fail because the pair it needs is already there.
-        print(f"pair already up: {SERVER_NS}={server_ip} {GENERATOR_NS}={generator_ip}")
-        return 0
+        #
+        # Idempotent about the pair, though, not about the two names. This used to return
+        # 0 the moment both namespaces existed, before the profile was so much as looked
+        # at, so `up --profile wan50` against a pair built as none printed success and
+        # left no qdisc, and a pair whose veth step failed -- leaving both namespaces
+        # behind -- reported itself up forever after.
+        if all(configured(ns, iface, ip_addr, netem, limit) for ns, iface, ip_addr in ends):
+            print(f"pair already up: {SERVER_NS}={server_ip} {GENERATOR_NS}={generator_ip} "
+                  f"profile={profile}")
+            return 0
+        print(f"{SERVER_NS} and {GENERATOR_NS} exist but are not the pair being asked "
+              f"for (profile={profile}, limit={limit}): an address, a link state or a "
+              f"qdisc does not match, or could not be read. Run 'down' first.",
+              file=sys.stderr)
+        return 2
     if namespace_exists(SERVER_NS) or namespace_exists(GENERATOR_NS):
         # Half a pair is not a pair, and guessing which half to repair is how a rig ends
         # up in a state nobody can describe.
@@ -163,11 +224,26 @@ def up(subnet: str, profile: str, limit: int) -> int:
               file=sys.stderr)
         return 2
 
-    if profile not in PROFILES:
-        print(f"unknown profile {profile!r}; one of {', '.join(sorted(PROFILES))}",
-              file=sys.stderr)
-        return 2
+    try:
+        return _build(server_ip, generator_ip, prefix, profile, netem, limit)
+    except subprocess.CalledProcessError:
+        # Undone rather than left. Every command here is check=True and the two
+        # namespaces are created first, so a failure anywhere after them used to leave a
+        # pair that the test above then called up: veth-less, so every run failed to
+        # connect, or -- worse, because it is silent -- impaired on one direction and not
+        # the other, which no record would have carried either.
+        for name in (SERVER_NS, GENERATOR_NS):
+            _run(["ip", "netns", "del", name], check=False)
+        # The end created but never moved into a namespace, which `down` cannot reach
+        # because it deletes namespaces. Left behind it makes `ip link add` fail with
+        # "File exists" on every later attempt, after the two adds have already
+        # succeeded, which is precisely the state that made the pair report itself up.
+        _run(["ip", "link", "del", SERVER_IF], check=False)
+        raise
 
+
+def _build(server_ip: str, generator_ip: str, prefix: int, profile: str,
+           netem: list[str] | None, limit: int) -> int:
     _run(["ip", "netns", "add", SERVER_NS])
     _run(["ip", "netns", "add", GENERATOR_NS])
 
@@ -186,7 +262,6 @@ def up(subnet: str, profile: str, limit: int) -> int:
     _run(["ip", "-n", SERVER_NS, "link", "set", "lo", "up"])
     _run(["ip", "-n", GENERATOR_NS, "link", "set", "lo", "up"])
 
-    netem = PROFILES[profile]
     if netem is not None:
         # Per direction, because netem shapes egress only. One qdisc on each end's
         # transmit side makes the impairment symmetric and, more to the point, makes it
@@ -229,6 +304,15 @@ def status(subnet: str) -> int:
         print(f"        qdisc: {qdisc.stdout.strip() or '(none)'}")
     print(f"server address:    {server_ip}")
     print(f"generator address: {generator_ip}")
+    # Non-zero for a pair whose ends are not addressed and up, so a script that gates a
+    # night on this exit status does not start over a hollow pair. The impairment is not
+    # checked here because status is not told which profile was asked for; up is.
+    for ns, iface, ip_addr in ((SERVER_NS, SERVER_IF, server_ip),
+                               (GENERATOR_NS, GENERATOR_IF, generator_ip)):
+        addr = _run(["ip", "-n", ns, "-br", "addr", "show", iface], check=False)
+        if addr.returncode != 0 or ip_addr not in addr.stdout or "UP" not in addr.stdout.split():
+            print(f"{ns} exists but {iface} is not up at {ip_addr}", file=sys.stderr)
+            return 1
     return 0
 
 

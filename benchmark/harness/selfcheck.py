@@ -551,6 +551,66 @@ def validity_checks() -> None:
           len(validity.check_run(multi).reasons) == 3)
 
 
+def netns_pair_checks() -> None:
+    print("\n== a half-built namespace pair does not report itself up ==")
+
+    import subprocess as sp
+
+    from benchmark import netns
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, check=True):
+        calls.append(list(args))
+        # The step that leaves the pair fully routable and silently unimpaired, which is
+        # the failure nothing else could see: addresses, links and lo are all done by
+        # then, so every run succeeds and the record claims a profile the path lacks.
+        if check and args[:4] == ["ip", "netns", "exec", netns.SERVER_NS] and "add" in args:
+            raise sp.CalledProcessError(2, args, stderr="RTNETLINK answers: No such file")
+        return sp.CompletedProcess(args, 0, stdout="", stderr="")
+
+    original_run, original_exists = netns._run, netns.namespace_exists
+    try:
+        netns._run = fake_run
+        netns.namespace_exists = lambda name: False
+        try:
+            netns.up("10.77.0.0/30", "wan50", 100000)
+            raised = False
+        except sp.CalledProcessError:
+            raised = True
+        check("a failure part way through is not swallowed", raised)
+        tail = calls[-3:]
+        check("both namespaces are removed",
+              [c for c in tail if c[:3] == ["ip", "netns", "del"]]
+              == [["ip", "netns", "del", netns.SERVER_NS],
+                  ["ip", "netns", "del", netns.GENERATOR_NS]])
+        # `down` deletes namespaces only, so an end created and never moved survives it
+        # and makes every later `ip link add` fail with "File exists".
+        check("and so is the veth left in the default namespace",
+              tail[-1] == ["ip", "link", "del", netns.SERVER_IF])
+    finally:
+        netns._run, netns.namespace_exists = original_run, original_exists
+
+    # An existing pair is reused only when it is the pair being asked for. tc's dump is
+    # compared as a set of tokens, since iproute2 chooses its own order.
+    wan50 = netns.expected_tokens(netns.PROFILES["wan50"], 100000)
+    check("a freshly applied profile reads back as itself",
+          set(netns.observed_profile(
+              "qdisc netem 8001: root refcnt 2 limit 100000 delay 25ms").split()) == wan50)
+    check("a pair built with another profile does not",
+          set(netns.observed_profile(
+              "qdisc netem 8001: root refcnt 2 limit 100000 delay 50ms").split()) != wan50)
+    check("nor does one with no qdisc at all",
+          set(netns.observed_profile("qdisc noqueue 0: root refcnt 2").split()) != wan50)
+    check("and none expects exactly no netem",
+          netns.expected_tokens(netns.PROFILES["none"], 100000) == {"none"})
+    # tc does not echo `distribution normal` back, so a profile that asks for one must
+    # not be refused for the tokens tc declined to print.
+    check("a distribution table is not expected back",
+          netns.expected_tokens(netns.PROFILES["jitter"], 100000)
+          == {"netem", "root", "limit", "100000", "delay", "25ms", "5ms"})
+
+
 def counter_checks() -> None:
     print("\n== counters are parsed by name, not by column ==")
 
@@ -1186,6 +1246,7 @@ def main() -> int:
     campaign_checks()
     transport_checks()
     netem_checks()
+    netns_pair_checks()
     perf_counts_checks()
     readiness_probe_checks()
     perf_privilege_checks()
