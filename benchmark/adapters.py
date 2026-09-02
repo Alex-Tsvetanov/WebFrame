@@ -16,10 +16,12 @@ import ctypes
 import json
 import os
 import platform as _platform
+import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -323,18 +325,64 @@ SYSCALL_TRACEPOINTS = (
 TOTAL_TRACEPOINT = "raw_syscalls:sys_enter"
 
 
-def perf_privilege() -> str | None:
-    """How perf can read tracepoints here: "unprivileged", "root", or None for not at all.
+def _is_sudo_wrapper(path: str | None) -> bool:
+    """Whether the tool on PATH is a shell script that re-invokes itself under sudo.
 
-    Asked rather than assumed, and recorded with the counts, because the answer is a
-    property of the host that changes what the number means. On this laptop
-    perf_event_paranoid is 1 and an unprivileged perf still cannot open a tracepoint:
-    the block is the permissions on /sys/kernel/tracing, not the paranoid level, so
-    lowering paranoid further would not help and a run counted here was counted as root.
+    A real arrangement on this rig, not a hypothetical one. /usr/local/bin/perf is two
+    lines long and reads `exec /usr/bin/sudo -n "/usr/bin/perf" "$@"`, and the same
+    pattern covers ip, sysctl, bpftool, bpftrace, cpupower and pacman. It makes an
+    unprivileged-looking command run as root, which is convenient and is exactly the
+    kind of thing a record must not describe as unprivileged: the counts are then of a
+    root process, and whether a rig needs root is a question about the rig.
     """
+    if not path:
+        return False
+    try:
+        head = Path(path).read_bytes()[:512]
+    except OSError:
+        return False
+    return head.startswith(b"#!") and b"sudo" in head
+
+
+def perf_privilege() -> str | None:
+    """How perf can read tracepoints here, or None when it cannot at all.
+
+    Asked rather than assumed, and recorded with the counts, because the answer decides
+    what the number describes and it is not stable even on one machine. What can grant
+    it, and they are not interchangeable:
+
+      root                    invoked under sudo by this harness
+      root via PATH wrapper   the perf on PATH is a script that adds sudo itself
+      file capabilities       cap_perfmon or cap_sys_admin on the perf binary, which
+                              some distributions set; note that these are NOT sufficient
+                              on their own when /sys/kernel/tracing is mode 0700, since
+                              perf reads the tracepoint id out of tracefs before it ever
+                              calls perf_event_open
+      relaxed tracefs         /sys/kernel/tracing/events readable
+
+    The wrapper case is checked first and reported plainly because it is invisible
+    otherwise: `perf stat` succeeds, `id -u` inside it prints 0, and a probe that only
+    looks at the exit status concludes the host allows unprivileged counting when it
+    does not. This host reported exactly that for a while, and /usr/bin/perf invoked
+    directly still fails with "can't access trace events".
+    """
+    perf_path = shutil.which("perf")
     probe = ["perf", "stat", "-e", TOTAL_TRACEPOINT, "-x,", "true"]
+
     if subprocess.run(probe, capture_output=True).returncode == 0:
+        if _is_sudo_wrapper(perf_path):
+            return f"root via PATH wrapper ({perf_path})"
+        caps = ""
+        if perf_path:
+            got = subprocess.run(["getcap", perf_path], capture_output=True, text=True)
+            if got.returncode == 0 and "=" in got.stdout:
+                caps = got.stdout.rsplit("=", 1)[0].split()[-1]
+        if os.access("/sys/kernel/tracing/events", os.R_OK):
+            return "unprivileged, tracefs readable"
+        if caps:
+            return f"unprivileged, perf has file capabilities ({caps})"
         return "unprivileged"
+
     if subprocess.run(["sudo", "-n", *probe], capture_output=True).returncode == 0:
         return "root"
     return None
@@ -632,14 +680,16 @@ class CorouteServer:
         pidfile = Path(tempfile.mkstemp(prefix="perf-", suffix=".pid")[1])
         perf = ["perf", "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
                 "-p", str(pid), "-x,", "-o", str(out)]
-        if privilege == "root":
-            # perf's own pid is written by the shell before it execs, because Popen would
-            # otherwise hold sudo and a signal sent there never reaches perf. perf writes
-            # its counts on SIGINT, so stopping the right process is the whole game.
-            argv = ["sudo", "-n", "sh", "-c",
-                    f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
-        else:
-            argv = ["sh", "-c", f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
+        # perf's own pid is written by the shell before it execs, because Popen would
+        # otherwise hold whatever wraps perf and a signal sent there never reaches perf.
+        # perf writes its counts on SIGINT and discards them on SIGTERM, so stopping the
+        # right process is the whole game.
+        #
+        # Only the bare "root" case adds sudo. A PATH wrapper has already added it, and
+        # nesting sudo inside sudo would work but would put another process between the
+        # signal and perf.
+        launcher = ["sudo", "-n"] if privilege == "root" else []
+        argv = [*launcher, "sh", "-c", f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
 
         self._perf = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self._perf_privilege = privilege
@@ -671,7 +721,9 @@ class CorouteServer:
                 # SIGINT, not SIGTERM: perf writes its counts on interrupt and discards
                 # them on terminate.
                 killer = ["kill", "-INT", pid_text]
-                if self._perf_privilege == "root":
+                if self._perf_privilege and self._perf_privilege.startswith("root"):
+                    # Root either way, whether this harness added the sudo or a PATH
+                    # wrapper did, so the signal needs privilege either way.
                     killer = ["sudo", "-n", *killer]
                 subprocess.run(killer, capture_output=True)
             try:
