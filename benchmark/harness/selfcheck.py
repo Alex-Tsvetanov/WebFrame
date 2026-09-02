@@ -492,6 +492,18 @@ def counter_checks() -> None:
     check("only the watched counters are returned",
           set(deltas) <= set(validity.ZERO_DELTA_COUNTERS))
 
+    # What a namespaced run records when /proc/net could not be read where the packets
+    # actually crossed. These counters are per network namespace and the harness process
+    # is not in the run's, so a host-side read carries none of the run's traffic and
+    # would file every namespaced run as having dropped nothing.
+    unread = validity.counter_deltas({}, {"TcpExtListenOverflows": "unchecked"})
+    check("a reading that failed survives the subtraction",
+          unread["TcpExtListenOverflows"] == "unchecked")
+    reasons = validity.check_run(
+        {"counter_deltas": unread, "power_source": env_mod._NO_BATTERY}).reasons
+    check("an unread counter is refused, not read as zero",
+          any("TcpExtListenOverflows" in r for r in reasons))
+
 
 def schema_checks() -> None:
     print("\n== a run record carries everything needed to place it ==")

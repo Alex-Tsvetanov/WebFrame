@@ -47,11 +47,14 @@ per second with two generator threads on this host.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import platform
 import shlex
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from benchmark import netns
 from benchmark.adapters import CorouteServer, LoadgenGenerator
@@ -825,6 +828,36 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         _NETEM = ends[0]
 
+    # The drop counters live in the namespace the packets crossed.
+    #
+    # /proc/net/snmp and /proc/net/netstat are per network namespace, and the harness
+    # process is not in the one the run uses. Read from here they carry none of the run's
+    # traffic, so TcpExtListenOverflows and UdpRcvbufErrors are 0 on every namespaced run
+    # and check_run's gate for "the kernel dropped work before the server saw it" passes
+    # for exactly the arrangement this branch exists to enable. Read through the server's
+    # prefix instead; a read that fails puts a word the gate refuses in the record rather
+    # than a zero.
+    probes = driver.LIVE_PROBES
+    if server_prefix:
+        def _namespace_counters() -> dict[str, Any]:
+            def cat(path: str) -> str | None:
+                got = subprocess.run([*server_prefix, "cat", path],
+                                     capture_output=True, text=True)
+                return got.stdout if got.returncode == 0 else None
+            snmp, netstat = cat("/proc/net/snmp"), cat("/proc/net/netstat")
+            if snmp is None or netstat is None:
+                return {name: "unchecked" for name in validity.ZERO_DELTA_COUNTERS}
+            return validity.read_counters(snmp=snmp, netstat=netstat)
+
+        probes = dataclasses.replace(driver.LIVE_PROBES, counters=_namespace_counters)
+        # Asked once here rather than discovered per run, for the same reason the
+        # certificate is: every run would be refused for it anyway.
+        if any(isinstance(v, str) for v in _namespace_counters().values()):
+            print(f"cannot read /proc/net/snmp through {' '.join(server_prefix)}; the "
+                  f"drop counters for the run's own namespace are unreadable and every "
+                  f"run would be refused for it", file=sys.stderr)
+            return 2
+
     # Both of these read the build's CMakeCache and both refuse rather than guess, so an
     # unconfigured --build or an arm the tree does not contain ends here in its own
     # words instead of in a traceback.
@@ -974,6 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
         campaign_fingerprint=campaign.fingerprint,
         duration_s=args.duration,
         on_record=report,
+        probes=probes,
     )
 
     summary = driver.summarise(records)
