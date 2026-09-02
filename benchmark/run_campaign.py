@@ -628,6 +628,54 @@ def design_mechanism() -> list[Cell]:
     ]
 
 
+def design_demux_counted() -> list[Cell]:
+    """What classification costs in kernel crossings, which is paper 2's missing number.
+
+    design_mechanism crosses the backend and holds classification on; this crosses
+    classification and holds everything else. Four cells: the two connection shapes,
+    each with the demultiplexer on and off. The backend is chosen per invocation, so
+    this is run once per arm.
+
+    epoll is the instrument that can answer. Classification reads the first octets
+    rather than peeking, so its cost is one extra read per connection. Under epoll that
+    read is a syscall and appears directly in the count. Under io_uring it is a
+    submission, and although this implementation submits each operation on its own so it
+    cannot be batched away, its enter count also carries a timeout term that varies
+    between runs by a whole timer contribution, which is far larger than the effect. So
+    epoll carries the claim and io_uring is run for the contrast rather than as a check.
+
+    ADMISSIBILITY, DECLARED BEFORE THE RUN.
+
+    The admissible outputs of this design are syscall and kernel-entry counts per
+    request, and nothing else. Frequency drift is RECORDED and reported per run rather
+    than gated, because a count per request is a ratio of two counts over one window:
+    the requests are set by the offered rate and the duration, and the syscalls are set
+    by the work, so neither depends on how fast the processor ran. The drift rule exists
+    to protect timing comparisons, and applying it to a count discards evidence without
+    protecting anything -- which is the same reasoning that demoted the pacing gate.
+
+    One term is not exactly frequency-independent, and it was flagged before it moved:
+    how many completions a wait harvests depends on how fast the loop runs relative to
+    arrivals, so io_uring's completion-driven wait term can vary with timing. It is the
+    small term and it is why epoll carries the claim.
+
+    The price of the exemption, and it is not optional: THE LATENCY FIGURES FROM THIS
+    DESIGN ARE NOT REPORTABLE. They are produced, they are in the records, and they must
+    not be quoted. Any latency claim comes from a gated campaign.
+
+    Counting also changes what a run measures -- perf attaches per run, which lengthens
+    the gap between runs and makes the clock ramp through the measured window -- so the
+    timing from a counted run is not comparable with an uncounted one even setting the
+    rule aside.
+    """
+    return [
+        Cell.of(system_name(), **_base(max_requests_per_connection=limit),
+                protocol_detection=detect, offered_rate=rate)
+        for limit, rate in ((0, MECHANISM_KEEPALIVE_RATE), (1, MECHANISM_CHURN_RATE))
+        for detect in (True, False)
+    ]
+
+
 # Three rates, one connection shape, for testing whether a syscall count is per request
 # or per second.
 #
@@ -709,6 +757,9 @@ DESIGNS = {
     "mechanism": design_mechanism,
     "clock-ladder": design_clock_ladder,
     "churn-ladder-counted": design_churn_ladder_counted,
+    # Paper 2's syscall count. Run once per arm; see the design's docstring for why its
+    # latency figures are not reportable.
+    "demux-counted": design_demux_counted,
 }
 
 
