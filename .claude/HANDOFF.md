@@ -102,98 +102,23 @@ been scheduled yet.
   overruns both at the lowest offered rate. **The 150-rate fear did not materialise**, 99 of
   100 accepted with the single failure a socket error rather than an admissibility one, so the
   ladder gap mattered less than expected; worth a sentence in the results.
-- **The pacing gate's sensitivity varies with the offered rate, and the lowest rate is the
-  most fragile cell rather than the safest.** At 25 establishments a second over a twenty
-  second window there are about 500 samples, so the p99 of pacing lag is the fifth worst of
-  500 and one scheduling hiccup can be it; at 150 there are 3000 samples, the p99 is the
-  thirtieth worst, and the same hiccup cannot reach it. That inverts the intuition a ladder
-  encourages. It is a property of the design rather than the host, everything needed to check
-  it is already in the stored per-run pacing figures, and it belongs with the results.
-
-- **The Linux host's kernel disqualified its TSC, so every clock read there is a syscall.**
-  `current_clocksource` is `hpet`, and `tsc` is not even in the available list: the kernel
-  marked it unstable at boot on a watchdog timeout, which on some AMD parts is a known false
-  positive. Consequence measured on that host: `clock_gettime(CLOCK_MONOTONIC)` costs 1931 ns
-  and one syscall per call, against 5 ns and none for the coarse clock, roughly a hundredfold.
-  At about 1.7 clock reads per request that is ~3.3 microseconds per request of overhead
-  belonging to the firmware rather than the code, and it lands in every latency figure and
-  every syscall count: the epoll keep-alive figure is 7.09 syscalls per request there and
-  about 5.09 on a TSC host. Now recorded as `tuning.clocksource` and **fingerprinted**
-  (`5a8359d97`), so two hosts differing only in it cannot pool. Deliberately NOT a refusal:
-  refusing would leave the project with no Linux timing data at all, and the honest
-  arrangement is to record it, prevent the merge, and state the limitation. **For Alex:
-  `tsc=nowatchdog` as a boot parameter is the remedy; a host reporting hpet is a host to fix,
-  not a number to adjust.**
-- **The drift rule stays two-sided and unchanged. Decided, with evidence.** A warmup ladder
-  (5, 30, 60 s, offered rate met in all six runs) showed the io_uring keep-alive residual
-  plateaus at 4.7, 3.8, 3.7 percent, with start and end reproducible to about 20 MHz. Twelve
-  times the warmup buys one point and stops, so it is not ramp from idle, which sixty seconds
-  would have absorbed. It is systematic, workload-specific and repeatable, which is exactly
-  what a one-sided rule would stop reporting; and a rise inside the measured window still
-  means early requests ran on a slower clock than late ones, so the distribution is assembled
-  across a moving clock either way. The churn cell oscillates (2.8, 0.4, 6.1) rather than
-  converging, so **its one accepted record at 30 s warmup is a coin landing well and is
-  discarded, not used.** Consequence accepted deliberately: **the io_uring arm produces no
-  admissible timing record on that host until the cause is understood.**
-- **Measured: the io_uring implementation holds the package clock about 145 MHz (3.5%)
-  lower, and the offset is present at zero load.** Per-core clocks sampled every 0.5 s across
-  all sixteen cores, both arms over the netns pair at 10 000 requests a second, both
-  delivering identical completed counts at each rate with no socket errors. Fastest core,
-  io_uring minus epoll, at three loads: **-147 MHz with the server up and no requests at all,
-  -152 at 3000 requests a second, -141 at 10 000.** A gap that is the same with no requests as
-  with ten thousand a second rules the requests out as its cause, which is a stronger
-  statement than a monotone trend would be. It is uniform across cores (cpu2-cpu15 all 140-177 MHz
-  slower, tightly grouped near 150; only cpu0 and cpu1 differ), so it is a package-wide boost
-  effect rather than one hot thread. It also explains the residual drift the rule keeps
-  refusing: the io_uring cells start lower and climb because they are held down, not because
-  they ramp.
-  **Write it as a mediator, not a confounder.** A confounder is a common cause of treatment
-  and outcome and must be adjusted for; here the treatment causes the clock change, so the
-  slower clock is part of what io_uring costs and adjusting for it would remove part of the
-  effect being measured. The latency comparison is therefore not invalid, it is complete: the
-  completion model as implemented pays a per-second price, and part of what that price buys is
-  a slower package. State the limitation that the magnitude is hardware-specific, since a part
-  with no boost headroom would show none of it.
-- **The cause is one line, found by reading and not yet changed.**
-  `src/net/io_uring/uring_context.cpp:492` sets `ts.tv_nsec = 1000`, a one-microsecond
-  timeout, and `:473` runs `poll_and_resume` / `process_callbacks` in an unconditional loop
-  with nothing blocking it, so every iteration issues an `io_uring_enter` with
-  `IORING_ENTER_GETEVENTS` and a deadline that has usually already passed. Four workers at
-  about 58 000 iterations a second is the measured 230 000. The rate is set by how long an
-  enter takes on the host, not by the workload, which is exactly the time-proportional
-  signature. The comment at `:489` names the trade deliberately ("balance between latency and
-  CPU usage"), so this is a design choice to re-price, not a bug. Incidental correction: the
-  comment at `:145` describes a kernel without `IORING_FEAT_EXT_ARG`; this one has it
-  (features 0x3ffff read from a live ring), so no timeout SQE is consumed here.
-  **Complete chain, all measured:** 1 us timeout to about 230 000 enters a second, to a
-  syscalls-per-request figure that measures the poll loop rather than the work, to a package
-  clock held about 145 MHz lower at zero load, to every latency comparison between the
-  backends carrying that as part of io_uring's cost. That chain is the spine of the
-  I/O-portability paper's first sub-study.
-  **Authorised next, on its own branch off the merged HEAD:** raise the timeout to about 1 ms,
-  one line, and measure before and after identically, including the cost the comment names,
-  which is added latency on the first request after an idle gap. A blocking wait when nothing
-  is in flight is the better design and should be attempted only after the one-line version
-  has shown the size of the effect.
-- **Nine `clock_gettime` per established connection is real per-connection work.** Stated,
-  retracted, and reinstated in one night, and the third version is the measured one. A rate
-  ladder at three points on a fixed shape (2000, 5000, 10000 requests a second, epoll, all
-  accepted) gives 2.005, 2.004, 2.002 clock reads per request: flat across a fivefold change,
-  with a least-squares floor of 10 a second, which is zero to within measurement. A fixed
-  reader of the size the earlier fit claimed would have made the per-request figure fall from
-  about 3.5 to 2.3 across that ladder, so there is no such reader and `timer_queue.hpp:107` is
-  not the explanation. **So about 9.3 reads per established connection against 2.00 per
-  request on an established one means roughly 7.3 genuine reads per connection**, and the
-  deadline machinery arming and disarming more than once per connection is back to being the
-  live hypothesis. Keep-alive is measured; churn is still inferred from a single rate and
-  wants its own ladder.
-  The retraction that failed was a two-point fit in which rate and shape moved together, so it
-  could not separate them, and two backends agreeing on it corroborated only that both mixed
-  the same two shapes the same way. **A decomposition that separates two effects needs at
-  least one more point than it has unknowns, and a fit whose variables moved together is not
-  evidence about either of them separately.** The io_uring conclusion is unaffected and the
-  reason is worth keeping: its two cells differ 25-fold in rate while the enter rate differs
-  1.04-fold, and no shape difference makes a per-request cost fall 25-fold.
+- **Pacing rejections land at the bottom of every table, and the cause is open.** Three of
+  three pacing refusals across 900 runs sit at a design's lowest offered rate: both of churn's
+  at 25 establishments a second (of 25/50/100/150) and transport's single one at 5000 requests
+  a second (of 5000 to 35000). Two shapes, rates two orders of magnitude apart, every higher
+  rate spotless. A sample-count explanation was offered and **refuted**: at 5000/s over 20 s
+  there are ~100 000 pacing samples so the p99 is about the thousandth worst, which no single
+  hiccup reaches, though the argument does hold for churn's ~500 samples. Two live hypotheses,
+  both predicting the pattern at either scale: the generator sleeps until near the due slot and
+  spins only the last segment, so at a low rate every sample inherits timer granularity and
+  wake-up latency while at a high rate the loop paces itself; or the generator is idle enough
+  between sends to be descheduled or dropped to a lower power state, paying the wake-up on
+  every sample. **Decidable offline from the 900 stored records at no machine cost**: compare
+  the median, p90 and p99 of pacing by offered rate per design, plus the generator's CPU share.
+  If the median also moves, the cause is in every sample; if only the tail moves, something
+  rarer is happening. Queued for after the third design.
+- **Second design complete: `transport`, 500 runs, 499 accepted, 1 rejected (0.2%)**, 3 h 27 m.
+  Third, `h1-deep`, started 09:52 local.
 - **A half-specified off-host arrangement runs silently as an on-host one.**
   `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
   alone is ignored without a word, while `--host` is read unconditionally. The opposite
