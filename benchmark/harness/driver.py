@@ -81,8 +81,8 @@ class GeneratorResult:
     # configured. Empty off Linux and from a generator built before it reported one.
     #
     # It exists because the arrangement is asserted by a route metric and nothing else:
-    # a machine with Ethernet and WiFi on one subnet decides which carries a run by a
-    # number DHCP can change, and a run that moved to WiFi would still look plausible.
+    # a host with more than one interface on one subnet decides which carries a run by a
+    # number DHCP can change, and a run that moved medium would still look plausible.
     # Names and link properties only; never an address or a MAC.
     local_interface: str | None = None
     local_interface_speed_mbit: str | None = None

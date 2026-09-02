@@ -85,10 +85,10 @@ from typing import Any, Iterator
 # server is a failed run rather than a quietly faster one.
 # 8 added local_interface and the link's speed, duplex and MTU, read from the generator's
 # own socket with getsockname after the connection is established. The arrangement was
-# asserted by a route metric and nothing else: the Linux rig has Ethernet and WiFi up on
-# the same subnet, so which one carries a run is decided by a number DHCP can change at a
-# lease renewal, and a run that silently moved to WiFi would still produce a plausible
-# figure with nothing in the record to say the medium had changed. server_location
+# asserted by a route metric and nothing else. Where a host has more than one interface on
+# the same subnet, which of them carries a run is decided by a number DHCP can change at a
+# lease renewal, and a run that moved from a wired link to a wireless one would still
+# produce a plausible figure with nothing in the record to say the medium had changed. server_location
 # recorded a label, which is an intention rather than an event.
 #
 # Recorded per run rather than per campaign because the failure it guards against is a
