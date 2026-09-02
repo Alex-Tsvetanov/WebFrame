@@ -556,10 +556,30 @@ been scheduled yet.
   of an interface. Every one was a FRAMING error sitting on top of correct work. That explains the
   asymmetry rather than naming it: checking your own work re-runs the reasoning that produced it, so
   it verifies the arithmetic and reproduces the frame, while a second reader runs different reasoning
-  over the same claim and tests the frame, which is the only part that was ever wrong. **So: self-
-  review catches arithmetic, independent review catches framing, and in this work every error found
-  was of the second kind.** State the count honestly -- four instances in one evening -- so it is not
-  read as a law; the mechanism is what makes it credible, not the sample.
+  over the same claim and tests the frame, which is the only part that was ever wrong. **So: self-review catches arithmetic, independent
+  review catches framing.**
+  **CORRECTED by the desktop, the fifth correction of the evening and the only one about the claim
+  describing the corrections: "every one was a framing error" OVERREACHES, and the COUNT GOES
+  ENTIRELY.** One of the four does not fit -- the coordinator's 14 ms citation was a misreading of
+  what a source comment said ("measured before this was fixed" read as live behaviour), and
+  re-reading a comment is a different operation from re-running an argument, so self-review would
+  plausibly have caught it. Not evidence for the mechanism. And a perfect count in a sample of four
+  is a warning sign: the coordinator's own rule, returned.
+  **Dropped rather than softened, for two further reasons.** The denominator is curated: four is the
+  number of errors that produced an interesting exchange, not the number that occurred. Others that
+  evening -- merging two commits short after reading a push range backwards and then explaining away
+  the one contradicting number, and an unverified assumption about how io_uring batches -- fit
+  neither category cleanly and were never counted. And any ratio from one unsystematic evening will
+  be quoted as a rate, when the honest answer is that no register was kept, only a conversation.
+  **A number that cannot survive being asked where it came from does not belong in a methodology
+  chapter, which is the standard applied to every other number.**
+  **So the chapter states the MECHANISM with two worked examples, no count, no ratio, no
+  proportion.** The two that carry it: the circular ratio, arithmetically flawless and wrong in a way
+  only a second reader could see; and the tail-versus-second-mode reading, numbers right and
+  interpretation wrong, where the gap in the distribution was visible to one party and invisible to
+  the other at the moment of writing. A third adds only the appearance of a survey. A chapter arguing
+  for independent review is the last place to put a statistic assembled by the two people it
+  flatters.
 - **CROSS-ARM RE-RUNS ARE RUNNING on `a4519ada2`, through the driver, about six hours.** Preflight
   passed on both arms (smoke 2/2 each) and confirms schema 8 live end to end: `server_euid` 1000 and
   `generator_euid` 1000 attested, `local_interface` recorded as `veth-gen` from the socket with speed
