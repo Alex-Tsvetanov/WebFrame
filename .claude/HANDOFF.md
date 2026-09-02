@@ -119,15 +119,28 @@ been scheduled yet.
   converging, so **its one accepted record at 30 s warmup is a coin landing well and is
   discarded, not used.** Consequence accepted deliberately: **the io_uring arm produces no
   admissible timing record on that host until the cause is understood.**
-- **The likely cause is a finding, not a nuisance, and it is being tested.** The io_uring
-  cells start systematically lower than the epoll ones at the same point after the same
-  warmup, 3872-3893 MHz against 4042-4067. A server issuing ~230 000 `io_uring_enter` a
-  second across four workers may simply not let the package boost the way a lighter one does.
-  If so **the two backends are not being compared at the same clock**, which confounds every
-  latency comparison between them on that host, and it sits alongside the syscall result: the
-  completion model pays a per-second price, and part of what that price buys is a slower
-  package. Per-core clocks sampled through each arm, rather than the package figure at the
-  ends, will settle it.
+- **Measured: the io_uring implementation holds the package clock about 145 MHz (3.5%)
+  lower, and the offset is present at zero load.** Per-core clocks sampled every 0.5 s across
+  all sixteen cores, both arms over the netns pair at 10 000 requests a second, both
+  delivering exactly 300 000 completed with no socket errors. Fastest core under load: epoll
+  4016 MHz, io_uring 3875. With the server up and **no requests at all**: 4189 against 4042, a
+  147 MHz gap that does not move when the load goes from zero to ten thousand a second, so it
+  is not caused by the requests. It is uniform across cores (cpu2-cpu15 all 140-177 MHz
+  slower, tightly grouped near 150; only cpu0 and cpu1 differ), so it is a package-wide boost
+  effect rather than one hot thread. It also explains the residual drift the rule keeps
+  refusing: the io_uring cells start lower and climb because they are held down, not because
+  they ramp.
+  **Write it as a mediator, not a confounder.** A confounder is a common cause of treatment
+  and outcome and must be adjusted for; here the treatment causes the clock change, so the
+  slower clock is part of what io_uring costs and adjusting for it would remove part of the
+  effect being measured. The latency comparison is therefore not invalid, it is complete: the
+  completion model as implemented pays a per-second price, and part of what that price buys is
+  a slower package. State the limitation that the magnitude is hardware-specific, since a part
+  with no boost headroom would show none of it.
+  Live hypothesis for the cause, unchanged and now well evidenced: about 58 000
+  `io_uring_enter` per worker per second while as few as 400 requests a second arrive is a
+  loop that is almost entirely empty, which suggests a short-timeout spin rather than a
+  blocking wait.
 - **Nine `clock_gettime` per established connection is real per-connection work.** Stated,
   retracted, and reinstated in one night, and the third version is the measured one. A rate
   ladder at three points on a fixed shape (2000, 5000, 10000 requests a second, epoll, all
