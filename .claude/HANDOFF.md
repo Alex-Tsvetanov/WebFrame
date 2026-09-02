@@ -95,6 +95,26 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The coarse-clock change is merged and its before-and-after table accounts for itself.**
+  Churn, epoll, 400/s, 10 000 connections each side, with futex counted (`c836cd9b4` adds that
+  tracepoint permanently, lifting named coverage on this shape from 77% to 96.5%). Five
+  tracepoints are identical to three decimals before and after (accept, close, epoll_ctl,
+  recvfrom, sendto), which is the evidence the change altered only how often the clock is read.
+  `clock_gettime` falls 4.252 per connection; the non-clock delta of 1.464 is now **fully
+  named**, futex -1.073 and epoll_wait -0.392 summing to 1.465, and **the unnamed remainder is
+  1.065 before and 1.065 after, unmoved to three decimals**. Removing four kernel entries per
+  connection removed four preemption points, so the server contends and wakes measurably less.
+  Keep-alive: clock reads 2.002 to 0.001, total 7.083 to 5.046, futex 0.002 throughout, which
+  is consistent since a held-open connection gives the timer thread almost nothing to wake
+  anyone about. The two before/after pairs (this one and the earlier one without futex) are
+  fresh runs and **must not be mixed**: -4.252 against -4.308, same direction and size.
+- **A usability trap in the staleness gate, now in the runbook.** Its whole-tree fallback
+  compares every binary against every compiled source, so editing a header that only one binary
+  includes refuses the other, and touching that source to clear it moves the refusal to the
+  first. Delete and rebuild both after the last edit, or use a Ninja tree, where the gate asks
+  the build system per target instead of comparing timestamps. It fails closed, which is right,
+  but the obvious remedy makes it worse.
+
 - **The ratio has four defensible values and the spread is wider than the effect.**
   On the one run that produced it: 4.264 raw; 4.116 with the clock rows subtracted (5.132
   against 21.125); and after the coarse-clock change, 4.821 raw and 3.843 with clock rows
