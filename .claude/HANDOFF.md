@@ -108,12 +108,26 @@ been scheduled yet.
   arrangement is to record it, prevent the merge, and state the limitation. **For Alex:
   `tsc=nowatchdog` as a boot parameter is the remedy; a host reporting hpet is a host to fix,
   not a number to adjust.**
-- **The drift rule's residual rejections are all the clock RISING**, after the fastest-core
-  fix. Undecided on purpose: a rise is not throttling, which argues for a one-sided rule, but
-  a rise inside the measured window means early requests ran slower than late ones, so the
-  distribution is not one distribution. The busiest cell also has the largest residual drift,
-  which a one-sided rule would hide rather than fix. A 30 s and 60 s warmup test on one cell
-  is running; if longer warmup removes it, warmup is the answer and the rule stands.
+- **The drift rule stays two-sided and unchanged. Decided, with evidence.** A warmup ladder
+  (5, 30, 60 s, offered rate met in all six runs) showed the io_uring keep-alive residual
+  plateaus at 4.7, 3.8, 3.7 percent, with start and end reproducible to about 20 MHz. Twelve
+  times the warmup buys one point and stops, so it is not ramp from idle, which sixty seconds
+  would have absorbed. It is systematic, workload-specific and repeatable, which is exactly
+  what a one-sided rule would stop reporting; and a rise inside the measured window still
+  means early requests ran on a slower clock than late ones, so the distribution is assembled
+  across a moving clock either way. The churn cell oscillates (2.8, 0.4, 6.1) rather than
+  converging, so **its one accepted record at 30 s warmup is a coin landing well and is
+  discarded, not used.** Consequence accepted deliberately: **the io_uring arm produces no
+  admissible timing record on that host until the cause is understood.**
+- **The likely cause is a finding, not a nuisance, and it is being tested.** The io_uring
+  cells start systematically lower than the epoll ones at the same point after the same
+  warmup, 3872-3893 MHz against 4042-4067. A server issuing ~230 000 `io_uring_enter` a
+  second across four workers may simply not let the package boost the way a lighter one does.
+  If so **the two backends are not being compared at the same clock**, which confounds every
+  latency comparison between them on that host, and it sits alongside the syscall result: the
+  completion model pays a per-second price, and part of what that price buys is a slower
+  package. Per-core clocks sampled through each arm, rather than the package figure at the
+  ends, will settle it.
 - **Nine `clock_gettime` per established connection was a normalisation artifact too**, the
   same shape as the io_uring one but mixed rather than pure. Two-point fits from two
   independent backends agree at ~1.70 per request plus a fixed ~2900/s floor, which they must,
