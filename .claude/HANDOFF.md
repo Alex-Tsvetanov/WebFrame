@@ -292,6 +292,67 @@ been scheduled yet.
   how many components must leave idle on the path, so an end-to-end figure cannot be built by
   multiplying a single-wake cost. The three appearances are then not one curve: 62 us is one wake at
   10 ms, 413 us is a whole request path at 10 ms, 220 us is a kernel-to-kernel path at 200 ms.
+- **THE REFUSAL-BIAS CHECK IS IN. The coordinator's prediction FAILED as stated: five of seven
+  outside, not seven.** Reported by the desktop before anything else about the table, as agreed, and
+  not rescued by reinterpretation. Procedure exactly as pre-declared at `1b756e905`; transcription
+  verified faithful by the desktop; **no weak-bound rows existed at all** (every cell had 23 or 24
+  accepted peers), so rule 6 is satisfied trivially.
+  **But the direction is unanimous and the magnitudes are not marginal.** All seven refusals rank at
+  or above the top of their cell's latency distribution; five exceed every accepted peer and two fall
+  just short of the single worst one (second of 23 and second of 24, within 8% of the maximum). **Not
+  one refusal in the informative population sits in the body of its cell.** Where outside, the
+  magnitudes are 150x to 6000x the cell maximum, not runs that drifted over a line.
+  **THE COORDINATOR THEN COMPUTED THE LAPTOP'S THRESHOLD OVER THE FILED RECORDS AND IT SORTS THE
+  TABLE EXACTLY.** Ratio = latency p99 x rate / connections (all designs use 64 connections):
+
+  | design | rate | lat p99 (ms) | ratio | pool binds | verdict |
+  |---|---|---|---|---|---|
+  | h1-deep | 55000 | 980.527 | 842.6 | yes | OUTSIDE |
+  | h1-deep | 40000 | 86.160 | 53.9 | yes | OUTSIDE |
+  | h1-deep | 70000 | 13.263 | 14.5 | yes | OUTSIDE |
+  | h1-deep | 70000 | 3.592 | 3.9 | yes | OUTSIDE |
+  | transport | 5000 | 12.751 | **1.0** | boundary | OUTSIDE |
+  | churn | 25 | 5.631 | 0.0 | no | INSIDE |
+  | churn | 25 | 3.784 | 0.0 | no | INSIDE |
+
+  Every binding cell is outside; both non-binding cells are inside; and transport at 5000 lands on the
+  boundary the formula defines, which is the kind of coincidence that means a formula is right.
+  Route-2 strength computed the same way (connect time x rate / threads) gives 0.12 at churn rate 25,
+  the weakest establishment cell in the data. **So the two INSIDE rows are the one cell where BOTH
+  couplings are weakest: the prediction failed exactly where the mechanism predicts the weakest
+  signal, which is better than a prediction that passed everywhere because it has a gradient rather
+  than a direction.**
+- **ROUTE 3 IS NOT AN INDEPENDENT CAUSE and the two machines were never in conflict; the coordinator
+  created the disagreement.** The laptop showed the socket buffer cannot fill (one outstanding request
+  per connection, a ~100-byte GET against tens of KB). The desktop confirmed pacing is taken at SEND
+  COMPLETION. Both are right: **route 3 is the point of OBSERVATION through which routes 1 and 2
+  become visible**, not a third path. A thread blocked in connect, or a due slot with no free
+  connection, delays the send, and pacing charges the whole delay. Describe it as the measurement
+  path.
+  **Route 2 is confirmed and is worse than withholding a connection.** On TLS, `c.ready` stays false
+  until `SSL_do_handshake` returns 1, so one connection is withheld. On CLEARTEXT there is no such
+  window because `connect_to` waits inside itself for POLLOUT, so a slow-accepting server **blocks the
+  entire worker thread**, and no connection on that thread gets a due slot. In an establishment design
+  `reopen()` fires on every response, so every response is followed by a blocking connect on the same
+  thread. Time-after-send does not contain the handshake, so the threshold is blind to this route in
+  exactly the designs where establishment is the measurement.
+  **The coordinator's 14 ms citation was WRONG:** both comments describe defects that were FIXED, not
+  live behaviour. What they do show cuts the same way by another route: pacing has twice been high for
+  reasons wholly exogenous to the server, a second and independent argument that it is a poor
+  admission statistic.
+  **Caution to keep when this is written up (the laptop's):** the conservative-not-invalid argument
+  holds where the lateness is real waiting already charged from the due instant. It is WEAKER on the
+  cleartext establishment arm, because a thread blocked in connect is not issuing anyone's slots, so
+  the load genuinely was not offered as a steady process even if all of it eventually arrives.
+  Achieved share should catch that, which argues FOR the split, but the two cases must not be merged.
+- **UNEXAMINED, in the desktop's own filed records: establishment time is 35x higher at low rates.**
+  churn connect p50 is 9.3 ms at 25/s cleartext and 0.26 ms at 100/s, same shape on the TLS arm.
+  Slower with less work is not contention; it is what an idle machine looks like, and it would be the
+  **fourth appearance of the idle mediator, on the one platform that has not yet shown it** (Windows,
+  IOCP). Not asserted: TIME_WAIT pressure and accept-backlog behaviour are alternatives. Worth one
+  look when the queue is clear.
+- **Dispatch block clean: 6 designs, 292 runs, 292 accepted, 0 failed** (main 90, scaling 60, depth 45,
+  static 45, large-cheap 50, large-dfa 2), 19:27 to 19:58.
 - **THE GATE MAY BE ENDOGENOUS, WHICH IS WORSE THAN BIAS, AND IT MAY BE REFUSING THE HONEST RUNS.**
   Raised by the desktop, sharper than the coordinator's "partly a server-health signal", and adopted:
   if pacing lateness is partly determined by the server, then a THRESHOLD on pacing is selection on a
