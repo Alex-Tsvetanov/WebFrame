@@ -477,6 +477,7 @@ class CorouteServer:
     syscall_counter: str | None = None
     _perf: subprocess.Popen | None = None
     _perf_out: Path | None = None
+    _perf_err: Path | None = None
     _perf_pidfile: Path | None = None
     _perf_privilege: str | None = None
     _perf_workdir: Path | None = None
@@ -748,6 +749,13 @@ class CorouteServer:
         # does not apply inside it and root can create what it needs.
         workdir = Path(tempfile.mkdtemp(prefix="coroute-perf-"))
         out = workdir / "counts.csv"
+        # A file rather than a pipe. perf's stderr is read only when the counts come back
+        # unusable, so a perf that wrote more than a pipe buffer would block forever with
+        # nobody draining it, and a read of that pipe after perf has been killed blocks
+        # until the last writer closes. A file is readable whether or not perf still
+        # exists, which is exactly the case the read is for. The parent opens it, so the
+        # inherited descriptor is unaffected by what root may create.
+        errfile = workdir / "perf.err"
         pidfile = workdir / "perf.pid"
         binary, wrapped = perf_binary()
         perf = [binary, "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
@@ -763,9 +771,11 @@ class CorouteServer:
         launcher = ["sudo", "-n"] if (wrapped or privilege == "root") else []
         argv = [*launcher, "sh", "-c", f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
 
-        self._perf = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        with errfile.open("wb") as sink:
+            self._perf = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=sink)
         self._perf_privilege = privilege
         self._perf_out = out
+        self._perf_err = errfile
         self._perf_pidfile = pidfile
         self._perf_workdir = workdir
         self.syscall_counter = (
@@ -788,22 +798,59 @@ class CorouteServer:
         """
         if self._perf is None:
             return {}
+
+        def perf_said() -> str:
+            """perf's own words, from a file that can be read after it is gone."""
+            try:
+                return (self._perf_err.read_text(errors="replace").strip()
+                        if self._perf_err else "")
+            except OSError:
+                return ""
+
+        def signal_perf(sig: str) -> subprocess.CompletedProcess:
+            # By the pid the shell recorded, never through the Popen handle: that holds
+            # sudo whenever perf runs as root, and a signal sent there never reaches
+            # perf. Root either way, whether this harness added the sudo or a PATH
+            # wrapper did, so the signal needs privilege either way.
+            argv = ["kill", sig, pid_text]
+            if self._perf_privilege and self._perf_privilege.startswith("root"):
+                argv = ["sudo", "-n", *argv]
+            return subprocess.run(argv, capture_output=True)
+
         try:
-            pid_text = self._perf_pidfile.read_text().strip() if self._perf_pidfile else ""
-            if pid_text:
-                # SIGINT, not SIGTERM: perf writes its counts on interrupt and discards
-                # them on terminate.
-                killer = ["kill", "-INT", pid_text]
-                if self._perf_privilege and self._perf_privilege.startswith("root"):
-                    # Root either way, whether this harness added the sudo or a PATH
-                    # wrapper did, so the signal needs privilege either way.
-                    killer = ["sudo", "-n", *killer]
-                subprocess.run(killer, capture_output=True)
+            try:
+                pid_text = self._perf_pidfile.read_text().strip() if self._perf_pidfile else ""
+            except OSError:
+                # No pidfile means the shell that writes it never ran, which is what a
+                # refused `sudo -n` looks like from here. Unguarded this propagated as a
+                # bare FileNotFoundError through the finally, so perf was never signalled
+                # and sudo's own explanation was never read.
+                pid_text = ""
+            if not pid_text:
+                raise RunFailed(
+                    f"syscall counting never learned perf's own pid, so perf was never "
+                    f"told to write its counts and nothing it measured is recoverable. "
+                    f"perf said: {perf_said()[:400] or '(nothing)'}"
+                )
+            # SIGINT, not SIGTERM: perf writes its counts on interrupt and discards
+            # them on terminate.
+            interrupted = signal_perf("-INT")
             try:
                 self._perf.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                self._perf.kill()
-                self._perf.wait(timeout=5)
+                # Through the same privileged killer, for the same reason. self._perf is
+                # sudo on a root count, and SIGKILL can be neither caught nor forwarded,
+                # so killing the handle would leave a root perf attached to the server.
+                signal_perf("-9")
+                try:
+                    self._perf.kill()
+                except OSError:
+                    # An unprivileged parent cannot signal its own setuid child.
+                    pass
+                try:
+                    self._perf.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
 
             text = self._perf_out.read_text() if self._perf_out else ""
             counts = parse_perf_counts(text)
@@ -813,26 +860,36 @@ class CorouteServer:
                 # reading it is how the server's startup failures used to become a
                 # thirty second timeout with no reason attached; the same mistake here
                 # would leave "counted zero" with nothing to act on.
-                detail = ""
-                if self._perf is not None and self._perf.stderr is not None:
-                    raw = self._perf.stderr.read()
-                    detail = (raw.decode(errors="replace") if isinstance(raw, bytes) else raw or "").strip()
+                #
+                # The interrupt's exit status is quoted too, because a sudoers policy
+                # that permits perf and not kill fails silently there and is what makes
+                # the timeout branch above reachable at all.
+                sent = "" if interrupted.returncode == 0 else (
+                    f" The interrupt itself failed ({interrupted.returncode}): "
+                    f"{(interrupted.stderr or b'').decode(errors='replace').strip()[:200]}."
+                )
                 raise RunFailed(
                     f"syscall counting produced {TOTAL_TRACEPOINT}={total}, which cannot "
                     f"be true of a server that served this run. perf attached to the "
                     f"wrong process or could not open the events; the counts are not "
-                    f"usable and the run is refused rather than recorded as quiet. "
-                    f"perf said: {detail[:400] or '(nothing)'}"
+                    f"usable and the run is refused rather than recorded as quiet.{sent} "
+                    f"perf said: {perf_said()[:400] or '(nothing)'}"
                 )
             return counts
         finally:
-            # Written by root, so removed the same way; a plain unlink cannot delete
-            # what it cannot write, for the same protected_regular reason.
+            # Ours to remove: mkdtemp's directory is 0700 and owned by this user, and
+            # unlinking needs write on the directory rather than on the files, so what
+            # root created inside it comes out without sudo. It used to go through
+            # `sudo -n rm -rf`, which raises on a host where counting is legitimately
+            # unprivileged and sudo is not installed -- and a raise here replaces the
+            # counts the try just returned, or the RunFailed that carries perf's own
+            # words, with an errno about sudo. Cleanup must never be the thing that
+            # decides a run.
             if self._perf_workdir is not None:
-                subprocess.run(["sudo", "-n", "rm", "-rf", str(self._perf_workdir)],
-                               capture_output=True)
+                shutil.rmtree(self._perf_workdir, ignore_errors=True)
             self._perf = None
             self._perf_out = None
+            self._perf_err = None
             self._perf_pidfile = None
             self._perf_privilege = None
             self._perf_workdir = None
