@@ -70,8 +70,24 @@ python -m benchmark.run_campaign --design smoke --repetitions 1 --build build/wi
 
 Read `generator_pacing_p99_us` in the two records. On this host it is about 40
 microseconds when the machine is idle and about 2000 with an editor and an agent session
-open. **If it is not in the tens of microseconds, stop.** Nothing measured afterwards
-would be admissible, and the gate would refuse it only after the hours were spent.
+open. **If it is not in the tens of microseconds, stop.** Nothing refuses such a run any
+more, which is exactly why it has to be read now: it would go into the tables as a cell
+offered under a loud host, with its lag printed beside it for every reader to see.
+
+Pacing lag was an admission rule at 1000 us at p99 until 2026-09-02 and is a recorded
+covariate from then on. `validity.py` says why at length; in short, the generator hands a
+due slot only to a connection that is not awaiting a response, so a slow server holds
+connections and its slowness lands on the next issued slot as lateness, and a threshold
+on that lateness preferentially removes the runs in which the server was slowest, which
+biases every reported tail optimistic. Whether the offered load was actually offered is
+what the achieved share measures directly, and that rule stays at 99 percent, with the
+non-2xx, socket-error and environment gates as before; a latency counted from the due
+instant already contains the lateness of its own issue, so a late run is conservative
+rather than invalid. The per-cell `pacing` and `pacing_max` columns and the
+`campaign.*.pacing-worst` keys are where the covariate is reported. A record judged
+before the change carries no `admission_rules` field; `benchmark/harness/reevaluate.py`
+re-judges such a file under the current rules into a new file beside it, keeping the
+original verdict in every record.
 
 ## Ladders: re-run them whenever the binary or the host changed
 
@@ -88,9 +104,11 @@ python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build b
 python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
 ```
 
-If the admissible boundary moved, change the rate tables in `run_campaign.py`, commit
-that change on its own before the campaigns, and cite the new commit. A campaign run at
-rates the ladder no longer supports is refused by `validity.py` one run at a time.
+If the point where the lag leaves the tens of microseconds moved, change the rate tables
+in `run_campaign.py`, commit that change on its own before the campaigns, and cite the
+new commit. A campaign run at rates the ladder no longer supports is not refused for its
+lag; it is admitted with the lag printed beside every cell, and only the achieved-share
+rule stands between it and the tables.
 
 ## Night 1: the socket-demultiplexing claim, establishment first
 

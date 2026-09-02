@@ -22,6 +22,7 @@ during a defence.
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -185,8 +186,8 @@ _DECIMALS: dict[str, int] = {
     "rps": 0, "bps": 0, "mem": 0,
     "cpu": 2,
     "p50": 2, "p90": 2, "p99": 2, "p999": 2,
-    # Admissibility signals. Pacing lag is a whole number of microseconds against a
-    # limit of a thousand; the two fractions are quoted to four places because the
+    # Admissibility signals and the pacing covariate. Pacing lag is a whole number of
+    # microseconds; the two fractions are quoted to four places because the
     # interesting part of an achieved share of 0.9998 is the tail of it.
     "pacing": 0, "gencpu": 4, "share": 4,
     # Percentages of a median. Two places, because the difference being argued about is
@@ -262,9 +263,10 @@ def campaign_counts(name: str,
         f"campaign.{name}.socket-errors": (sum(r.socket_errors for r in all_records), "n"),
     }
 
-    # The worst value each admissibility signal reached. A campaign that rejected nothing
-    # has to say how close it came, or "zero rejections" reads as "the gates were loose"
-    # rather than as "the runs were clean".
+    # The worst value each admissibility signal reached, and the worst pacing lag, which
+    # is recorded rather than gated. A campaign that rejected nothing has to say how
+    # close it came, or "zero rejections" reads as "the gates were loose" rather than as
+    # "the runs were clean"; and a campaign whose worst lag was a second has to say so.
     for label, field, worst in (("pacing", "generator_pacing_p99_us", max),
                                 ("gencpu", "generator_cpu_fraction", max)):
         values = [getattr(r, field) for r in all_records if getattr(r, field) is not None]
@@ -350,11 +352,50 @@ def tail_modes(name: str, all_records: Sequence[schema.RunRecord],
         return {}
     upper = sum(1 for v in values if v > threshold_ms)
     counted = {f"tail.{name}.runs": len(values), f"tail.{name}.upper-mode": upper}
-    return {
+    out = {
         key: Aggregate(key, "n", stats.Interval(point=float(value), low=None, high=None,
                                                 n=len(values), method="derived"))
         for key, value in counted.items()
     }
+    # Where the upper mode ends, and the largest single latency any accepted run saw.
+    # A count of runs above a millisecond says nothing about whether the worst of them
+    # was at two milliseconds or at a second, and after pacing lag stopped refusing
+    # runs the worst is the run that lag would have removed.
+    maxima = [r.latency_ms["max"] for r in all_records
+              if r.accepted and "max" in r.latency_ms]
+    for key, value in ((f"tail.{name}.p999-max", max(values)),
+                       (f"tail.{name}.max", max(maxima) if maxima else None)):
+        if value is not None:
+            out[key] = Aggregate(key, "p999", stats.Interval(point=float(value), low=None,
+                                                             high=None, n=len(values),
+                                                             method="derived"))
+    return out
+
+
+def readmitted(name: str, path: Path) -> dict[str, Aggregate]:
+    """Runs that a re-evaluation admitted after the run itself had refused them.
+
+    Counted from the raw lines, because schema.read() does not load accepted_at_run:
+    the field is what reevaluate.py leaves in a re-judged file, nothing else writes it,
+    and the dataclass has no business carrying a verdict that is not the current one.
+    A file nobody re-judged counts zero, so the key exists for every campaign and a
+    sentence quoting it is red only when the campaign is.
+    """
+    count = 0
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if raw.get("accepted") and raw.get("accepted_at_run") is False:
+                count += 1
+    key = f"campaign.{name}.readmitted"
+    return {key: Aggregate(key, "n", stats.Interval(point=float(count), low=None,
+                                                    high=None, n=count, method="count"))}
 
 
 def write(records: Iterable[schema.RunRecord], out: Path,
@@ -399,11 +440,13 @@ def main(argv: Sequence[str]) -> int:
     counts = campaign_counts(name, records)
     counts.update(hypothesis_x1(name, records))
     counts.update(tail_modes(name, records))
+    counts.update(readmitted(name, runs))
     for path in also:
         other = list(schema.read(path))
         counts.update(campaign_counts(path.stem, other))
         counts.update(hypothesis_x1(path.stem, other))
         counts.update(tail_modes(path.stem, other))
+        counts.update(readmitted(path.stem, path))
         print(f"{len(other)} runs from {path.name}, counts and derived keys only")
 
     aggregates = write(accepted, out, key_factors, extra=counts)

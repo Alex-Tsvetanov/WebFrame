@@ -1874,11 +1874,16 @@ int main(int argc, char** argv)
 		             cpu_fraction);
 		return 3;
 	}
-	if (open_loop && (pacing_p99 > 1000 || achieved_share < 0.99))
+	// Achieved share only. Pacing lag used to share this test at 1000 us; it is
+	// reported in the result and no longer refuses, because it is partly the server's:
+	// a connection awaiting a response is not handed a due slot (see the issue loop),
+	// so a slow server turns into lateness on the next slot that is issued. The rule
+	// here has to agree with validity.py, which is where the reasoning lives.
+	if (open_loop && achieved_share < 0.99)
 	{
 		std::fprintf(stderr,
-		             "run is not admissible: pacing_p99=%uus achieved=%.1f%% of offered\n",
-		             pacing_p99, achieved_share * 100.0);
+		             "run is not admissible: achieved=%.1f%% of offered (pacing_p99=%uus)\n",
+		             achieved_share * 100.0, pacing_p99);
 		return 3;
 	}
 	return 0;

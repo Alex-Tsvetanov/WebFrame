@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from benchmark.harness import driver, ordering, schema
+from benchmark.harness import driver, ordering, schema, validity
 
 # Everything here runs against a fake server and a fake generator, so it reads a fake
 # host too. Without this the check picked up the real machine underneath it and the run
@@ -154,6 +154,8 @@ def run(check: Callable[[str, bool], None]) -> None:
               all(log == ["start", "ready-check", "stop"] for log in logs))
         check("a record per run", len(records) == 6)
         check("all were accepted", all(r.accepted for r in records))
+        check("and each says which rules judged it",
+              all(r.admission_rules == validity.ADMISSION_RULES for r in records))
 
         # Written as they complete, not batched: a campaign is hours, and a reboot at
         # hour six must not cost the first five.

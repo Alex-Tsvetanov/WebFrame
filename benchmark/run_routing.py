@@ -352,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
             # rule means nothing under a governor that moved at cell ten.
             record["governor"] = environment._governor()
             verdict = validity.check_run(record)
+            record["admission_rules"] = validity.ADMISSION_RULES
             if verdict.reasons:
                 record["accepted"] = False
                 record["rejection_reasons"] = verdict.reasons
