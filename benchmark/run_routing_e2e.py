@@ -57,6 +57,9 @@ ARMS = ("dfa", "radix", "regex")
 # because otherwise it is an unpinned sibling on the cores the server is pinned to and
 # nothing in the record can show the contention.
 
+# io_backend is the platform's default until main replaces it with the arm the build
+# offers; the designs below read BASE when they are called, which is after that. The
+# default is what a caller importing a design without going through main still gets.
 BASE = dict(
     protocol="http1.1",
     tls=False,
@@ -196,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
                          "compiled in, and the generator; the bench preset does both")
     ap.add_argument("--readiness-timeout", type=float, default=180.0,
                     help="a large DFA table takes seconds to build before the port opens")
+    ap.add_argument("--io-backend", choices=("io_uring", "epoll"), default=None,
+                    help="which arm of a linux-dual build to measure; the default is "
+                         "whatever the build compiled in, io_uring when it compiled both")
 
     ap.add_argument("--host", required=True,
                     help="the server's address as the generator sees it; must not be a "
@@ -284,8 +290,15 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / "runs.jsonl"
 
-    env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.resolve_io_backend(args.build))
+    # Same as run_campaign: both readings come from the build's CMakeCache and both
+    # refuse rather than guess, so the refusal reaches the operator in its own words.
+    try:
+        BASE["io_backend"] = environment.run_io_backend(args.build, args.io_backend)
+        env = environment.capture(repo=REPO, build_type="Release",
+                                  io_backend=environment.resolve_io_backend(args.build))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     problem = isolation_problem(env)
     if problem:
         print(problem, file=sys.stderr)

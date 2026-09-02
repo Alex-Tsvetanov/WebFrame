@@ -712,6 +712,35 @@ def resolve_io_backend(build_dir: Path | None) -> str:
     return read or guessed
 
 
+def run_io_backend(build_dir: Path | None, requested: str | None = None) -> str:
+    """The single arm a run will ask the server for, from the build and the flag.
+
+    resolve_io_backend answers what the binary contains, which for a dual tree is two
+    backends and not an arm. A cell has to name one: it is passed to --io-backend and
+    checked against the server's banner. That made io_uring the only arm any campaign
+    could ever measure on Linux, and on a linux-epoll tree it made every cell ask for a
+    backend the binary does not have, which benchmark_server refuses with exit 2.
+
+    So the arm is chosen here. With no flag it is the first the build offers, which for
+    dual is io_uring and for every single-backend tree is the one thing it compiled, so
+    the campaigns already on disk record exactly what they recorded before. With a flag
+    it is the flag, and an arm the build does not contain is refused rather than
+    recorded: a cell claiming epoll against an io_uring-only binary is a mislabelled
+    measurement, not a degraded one.
+    """
+    compiled = resolve_io_backend(build_dir)
+    arms = ("io_uring", "epoll") if compiled == "dual" else (compiled,)
+    arm = requested or arms[0]
+    if arm not in arms:
+        raise ValueError(
+            f"the build in {build_dir} was configured with COROUTE_IO_BACKEND="
+            f"{compiled}, which does not contain {arm}. Configure a tree with the "
+            f"linux-dual preset to choose between the two arms at run time, or with "
+            f"linux-{arm} to measure that one."
+        )
+    return arm
+
+
 def capture(repo: Path | None = None, build_type: str | None = None,
             io_backend: str | None = None) -> dict[str, Any]:
     """Everything worth knowing about the machine, in one nested dict."""

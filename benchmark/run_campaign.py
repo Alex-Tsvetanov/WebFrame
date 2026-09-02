@@ -194,20 +194,32 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
     return None
 
 
+# The arm every cell of this campaign carries, decided in main from the build and
+# --io-backend and read by the designs below. A module variable rather than an argument
+# threaded through eight design functions: they are all nullary and called by name out
+# of DESIGNS, and the alternative is eight signatures changed to carry one constant.
+_ARM: str | None = None
+
+
 def _io_backend() -> str:
-    """The backend the presets select for this host.
+    """The backend the cells of this run name.
 
     Recorded rather than assumed, because it is a factor in the record and a mislabelled
     factor is worse than a missing one: it makes two different measurements look like
     repetitions of one.
 
-    A runtime arm now, not a build option: CorouteServer passes whatever the cell
-    carries here to --io-backend, and the driver refuses the run if the server's banner
-    reports it started on a different one. So this must always name a single arm that
-    can be asked for, never the compiled set: "dual" is a valid COROUTE_IO_BACKEND and
-    would not be a valid answer here.
+    A runtime arm, not a build option: CorouteServer passes whatever the cell carries
+    here to --io-backend, and the driver refuses the run if the server's banner reports
+    it started on a different one. So this must always name a single arm that can be
+    asked for, never the compiled set: "dual" is a valid COROUTE_IO_BACKEND and would
+    not be a valid answer here.
+
+    Which arm that is comes from the build, via environment.run_io_backend, because the
+    platform cannot say: on Linux both io_uring and epoll are legitimate and only the
+    CMakeCache knows which one this tree has. The platform default is the fallback for a
+    caller that imports a design without going through main.
     """
-    return environment.default_io_backend()
+    return _ARM or environment.default_io_backend()
 
 
 def design_windows_h1() -> list[Cell]:
@@ -553,6 +565,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cert", type=Path, default=REPO / "benchmark" / "certs" / "bench.crt",
                     help="certificate for the TLS designs; make it with benchmark.make_cert")
     ap.add_argument("--key", type=Path, default=REPO / "benchmark" / "certs" / "bench.key")
+    # The arm of the I/O-portability comparison. Only meaningful on a dual tree, which is
+    # the only build that contains a choice; elsewhere the build's one backend is the
+    # answer and passing anything else is refused rather than recorded.
+    ap.add_argument("--io-backend", choices=("io_uring", "epoll"), default=None,
+                    help="which arm of a linux-dual build to measure; the default is "
+                         "whatever the build compiled in, io_uring when it compiled both")
 
     # Where the load comes from. The default is loopback and on one host, which is what
     # the committed campaigns used and what keeps a new run comparable with them. The
@@ -638,8 +656,17 @@ def main(argv: list[str] | None = None) -> int:
               f"as the generator sees it.", file=sys.stderr)
         return 2
 
-    env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.resolve_io_backend(args.build))
+    # Both of these read the build's CMakeCache and both refuse rather than guess, so an
+    # unconfigured --build or an arm the tree does not contain ends here in its own
+    # words instead of in a traceback.
+    global _ARM
+    try:
+        _ARM = environment.run_io_backend(args.build, args.io_backend)
+        env = environment.capture(repo=REPO, build_type="Release",
+                                  io_backend=environment.resolve_io_backend(args.build))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     problem = isolation_problem(env)
     if problem:
         print(problem, file=sys.stderr)

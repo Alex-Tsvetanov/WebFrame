@@ -614,6 +614,43 @@ def io_backend_checks() -> None:
     check("macOS reading io_uring is refused", isinstance(resolve("Darwin", "io_uring"), ValueError))
     check("Windows with no cache falls back to the platform", resolve("Windows", None) == "iocp")
 
+    print("\n== a cell names one arm, and only one the build actually contains ==")
+
+    def arm(system: str, cache_value: str | None, requested: str | None) -> object:
+        """run_io_backend with the platform and the CMakeCache both pinned."""
+        real_system = env_mod.platform.system
+        real_read = env_mod.io_backend_from_build
+        env_mod.platform.system = lambda: system
+        env_mod.io_backend_from_build = lambda _build: cache_value
+        try:
+            return env_mod.run_io_backend(Path("build/pretend"), requested)
+        except ValueError as exc:
+            return exc
+        finally:
+            env_mod.platform.system = real_system
+            env_mod.io_backend_from_build = real_read
+
+    # The default on a dual tree is io_uring, which is what every campaign already on
+    # disk recorded: adding the flag must not move a run that does not pass it.
+    check("a dual tree defaults to io_uring", arm("Linux", "dual", None) == "io_uring")
+    check("a dual tree can be asked for epoll", arm("Linux", "dual", "epoll") == "epoll")
+
+    # The one that used to make every cell of every campaign die at server start: an
+    # epoll build was told to run io_uring, because the arm came from the platform.
+    check("an epoll tree measures epoll without being asked",
+          arm("Linux", "epoll", None) == "epoll")
+    check("an epoll tree cannot be asked for io_uring",
+          isinstance(arm("Linux", "epoll", "io_uring"), ValueError))
+    check("an io_uring tree cannot be asked for epoll",
+          isinstance(arm("Linux", "io_uring", "epoll"), ValueError))
+
+    # Where the platform has one backend there is no arm to choose, and asking for one
+    # is a mislabelled run rather than a harmless flag.
+    check("macOS answers kqueue and refuses io_uring",
+          arm("Darwin", "kqueue", None) == "kqueue"
+          and isinstance(arm("Darwin", "kqueue", "io_uring"), ValueError))
+    check("Windows answers iocp", arm("Windows", None, None) == "iocp")
+
 
 def virtualisation_checks() -> None:
     print("\n== a host that cannot answer is not a clean host ==")
