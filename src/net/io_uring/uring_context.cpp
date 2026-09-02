@@ -581,8 +581,12 @@ namespace coroute::net
 			// wait at all: it wrote to an eventfd nothing read, so a post(), a
 			// run_on_worker() handoff, a TimerQueue callback or a stop() on an idle ring
 			// waited out the whole timeout. That was tolerable at 1us and would not have
-			// been at 1ms. wake() now submits a no-op whose completion ends the wait, so
-			// the claim above is true of posted work too.
+			// been at 1ms. wake() now writes that eventfd and a poll
+			// armed on it through the ring completes, which ends the wait, so the claim
+			// above is true of posted work too. A no-op submission was tried first and was
+			// inert: submitting one needs the same lock the parked worker holds, so it
+			// could never arrive before the timeout it was meant to pre-empt (measured at a
+			// 962us median against a 1ms timeout). See arm_wake() and wake().
 			//
 			// It was 1us, and at that value the loop spent its life waking up. Measured
 			// on the Linux rig at 10 000 requests a second, four workers, both arms
@@ -758,8 +762,8 @@ namespace coroute::net
 			}
 			// Woken because the worker may be parked in a wait with nothing else due,
 			// and a queued callback is not something the ring would otherwise notice.
-			// wake() submits a no-op for exactly this; see it for why an eventfd did not
-			// work here.
+			// wake() writes an eventfd that a poll armed through the ring completes; see it
+			// for why a no-op submission could not do this.
 			ring->wake();
 		}
 
