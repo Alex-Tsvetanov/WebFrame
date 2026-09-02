@@ -620,6 +620,37 @@ def design_clock_ladder() -> list[Cell]:
     ]
 
 
+# The churn counterpart of the clock ladder, at rates the veth pair sustains.
+#
+# Keep-alive was measured at three rates and came out flat; churn was inferred from a
+# single point, which is exactly the position that produced two wrong conclusions
+# already. These rates sit inside what a first attempt showed the pair can deliver:
+# 2000 establishments a second was throughput-limited at 84.6%, so the ladder stays an
+# order of magnitude below it and spans a fivefold range, which is what separates a
+# per-connection cost from a per-second one.
+CHURN_LADDER_RATES = (100, 200, 500)
+
+
+def design_churn_ladder_counted() -> list[Cell]:
+    """Churn at three rates, to test what is per connection and what is per second.
+
+    Answers two questions with one campaign. Whether the roughly nine clock reads per
+    established connection are per connection, which the keep-alive ladder showed they
+    are not for keep-alive and which a single churn point cannot decide. And whether
+    io_uring_enter is time-proportional under churn as it is under keep-alive, where a
+    25-fold rate change moved it 1.04-fold.
+
+    Distinct from `churn-ladder`, which sweeps the per-connection request limit at a
+    fixed rate for the TLS establishment work. This sweeps the rate at a fixed limit of
+    one, and is meant to be run with --count-syscalls.
+    """
+    return [
+        Cell.of(system_name(), **_base(max_requests_per_connection=1),
+                protocol_detection=True, offered_rate=rate)
+        for rate in CHURN_LADDER_RATES
+    ]
+
+
 DESIGNS = {
     "h1": design_windows_h1,
     "h1-deep": design_windows_h1_deep,
@@ -639,6 +670,7 @@ DESIGNS = {
     "tls-smoke": design_tls_smoke,
     "mechanism": design_mechanism,
     "clock-ladder": design_clock_ladder,
+    "churn-ladder-counted": design_churn_ladder_counted,
 }
 
 
