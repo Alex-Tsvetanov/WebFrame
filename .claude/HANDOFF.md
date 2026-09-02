@@ -758,19 +758,36 @@ been scheduled yet.
   followed a hypothesis. **Same distinction paper 3 makes about the wait timeout and unbatched
   submits: two papers, different subsystems, arriving independently at the mechanism's cost against
   the framework's use of it. Worth a sentence in each.**
-- **A POSSIBLE DEFECT, RAISED BY THAT DECOMPOSITION AND NOT YET ANSWERED: `Connection::set_timeout` is
-  STORED by all four backends and ENFORCED BY NONE**, which is why the demultiplexer arms its own
-  timer -- the comment at `detect_protocol` says nothing else in the stack will wake a parked
-  classification read. **Question put to the laptop: with classification OFF, what bounds the window
-  between accept and the first byte?** If the answer is nothing, the server holds a connection open
-  indefinitely for a peer that connects and says nothing, on every backend -- classic slow-connection
-  exhaustion, a correctness and availability defect independent of either paper. The idle timeout may
-  cover it, in which case the deadline is merely redundant there. **Do not fix tonight**: a change to
-  connection lifetime mid-campaign is the last thing needed, and a real defect wants its own branch, a
-  test and a thesis note rather than a quiet patch.
-  **It also decides which sentence paper 2 gets.** If nothing else bounds that window, the 1.85 futex
-  is not droppable overhead but the framework paying for a guarantee nothing else provides, and the
-  claim changes from "avoidable" to "the only implementation that currently provides it".
+- **NO DEFECT: the pre-first-byte window IS bounded on every path.** `handle_connection` wraps the
+  connection in `net::IdleTimeout` BEFORE its read loop (`app.cpp:649-650`) with
+  `keep_alive_timeout_`, default 30 s, and the comment there says why it exists in the same terms as
+  the `set_timeout` one: no backend acts on the stored timeout, so without the wrapper a client that
+  connects and goes quiet holds a coroutine. Slow-connection exhaustion does not exist on that path.
+  **But classification reads BEFORE the wrapping happens** -- accept, `detect_protocol`, read the
+  first octet, then `handle_connection`, then wrap -- so between accept and the end of classification
+  the connection is not yet under the idle timeout, which is exactly the window `detect_protocol`'s
+  own deadline covers. Both timeouts are 30 s, so the guarantee is identical on both paths; only the
+  mechanism differs. **THE DEMULTIPLEXER CREATES THE WINDOW IT THEN PAYS TO COVER**, which is why the
+  cost looked avoidable and then looked irreplaceable and is neither.
+  **The paper's sentence, and it is neither of the two considered:** classification pays 1.85 futex
+  per connection to extend an existing guarantee across a window it creates, using a different and
+  more expensive mechanism than the one used for the same purpose ten lines later. Attributable to
+  classification, not intrinsic to it, and the remedy is STRUCTURAL rather than a removal: wrap first,
+  classify through the wrapper. **Caution for whoever writes it: that is not a one-line change.** The
+  classifying path produces its own replaying wrapper, so the remedy composes two wrappers and the
+  order decides which layer sees the replayed bytes and which the idle clock. The paper names the
+  remedy and must not imply it has been tried.
+- **THE DEMULTIPLEXER'S COST COMES IN THREE KINDS AND ONLY ONE IS A NUMBER. This is what the paper is
+  actually about.** (1) The SYSCALL cost, measured: 4.5 per connection, of which 1 is intrinsic.
+  (2) The STRUCTURAL cost: a window created and then covered by a second mechanism. (3) The
+  CONFIGURATION cost: `handshake_timeout_` and `keep_alive_timeout_` are both 30 s by default and
+  separately settable (`app.hpp:365`, `:377`), so which one bounds the pre-first-byte window depends
+  on whether classification is on, and an operator who lowers one gets a different guarantee depending
+  on a flag they would not associate with timeouts. A real sharp edge, existing today.
+  **The same triple lands in paper 3:** the wait timeout as a number, unbatched submission as a
+  structural choice, and the four backends' divergent socket options as a configuration surface nobody
+  was maintaining. **If both papers use the same three-way split, the thesis has a claim about feature
+  cost in general rather than two unconnected measurements.**
   **The declaration is doing its work:** drift 3.7-4.7% on all 28 runs, so every one would have been
   refused under a gate, while the counts have a per-run sd of 0.055-0.087 against differences of
   1.0000 and 4.5121 -- two orders of magnitude of headroom, and the latency figures stay unquoted.
