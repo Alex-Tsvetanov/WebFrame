@@ -63,6 +63,7 @@ _FINGERPRINTED = (
     "memory.total_bytes",
     "tuning.transparent_hugepages",
     "tuning.swappiness",
+    "tuning.clocksource",
     "toolchain.compiler",
     "build.type",
     "build.io_backend",
@@ -946,6 +947,24 @@ def capture(repo: Path | None = None, build_type: str | None = None,
         "tuning": {
             "transparent_hugepages": _transparent_hugepages(),
             "swappiness": _read("/proc/sys/vm/swappiness"),
+            # Which clock the kernel serves, because it decides what reading one costs.
+            #
+            # With the TSC the vDSO answers clock_gettime in userspace in about twenty
+            # nanoseconds. With HPET it cannot, so every call is a real syscall plus an
+            # MMIO read: measured on one host at 1931 ns against 5 ns for the coarse
+            # clock, a hundredfold, and one syscall per call where a TSC host makes none.
+            # At about 1.7 clock reads per request that is roughly 3.3 microseconds a
+            # request of overhead belonging to the machine's firmware rather than to the
+            # code, and it lands in every latency figure and every syscall count.
+            #
+            # It is fingerprinted because two hosts that differ only in this are not
+            # comparable and nothing else in the record would say so. The kernel
+            # disqualifies a TSC it distrusts, and on some AMD parts it does so wrongly;
+            # tsc=nowatchdog is the usual remedy and it is a boot parameter, so a host
+            # that reads hpet here is a host to fix rather than a number to adjust.
+            "clocksource": _read(
+                "/sys/devices/system/clocksource/clocksource0/current_clocksource"
+            ),
             "somaxconn": _read("/proc/sys/net/core/somaxconn"),
         },
         "toolchain": {

@@ -94,6 +94,34 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The Linux host's kernel disqualified its TSC, so every clock read there is a syscall.**
+  `current_clocksource` is `hpet`, and `tsc` is not even in the available list: the kernel
+  marked it unstable at boot on a watchdog timeout, which on some AMD parts is a known false
+  positive. Consequence measured on that host: `clock_gettime(CLOCK_MONOTONIC)` costs 1931 ns
+  and one syscall per call, against 5 ns and none for the coarse clock, roughly a hundredfold.
+  At about 1.7 clock reads per request that is ~3.3 microseconds per request of overhead
+  belonging to the firmware rather than the code, and it lands in every latency figure and
+  every syscall count: the epoll keep-alive figure is 7.09 syscalls per request there and
+  about 5.09 on a TSC host. Now recorded as `tuning.clocksource` and **fingerprinted**
+  (`5a8359d97`), so two hosts differing only in it cannot pool. Deliberately NOT a refusal:
+  refusing would leave the project with no Linux timing data at all, and the honest
+  arrangement is to record it, prevent the merge, and state the limitation. **For Alex:
+  `tsc=nowatchdog` as a boot parameter is the remedy; a host reporting hpet is a host to fix,
+  not a number to adjust.**
+- **The drift rule's residual rejections are all the clock RISING**, after the fastest-core
+  fix. Undecided on purpose: a rise is not throttling, which argues for a one-sided rule, but
+  a rise inside the measured window means early requests ran slower than late ones, so the
+  distribution is not one distribution. The busiest cell also has the largest residual drift,
+  which a one-sided rule would hide rather than fix. A 30 s and 60 s warmup test on one cell
+  is running; if longer warmup removes it, warmup is the answer and the rule stands.
+- **Nine `clock_gettime` per established connection was a normalisation artifact too**, the
+  same shape as the io_uring one but mixed rather than pure. Two-point fits from two
+  independent backends agree at ~1.70 per request plus a fixed ~2900/s floor, which they must,
+  since the clock code is shared and neither backend has its own. So 82% of the churn figure
+  is a fixed rate divided by a low request rate. The floor is most likely the timer thread's
+  wait loop (`timer_queue.hpp:107`), worth fixing on this host where each read costs 1.9 us.
+  A third rate is queued to test linearity, since a two-point fit has no residual.
+
 - **Two ladders could not validate what the campaign offers** (fixed, `2bbc55353`). The churn
   ladder stepped 100 to 200 while its table asks for 150, so the rate most in need of checking
   was the one never visited, and it cannot be interpolated: 100 paced at 83 microseconds and
