@@ -1969,6 +1969,29 @@ findings in the laptop's own words, unredacted as you authorised.
    "mechanism" both papers 2 and 3 rest on).
 6. Then paper 4's UDP-seam reconciliation on a scratch branch (design work, Linux).
 
+## Overnight, 2-3 September: what runs, what waits for Alex
+
+**Alex is asleep from about 00:30. No session may call AskUserQuestion or wait on him. Questions go to
+the coordinator with the default and the reasoning; the asker works on whatever does not depend on the
+answer; the coordinator's silence is not authorisation. Nothing is pushed outbound by any machine: he
+pushes in the morning. No system changes, no firewall, no passwords, no packages.**
+
+**FOR ALEX IN THE MORNING, in order:**
+1. Push the desktop's local measure branches: `-net` (9b3ba079a) and `-sweeps` (01ccffb06) to
+   `paper-socket-demux`; `-routing` (7d95147f8) to `paper-dfa-routing`, which needs a remote added;
+   plus `-proportion` if the overnight run finished. The desktop will have the exact commands in one
+   message.
+2. Push the laptop's `measure/laptop-2026-09-02` to `paper-io-portability` once it exists.
+3. Read `paper-socket-demux/main.pdf` (8 pages) and its DOCX. It is the only complete paper.
+4. Venues stay TODO by his decision; nothing waits on that.
+
+**RUNNING OR QUEUED WITHOUT HIM:** the laptop's mechanism arms (with the pre-registered syscall
+attribution and a stop if the counts move), then its queued fourth design, then filing; the desktop's
+proportion run, then conditionally `churn-proportion-fine` at 90 and 95; four coordinator workflows
+resumed on Opus after the Fable limit stopped their later agents (pacing-to-covariate, the two-host
+design, papers 1 and 3). **The two-host run does NOT start tonight**: it needs both machines and its
+design is still in red-team.
+
 ## Alex's decisions, 2 September ~22:30 EEST
 
 1. **Alex pushes the desktop's measurement branches himself** (`-net` and `-sweeps` to
