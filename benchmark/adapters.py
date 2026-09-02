@@ -337,6 +337,12 @@ SYSCALL_TRACEPOINTS = (
     "syscalls:sys_enter_write",
     "syscalls:sys_enter_close",
     "syscalls:sys_enter_clock_gettime",
+    # futex, because without it a churn table accounts for about three quarters of its
+    # own total and invites the question it cannot answer. The keep-alive shape reaches
+    # 99.93% named with the list above; churn reached 77%, and a remainder that large is
+    # consistent with any explanation offered for it, which is why it explains nothing.
+    # Whatever the rest turns out to be, naming this one bounds it better.
+    "syscalls:sys_enter_futex",
 )
 
 TOTAL_TRACEPOINT = "raw_syscalls:sys_enter"
