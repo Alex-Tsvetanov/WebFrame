@@ -8,11 +8,9 @@
 *.fdb_latexmk
 *.synctex.gz
 
-# build/ is latexmk's working directory and the PDF is rebuilt from source, so none
-# of it is committed. This differs from the tree the preamble came from, which
-# versioned its finished PDF because that PDF was the thing being submitted. Here the
-# document is still being written, and a 15 MB binary changing on every build would
-# dominate the history of a repository whose point is the source.
+# build/ is latexmk's working directory and is not committed. The finished PDF is: latexmkrc
+# copies build/main.pdf to main.pdf after every successful build, and main.pdf is versioned
+# so the document can be read without a TeX installation (asked for on 2026-09-02).
 build/
 
 # Written by tools/results2tex.py from the measurement output. Regenerable by

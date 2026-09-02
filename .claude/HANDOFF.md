@@ -139,7 +139,9 @@ been scheduled yet.
     every design; census commit f52c49521). Still to do: Word step (`build_docx.py` must be
     written fresh, the template's carries the other paper's text), trim the abstract (~330 words),
     venue running head, Alex's read.
-  - **Alex (17:40): PDFs must be committed, not gitignored**, in the paper repos (and thesis).
+  - **Alex (17:40): PDFs must be committed, not gitignored**, in the paper repos (and thesis). DONE: `main.pdf` versioned in the three
+    scaffolded paper repos (draft/v1) and `doc/thesis/main.pdf` (latexmkrc copies it after every
+    build). `paper-quic-cid-routing` has no scaffold yet, so no PDF.
 - **Local workflow `waafab14v`: paper 2 draft** in `paper-socket-demux` on branch `draft/v1`,
   scaffolded from the Compile-time-Protobuf IEEEtran template, eight sections drafted from the
   filed evidence with every number traced to a file, assembled, reviewed by three lenses,
