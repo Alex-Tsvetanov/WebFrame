@@ -344,6 +344,29 @@ def _is_sudo_wrapper(path: str | None) -> bool:
     return head.startswith(b"#!") and b"sudo" in head
 
 
+def perf_binary() -> tuple[str, bool]:
+    """The perf to exec directly, and whether this harness has to add sudo to it.
+
+    Never the PATH name when that is a sudo wrapper. The counter has to know perf's own
+    pid so it can interrupt it, and it learns that by having a shell write $$ and then
+    exec perf. Exec-ing a wrapper puts sudo at that pid instead: the SIGINT goes to
+    sudo, perf is never told to stop, it writes no counts, and the run comes back with a
+    zero total. That is what happened the first time this ran on this rig.
+
+    Resolving to the wrapped binary makes the pid perf's again and puts the privilege
+    decision back where it can be recorded.
+    """
+    path = shutil.which("perf")
+    if path and _is_sudo_wrapper(path):
+        # Two lines of shell whose last word before "$@" is the real binary.
+        for token in Path(path).read_text().split():
+            candidate = token.strip('"\'')
+            if candidate.endswith("/perf") and candidate != path:
+                return candidate, True
+        return "/usr/bin/perf", True
+    return path or "perf", False
+
+
 def perf_privilege() -> str | None:
     """How perf can read tracepoints here, or None when it cannot at all.
 
@@ -678,7 +701,8 @@ class CorouteServer:
 
         out = Path(tempfile.mkstemp(prefix="perf-", suffix=".csv")[1])
         pidfile = Path(tempfile.mkstemp(prefix="perf-", suffix=".pid")[1])
-        perf = ["perf", "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
+        binary, wrapped = perf_binary()
+        perf = [binary, "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
                 "-p", str(pid), "-x,", "-o", str(out)]
         # perf's own pid is written by the shell before it execs, because Popen would
         # otherwise hold whatever wraps perf and a signal sent there never reaches perf.
@@ -688,7 +712,7 @@ class CorouteServer:
         # Only the bare "root" case adds sudo. A PATH wrapper has already added it, and
         # nesting sudo inside sudo would work but would put another process between the
         # signal and perf.
-        launcher = ["sudo", "-n"] if privilege == "root" else []
+        launcher = ["sudo", "-n"] if (wrapped or privilege == "root") else []
         argv = [*launcher, "sh", "-c", f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
 
         self._perf = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
