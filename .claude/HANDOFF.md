@@ -95,7 +95,15 @@ been scheduled yet.
 
 ## In flight at 14:05, 2 September (a successor picks these up)
 
-- **Desktop, sequence sent 13:55 (message 0a356a7a), host free with only the Claude app open:**
+- **Desktop, sequence sent 13:55 (message 0a356a7a), Alex approved the full ~8 h program
+  directly.** Steps 0-2 done by 14:40: pulled to `b4a01e8c7`, both trees and the WSL generator
+  rebuilt from it (the environment record now carries the matcher commit beside the dependency
+  versions, closing the 03:00 gap in the record itself), smoke 2/2 at 53 and 51 us, and the
+  network ladder **11 of 11 accepted** where last night it was 0 of 8: all four network rates
+  admissible (50 at 64 us, 150 at 56, 400 at 54, 800 at 468). 800 is marginal, five times the
+  next worst cell and 6.4% under the proceed threshold; **ruled in advance that refusals
+  confined to 800 are the boundary, not the host, and are not a stop reason**; refusals at 50,
+  150 or 400 are. `churn-net` at n=25 running from 14:40, ~2.9 h. Original sequence follows:
   pull to HEAD and rebuild both trees and the WSL generator; `smoke`; `churn-ladder-net` with the
   four-rate decision rule; `churn-net` n=25 (paper 2's network arm, ~2.9 h); routing e2e
   `main`/`bracket`/`bracket-low`/`large` then dispatch `main`/`scaling`/`depth`/`static`/
