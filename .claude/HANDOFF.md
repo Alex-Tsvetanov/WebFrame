@@ -200,10 +200,19 @@ been scheduled yet.
   the same descriptor; null `udata` is what the dispatch loop already used to skip it. `stop()` wakes
   too, so teardown no longer waits out a worker's current `kevent()`. 21 of 21 posts delivered before
   AND after, so the old failure was latency and not loss.
-  **Why kqueue's before is 98 ms and not the ~50 ms predicted:** ~50 ms is the average over randomly
-  phased arrivals; this test phase-locks to the worst case, because both workers are spawned together
-  and each post goes out 2 ms after the previous one was delivered by a timeout, so it lands 2 ms into
-  a fresh 100 ms park every time. kqueue is not worse than epoll; the cadence locks harder here.
+  **CAUTION ON THAT TABLE, from the laptop: epoll's 50138 and kqueue's 98486 were produced by two
+  DIFFERENT versions of the test and are not comparable.** epoll's came from the first version, which
+  slept 50 ms and posted ONCE: a single post at a random phase into a 100 ms park averages 50 ms.
+  kqueue's came from the current version, 21 posts each going out 2 ms after the previous one was
+  delivered by a timeout, so every post lands 2 ms into a fresh park and waits out nearly all of it.
+  One defect measured two ways, random phase against worst case. The coordinator first explained the
+  gap as a per-machine cadence difference, which blamed the platform for a change of instrument, and
+  the laptop caught it. **Being settled:** epoll rebuilt at `9d85e2f00` (pre-wake-fix) and run against
+  the CURRENT test. About 98 ms means the platforms are identical and one instrument covers the table;
+  about 50 ms means there is a real cadence difference worth a sentence. io_uring's 962 is believed to
+  come from the current test but is to be confirmed rather than asserted.
+  **Rule for this table: every before-number names the instrument that produced it, or they all come
+  from one. Prefer the second.**
   Note the 100 ms timeout is deliberately KEPT in all three as a backstop: a missed wake now costs
   100 ms instead of parking a worker forever. It stopped being the mechanism and became the fallback.
 - **THE WAKE DEFECT IS IN THREE BACKENDS OF FOUR, and that is the result rather than three bugs.**
