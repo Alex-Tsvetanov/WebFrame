@@ -523,6 +523,38 @@ been scheduled yet.
   confirms it is not the host: churn-net's single zero-delivery run is at position 292 of 400, not
   early, so it is not the same cause and remains a rate past the ceiling.
   Other blocks clean: bracket 60/60, bracket-low 30/30, large 14/15 (one CPU-frequency drift).
+- **CROSS-ARM RE-RUNS ARE RUNNING on `a4519ada2`, through the driver, about six hours.** Preflight
+  passed on both arms (smoke 2/2 each) and confirms schema 8 live end to end: `server_euid` 1000 and
+  `generator_euid` 1000 attested, `local_interface` recorded as `veth-gen` from the socket with speed
+  10000 Mbit, duplex full, MTU 1500, and `--expect-interface` enforcing rather than assuming. Set:
+  transport (20 cells, 280 runs, 3.0 h), churn (16 cells, 224 runs, 2.4 h) and mechanism with
+  `--count-syscalls` (2 cells, 28 runs). churn is included because the registry's own comment names
+  transport and churn as the pair carrying the claim and `churn_transport.csv` is named in the same
+  sentence as confounded. Results to `benchmark/results/crossarm/{design}_{arm}.jsonl` so nothing
+  overwrites the committed campaigns and the arms stay separable; no cross-arm comparison drawn until
+  both arms of a design are in.
+  **A POWER CALCULATION FROM EXISTING DATA STOPPED AN UNNECESSARY RESTART.** The coordinator was about
+  to order 25 repetitions, since chapter VI records that seven resolved the difference at only four of
+  five loads in an earlier campaign. Computed instead from the desktop's filed transport records
+  (50 accepted runs per cell, so a real estimate of run-to-run spread): the half-width of the interval
+  on a difference, as a share of the cell median, is 1.2% to 4.7% at n=7 in nine of ten cells, and only
+  25000 with TLS fails, at 6.7% against the 5% floor (its run-to-run cv is 6.4% against 1-4%
+  elsewhere; at n=25 it would reach 3.6%). **So seven repetitions resolves nine of ten cells, and
+  tripling six hours into twenty-one to rescue one cell is the wrong trade.** Report the achieved
+  resolution per cell and say which resolved. Caveats stated to the laptop: the estimate is from
+  Windows records for a Linux campaign, so it is a prior and not a prediction, and it approximates the
+  harness's bootstrapped medians with a normal interval on a difference of means -- close enough to
+  decide a restart, not close enough to quote.
+  **Method note worth generalising: a power calculation from data already held costs nothing and can
+  decide whether machine time is worth spending. Do it before long campaigns, not after.**
+  The 25000-TLS cell's threefold cv deserves one sentence in the report whichever way it falls: it
+  appeared on a different platform at a different commit, which makes it more interesting, not less.
+  **GAP, to follow without restarting: paper 2's syscall count is NOT in this set.** The mechanism
+  design here varies the BACKEND; paper 2 needs classification ON and OFF, a different axis, and its
+  text says the syscall mechanism awaits the Linux run. Appended as a fourth design afterwards, own
+  directory, about twenty minutes, and it completes a paper that is otherwise done.
+  Preflight also caught that `benchmark/certs/bench.crt` did not exist, which would have failed the
+  TLS half an hour in. Third time tonight that checking a precondition beat discovering it.
 - **THE DECOMPOSITION IS DONE AND THE MECHANISMS GENUINELY DIFFER.** Three arms, 25 rotations,
   interleaved, one session, on `a389023ba`; all 75 runs admissible, worst pacing p99 21 us, so the pool
   never came near binding and none of tonight's coupling touches these numbers.
