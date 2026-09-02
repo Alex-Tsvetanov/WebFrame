@@ -67,7 +67,23 @@ from typing import Any, Iterator
 # generator drops back to the invoking user while the server stays root, and until this
 # version nothing measured either half, so a run there whose prefix silently failed to
 # drop is indistinguishable in a version 5 record from one that dropped correctly.
-SCHEMA_VERSION = 6
+#
+# 7 added server_euid, the other half of that pair. Version 6 measured who ran the load
+# but nothing measured who ran the server, so the arrangement's central claim rested on a
+# free-text server_location string. This became load-bearing rather than merely tidy once
+# root turned out to be exempt from a limit an unprivileged server is not: io_uring
+# charges ring memory against a per-user RLIMIT_MEMLOCK budget, and a root server never
+# meets the ceiling an unprivileged one hits. A record that does not say which user the
+# server ran as cannot be interpreted on that axis, and a version 6 file cannot answer it
+# retrospectively.
+#
+# Note that this reverses the arrangement described above. That paragraph says the server
+# stays root, which was true while io_uring needed CAP_SYS_ADMIN on the hardened kernel
+# the rig then ran. It no longer does, both ends now run as the invoking user, and a root
+# server is the exception rather than the rule. From this version the driver refuses a run
+# whose two euids differ unless the cell declares the asymmetry, so an accidental root
+# server is a failed run rather than a quietly faster one.
+SCHEMA_VERSION = 7
 
 
 @dataclass
@@ -220,6 +236,11 @@ class RunRecord:
     # id, and on a run whose generator predates the field. Under a launch prefix a None
     # or a zero is refused: the whole arrangement rests on the generator not being root.
     generator_euid: int | None = None
+    # Who ran the server, read from /proc rather than inferred from the launch prefix.
+    # None on Windows and on a run whose adapter predates the field. Compared against
+    # generator_euid above: the two must match unless the cell declares otherwise, since
+    # a root server is exempt from limits an unprivileged one is held to.
+    server_euid: int | None = None
     # A laptop can change its power and thermal regime mid-campaign in a way the desktop
     # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
     # and caps clocks, which makes the number uncitable for the same reason a virtualised

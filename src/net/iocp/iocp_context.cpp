@@ -26,6 +26,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "mswsock.lib")
@@ -395,6 +396,7 @@ namespace coroute::net
 	public:
 		IocpConnection(IocpContext& ctx, SOCKET socket) : ctx_(ctx), socket_(socket)
 		{
+			configure_accepted_socket(socket);
 			ctx_.associate(reinterpret_cast<HANDLE>(socket_));
 
 			// Get remote address

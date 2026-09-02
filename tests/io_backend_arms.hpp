@@ -18,12 +18,14 @@
 #include <coroute/net/io_context.hpp>
 
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace coroute::testing
@@ -70,13 +72,49 @@ namespace coroute::testing
 		return arms;
 	}
 
+	/// How long to wait for the previous test's io_uring rings to be given back.
+	///
+	/// io_uring charges its ring memory against RLIMIT_MEMLOCK, and two things about
+	/// that accounting are not what the limit's name suggests. It is charged **per
+	/// user**, not per process: measured on Linux 7.2 by creating 8192-entry rings
+	/// until ENOMEM, one process alone gets nine, and a second process started while
+	/// the first holds five gets exactly four. And it is released **asynchronously**,
+	/// 7 to 14 ms after the holding process exits.
+	///
+	/// ctest starts the next test in far less than 7 ms, so consecutive io_uring tests
+	/// overlap in accounting while never overlapping in time. That is why this is not a
+	/// parallelism bug and why serialising the arms does not fix it: at -j1, with no
+	/// concurrency at all, two of the io_uring cases failed on every run. Inserting a
+	/// gap does fix it, which is the experiment that identified the cause. Running the
+	/// four io_uring cases back to back, three repetitions:
+	///
+	///     gap   0 ms  ->  8 failures / 12
+	///     gap  50 ms  ->  1 failure  / 12
+	///     gap 200 ms  ->  0 failures / 12
+	///
+	/// 250 ms is that ladder plus margin. The wait is spent here, in the tests, rather
+	/// than by retrying inside ring init, because ring init is the code under
+	/// measurement and adding a retry to it would change the startup behaviour of the
+	/// binary the campaign is timing. A retry there may be right for a production
+	/// server on a busy host; that is a separate decision, deliberately not taken here.
+	constexpr int kMemlockSettleMs = 250;
+	constexpr int kMemlockStepMs = 5;
+
 	/// Builds a context on `backend`, or skips this run when the host refuses it.
 	///
 	/// Skips only where the host will never allow this backend. Any other errno is a
-	/// failure: EMFILE means the suite is leaking descriptors, ENOMEM means the machine
-	/// is out of memory, EINVAL means the probe itself is wrong, and every one of those
-	/// is a defect that a skip would hide behind a green run for as long as the
-	/// hardened-kernel skip is also expected.
+	/// failure: EMFILE means the suite is leaking descriptors and EINVAL means the probe
+	/// itself is wrong, and both are defects that a skip would hide behind a green run
+	/// for as long as the hardened-kernel skip is also expected.
+	///
+	/// ENOMEM is the exception, and it is why this retries rather than failing at once.
+	/// On this path it does not mean the machine is out of memory; it almost always
+	/// means the previous test's rings have not been handed back yet. See
+	/// kMemlockSettleMs. Note that io_backend_probe() above creates and destroys a ring
+	/// of its own, so its residue is part of what is being waited out here.
+	///
+	/// The wait is bounded and the last error is rethrown, so a real, persistent failure
+	/// still fails; it just fails 250 ms later.
 	inline std::unique_ptr<net::IoContext> context_or_skip(std::size_t threads, net::IoBackend backend)
 	{
 		const int err = net::io_backend_probe(backend);
@@ -99,7 +137,21 @@ namespace coroute::testing
 			}
 			FAIL(reason);
 		}
-		return net::IoContext::create(threads, backend);
+		for (int waited = 0;; waited += kMemlockStepMs)
+		{
+			try
+			{
+				return net::IoContext::create(threads, backend);
+			}
+			catch (const std::runtime_error&)
+			{
+				if (waited >= kMemlockSettleMs)
+				{
+					throw;
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(kMemlockStepMs));
+			}
+		}
 	}
 
 }  // namespace coroute::testing

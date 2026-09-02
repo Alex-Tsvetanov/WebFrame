@@ -97,7 +97,28 @@ if("io_uring" IN_LIST _coroute_backends AND "epoll" IN_LIST _coroute_backends)
         TEST_SUFFIX _io_uring
         EXTRA_ARGS --name unit_tests_io_uring --abort
         PROPERTIES ENVIRONMENT COROUTE_TEST_IO_BACKEND=io_uring
-                   SKIP_RETURN_CODE 4)
+                   SKIP_RETURN_CODE 4
+                   # Serialised against the other io_uring entries, including the
+                   # integration arms below, because io_uring ring memory is charged
+                   # against a per-user RLIMIT_MEMLOCK budget: about nine 8192-entry
+                   # rings on a default 8MiB limit, shared by every process this user
+                   # runs. These tests want more than nine between them.
+                   #
+                   # This is the second of two mechanisms and neither fixes the other,
+                   # which is worth stating because each on its own looks like the
+                   # answer. The budget is also released asynchronously, 7 to 14ms after
+                   # a process exits, so consecutive tests overlap in accounting while
+                   # never overlapping in time; that part is not concurrency at all and a
+                   # lock does nothing for it. It is handled by the bounded retry in
+                   # tests/io_backend_arms.hpp, and measured: with the retry and no lock,
+                   # ctest -j1 passes five runs out of five.
+                   #
+                   # What the retry cannot fix is genuine simultaneous demand. Two tests
+                   # each retrying for their rings hold what they have already taken
+                   # while waiting for the rest, so they starve each other and both time
+                   # out. With the retry and no lock, ctest -j16 failed three runs in
+                   # five. Hence both.
+                   RESOURCE_LOCK io_uring_memlock)
 
     # Everything else, once, with no backend in play.
     catch_discover_tests(unit_tests TEST_SPEC "~[io_context]~[datagram]")
@@ -119,7 +140,8 @@ else()
     # only registration that still claims 4 means skipped, so it is the only one where
     # exactly four failed assertions could exit 4 and print green.
     if("io_uring" IN_LIST _coroute_backends)
-        catch_discover_tests(unit_tests EXTRA_ARGS --abort PROPERTIES SKIP_RETURN_CODE 4)
+        catch_discover_tests(unit_tests EXTRA_ARGS --abort
+            PROPERTIES SKIP_RETURN_CODE 4 RESOURCE_LOCK io_uring_memlock)
     else()
         catch_discover_tests(unit_tests)
     endif()
@@ -199,6 +221,12 @@ if(COROUTE_BUILD_EXAMPLES)
             set_tests_properties(protocol_demux${_suffix} PROPERTIES
                 TIMEOUT 60
                 SKIP_RETURN_CODE 77)
+            # Same per-user budget and the same lock name as the unit arm: these spawn
+            # real servers, and the budget does not care which process spends it.
+            if(_arm STREQUAL "io_uring")
+                set_tests_properties(protocol_demux${_suffix} PROPERTIES
+                    RESOURCE_LOCK io_uring_memlock)
+            endif()
             math(EXPR _demux_port "${_demux_port} + 1")
 
             # The claim itself, asserted: one descriptor answering both transports, and
@@ -218,6 +246,12 @@ if(COROUTE_BUILD_EXAMPLES)
                     TIMEOUT 90
                     FIXTURES_REQUIRED tls_demux_fixture
                     SKIP_RETURN_CODE 77)
+                # As above. This one runs three servers of two workers, six of the
+                # user's nine rings, so it fits alone and beside nothing else.
+                if(_arm STREQUAL "io_uring")
+                    set_tests_properties(tls_demux${_suffix} PROPERTIES
+                        RESOURCE_LOCK io_uring_memlock)
+                endif()
                 math(EXPR _tls_port "${_tls_port} + 3")
             endif()
         endforeach()

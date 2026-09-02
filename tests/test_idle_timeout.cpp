@@ -162,11 +162,19 @@ TEST_CASE("A period that has elapsed closes the connection", "[idle]")
 
 TEST_CASE("Activity resets the idle clock", "[idle]")
 {
+	// 20ms against a 50ms sleep, rather than the 1ms/5ms the neighbouring cases use,
+	// because this is the one case whose verdict turns on an interval of nearly zero:
+	// the gap between the read and the timer looking. IdleTimeout runs on
+	// CLOCK_MONOTONIC_COARSE, which advances once per tick (1.00 ms here), so that
+	// near-zero gap reads as either 0 or one whole tick. Against a 1ms timeout that is
+	// a coin flip, and it was measured as one: 2 failures in 200 runs. The sleep still
+	// has to exceed the timeout or the case proves nothing, since the connection would
+	// not have been idle either way, so both numbers move together.
 	FakeContext ctx;
 	auto* raw = new FakeConnection();
-	IdleTimeout conn(std::unique_ptr<Connection>(raw), ctx, 1ms);
+	IdleTimeout conn(std::unique_ptr<Connection>(raw), ctx, 20ms);
 
-	std::this_thread::sleep_for(5ms);
+	std::this_thread::sleep_for(50ms);
 
 	// A byte moves just before the timer looks, so the connection is not idle.
 	CHECK(read_one(conn) == "byte");

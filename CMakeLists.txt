@@ -178,6 +178,7 @@ add_library(coroute STATIC
 
     # Network abstraction
     src/net/accept_pool.cpp
+    src/net/socket_options.cpp
     src/net/protocol_detect.cpp
     src/net/websocket.cpp
 )

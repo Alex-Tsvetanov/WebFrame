@@ -188,6 +188,24 @@ def is_backend_refusal(text):
     return "--io-backend" in text and "is not available on this host" in text
 
 
+# The per-user io_uring memlock budget, and why a launch is retried.
+#
+# io_uring charges ring memory against RLIMIT_MEMLOCK, which is accounted per user
+# rather than per process and released asynchronously, 7 to 14 ms after the previous
+# holder exits. A server started inside that window fails at ring init even though
+# nothing is running concurrently.
+#
+# Bounded, and the last failure is still reported, so a genuine ring-init defect fails;
+# it just fails a couple of seconds later. tests/io_backend_arms.hpp carries the
+# measurement this is derived from and does the same thing for in-process contexts.
+MEMLOCK_SETTLE = 2.0
+
+
+def is_memlock_exhaustion(text):
+    """Whether the server died because the user's ring budget was still spoken for."""
+    return "Failed to initialize io_uring ring" in text
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("server", help="path to a server binary accepting --port/--workers")
@@ -209,32 +227,51 @@ def main():
     if args.io_backend:
         argv += ["--io-backend", args.io_backend]
 
-    proc = subprocess.Popen(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    give_up = time.time() + MEMLOCK_SETTLE
+    while True:
+        proc = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
 
-    # Wait for the port rather than sleeping a fixed amount.
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            out = proc.stdout.read().decode(errors="replace")
-            if is_backend_refusal(out):
-                # Not a defect: this host will not give this process that backend. See
-                # SKIP_EXIT.
-                print(f"skipping, {args.io_backend} unavailable here:\n{out}", file=sys.stderr)
-                return SKIP_EXIT
-            print(f"server exited early:\n{out}", file=sys.stderr)
-            return 1
-        try:
-            connect(args.port).close()
+        # Wait for the port rather than sleeping a fixed amount. Three outcomes, kept
+        # apart deliberately: listening, died with output, or neither within the
+        # deadline. The last one must not read as success.
+        out = None
+        listening = False
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                out = proc.stdout.read().decode(errors="replace")
+                break
+            try:
+                connect(args.port).close()
+                listening = True
+                break
+            except OSError:
+                time.sleep(0.1)
+        if listening:
             break
-        except OSError:
-            time.sleep(0.1)
-    else:
-        proc.kill()
-        print("server never accepted a connection", file=sys.stderr)
+        if out is None:
+            proc.kill()
+            print("server never listened", file=sys.stderr)
+            return 1
+        if is_memlock_exhaustion(out) and time.time() < give_up:
+            proc.kill()
+            proc.wait(timeout=5)
+            time.sleep(0.05)
+            continue
+        if is_backend_refusal(out):
+            # Not a defect: this host will not give this process that backend. See
+            # SKIP_EXIT.
+            print(f"skipping, {args.io_backend} unavailable here:\n{out}", file=sys.stderr)
+            return SKIP_EXIT
+        print(f"server exited early:\n{out}", file=sys.stderr)
+        return 1
+
+    if proc.poll() is not None:
+        print("server exited after listening", file=sys.stderr)
         return 1
 
     print("protocol demultiplexing over one listening socket:")

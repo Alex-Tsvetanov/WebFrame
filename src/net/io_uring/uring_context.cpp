@@ -5,8 +5,9 @@
 #if defined(COROUTE_BACKEND_IO_URING)
 
 #include <liburing.h>
-#include <sys/socket.h>
+#include <poll.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <linux/udp.h>  // UDP_SEGMENT; netinet/udp.h clashes with it over struct udphdr
@@ -25,6 +26,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 namespace coroute::net
 {
@@ -132,7 +134,20 @@ namespace coroute::net
 	struct WorkerRing
 	{
 		io_uring ring;
-		int eventfd = -1;
+		// Whether this kernel takes a wait's timeout as an argument to io_uring_enter
+		// rather than as an operation occupying an SQE. It decides whether waiting is a
+		// submission-queue producer. Since 5.11.
+		bool ext_arg = false;
+		// Written by wake() to interrupt this ring's wait. Watched by a POLL_ADD armed
+		// on the ring itself, which is what makes writing to it sufficient.
+		int wake_fd = -1;
+
+		// Marks the poll completion that watches wake_fd. Deliberately a distinct value
+		// rather than null: null would also match any operation that lost its user_data,
+		// and this CQE is acted on rather than merely skipped, so telling it apart
+		// matters. 1 is never a valid UringOperation*, being both misaligned and in the
+		// first page.
+		static constexpr std::uint64_t kWakeMarker = 1;
 		int listen_fd = -1;  // SO_REUSEPORT listener for this ring
 		std::atomic<bool> initialized{false};
 
@@ -168,11 +183,12 @@ namespace coroute::net
 			}
 			if (initialized)
 			{
-				if (eventfd >= 0)
-				{
-					::close(eventfd);
-				}
 				io_uring_queue_exit(&ring);
+			}
+			// After queue_exit, so the ring is not still polling a closed descriptor.
+			if (wake_fd >= 0)
+			{
+				::close(wake_fd);
 			}
 		}
 
@@ -191,15 +207,57 @@ namespace coroute::net
 				return false;
 			}
 
-			eventfd = ::eventfd(0, EFD_NONBLOCK);
-			if (eventfd < 0)
+			ext_arg = (params.features & IORING_FEAT_EXT_ARG) != 0;
+
+
+			wake_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+			if (wake_fd < 0)
 			{
+				io_uring_queue_exit(&ring);
+				return false;
+			}
+
+			// Armed before the worker starts, so the first wake has something watching.
+			if (!arm_wake())
+			{
+				::close(wake_fd);
+				wake_fd = -1;
 				io_uring_queue_exit(&ring);
 				return false;
 			}
 
 			initialized = true;
 			return true;
+		}
+
+		/// Asks the ring to complete when wake_fd becomes readable.
+		///
+		/// Single-shot, so it is re-armed after each wake. Multishot would avoid the
+		/// re-arm, but only where IORING_CQE_F_MORE says the kernel is keeping the
+		/// registration, and assuming that without checking would silently stop waking
+		/// on a kernel that is not.
+		///
+		/// Deliberately POLL_ADD rather than IORING_OP_READ on the eventfd: it is
+		/// EFD_NONBLOCK, so a read against an empty counter completes immediately with
+		/// EAGAIN and re-arming on that completion is a spin, not a wait.
+		bool arm_wake()
+		{
+			io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+			if (sqe == nullptr)
+			{
+				if (io_uring_submit(&ring) < 0)
+				{
+					return false;
+				}
+				sqe = io_uring_get_sqe(&ring);
+				if (sqe == nullptr)
+				{
+					return false;
+				}
+			}
+			io_uring_prep_poll_add(sqe, wake_fd, POLLIN);
+			io_uring_sqe_set_data64(sqe, kWakeMarker);
+			return io_uring_submit(&ring) >= 0;
 		}
 
 		// Create SO_REUSEPORT listener for this ring
@@ -234,12 +292,37 @@ namespace coroute::net
 			return true;
 		}
 
-		void wake()
+		/// Ends this ring's current wait, so posted work is not left until the timeout.
+		///
+		/// A plain write to an eventfd the ring is polling. No SQE, no io_uring call, no
+		/// sq_mutex, and that is the whole design rather than an optimisation.
+		///
+		/// Two earlier shapes did not work, and both failed the same way. Writing to an
+		/// eventfd nothing watched woke nobody: the counter was observed by no one and
+		/// the wait ran to its full timeout. Submitting a no-op instead looked correct
+		/// and measured at a median delivery of 962us against a 1ms timeout, because the
+		/// worker holds sq_mutex for the whole duration of its wait, so the no-op could
+		/// not be submitted until the wait it was meant to interrupt had already ended
+		/// by itself.
+		///
+		/// That generalises: any wake that has to reach the ring through the submission
+		/// queue must take the lock the parked worker is holding, so it can never arrive
+		/// earlier than the timeout it is trying to pre-empt. A wake has to touch no SQE
+		/// at all, which is what this does.
+		///
+		/// Also why this is not io_uring_register_eventfd: that asks the ring to signal
+		/// an eventfd when completions arrive, which points the wrong way and would leave
+		/// this function dead while looking fixed.
+		///
+		/// Failure is ignored. The only plausible one is EAGAIN on a counter at its
+		/// maximum, which means a great many wakes are already pending and one more adds
+		/// nothing.
+		void wake() noexcept
 		{
-			if (eventfd >= 0)
+			if (wake_fd >= 0)
 			{
-				uint64_t val = 1;
-				::write(eventfd, &val, sizeof(val));
+				const uint64_t one = 1;
+				[[maybe_unused]] ssize_t ignored = ::write(wake_fd, &one, sizeof(one));
 			}
 		}
 	};
@@ -487,20 +570,89 @@ namespace coroute::net
 			auto* worker_ring = rings_[ring_index].get();
 			io_uring_cqe* cqe;
 
-			// Use short timeout - balance between latency and CPU usage
+			// How long to sleep when there is nothing to do.
+			//
+			// Two things end this wait early, and it is worth being exact about which,
+			// because an earlier version of this comment was not. A completion wakes it
+			// immediately whatever the timeout is, so for connections already in flight
+			// the value is not a latency knob, which is why raising it a thousandfold
+			// below left the median alone. Work posted from another thread, though,
+			// arrives through wake(), and until wake() was fixed it did not end this
+			// wait at all: it wrote to an eventfd nothing read, so a post(), a
+			// run_on_worker() handoff, a TimerQueue callback or a stop() on an idle ring
+			// waited out the whole timeout. That was tolerable at 1us and would not have
+			// been at 1ms. wake() now submits a no-op whose completion ends the wait, so
+			// the claim above is true of posted work too.
+			//
+			// It was 1us, and at that value the loop spent its life waking up. Measured
+			// on the Linux rig at 10 000 requests a second, four workers, both arms
+			// unprivileged: 420 598 io_uring_enter a second, 44.864 per request. That
+			// number is set by the timeout, not by the workload, which is what made
+			// syscalls per request meaningless as a normaliser for this backend: it
+			// counted how long the run was, not how much work it did.
+			//
+			// At 1ms the same cell issues 25 548 a second, 2.725 per request. Of that,
+			// four workers times a thousand wakeups a second is 4 000, so the rest is
+			// proportional to the work, and the backend can be compared on syscalls per
+			// request again. It now costs fewer of them than epoll does on the same cell,
+			// 2.725 against 5.090, where before it appeared to cost nine times more.
+			//
+			// The cost, measured rather than assumed, is in the tail at low rates. At 100
+			// requests a second over four connections, gaps far longer than the timeout,
+			// p999 rose from 123us to 506us: about half the timeout, which is where a
+			// request that arrives just after a wait begins would land. p50, p90 and p99
+			// moved by a few microseconds and not consistently in either direction, and
+			// at 500 a second p999 improved.
+			//
+			// What this does not buy is the idle CPU. With nothing connected at all, the
+			// 1us build left 4.45 of 16 cores parked below 1.5GHz and the 1ms build 4.83,
+			// against 9.50 for epoll. A thousand wakeups a second per worker is still
+			// enough to keep a core out of the deep states, so the power and thermal cost
+			// of the completion model survives this change almost intact. Only the
+			// syscall count went away.
 			__kernel_timespec ts;
 			ts.tv_sec = 0;
-			ts.tv_nsec = 1000;  // 1µs timeout for low latency
+			ts.tv_nsec = 1000000;  // 1ms
 
-			// The wait needs the submission lock because it takes an SQE for its timeout,
-			// but it must not still hold it below: completions are resumed inline, and a
-			// resumed coroutine's next act is usually to submit again. Holding the lock
-			// across that would deadlock the worker against itself.
+			// The wait needs the submission lock because it takes an SQE for its timeout
+			// on kernels without IORING_FEAT_EXT_ARG, but it must not still hold it
+			// below: completions are resumed inline, and a resumed coroutine's next act
+			// is usually to submit again. Holding the lock across that would deadlock the
+			// worker against itself.
 			//
 			// The completion queue needs no lock. It has exactly one consumer, this
 			// worker, which is what makes releasing here safe rather than merely
 			// convenient.
+			//
+			// This lock is held for the whole duration of a blocking wait, so while it
+			// is held every other producer stalls for up to the timeout. wake() is
+			// deliberately not one of them, but an off-worker submit_sqe is, and it waits
+			// out the timeout for no reason on a kernel where this wait submits nothing.
+			//
+			// Whether it submits anything is a property of the kernel, and the direction
+			// is the opposite of what the name suggests, so it was verified rather than
+			// assumed. From io_uring_wait_cqe_timeout(3): "If ts is specified and an
+			// older kernel without IORING_FEAT_EXT_ARG is used, the application does not
+			// need to call io_uring_submit(3) before calling io_uring_wait_cqes(3). For
+			// newer kernels with that feature flag set, there is no implied submit when
+			// waiting for a request." So the implied submit is on OLD kernels: there the
+			// wait is a producer and must hold the lock. With the feature it submits
+			// nothing, is not a producer, and the lock protects nothing while blocking
+			// everyone.
+			//
+			// Every actual submission stays under the lock either way. This changes only
+			// the wait.
+			//
+			// Either way the lock is not held below: completions are resumed inline, and
+			// a resumed coroutine's next act is usually to submit again, so holding it
+			// across that would deadlock the worker against itself. The completion queue
+			// needs no lock regardless, having exactly one consumer, this worker.
 			int ret = 0;
+			if (worker_ring->ext_arg)
+			{
+				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
+			}
+			else
 			{
 				std::lock_guard lock(worker_ring->sq_mutex);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
@@ -525,8 +677,26 @@ namespace coroute::net
 			// Process all available completions in batch
 			unsigned head;
 			unsigned processed = 0;
+			bool woken = false;
 			io_uring_for_each_cqe(&worker_ring->ring, head, cqe)
 			{
+				if (io_uring_cqe_get_data64(cqe) == WorkerRing::kWakeMarker)
+				{
+					// The eventfd this ring polls became readable, which is wake()
+					// saying there is queued work. Cleared with an ordinary read rather
+					// than through the ring: it is a two-line operation on a descriptor
+					// this thread owns, and routing it through the submission queue
+					// would put it behind the same lock wake() exists to avoid.
+					uint64_t drained = 0;
+					while (::read(worker_ring->wake_fd, &drained, sizeof(drained))
+					       == static_cast<ssize_t>(sizeof(drained)))
+					{
+					}
+					woken = true;
+					processed++;
+					continue;
+				}
+
 				auto* op = static_cast<UringOperation*>(io_uring_cqe_get_data(cqe));
 				if (op)
 				{
@@ -546,6 +716,15 @@ namespace coroute::net
 				if (processed >= 512) break;  // Limit batch size
 			}
 			io_uring_cq_advance(&worker_ring->ring, processed);
+
+			// Re-armed after the drain rather than inside it, so the lock is not held
+			// across the inline coroutine resumes above. Single-shot poll, so without
+			// this the ring stops watching wake_fd and every later wake is lost.
+			if (woken)
+			{
+				std::lock_guard lock(worker_ring->sq_mutex);
+				worker_ring->arm_wake();
+			}
 		}
 
 		void enqueue_on(size_t index, std::function<void()> callback)
@@ -559,7 +738,10 @@ namespace coroute::net
 				std::lock_guard lock(ring->callback_mutex);
 				ring->callbacks.push(std::move(callback));
 			}
-			// Woken because the worker may be parked in a wait with nothing else due.
+			// Woken because the worker may be parked in a wait with nothing else due,
+			// and a queued callback is not something the ring would otherwise notice.
+			// wake() submits a no-op for exactly this; see it for why an eventfd did not
+			// work here.
 			ring->wake();
 		}
 
@@ -680,6 +862,7 @@ namespace coroute::net
 		UringConnection(UringContext& ctx, int fd, const sockaddr_in& addr, size_t ring_index = 0)
 			: ctx_(ctx), fd_(fd), ring_index_(ring_index)
 		{
+			configure_accepted_socket(fd);
 			char ip[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
 			remote_addr_ = ip;
@@ -945,19 +1128,6 @@ namespace coroute::net
 	// Accept Loop Implementation (for SO_REUSEPORT multi-accept)
 	// ============================================================================
 
-	// Helper to set TCP optimizations on accepted sockets
-	static void set_tcp_opts(int fd)
-	{
-		int opt = 1;
-		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef TCP_QUICKACK
-		setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &opt, sizeof(opt));
-#endif
-		// Increase send buffer for better throughput
-		int sndbuf = 256 * 1024;
-		setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-	}
-
 	Task<void> UringContext::accept_loop(size_t ring_index)
 	{
 		auto* worker_ring = rings_[ring_index].get();
@@ -989,9 +1159,6 @@ namespace coroute::net
 				// Accept error - continue unless stopped
 				continue;
 			}
-
-			// Set TCP optimizations
-			set_tcp_opts(op.result);
 
 			// Create connection on this ring
 			auto conn = std::make_unique<UringConnection>(*this, op.result, op.client_addr, ring_index);

@@ -113,27 +113,60 @@ def is_backend_refusal(text):
     return "--io-backend" in text and "is not available on this host" in text
 
 
+# The per-user io_uring memlock budget, and why a launch is retried.
+#
+# io_uring charges ring memory against RLIMIT_MEMLOCK, which is accounted per user
+# rather than per process and released asynchronously, 7 to 14 ms after the previous
+# holder exits. A server started inside that window fails at ring init even though
+# nothing is running concurrently. These scripts each start several servers of two
+# workers, so they feel it more than the unit tests do.
+#
+# Bounded, and the last failure is still reported, so a genuine ring-init defect fails;
+# it just fails a couple of seconds later. tests/io_backend_arms.hpp carries the
+# measurement this is derived from and does the same thing for in-process contexts.
+MEMLOCK_SETTLE = 2.0
+
+
+def is_memlock_exhaustion(text):
+    """Whether the server died because the user's ring budget was still spoken for."""
+    return "Failed to initialize io_uring ring" in text
+
+
 def start(server, port, extra, wait=15.0):
     # A stale server would otherwise share the port under SO_REUSEPORT and the probes
     # below would land on whichever the kernel picks.
     held = held_reason(port)
     if held:
         raise Failure(held)
-    proc = subprocess.Popen(
-        [server, "--port", str(port), "--workers", "2", "--max-requests", "0",
-         *IO_BACKEND_ARGS, *extra],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )
+    give_up = time.time() + MEMLOCK_SETTLE
+    while True:
+        proc = subprocess.Popen(
+            [server, "--port", str(port), "--workers", "2", "--max-requests", "0",
+             *IO_BACKEND_ARGS, *extra],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        early = _wait_or_exit(proc, port, wait, extra)
+        if early is None:
+            return proc
+        if is_memlock_exhaustion(early) and time.time() < give_up:
+            proc.kill()
+            proc.wait(timeout=5)
+            time.sleep(0.05)
+            continue
+        if is_backend_refusal(early):
+            raise Skipped(early)
+        raise Failure(f"server exited early with {' '.join(extra)}:\n{early}")
+
+
+def _wait_or_exit(proc, port, wait, extra):
+    """None once the server is listening, else the output it died with."""
     deadline = time.time() + wait
     while time.time() < deadline:
         if proc.poll() is not None:
-            out = proc.stdout.read().decode(errors="replace")
-            if is_backend_refusal(out):
-                raise Skipped(out)
-            raise Failure(f"server exited early with {' '.join(extra)}:\n{out}")
+            return proc.stdout.read().decode(errors="replace")
         try:
             socket.create_connection((HOST, port), timeout=0.25).close()
-            return proc
+            return None
         except OSError:
             time.sleep(0.05)
     proc.kill()

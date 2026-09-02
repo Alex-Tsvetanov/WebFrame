@@ -22,6 +22,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 namespace coroute::net
 {
@@ -468,6 +469,7 @@ namespace coroute::net
 	public:
 		KqueueConnection(KqueueContext& ctx, int fd, const sockaddr_in& addr) : ctx_(ctx), fd_(fd)
 		{
+			configure_accepted_socket(fd);
 			char ip[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
 			remote_addr_ = ip;

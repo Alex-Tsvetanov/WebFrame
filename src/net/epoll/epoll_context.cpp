@@ -5,6 +5,7 @@
 #if defined(COROUTE_BACKEND_EPOLL)
 
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/sendfile.h>
 #include <netinet/in.h>
@@ -26,6 +27,7 @@
 #include <cerrno>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 namespace coroute::net
 {
@@ -140,6 +142,8 @@ namespace coroute::net
 	class EpollContext : public IoContext
 	{
 		int epfd_ = -1;
+		// Written by post() and stop() to end a worker's epoll_wait early. See post().
+		int wake_fd_ = -1;
 		std::vector<std::thread> workers_;
 		std::atomic<bool> stopped_{false};
 		size_t thread_count_;
@@ -160,6 +164,26 @@ namespace coroute::net
 			{
 				throw std::runtime_error("epoll_create1() failed");
 			}
+
+			wake_fd_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+			if (wake_fd_ < 0)
+			{
+				::close(epfd_);
+				throw std::runtime_error("eventfd() failed");
+			}
+
+			// Edge triggered, so one post wakes one worker rather than all of them.
+			// data.ptr stays null, which is how process_events() tells this apart from a
+			// real operation: it already skips null, and now drains this first.
+			epoll_event ev{};
+			ev.events = EPOLLIN | EPOLLET;
+			ev.data.ptr = nullptr;
+			if (::epoll_ctl(epfd_, EPOLL_CTL_ADD, wake_fd_, &ev) < 0)
+			{
+				::close(wake_fd_);
+				::close(epfd_);
+				throw std::runtime_error("epoll_ctl() failed to register the wake fd");
+			}
 		}
 
 		~EpollContext() override
@@ -178,6 +202,13 @@ namespace coroute::net
 				}
 			}
 
+			// After the workers are joined, not before: a worker still in epoll_wait
+			// on a closed descriptor is a use-after-close, and the wake fd is registered
+			// in that set.
+			if (wake_fd_ >= 0)
+			{
+				::close(wake_fd_);
+			}
 			if (epfd_ >= 0)
 			{
 				::close(epfd_);
@@ -243,7 +274,12 @@ namespace coroute::net
 			process_callbacks();
 		}
 
-		void stop() override { stopped_ = true; }
+		void stop() override
+		{
+			stopped_ = true;
+			// So shutdown does not wait out a worker's current epoll_wait.
+			wake();
+		}
 
 		bool stopped() const noexcept override { return stopped_; }
 
@@ -262,8 +298,21 @@ namespace coroute::net
 
 		void post(std::function<void()> callback) override
 		{
-			std::lock_guard lock(callback_mutex_);
-			callbacks_.push(std::move(callback));
+			{
+				std::lock_guard lock(callback_mutex_);
+				callbacks_.push(std::move(callback));
+			}
+
+			// The queue alone is not enough. A worker parked in epoll_wait has no reason
+			// to look at it until that wait ends on its own, which without this is
+			// whenever the 100ms timeout expires: a posted callback was delivered a
+			// measured 50ms late on an otherwise idle context, and TimerQueue routes
+			// every idle timeout and handshake deadline through here.
+			//
+			// The lock is released first on purpose. A woken worker's first act is to
+			// take this mutex, and waking it while still holding it only buys a
+			// contended acquire.
+			wake();
 		}
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
@@ -278,6 +327,20 @@ namespace coroute::net
 		// thread for the whole context, started only if something is ever scheduled.
 		TimerQueue timers_{[this](std::function<void()> cb) { post(std::move(cb)); }};
 
+		/// Ends one worker's epoll_wait early.
+		///
+		/// Failures are ignored: the only ones possible here are a full counter, which
+		/// means a wake is already pending and a second would add nothing, and a closed
+		/// descriptor during teardown, where the 100ms timeout is a sufficient backstop.
+		void wake() noexcept
+		{
+			if (wake_fd_ >= 0)
+			{
+				const uint64_t one = 1;
+				[[maybe_unused]] ssize_t ignored = ::write(wake_fd_, &one, sizeof(one));
+			}
+		}
+
 		void worker_thread()
 		{
 			while (!stopped_)
@@ -291,8 +354,10 @@ namespace coroute::net
 		{
 			std::array<epoll_event, 64> events{};
 
-			// Bounded wait rather than blocking indefinitely, so stop() is noticed
-			// without needing an eventfd to interrupt the wait.
+			// Bounded rather than indefinite, so a missed wake costs 100ms rather than
+			// hanging the worker. It is the backstop now and not the mechanism: this
+			// used to be the only way stop() and post() were noticed at all, which cost
+			// posted work up to the full 100ms on an idle context. See post() and wake().
 			int n = epoll_wait(epfd_, events.data(), static_cast<int>(events.size()), 100);
 			if (n < 0)
 			{
@@ -304,6 +369,13 @@ namespace coroute::net
 				auto* op = static_cast<EpollOperation*>(events[static_cast<size_t>(i)].data.ptr);
 				if (!op)
 				{
+					// The wake fd, which is the only null-data registration. Drained to
+					// zero because it is edge triggered: an undrained counter produces no
+					// further edge and the next post() would not wake anyone.
+					uint64_t drained = 0;
+					while (::read(wake_fd_, &drained, sizeof(drained)) == sizeof(drained))
+					{
+					}
 					continue;
 				}
 
@@ -497,15 +569,13 @@ namespace coroute::net
 	public:
 		EpollConnection(EpollContext& ctx, int fd, const sockaddr_in& addr) : ctx_(ctx), fd_(fd)
 		{
+			configure_accepted_socket(fd);
 			std::array<char, INET_ADDRSTRLEN> ip{};
 			if (::inet_ntop(AF_INET, &addr.sin_addr, ip.data(), ip.size()) != nullptr)
 			{
 				remote_addr_ = ip.data();
 			}
 			remote_port_ = ntohs(addr.sin_port);
-
-			int one = 1;
-			::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 		}
 
 		~EpollConnection() override { close(); }
