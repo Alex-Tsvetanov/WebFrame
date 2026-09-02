@@ -163,6 +163,27 @@ been scheduled yet.
   The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
   a rebuild is a campaign boundary and the later designs would then need their own directory and
   fingerprint, as the schema split was handled.
+- **The laptop's own test caught kqueue on macOS, unprompted, and it is the before number.** Test 42,
+  "posted work reaches an idle worker without waiting out the poll timeout", written for epoll and
+  io_uring, fails on macOS at HEAD: median delivery **98480 us**, first 49699, worst 98658, against
+  its threshold of 200. Worse than epoll's 50 ms for an arithmetic reason: a burst of posts each waits
+  out its own 100 ms `kevent` cycle rather than sharing one. **The whole laptop stack is merged and
+  built on macOS in a scratch worktree (241 targets, self-checks 301 here against 304 on Linux, the
+  difference being the Linux-only checks) but is DELIBERATELY NOT PUSHED until the kqueue fix lands,
+  because mainline must not carry a failing test.** Merged tip is `0894c13b7`, one past the
+  `e6c507b9f` the laptop reported.
+  **CORRECTION, from the laptop:** that merge was TWO COMMITS SHORT. `0894c13b7` is behind
+  `e6c507b9f`, not past it; the coordinator read a push range backwards and then explained away the
+  contradicting evidence (301 self-checks rather than 304) with a platform-gating story instead of
+  checking it. The laptop's checks all use `FakeServer` and are platform-independent, so 301 was
+  exactly the pre-change count and was the tell. Re-merged: worktree HEAD `fdb517207`, **304 checks**,
+  build clean, and test 42 is now the ONLY failure, awaiting the kqueue fix. Lesson worth keeping:
+  a number that contradicts the story is evidence, not noise to be explained.
+  **For paper 3:** a portable test written for one backend found the same defect on three operating
+  systems, and every one of those backends passed a suite that looked complete. The suite could not
+  have caught it because nothing measured delivery latency on an idle loop. The finding is not that
+  the code had a bug; it is that a class of defect was invisible until someone measured the mechanism
+  rather than the outcome.
 - **THE WAKE DEFECT IS IN THREE BACKENDS OF FOUR, and that is the result rather than three bugs.**
   Confirmed by the coordinator on macOS: `kqueue` is epoll's case exactly. `post()`
   (src/net/kqueue/kqueue_context.cpp:245) pushes onto the callback queue and nothing wakes the loop;
@@ -209,6 +230,105 @@ been scheduled yet.
   point and therefore data, and the standing rule is that data traces to a mainline commit rather than
   to a branch tip. So: finish the findings, push, coordinator merges the stack, then the blocking-wait
   experiment AND the cross-arm re-runs both run on the merged HEAD.
+- **`coord/inbox` is on the PUBLIC repository and carries the laptop's hostname.** NOT an
+  oversight, and the coordinator first framed it wrongly to Alex as one: when the laptop first wrote
+  to that branch it spelled out that the repository is public and that the reports would expose the
+  hostname, addresses, MAC addresses, SSID and the machine's hardening profile, and asked Alex
+  directly; he chose "Full text, unredacted". He is therefore revisiting his own informed decision,
+  not repairing an accident. The tightened rule stands regardless. Extent:** in ten filenames and twelve body lines (`gh repo view` confirms
+  `Alex-Tsvetanov/WebFrame` is `isPrivate: false`). No IP or MAC has leaked yet, but the laptop was
+  about to write link facts containing two addresses and three MACs into an inbox file. It has been
+  told: nothing identifying a machine goes on that repository, ever, and network identity comes to the
+  coordinator by message only. Machine identity belongs in the private paper repositories, which is
+  what `env.json` and `measurements/` are for. The existing hostname history needs a rewrite and a
+  force push, which is Alex's call and has been put to him; a backup ref `backup/coord-inbox-pre-redaction`
+  holds the current tip locally either way.
+- **Link findings so far, from the laptop.** Topology settled: the desktop resolves by ARP as a
+  direct neighbour on the same segment, so same switch and no layer-3 hop. **The desktop does not
+  answer ICMP** (Windows Firewall default on Private and Public profiles), so the ping baseline as
+  specified cannot be taken. **RULED: no firewall rule is to be changed on either machine.** The
+  baseline becomes a TCP handshake round trip to a listening socket bound to the physical interface,
+  which is better anyway: a SYN and SYN-ACK exercise the stack path a connection uses, which ICMP does
+  not, and it answers the kernel-versus-userspace objection. It waits for the desktop's campaign to
+  end, because it needs that listening socket, and it is the two-host arm's own first step.
+  **The C-state effect survives into network measurement and is large.** 300 pings to the router
+  (same wire, same switch, one hop): median 722 microseconds plain against 502 with the laptop's own
+  cores held awake, on a measurement where the remote end and the wire are identical and only the
+  receiving core's idle state changed. The minimum barely moved (385 to 339), so the floor is the wire
+  and the wake-up sits on top of it. Same order as the morning's 495 against 74. **For paper 3:** a
+  two-host latency comparison that does not control for the receiving core's idle state measures the
+  idle governor as well as the network, and the error is hundreds of microseconds. Caveat kept: a
+  router answers ICMP on a low-priority path, so 300 microseconds of spread is an upper bound on the
+  segment, not an estimate of it.
+- **A STATISTICAL CORRECTION the coordinator made to the laptop, which the papers depend on.** The
+  laptop concluded that a per-packet spread near 300 microseconds means the path cannot resolve the
+  60 to 85 microsecond demux difference. That does not follow. We do not compare packets; we compare
+  per-run medians, and the standard error of a median falls as the square root of the sample count, so
+  at about 100 000 requests a run a 300 microsecond per-packet spread gives a per-run median stable to
+  roughly one microsecond IF the noise is independent. What enters the bootstrap is the RUN-TO-RUN
+  spread of those medians. The quantity that settles it is therefore the one the harness already
+  reports, the half-width of the difference interval as a share of the classification-off median
+  (2.47 to 5.63 percent on loopback), measured over the wire. Two caveats that could still vindicate
+  the laptop, and both are empirical: network noise is bursty and autocorrelated, and if the
+  correlation time approaches a run's length the effective sample count collapses toward the number of
+  runs; and any variation correlated with the ARM rather than added independently biases the
+  comparison at any sample size. Do not write "loopback was the right medium" until the run-to-run
+  number exists.
+- **ORDER RULED: the `getsockname` interface recording lands BEFORE the blocking-wait experiment and
+  before the cross-arm re-runs.** Not urgency but schema stability: it changes the environment record,
+  and records from before and after cannot be pooled, so everything measured from the merged mainline
+  onward must share one schema.
+- **NEW CAPABILITY (Alex, 18:45): the two machines share an Ethernet segment, so a genuine two-host
+  benchmark is possible** -- server on one machine, generator on the other, across a real interface
+  with a driver, interrupts and queueing. This is the first arrangement that can answer the loopback
+  limitation both papers currently state as a caveat, and it is stronger than the WSL arm, whose
+  "network" is a virtual switch inside the Windows host.
+  **The number that decides the design is the path's own jitter, not its throughput.** Paper 2's
+  demultiplexing difference is 60 to 85 microseconds. If the round-trip standard deviation over this
+  link is in the hundreds of microseconds, no number of repetitions recovers that difference, and the
+  honest conclusion is that loopback was the RIGHT medium for that claim while a real path is the
+  right medium for others. If the jitter is tens of microseconds, the caveat is replaced by a
+  measurement. Both machines have been asked for link facts (interface, negotiated speed, route,
+  same-switch or routed) and a 300-ping baseline reporting min, median, mean, max and standard
+  deviation. The laptop reports now (it is doing code work, not measurement); the desktop reports
+  after routing, dispatch and the sweep, because its host must stay quiet.
+  Note also that the arrangement recorded until now had the laptop on WiFi and the desktop on
+  Ethernet; the laptop has been asked to confirm which it is on, since a WiFi end would make the
+  jitter question answer itself.
+  **Declared in advance, so it is not discovered as a wall of refusals:** at 1 gigabit and roughly
+  1100 bytes on the wire per request and response, the link saturates near 70 000 requests per second,
+  which is the top of the existing ladder. A real network arm therefore has a ceiling set by the LINK
+  rather than by the server, and that ceiling belongs in the design. Discovering it instead is the
+  mistake the 800-per-second establishment rate already made once.
+  **Which direction serves which paper:** a Windows server with a Linux generator extends paper 2's
+  existing IOCP dataset with a real path; a Linux server with a Windows generator gives paper 3 its
+  epoll and io_uring arms over one. Neither licenses a cross-platform comparison, which stays
+  shape-only, because the two ends are different hardware.
+- **MAINLINE IS `a389023ba`, pushed. Schema 8. Everything measured from now on comes from it.**
+  Contents: the eventfd wake for io_uring and epoll, the EXT_ARG lock change with its pre-5.11
+  caveat, all thirteen review findings, and the per-run interface recording. macOS: 310 self-checks,
+  241 targets, and **one known failing test, number 42, which is the kqueue wake defect**; the fix is
+  on `macos/kqueue-wake` and merges next. The coordinator reversed its own "no push until it passes"
+  on the grounds that the failure is macOS-only, cannot touch any Linux number, and holding two
+  machines idle for a platform neither measures on is the wrong trade. **If test 42 ever fails on
+  LINUX that is a regression of the eventfd wake and must be reported at once.**
+  The interface field is per-run on `RunRecord`, not per-campaign, at the laptop's insistence and it
+  was right: the failure guarded against is the medium changing PARTWAY THROUGH a campaign, which a
+  campaign-level field cannot express, and per-run also refuses only the affected runs instead of
+  invalidating a campaign retroactively. Read from `getsockname` after a connection is established,
+  matched to an interface, and the address then DISCARDED; records name, speed, duplex and MTU, never
+  an address or a MAC. Verified end to end: a loopback run reports `lo`, a namespaced run reports
+  `veth-gen` from inside the namespace rather than the host's Ethernet, so the reading follows the
+  socket rather than the machine. `--expect-interface` refuses a run over anything else, and refuses
+  an unknown interface too when an expectation was stated.
+  Consequence: the desktop's campaign is at its own commit and produces schema 7, so its routing and
+  sweep results are a separate population from everything after this merge, and the refusal to pool
+  them is correct rather than an inconvenience.
+- **The laptop withdrew the resolution conclusion** after the coordinator's correction, and restated
+  the open questions itself: autocorrelated network noise collapsing the effective sample count toward
+  the number of runs, and any variation correlated with the arm. Neither is settled by a ping
+  statistic. **Nobody writes a sentence about which medium was right for the demux claim until the
+  run-to-run spread of per-run medians exists for the wire.**
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
