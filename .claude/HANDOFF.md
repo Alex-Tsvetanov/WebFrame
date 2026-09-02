@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 13:15 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 14:05 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -92,6 +92,41 @@ doc/thesis/data` and `results2tex <runs.jsonl> doc/thesis/generated/results.tex`
 `\R{}` keys the chapter expects are `campaign.sweeps.*`, `campaign.x1.*`,
 `h1detect.*`, `tail.x1.*` (grep the chapter). Routing (night 2 in the runbook) has not
 been scheduled yet.
+
+## In flight at 14:05, 2 September (a successor picks these up)
+
+- **Desktop, sequence sent 13:55 (message 0a356a7a), host free with only the Claude app open:**
+  pull to HEAD and rebuild both trees and the WSL generator; `smoke`; `churn-ladder-net` with the
+  four-rate decision rule; `churn-net` n=25 (paper 2's network arm, ~2.9 h); routing e2e
+  `main`/`bracket`/`bracket-low`/`large` then dispatch `main`/`scaling`/`depth`/`static`/
+  `large-cheap`/`large-dfa` (paper 1's entire dataset, ~3 h); the `h1` sweep design at n=7
+  (the thesis's three red sweep tables, ~1 h). Three results directories
+  `2026-09-02-desktop-{net,routing,sweeps}`, each on its own local `measure/` branch, pushed by
+  nobody but Alex. File each into the paper repos the way `2026-09-02-desktop/` was filed.
+- **Laptop, brief 5 (message d19d2f15) on the repaired host:** clock gate passed (20.7 ns, zero
+  syscalls); tree forwarded; two io_uring tests fail on `RLIMIT_MEMLOCK` (8 MiB admits two
+  four-worker contexts, ctest ran them in parallel; fix is a ctest `RESOURCE_LOCK`, queued, not a
+  code change); pair recreated; D (smoke over the pair, record the repaired environment), E
+  (four-cell mechanism comparison, both arms unprivileged), F (the io_uring timeout
+  experiment, one line at `uring_context.cpp:492`, before/after with the idle-gap latency cost
+  measured) are running in that order.
+- **Local workflow `waafab14v`: paper 2 draft** in `paper-socket-demux` on branch `draft/v1`,
+  scaffolded from the Compile-time-Protobuf IEEEtran template, eight sections drafted from the
+  filed evidence with every number traced to a file, assembled, reviewed by three lenses,
+  fixed, built, pushed. Read its report, then read the PDF yourself before showing Alex.
+- **Local workflow `wici08xnv`: chapter VI against the data.** Audits every sentence of
+  `06_results.tex` against the regenerated keys and CSVs, rewrites contradictions, commits and
+  pushes `06_results.tex` only. One false sentence is already known (the worst pacing "about half
+  the limit" is now 979 809 us from a refused run).
+- **Local workflow `wzb6k7g16`: figure overlap audit**, read-only, renders all 15 figure pages
+  and reports collisions with proposed source fixes. **Its fix phase is not started**: apply the
+  confirmed fixes to `doc/thesis/figures/*.tex` only after `wici08xnv` has finished, since both
+  would run latexmk in the same build directory. Alex's standing rule (memory
+  `tikz-visual-check`): every diagram page is rendered and looked at, and overlaps are fixed.
+- **Alex's stated deliverable:** ready papers in all four paper repositories, following the
+  Compile-time-Protobuf `paper/` template (IEEEtran conference, sections as files, bibliography,
+  a Word step for submission). Paper 2 drafting now; paper 3 drafts when the laptop's E and F
+  land; paper 1 drafts when the routing night lands; paper 4 stays future work.
 
 ## Findings that came out of tonight, worth keeping
 
