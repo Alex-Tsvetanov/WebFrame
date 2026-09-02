@@ -34,8 +34,8 @@ that departure costs.
 The work moves the decision to the moment after the connection is accepted. A single
 octet separates a TLS record from a cleartext method token, so one descriptor can
 carry every application-layer protocol above a given transport. The number of
-listening descriptors then depends on the number of worker threads and the number of
-transports, and not on the number of protocols served. This is stated as a
+listening descriptors then depends on the accept model the platform requires and on the
+number of transports, and not on the number of protocols served. This is stated as a
 proposition with explicit assumptions and proved, so that it can be refuted.
 
 Three further results support it. QUIC connections are distributed across worker
@@ -67,16 +67,17 @@ classifying arm and the same binary without classification lies between
 the difference covers zero at every load. The resolution of the design is reported with
 the result: the half-width of that interval is between
 \R{h1detect.x1.resolution-min}\% and \R{h1detect.x1.resolution-max}\% of the median, so
-the design can see a difference several times smaller than the five percent threshold
-it declared in advance. A non-rejection without that figure is a statement about the
+the design can see a difference below the five percent threshold it declared in advance
+at four of the five loads, and not at 25\,000 requests per second. A non-rejection without that figure is a statement about the
 number of runs rather than about the server.
 
 The scope of the result is narrower than the hypothesis. Classification costs something
-once per connection and something once per request, and a campaign holding sixty-four
-persistent connections that carry a hundred and fifty thousand requests amortises the
-per-connection cost below any resolution. What is bounded is the per-request path. The
-per-connection cost is not measured, and connection-arrival load is recorded as a
-requirement for the Linux campaign rather than left implicit.
+once per connection and something once per request, and a design holding sixty-four
+persistent connections that carry between two hundred thousand and one million four
+hundred thousand requests amortises the per-connection cost below any resolution. What is
+bounded there is the per-request path. The per-connection cost was measured instead by the
+churn design of the same campaign, \R{campaign.churn.runs} runs under connection-arrival
+load; what remains is to repeat it over a network path.
 
 Counting the listening descriptors of a running process, from the kernel rather than
 from the server, confirms the proposition and corrects it. The count does not change
