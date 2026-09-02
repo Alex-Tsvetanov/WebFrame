@@ -39,7 +39,19 @@ from typing import Any, Iterator
 # establishment as an outcome in its own right. A file at version 2 or below has no
 # connect_ms column rather than an empty one, and every run in it is tls=False because
 # the harness could not produce anything else.
-SCHEMA_VERSION = 3
+#
+# 4 added requests_total_whole_run, the response count over the generator's whole
+# lifetime, and made git_dirty nullable. A file at version 3 or below has no whole-run
+# count, so a process-lifetime server counter from it cannot be normalised per request;
+# and its git_dirty=false may be a tree that was read as clean or one that could not be
+# read at all, which from version 4 on are distinct values. The same generator change
+# moved bytes_per_second onto the measured window: at version 3 it divided the whole
+# run's bytes, warmup included, by the measured wall, so a version 3 figure is higher
+# than a version 4 one by about (warmup + duration) / duration and the two must not be
+# pooled. The generator defines both fields, so a record's version says what the driver
+# was, and requests_total_whole_run being null says the generator was older. Version 4
+# also carries the governor per run; earlier files have it in the manifest only.
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -103,6 +115,11 @@ class RunRecord:
 
     # --- Outcomes -----------------------------------------------------------
     requests_total: int = 0
+    # Every response the generator saw, warmup included. requests_total is the measured
+    # window, and dividing a counter that runs for the server's whole lifetime by it
+    # inflates the ratio by (warmup + duration) / duration. None where the generator did
+    # not report it.
+    requests_total_whole_run: int | None = None
     requests_non_2xx: int = 0
     socket_errors: int = 0
     requests_per_second: float = 0.0
@@ -162,9 +179,20 @@ class RunRecord:
 
     # --- Validity -----------------------------------------------------------
     virtualisation: str | None = None
-    git_dirty: bool = False
-    cpu_mhz_start: float | None = None
-    cpu_mhz_end: float | None = None
+    # None when git could not say, and refused as such. The default is None so a record
+    # that never set it is refused rather than read as clean.
+    git_dirty: bool | None = None
+    # Read after the run, not once at preflight. The manifest fingerprints the governor,
+    # so a change is caught at the next invocation; a daemon or a suspend cycle that
+    # flips it at run 10 of 25 would otherwise pass the remaining fifteen. None on
+    # Windows and macOS, which publish none; unchecked on a Linux host that could not
+    # read it, and refused as such.
+    governor: str | None = None
+    # A number, or the probe's unchecked string on a platform that should have read one.
+    # ponytail: a str in a float column breaks to_parquet's type inference; such a file
+    # is all rejections anyway, and the string is what the rejection reason cites.
+    cpu_mhz_start: float | str | None = None
+    cpu_mhz_end: float | str | None = None
     # What isolation was asked for and what the platform granted. These are separate
     # fields because on macOS they differ: there is no user-process CPU affinity API,
     # so a mask can be requested and silently not applied. Chapter V promises the reader

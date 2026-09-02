@@ -57,6 +57,7 @@ _FINGERPRINTED = (
     "cpu.model",
     "cpu.physical_cores",
     "cpu.logical_cores",
+    "cpu.siblings",
     "cpu.governor",
     "memory.total_bytes",
     "tuning.transparent_hugepages",
@@ -72,12 +73,16 @@ _FINGERPRINTED = (
 )
 
 
-def _run(cmd: list[str]) -> str | None:
+def _run(cmd: list[str], ok: tuple[int, ...] = (0,)) -> str | None:
     """Runs a command and returns its stripped stdout, or None if it did not work.
 
     None rather than an exception on purpose: capture must not fail because one probe
     is unavailable. A missing field is recorded as missing and shows up in the
     fingerprint as such, which is a difference the driver will notice if it changes.
+
+    `ok` is the set of exit codes that count as an answer. Some tools answer a yes/no
+    question with the exit code, and then a non-zero exit with output is the answer no
+    rather than a failure.
     """
     if shutil.which(cmd[0]) is None:
         return None
@@ -85,7 +90,7 @@ def _run(cmd: list[str]) -> str | None:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
-    if out.returncode != 0:
+    if out.returncode not in ok:
         return None
     return out.stdout.strip() or None
 
@@ -128,15 +133,47 @@ def _physical_cores() -> int | None:
     return len(seen) or None
 
 
-def _governor() -> str | None:
+def _siblings(sysfs: Path = Path("/sys/devices/system/cpu")) -> list[str | None] | None:
+    """thread_siblings_list per logical CPU, indexed by CPU number; None off Linux.
+
+    The affinity masks name logical CPUs, and the claim that 0ff and f00 are four and
+    two disjoint physical cores rests on siblings being enumerated in adjacent pairs.
+    Linux numbers CPUs in firmware order and may interleave them, so the layout is
+    recorded, and fingerprinted because nosmt or a firmware update changes what the same
+    two masks mean. The list is the kernel's own string for each CPU, "0-1" or "0,6",
+    which identifies the physical core without being parsed. An offline CPU has no
+    topology directory and is None at its index.
+    """
+    try:
+        dirs = [d for d in sysfs.iterdir() if re.fullmatch(r"cpu\d+", d.name)]
+    except OSError:
+        return None
+    if not dirs:
+        return None
+    by_index = {int(d.name[3:]): _read(str(d / "topology" / "thread_siblings_list")) for d in dirs}
+    return [by_index.get(i) for i in range(max(by_index) + 1)]
+
+
+_GOVERNOR_PATH = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+
+
+def _governor(path: str = _GOVERNOR_PATH, system: str | None = None) -> str | None:
     """The scaling governor of CPU 0.
 
     In the fingerprint because it is the single tuning knob most likely to move without
     anyone touching it: a suspend cycle or a power-profile daemon can put a machine back
     on powersave, and every run after that is slower for a reason that has nothing to do
     with the code being measured.
+
+    None is Windows and macOS, which publish no governor. Linux always has one, so a
+    Linux host where the file cannot be read (no cpufreq driver bound, a restricted
+    sysfs) answers unchecked rather than None: None passes the validity rule, and a
+    host whose governor cannot be established is not thereby on performance.
     """
-    return _read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+    text = _read(path)
+    if text is None and (system or platform.system()) == "Linux":
+        return _UNCHECKED.format(f"no scaling_governor at {path}")
+    return text
 
 
 def _transparent_hugepages() -> str | None:
@@ -219,7 +256,7 @@ def _cpu_mhz_windows(perf: str | None = None) -> float | None:
         return None
 
 
-def cpu_mhz() -> float | None:
+def cpu_mhz(system: str | None = None, raw: str | None = None) -> float | str | None:
     """The current clock, for the drift check, on the platforms that can say.
 
     This lived in validity.py and read /proc/cpuinfo directly, so it returned None on
@@ -230,13 +267,23 @@ def cpu_mhz() -> float | None:
     macOS is still None here. Intel Macs are covered by CPU_Speed_Limit and Apple
     Silicon publishes neither, which is a gap that belongs in the limitations rather
     than in a probe that guesses.
+
+    On the two platforms that do answer, a parser that found nothing (an aarch64
+    /proc/cpuinfo with no `cpu MHz` lines, a powershell probe that timed out) is
+    unchecked rather than None, and validity refuses it: the drift rule skips None,
+    and a probe failure must not read as a steady clock. `raw` is the parser's text,
+    for checking this from a host that is neither.
     """
-    system = platform.system()
+    system = system or platform.system()
     if system == "Linux":
-        return _cpu_mhz_linux()
-    if system == "Windows":
-        return _cpu_mhz_windows()
-    return None
+        value = _cpu_mhz_linux(raw)
+    elif system == "Windows":
+        value = _cpu_mhz_windows(raw)
+    else:
+        return None
+    if value is None:
+        return _UNCHECKED.format(f"no usable clock reading on {system}")
+    return value
 
 
 def _power_source_darwin(pmset_ps: str | None = None) -> str | None:
@@ -285,7 +332,14 @@ def _power_source_linux(supplies: list[str] | None = None,
         except OSError:
             return _UNCHECKED.format("/sys/class/power_supply is not readable")
     read = reader if reader is not None else (lambda name, f: _read(str(root / name / f)))
-    batteries = [s for s in supplies if (read(s, "type") or "").strip() == "Battery"]
+    # A wireless mouse or keyboard registers as hidpp_battery_N with type Battery and
+    # scope Device, and reports Discharging whenever it is off its cable, which would
+    # put a desktop on battery and refuse every run. Only System-scoped supplies power
+    # the host. The default has to be System, because ACPI's BAT0 publishes no scope
+    # file at all and a laptop battery must not vanish for lacking one.
+    batteries = [s for s in supplies
+                 if (read(s, "type") or "").strip() == "Battery"
+                 and (read(s, "scope") or "System").strip() != "Device"]
     if not batteries:
         return _NO_BATTERY
     for name in batteries:
@@ -505,9 +559,16 @@ def _virtualisation_windows(identity: str | None = None) -> str | None:
 
 def _virtualisation_linux(detect_virt: str | None = None,
                           identity: str | None = None) -> str | None:
-    """Linux, preferring systemd-detect-virt and falling back to DMI without systemd."""
+    """Linux, preferring systemd-detect-virt and falling back to DMI without systemd.
+
+    systemd-detect-virt exits 0 only when it detects something and prints `none` with
+    exit 1 on bare metal, so accepting exit 0 alone read every bare-metal answer as no
+    answer and took the verdict from the SMBIOS heuristic below, which this module
+    documents as spoofable, while claiming it came from systemd. A genuine failure still
+    prints nothing to stdout and stays None.
+    """
     if detect_virt is None:
-        detect_virt = _run(["systemd-detect-virt"])
+        detect_virt = _run(["systemd-detect-virt"], ok=(0, 1))
     if detect_virt is not None:
         return None if detect_virt.strip() == "none" else detect_virt.strip()
     if identity is None:
@@ -651,6 +712,35 @@ def resolve_io_backend(build_dir: Path | None) -> str:
     return read or guessed
 
 
+def run_io_backend(build_dir: Path | None, requested: str | None = None) -> str:
+    """The single arm a run will ask the server for, from the build and the flag.
+
+    resolve_io_backend answers what the binary contains, which for a dual tree is two
+    backends and not an arm. A cell has to name one: it is passed to --io-backend and
+    checked against the server's banner. That made io_uring the only arm any campaign
+    could ever measure on Linux, and on a linux-epoll tree it made every cell ask for a
+    backend the binary does not have, which benchmark_server refuses with exit 2.
+
+    So the arm is chosen here. With no flag it is the first the build offers, which for
+    dual is io_uring and for every single-backend tree is the one thing it compiled, so
+    the campaigns already on disk record exactly what they recorded before. With a flag
+    it is the flag, and an arm the build does not contain is refused rather than
+    recorded: a cell claiming epoll against an io_uring-only binary is a mislabelled
+    measurement, not a degraded one.
+    """
+    compiled = resolve_io_backend(build_dir)
+    arms = ("io_uring", "epoll") if compiled == "dual" else (compiled,)
+    arm = requested or arms[0]
+    if arm not in arms:
+        raise ValueError(
+            f"the build in {build_dir} was configured with COROUTE_IO_BACKEND="
+            f"{compiled}, which does not contain {arm}. The linux-dual preset builds "
+            f"both Linux arms and lets --io-backend choose between them; linux-release "
+            f"builds io_uring alone and linux-epoll builds epoll alone."
+        )
+    return arm
+
+
 def capture(repo: Path | None = None, build_type: str | None = None,
             io_backend: str | None = None) -> dict[str, Any]:
     """Everything worth knowing about the machine, in one nested dict."""
@@ -674,6 +764,7 @@ def capture(repo: Path | None = None, build_type: str | None = None,
             "model": _cpu_model(),
             "physical_cores": _physical_cores(),
             "logical_cores": os.cpu_count(),
+            "siblings": _siblings(),
             "governor": _governor(),
         },
         "memory": {
@@ -788,10 +879,14 @@ class Campaign:
 
         stored = json.loads(path.read_text(encoding="utf-8"))
         if stored["fingerprint"] != current and not force:
-            raise EnvironmentChanged(
-                path=path,
-                differences=fingerprint_differences(stored["environment"], environment),
-            )
+            differences = fingerprint_differences(stored["environment"], environment)
+            # The hash and the differences are computed over the same key list, so a hash
+            # that moved while no field moved means only one thing: the list grew since
+            # the manifest was written, and the new key is null on both sides. That is
+            # the same machine, and a manifest must not be refused for a harness update.
+            # A new key that has a value on one side is listed above and refused.
+            if differences:
+                raise EnvironmentChanged(path=path, differences=differences)
         return cls(path=path, environment=stored["environment"],
                    fingerprint=stored["fingerprint"])
 

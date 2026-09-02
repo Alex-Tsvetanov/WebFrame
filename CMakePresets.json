@@ -222,7 +222,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "COROUTE_BUILD_TESTS": "OFF",
-        "COROUTE_BUILD_EXAMPLES": "ON"
+        "COROUTE_BUILD_EXAMPLES": "ON",
+        "COROUTE_ROUTER_ARMS": "ON"
       }
     }
   ],

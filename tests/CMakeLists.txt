@@ -105,7 +105,24 @@ else()
     # One backend compiled in, so there is nothing to split and nothing sets
     # COROUTE_TEST_IO_BACKEND. A case can still skip, on a single-backend io_uring build
     # against a hardened kernel, and 4 is how Catch2 says so.
-    catch_discover_tests(unit_tests PROPERTIES SKIP_RETURN_CODE 4)
+    #
+    # Only there. io_backend_probe returns 0 unconditionally for Epoll and for Default
+    # (io_context.cpp), and Default is the only arm io_backend_arms() yields on iocp and
+    # kqueue, so on Windows, macOS and a single-backend epoll build nothing in the suite
+    # can reach the one SKIP it has. The property then has no use and one failure mode:
+    # Catch2 returns min(255, failed assertions), so a case with exactly four failing
+    # CHECKs exits 4, ctest prints it as Skipped, and the run reports 100% pass over a
+    # red case. Same hazard the io_uring arm above spends --abort on, and the same
+    # answer: do not claim 4 means skipped where a skip cannot happen.
+    #
+    # --abort for the same reason the dual io_uring arm above uses it: this is now the
+    # only registration that still claims 4 means skipped, so it is the only one where
+    # exactly four failed assertions could exit 4 and print green.
+    if("io_uring" IN_LIST _coroute_backends)
+        catch_discover_tests(unit_tests EXTRA_ARGS --abort PROPERTIES SKIP_RETURN_CODE 4)
+    else()
+        catch_discover_tests(unit_tests)
+    endif()
 endif()
 
 # ============================================================================

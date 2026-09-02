@@ -1,6 +1,6 @@
 """Level one of the routing experiment: dispatch cost, isolated.
 
-    python -m benchmark.run_routing --design main --repetitions 5
+    python -m benchmark.run_routing --design main --repetitions 5 --build build/<preset>
 
 Same discipline as run_campaign, for the same reasons, on a design that needs no server
 and no network:
@@ -31,6 +31,7 @@ import sys
 import time
 from pathlib import Path
 
+from benchmark.adapters import describe_signal
 from benchmark.harness import environment, validity
 from benchmark.harness.ordering import Cell, plan
 
@@ -182,7 +183,9 @@ def main(argv: list[str] | None = None) -> int:
         help="wall clock per run before it is killed and recorded as failed",
     )
     ap.add_argument("--results", type=Path, default=REPO / "benchmark" / "results" / "routing")
-    ap.add_argument("--build", type=Path, default=REPO / "build" / "windows-routing")
+    ap.add_argument("--build", type=Path, required=True,
+                    help="build directory holding route_bench, configured with "
+                         "-DCOROUTE_ROUTER_ARMS=ON; the bench preset does")
     args = ap.parse_args(argv)
 
     binary = args.build / "benchmark" / "route_bench.exe"
@@ -238,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         "virtualisation": env.get("virtualisation"),
         "git_dirty": env["build"]["git_dirty"],
         "power_source": validity.current_power_source(),
+        "governor": env["cpu"]["governor"],
     }).reasons
     if blocking:
         for reason in blocking:
@@ -250,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"design {args.design}: {len(cells)} cells x {args.repetitions} repetitions "
           f"= {len(schedule)} runs")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
-          f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
+          f"{env.get('virtualisation') or 'none'}  git {(env['build']['git_commit'] or '?')[:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
     print()
 
@@ -295,6 +299,10 @@ def main(argv: list[str] | None = None) -> int:
                 "virtualisation": env.get("virtualisation"),
                 "power_source": power_before,
                 "thermal_speed_limit_start": validity.current_speed_limit(),
+                # The drift rule keys on these two and the record never carried them,
+                # so an rdtsc microbenchmark had no clock gate on any platform: the
+                # speed limit below is pmset-only and None everywhere else.
+                "cpu_mhz_start": validity.current_cpu_mhz(),
             }
 
             try:
@@ -303,8 +311,12 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if proc.returncode != 0 or not json_path.exists():
                     record["accepted"] = False
+                    # A negative code is a signal, and -9 with an empty stderr is the
+                    # OOM killer; named so the failure column says so.
+                    rc = proc.returncode
+                    sig = f" ({describe_signal(-rc)})" if rc < 0 else ""
                     record["failure"] = (
-                        f"exit {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:300]}"
+                        f"exit {rc}{sig}: {(proc.stderr or proc.stdout).strip()[:300]}"
                     )
                 else:
                     record["accepted"] = True
@@ -323,6 +335,10 @@ def main(argv: list[str] | None = None) -> int:
             # Apple Silicon does not, so this fires on some hosts and is inert on
             # others. Which one a number came from belongs in the record.
             record["thermal_speed_limit_end"] = validity.current_speed_limit()
+            record["cpu_mhz_end"] = validity.current_cpu_mhz()
+            # Per run, like the driver: the preflight above read it once, and the drift
+            # rule means nothing under a governor that moved at cell ten.
+            record["governor"] = environment._governor()
             verdict = validity.check_run(record)
             if verdict.reasons:
                 record["accepted"] = False

@@ -10,6 +10,7 @@ Imported and run by selfcheck.py.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import tempfile
 from dataclasses import dataclass, field
@@ -34,6 +35,8 @@ class FakeServer:
     log: list[str]
     ready: bool = True
     fail_on_stop: bool = False
+    # What a real adapter raises when the child died before listening.
+    died: str | None = None
     argv_value: list[str] = field(default_factory=lambda: ["fake-server"])
 
     @property
@@ -45,6 +48,8 @@ class FakeServer:
 
     def wait_until_ready(self, timeout_s: float) -> bool:
         self.log.append("ready-check")
+        if self.died:
+            raise driver.RunFailed(f"server exited -6 (Abort trap: 6) before listening: {self.died}")
         return self.ready
 
     def stop(self) -> driver.ResourceUsage:
@@ -61,9 +66,9 @@ class FakeGenerator:
     raises: bool = False
     result: driver.GeneratorResult = field(
         default_factory=lambda: driver.GeneratorResult(
-            requests_total=100_000, requests_non_2xx=0, requests_per_second=3333.0,
-            latency_ms={"p50": 1.2, "p99": 4.5}, cpu_fraction=0.4,
-            argv=["fake", "-c", "256"],
+            requests_total=100_000, requests_total_whole_run=115_000, requests_non_2xx=0,
+            requests_per_second=3333.0, latency_ms={"p50": 1.2, "p99": 4.5},
+            cpu_fraction=0.4, argv=["fake", "-c", "256"],
         )
     )
 
@@ -140,6 +145,11 @@ def run(check: Callable[[str, bool], None]) -> None:
               all(r.git_commit == "c" * 40 and r.compiler for r in on_disk))
         check("server-side resource usage is recorded",
               all(r.server_cpu_seconds == 12.5 for r in on_disk))
+        # The denominator for a process-lifetime server counter is the whole-run count,
+        # not the measured window; both are carried so neither has to be inferred.
+        check("the whole-run response count is carried beside the measured one",
+              all(r.requests_total_whole_run == 115_000 and r.requests_total == 100_000
+                  for r in on_disk))
         check("QUIC counters are carried",
               all(r.quic_forwarded_in == 3 for r in on_disk))
 
@@ -174,6 +184,21 @@ def run(check: Callable[[str, bool], None]) -> None:
     # lands on whichever system boots slowest.
     check("the generator never ran", record.requests_total == 0)
 
+    # A child that died is not a child that was slow. The two used to share one reason,
+    # so an OOM-killed server read as a readiness timeout.
+    log = []
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=log, died="std::bad_alloc"),
+        generator=FakeGenerator(), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0, readiness_timeout_s=0.1,
+    )
+    check("a server that died before listening is rejected", not record.accepted)
+    check("with the exit and its stderr, not a timeout",
+          any("before listening" in r and "bad_alloc" in r for r in record.rejection_reasons)
+          and not any("within" in r for r in record.rejection_reasons))
+    check("and is still stopped", "stop" in log)
+
     # --- a failure while stopping does not hide the real one ----------------
     record = _run_one(
         _scheduled(),
@@ -207,6 +232,20 @@ def run(check: Callable[[str, bool], None]) -> None:
         campaign_fingerprint="fp", duration_s=30.0,
     )
     check("a run under virtualisation is rejected", not record.accepted)
+
+    # The governor is read after every run, not once at preflight. A power-profile daemon
+    # flipping it at run 10 of 25 used to pass the remaining fifteen until the fingerprint
+    # caught it at the next invocation.
+    record = driver.run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=FakeGenerator(), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+        probes=dataclasses.replace(driver.IDLE_PROBES, governor=lambda: "powersave"),
+    )
+    check("a governor that moved during the campaign rejects the run",
+          not record.accepted and any("governor" in r for r in record.rejection_reasons))
+    check("and the record says which governor it was", record.governor == "powersave")
 
     # --- rejected runs are kept and counted ---------------------------------
     with tempfile.TemporaryDirectory() as tmp:

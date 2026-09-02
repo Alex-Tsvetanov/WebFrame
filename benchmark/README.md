@@ -13,9 +13,11 @@ the reasons behind each design are in the docstrings of `run_campaign.py`,
 | Host idle | close the editor, the game, the browser, the agent session's own busy work | anything else is using CPU |
 | Mains power | `pmset -g ps` / `/sys/class/power_supply` / `Win32_Battery` | on battery |
 | Clean tree at the commit you will cite | `git status -sb` | any modified or untracked source file |
-| Release build of that commit | `cmake --build build/<preset> --config Release` | binary older than HEAD |
+| Release build of that commit | `cmake --build build/<preset> --config Release`; the only preset that also builds `route_bench` and the router arms is `bench` (`cmake --preset bench && cmake --build --preset bench` gives `build/bench`) | binary older than HEAD |
+| The I/O arm, on Linux | the build decides it and the cells record it: `linux-release` measures io_uring, `linux-epoll` measures epoll, and `linux-dual` contains both and measures whichever `--io-backend` names, io_uring by default | the arm asked for is not in the tree; both entry points refuse before the first run |
 | TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
-| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la $HOME/`, and check the binary is newer than the campaign commit; Linux: the netns pair | not built, or reaches the server over loopback |
+| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la $HOME/`; Linux: the netns pair, entered with `--generator-command "sudo -n ip netns exec gen runuser -u $USER --" --generator-location netns:gen` | not built, or reaches the server over loopback |
+| Off-host generator at the same commit | rebuild it from the cited commit before the night: `wsl -d Ubuntu-24.04 -- cmake --build <its build dir>`; then check `requests_total_whole_run` is a number in the first WSL-driven record (`churn-ladder-net.jsonl` below; the `smoke` run is loopback and exercises `loadgen.exe`, not the WSL binary) | `requests_total_whole_run` is null, or the two binaries are from different commits: `bytes_per_second` and the whole-run count are defined by the generator, and a night with two generator builds is a night with two definitions of both |
 | Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
 
 Two values here are read from the machine every time, never carried from a note. Every
@@ -109,7 +111,8 @@ WSL arrangements go in separate files and are never merged; the driver records
 Dispatch-only starts no server and needs no network. It is x86-only because it times with
 `rdtsc`. The 10 000-route DFA cells are split off because the parameterised table does
 not fit in this host's memory and a run that pages would contaminate whatever the shuffle
-placed after it.
+placed after it. `build/windows-routing` is the tree the desktop already has with the router
+arms compiled in; on Linux and macOS the equivalent is `build/bench` from the `bench` preset.
 
 ```
 python -m benchmark.run_routing --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
@@ -124,9 +127,9 @@ thread-safe upstream, stated as a limitation) and refuses a loopback `--host`:
 
 ```
 python -m benchmark.run_routing_e2e --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
-python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 ... same generator flags
-python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 ... same generator flags
-python -m benchmark.run_routing_e2e --design large       --repetitions 5 ... same generator flags --readiness-timeout 600
+python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
+python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
+python -m benchmark.run_routing_e2e --design large       --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway> --readiness-timeout 600
 ```
 
 About two hours in total. The `large` design has never completed: the 10 000-route DFA

@@ -34,6 +34,8 @@ import subprocess
 import sys
 import time
 
+from held_port import held_reason
+
 HOST = "127.0.0.1"
 TIMEOUT = 5.0
 
@@ -112,6 +114,11 @@ def is_backend_refusal(text):
 
 
 def start(server, port, extra, wait=15.0):
+    # A stale server would otherwise share the port under SO_REUSEPORT and the probes
+    # below would land on whichever the kernel picks.
+    held = held_reason(port)
+    if held:
+        raise Failure(held)
     proc = subprocess.Popen(
         [server, "--port", str(port), "--workers", "2", "--max-requests", "0",
          *IO_BACKEND_ARGS, *extra],

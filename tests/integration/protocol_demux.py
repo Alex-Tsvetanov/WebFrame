@@ -17,6 +17,8 @@ import subprocess
 import sys
 import time
 
+from held_port import held_reason
+
 PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 # SETTINGS frame: length 0, type 0x04, flags 0, stream id 0.
 SETTINGS = bytes([0, 0, 0, 4, 0, 0, 0, 0, 0])
@@ -195,6 +197,13 @@ def main():
     parser.add_argument("--io-backend", dest="io_backend", default=None,
                         help="run the server on this I/O backend rather than the host default")
     args = parser.parse_args()
+
+    # A stale server would otherwise share the port under SO_REUSEPORT and the tests
+    # below would land on whichever the kernel picks.
+    held = held_reason(args.port)
+    if held:
+        print(held, file=sys.stderr)
+        return 1
 
     argv = [args.server, "--port", str(args.port), "--workers", "2"]
     if args.io_backend:

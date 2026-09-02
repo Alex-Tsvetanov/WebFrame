@@ -93,7 +93,16 @@ def check_run(record: dict[str, Any]) -> Verdict:
             f"virtualisation detected ({virt}); performance records must come from bare metal"
         )
 
-    if record.get("git_dirty"):
+    dirty = record.get("git_dirty")
+    if dirty is None:
+        # Same shape as the power gate below: git that could not answer, under a root
+        # context or against a tree owned by another user, returned None, the driver
+        # folded that to False and the run passed as clean. A tree whose state cannot be
+        # established is not thereby clean.
+        verdict.reasons.append(
+            "working tree state could not be established; unknown is not clean"
+        )
+    elif dirty:
         # The commit hash would not describe the binary that ran, which is worse than
         # having no hash: it looks authoritative and is not.
         verdict.reasons.append("working tree was dirty; the recorded commit does not describe the binary")
@@ -133,9 +142,33 @@ def check_run(record: dict[str, Any]) -> Verdict:
                 f"{MIN_ACHIEVED_SHARE:.0%}; it could not sustain the schedule"
             )
 
+    # The drift rule below compares two instants, and under a dynamic governor the first
+    # is the idle clock and the second is taken milliseconds after load, so it fires on
+    # governor behaviour and calls it thermal. It means something only under a fixed
+    # clock, which on Linux is governor=performance. None is left alone: Windows and
+    # macOS publish no scaling governor to read, their fixed-clock arrangement is the
+    # power plan the frequency probe itself was written against, and inventing a value
+    # for a platform that cannot answer would be the mislabel this file exists to stop.
+    # A Linux host that could not read its governor says unchecked, not None, and the
+    # inequality below refuses it with the rest.
+    governor = record.get("governor")
+    if governor is not None and governor != "performance":
+        verdict.reasons.append(
+            f"cpu governor is {governor!r}; the frequency gate compares two instants and "
+            f"only means anything under a fixed clock"
+        )
+
     start = record.get("cpu_mhz_start")
     end = record.get("cpu_mhz_end")
-    if start and end:
+    # Same shape as the power gate: Linux and Windows can read a clock, so a reading
+    # that came back unchecked there is a probe that failed, not a clock that held. None
+    # is macOS, where the speed limit stands in and there is nothing to invent.
+    if isinstance(start, str) or isinstance(end, str):
+        verdict.reasons.append(
+            f"CPU clock reading is {start!r} at start and {end!r} at end; a probe that "
+            "could not read the clock does not establish that it held"
+        )
+    elif start and end:
         drift = abs(end - start) / start
         if drift > MAX_FREQUENCY_DRIFT:
             verdict.reasons.append(
@@ -251,7 +284,11 @@ def read_counters(snmp: str | None = None, netstat: str | None = None) -> dict[s
             names = rest_h.split()
             numbers = rest_v.split()
             for name, number in zip(names, numbers):
-                key = name if prefix_h in ("Udp", "Tcp", "Ip") else f"{prefix_h}{name}"
+                # Always prefixed. The Udp section's RcvbufErrors used to be stored bare,
+                # so ZERO_DELTA_COUNTERS' UdpRcvbufErrors never matched anything and the
+                # UDP drop gate could not fire; and Tcp and Udp both publish
+                # InCsumErrors, so a bare key overwrote one with the other.
+                key = f"{prefix_h}{name}"
                 try:
                     out[key] = int(number)
                 except ValueError:
@@ -279,7 +316,7 @@ def _read(path: str) -> str | None:
         return None
 
 
-def current_cpu_mhz() -> float | None:
+def current_cpu_mhz() -> float | str | None:
     """Mean current clock across cores, for the drift check.
 
     Delegates to environment.py, which owns the parsers and has recorded-output checks

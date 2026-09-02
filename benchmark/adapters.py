@@ -16,10 +16,9 @@ import ctypes
 import json
 import os
 import platform as _platform
+import signal
 import socket
-import re
 import subprocess
-import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -235,6 +234,42 @@ _BANNER_BACKEND = environment.BANNER_BACKEND
 _KEPT_OUTPUT_LINES = 200
 
 
+def describe_signal(number: int) -> str:
+    """The signal's name, or its number where the platform has no name for it."""
+    try:
+        return signal.strsignal(number) or f"signal {number}"
+    except ValueError:
+        return f"signal {number}"
+
+
+def refuse_held_port(port: int) -> None:
+    """Refuses to start a server on a port something already listens on.
+
+    On Windows and macOS a second server on a held port fails to bind and the run fails
+    loudly. On Linux both backends set SO_REUSEPORT, so a leftover benchmark_server and
+    the new one bind side by side and the kernel splits the generator's connections
+    between two servers with different factors, under one record, and the readiness
+    probe is satisfied by whichever answers.
+
+    The probe is a throwaway bind without SO_REUSEPORT, which Linux refuses against a
+    reuseport group exactly as it refuses it against any other listener. SO_REUSEADDR is
+    set on POSIX only, so the previous run's connections in TIME_WAIT are not read as a
+    holder; on Windows that option would instead permit binding over a live listener,
+    and a plain bind there is what the IOCP server itself does. That server is a
+    dual-stack listener on [::], which holds the IPv4 wildcard port as well, so an IPv4
+    probe conflicts with it on every platform.
+    """
+    try:
+        with socket.socket() as probe:
+            if os.name != "nt":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("0.0.0.0", port))
+    except OSError as exc:
+        raise RunFailed(
+            f"port {port} is already held ({exc.strerror or exc}); a stale server is running"
+        ) from exc
+
+
 @dataclass
 class CorouteServer:
     """One benchmark_server process, started fresh and stopped for certain.
@@ -315,6 +350,7 @@ class CorouteServer:
         return args
 
     def start(self) -> None:
+        refuse_held_port(self.port)
         self._proc = subprocess.Popen(
             self.argv,
             stdout=subprocess.PIPE,
@@ -348,17 +384,18 @@ class CorouteServer:
                 self.effective_backend = match.group(1)
 
     def wait_until_ready(self, timeout_s: float) -> bool:
-        """Connects until it can, so no run measures process startup."""
+        """Connects until it can, so no run measures process startup.
+
+        A child that exited before listening raises rather than returning False, so the
+        record says what killed it. Returning False filed an OOM-killed server, a missing
+        certificate, a bad_alloc and a refused --io-backend under the driver's one
+        reason, that the server did not become ready within the timeout, and the stderr
+        that named the cause was piped and never read.
+        """
         deadline = time.monotonic() + timeout_s
         connected = False
         while time.monotonic() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
-                # Raised rather than reported as "not ready". A server that refused its
-                # --io-backend exits in milliseconds with the reason on stderr, and
-                # returning False turned that into "did not become ready within 30s"
-                # with the reason never read at all. The caller sits in `except
-                # Exception` and records the failure string, so this is the only route
-                # by which the real message reaches the record.
                 raise RunFailed(self._startup_failure())
             if not connected:
                 try:
@@ -374,12 +411,36 @@ class CorouteServer:
             if self.effective_backend is not None:
                 return True
             time.sleep(0.01)
-        return connected and self.effective_backend is not None
+        if connected:
+            # Listening, answering, and silent about its backend. The only other answer
+            # available here is False, which the driver files as "server did not become
+            # ready", and that sends the operator to the readiness timeout when the
+            # cause is a binary from before the banner named a backend: it prints
+            # "(multi-accept)" alone, BANNER_BACKEND never matches, and no timeout is
+            # long enough. The banner it did print is quoted rather than described,
+            # because that is what tells this apart from a genuinely slow start.
+            raise RunFailed(
+                f"server on port {self.port} is listening but printed no backend banner "
+                f"within {timeout_s:.0f}s; a binary older than the banner never will, so "
+                f"rebuild the tree passed to --build. It printed: "
+                f"{''.join(self._output).strip()[:500] or '(nothing)'}"
+            )
+        return False
 
     def _startup_failure(self) -> str:
-        """Why the server is already gone, in the words it used."""
+        """Why the server is already gone, in the words it used.
+
+        Raised rather than reported as "not ready". A server that refused its
+        --io-backend exits in milliseconds with the reason on stderr, and returning
+        False turned that into "did not become ready within 30s" with the reason never
+        read at all. The caller sits in `except Exception` and records the failure
+        string, so this is the only route by which the real message reaches the record.
+        """
         proc = self._proc
         code = proc.returncode if proc is not None else None
+        # A negative code is a signal on POSIX, and "server exited -6" alone says
+        # nothing; "Abort trap: 6" is what tells an OOM kill from an assertion.
+        sig = f" ({describe_signal(-code)})" if code is not None and code < 0 else ""
         detail = ""
         if proc is not None and proc.stderr is not None:
             # Popen was not opened with text=True, so this is bytes.
@@ -388,8 +449,10 @@ class CorouteServer:
                 raw = raw.decode(errors="replace")
             detail = (raw or "").strip()
         if not detail:
+            # Nothing on stderr does not mean nothing was said: the backend refusal and
+            # the banner both go to stdout, which the drain thread is holding.
             detail = "".join(self._output).strip()
-        return f"server exited with code {code} before it was ready: {detail[:500] or '(no output)'}"
+        return f"server exited {code}{sig} before listening: {detail[:500] or '(no output)'}"
 
     def stop(self) -> ResourceUsage:
         if self._proc is None:
@@ -458,12 +521,18 @@ class LoadgenGenerator:
     through wsl.exe, so that requests leave a network interface instead of going round
     the loopback adapter. Loopback skips the driver and the interrupt path entirely, and
     those are exactly the fixed costs the routing difference has to compete with, so a
-    loopback end-to-end number would flatter whichever arm was slower.
+    loopback end-to-end number would flatter whichever arm was slower. On Linux the same
+    role is played by a network namespace, entered with `ip netns exec`.
     """
 
     binary: Path
     port: int
     threads: int
+    # Where the generator writes its result file. A directory the harness owns rather
+    # than the system temp dir: a generator entered through sudo leaves a root-owned
+    # file in sticky /tmp, and from the second run on the unprivileged harness cannot
+    # unlink it. In a directory the user owns, unlinking needs nothing of the file.
+    work_dir: Path
     warmup_s: float = 2.0
     affinity_mask: str | None = None
     samples_dir: Path | None = None
@@ -475,10 +544,17 @@ class LoadgenGenerator:
     translate_paths: bool = False
     # Request paths, one per line, written by the server from the table it registered.
     paths_file: Path | None = None
+    # Where the generator runs, as a label: "host", "wsl:<distro>", "netns:<name>". The
+    # same string the campaign environment records as generator_location, so the record
+    # and the manifest cannot disagree about where the load came from.
+    location: str = "host"
 
     @property
     def name(self) -> str:
-        return "coroute-loadgen-wsl" if self.command else "coroute-loadgen"
+        # The kind alone. Every WSL record already on disk says coroute-loadgen-wsl, and
+        # the distribution or namespace name is in generator_argv and in the manifest.
+        kind = self.location.partition(":")[0]
+        return "coroute-loadgen" if kind == "host" else f"coroute-loadgen-{kind}"
 
     def _path(self, path: Path) -> str:
         return to_wsl_path(path) if self.translate_paths else str(path)
@@ -516,7 +592,8 @@ class LoadgenGenerator:
         return args
 
     def run(self, cell: Cell, duration_s: float) -> GeneratorResult:
-        out = Path(tempfile.gettempdir()) / f"loadgen-{self.port}.json"
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        out = self.work_dir / f"loadgen-{self.port}.json"
 
         # Removed before the run, not just checked for afterwards.
         #
@@ -564,6 +641,9 @@ class LoadgenGenerator:
             )
 
         data: dict[str, Any] = json.loads(out.read_text(encoding="utf-8"))
+        # Everything the record keeps has been read; the file would otherwise sit next
+        # to runs.jsonl and be committed with it.
+        out.unlink()
 
         lat = data.get("latency_us", {})
         # Reported in milliseconds, because that is what the record and every figure
@@ -580,8 +660,12 @@ class LoadgenGenerator:
         offered = float(data.get("offered_rate", 0.0))
         achieved = float(data.get("rps", 0.0))
 
+        whole_run = data.get("responses_total")
         result = GeneratorResult(
             requests_total=int(data.get("completed", 0)) + int(data.get("non_2xx", 0)),
+            # None rather than zero from a generator built before the counter existed:
+            # a zero would read as measured.
+            requests_total_whole_run=int(whole_run) if whole_run is not None else None,
             requests_non_2xx=int(data.get("non_2xx", 0)),
             socket_errors=int(data.get("socket_errors", 0)),
             requests_per_second=float(data.get("rps", 0.0)),

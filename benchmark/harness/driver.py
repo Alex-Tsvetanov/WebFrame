@@ -12,8 +12,9 @@ The rules it enforces, each of which the previous harness broke:
                             n=5 was five looks at one process's page placement.
 
   the server always stops   Even when the generator raises. A leaked server holds the
-                            port and every later run in the campaign fails for a reason
-                            that has nothing to do with the code.
+                            port; on Linux it would even share it under SO_REUSEPORT,
+                            so the adapter refuses a held port before starting and
+                            every later run fails for a reason that is at least loud.
 
   every run leaves a record Including the ones that failed or were rejected. A campaign
                             with silent gaps cannot be told apart from one that was
@@ -47,6 +48,10 @@ class GeneratorResult:
     socket_errors: int = 0
     requests_per_second: float = 0.0
     bytes_per_second: float = 0.0
+    # Responses over the whole process lifetime, warmup included, where requests_total
+    # is the measured window. The denominator for any server-side counter that also
+    # runs for the whole lifetime; None from a generator that predates it.
+    requests_total_whole_run: int | None = None
     latency_ms: dict[str, float] = field(default_factory=dict)
     latency_histogram: str | None = None
     raw_samples_path: str | None = None
@@ -139,10 +144,11 @@ class HostProbes:
     nothing has to remember to ask for them.
     """
 
-    cpu_mhz: Callable[[], float | None] = validity.current_cpu_mhz
+    cpu_mhz: Callable[[], float | str | None] = validity.current_cpu_mhz
     power_source: Callable[[], str | None] = validity.current_power_source
     speed_limit: Callable[[], int | None] = validity.current_speed_limit
     counters: Callable[[], dict[str, int]] = validity.read_counters
+    governor: Callable[[], str | None] = environment._governor
 
 
 LIVE_PROBES = HostProbes()
@@ -159,6 +165,7 @@ IDLE_PROBES = HostProbes(
     power_source=lambda: environment._NO_BATTERY,
     speed_limit=lambda: None,
     counters=dict,
+    governor=lambda: None,
 )
 
 
@@ -208,7 +215,8 @@ def run_one(
         route_depth=int(factors.get("route_depth", 0)),
         generator=generator.name,
         virtualisation=environment.get("virtualisation"),
-        git_dirty=bool(_dig(environment, "build", "git_dirty")),
+        # Not bool(): None is git failing to answer, and validity refuses it as unknown.
+        git_dirty=_dig(environment, "build", "git_dirty"),
         git_commit=str(_dig(environment, "build", "git_commit") or ""),
         build_type=str(_dig(environment, "build", "type") or ""),
         compiler=str(_dig(environment, "toolchain", "compiler") or ""),
@@ -247,6 +255,7 @@ def run_one(
 
         result = generator.run(cell, duration_s)
         record.requests_total = result.requests_total
+        record.requests_total_whole_run = result.requests_total_whole_run
         record.requests_non_2xx = result.requests_non_2xx
         record.socket_errors = result.socket_errors
         record.requests_per_second = result.requests_per_second
@@ -271,7 +280,9 @@ def run_one(
 
     finally:
         # In a finally block because a leaked server holds the port and every later run
-        # in the campaign then fails for a reason unrelated to the code being measured.
+        # in the campaign is then refused for a reason unrelated to the code being
+        # measured. Refused rather than shared: on Linux the leak would otherwise be
+        # measured under the next cell's factors.
         if server is not None:
             try:
                 usage = server.stop()
@@ -290,6 +301,9 @@ def run_one(
 
     record.cpu_mhz_end = probes.cpu_mhz()
     record.thermal_speed_limit_end = probes.speed_limit()
+    # After the run for the same reason as the two above: the preflight read it once,
+    # and a governor that moved mid-campaign was caught only at the next invocation.
+    record.governor = probes.governor()
     record.counter_deltas = validity.counter_deltas(counters_before, probes.counters())
 
     verdict = validity.check_run(record.to_dict())

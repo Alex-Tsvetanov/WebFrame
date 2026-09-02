@@ -35,7 +35,9 @@ import tempfile
 import time
 from pathlib import Path
 
+from benchmark.adapters import refuse_held_port
 from benchmark.harness import environment
+from benchmark.harness.driver import RunFailed
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -291,6 +293,9 @@ def census(server_bin: Path, port: int, workers: int, detect: bool,
     # When the server fails to bind, its own output is the only diagnosis there is, so it
     # goes to a file rather than to DEVNULL. A pipe would deadlock once its buffer filled,
     # since nothing reads it while the server runs.
+    # On Linux a stale server would share the port under SO_REUSEPORT and be counted
+    # under this row's factors; refused before anything is started.
+    refuse_held_port(port)
     log = tempfile.TemporaryFile()
     proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
     def fail(what: str) -> RuntimeError:
@@ -435,9 +440,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.io_backend:
             stem += f"-{args.io_backend}"
         args.out = Path("doc/thesis/data") / f"{stem}.csv"
-    if env["build"]["git_dirty"]:
-        print("working tree is dirty; the recorded commit would not describe the binary "
-              "this census counted", file=sys.stderr)
+    # `is not False`: None is git that could not answer, and an unknown tree is not a
+    # clean one, on the same reasoning validity.check_run applies to every campaign.
+    if env["build"]["git_dirty"] is not False:
+        print("working tree is dirty or its state could not be read; the recorded commit "
+              "would not describe the binary this census counted", file=sys.stderr)
         return 2
     if env.get("virtualisation"):
         print(f"virtualisation detected ({env['virtualisation']}); a descriptor count "
@@ -476,25 +483,33 @@ def main(argv: list[str] | None = None) -> int:
               f"est={row['established']}")
 
     rows = []
-    # Listener census. The transport set is fixed at one, TCP, in every arm here: TLS and
-    # cleartext are both TCP, so this varies the PROTOCOL set and not |T|. Writing it up
-    # as |T|=2 would be a different and unsupported claim.
-    for detect in (True, False):
-        for tls in tls_options:
-            for workers in worker_list:
-                row = census(server_bin, args.port, workers, detect, tls,
+    # Both loops, because refuse_held_port runs per row: a server left behind by a
+    # killed run can appear between two rows as easily as before the first. Reported the
+    # way every other refusal in this file is, a line on stderr and exit 2, rather than
+    # as the traceback an uncaught RunFailed produced.
+    try:
+        # Listener census. The transport set is fixed at one, TCP, in every arm here: TLS
+        # and cleartext are both TCP, so this varies the PROTOCOL set and not |T|. Writing
+        # it up as |T|=2 would be a different and unsupported claim.
+        for detect in (True, False):
+            for tls in tls_options:
+                for workers in worker_list:
+                    row = census(server_bin, args.port, workers, detect, tls,
+                                 io_backend=args.io_backend)
+                    rows.append(row)
+                    show(row)
+
+        # Per-connection census, if asked for. One worker, because the question is what a
+        # connection costs and not how connections are distributed.
+        for detect, tls in [(True, None), (False, None)] + ([(False, tls_pair)] if tls_pair else []):
+            for count in conn_list:
+                row = census(server_bin, args.port, 1, detect, tls, connections=count,
                              io_backend=args.io_backend)
                 rows.append(row)
                 show(row)
-
-    # Per-connection census, if asked for. One worker, because the question is what a
-    # connection costs and not how connections are distributed.
-    for detect, tls in [(True, None), (False, None)] + ([(False, tls_pair)] if tls_pair else []):
-        for count in conn_list:
-            row = census(server_bin, args.port, 1, detect, tls, connections=count,
-                         io_backend=args.io_backend)
-            rows.append(row)
-            show(row)
+    except RunFailed as exc:
+        print(exc, file=sys.stderr)
+        return 2
 
     # Every row here answered a connection before it was counted, so it held at least one
     # listening TCP descriptor. A zero is therefore the counting tool failing, never a

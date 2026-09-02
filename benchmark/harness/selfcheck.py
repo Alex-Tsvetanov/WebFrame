@@ -10,6 +10,8 @@ campaign, which is exactly when an unrunnable test suite is no help.
 from __future__ import annotations
 
 import json
+import os
+import socket
 import sys
 import tempfile
 from collections import Counter
@@ -78,6 +80,7 @@ def fingerprint_checks() -> None:
         ("build.git_commit", "b" * 40, "a different commit"),
         ("deps.openssl", "3.5.9", "a dependency rebuild"),
         ("cpu.physical_cores", 4, "SMT or core count changing"),
+        ("cpu.siblings", ["0", "1", "2", "3"], "the sibling layout changing"),
         ("tuning.transparent_hugepages", "always", "a hugepage setting change"),
     ]:
         changed = sample_env(**{dotted: value})
@@ -114,6 +117,205 @@ def campaign_checks() -> None:
 
         forced = env_mod.Campaign.open_or_create(path, moved, force=True)
         check("force exists as a deliberate override", forced.fingerprint == first.fingerprint)
+
+    # A key added to _FINGERPRINTED after a manifest was written moves every stored hash
+    # while no field has moved. That is a harness update, not a machine change, and it
+    # must not refuse every campaign on disk; a key that now has a value on one side is
+    # a machine change and must.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "campaign.json"
+        first = env_mod.Campaign.open_or_create(path, sample_env())
+        original = env_mod._FINGERPRINTED
+        env_mod._FINGERPRINTED = original + ("cpu.a_key_from_the_future",)
+        try:
+            grown = env_mod.Campaign.open_or_create(path, sample_env())
+            check("a fingerprint key added since, null on both sides, does not refuse the append",
+                  grown.fingerprint == first.fingerprint)
+            message = ""
+            try:
+                env_mod.Campaign.open_or_create(
+                    path, sample_env(**{"cpu.a_key_from_the_future": "now known"}))
+            except env_mod.EnvironmentChanged as exc:
+                message = str(exc)
+            check("the same key with a value on one side is refused and named",
+                  "a_key_from_the_future" in message)
+        finally:
+            env_mod._FINGERPRINTED = original
+
+
+def transport_checks() -> None:
+    print("\n== a campaign refuses to mix transport paths ==")
+
+    from benchmark.run_campaign import transport_mismatch
+
+    # The fingerprint leaves the transport path out on purpose, so a loopback campaign
+    # and a network-path one hash identically and the append is accepted. This is the
+    # check that stands in for the fingerprint there.
+    def env_with(loopback: bool, location: str, host: str = "10.0.0.1") -> dict:
+        env = sample_env()
+        env["transport_path"] = {"host": host, "loopback": loopback,
+                                 "generator_location": location}
+        return env
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "runs.env.json"
+        campaign = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen"))
+        check("a new campaign matches itself",
+              transport_mismatch(campaign, env_with(False, "netns:gen"), "transport_path") is None)
+        reopened = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen", "10.0.0.2"))
+        check("the address may change between sessions of one arrangement",
+              transport_mismatch(reopened, env_with(False, "netns:gen", "10.0.0.2"), "transport_path") is None)
+        message = transport_mismatch(reopened, env_with(True, "host"), "transport_path")
+        check("a loopback run cannot join a network-path campaign", message is not None)
+        check("and the refusal names the key", "loopback" in message)
+        # A manifest from before the section existed says nothing about its arrangement.
+        older = env_mod.Campaign.open_or_create(Path(tmp) / "old.env.json", sample_env())
+        check("a manifest without the section is refused, not assumed",
+              transport_mismatch(older, env_with(False, "netns:gen"), "transport_path") is not None)
+
+
+def port_checks() -> None:
+    print("\n== a held port is refused before a server is started on it ==")
+
+    from benchmark.adapters import refuse_held_port
+    from benchmark.harness.driver import RunFailed
+
+    # A real listener on the wildcard address, the way the servers bind. On BSD a probe
+    # with SO_REUSEADDR could coexist with a 127.0.0.1 listener, so a loopback holder
+    # would let this pass without checking anything.
+    holder = socket.socket()
+    if os.name != "nt":
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    holder.bind(("0.0.0.0", 0))
+    holder.listen()
+    port = holder.getsockname()[1]
+    message = ""
+    try:
+        try:
+            refuse_held_port(port)
+            raised = False
+        except RunFailed as exc:
+            raised = True
+            message = str(exc)
+    finally:
+        holder.close()
+    check("a port with a listener is refused", raised)
+    check("the refusal names the port", str(port) in message)
+    try:
+        refuse_held_port(port)
+        freed = True
+    except RunFailed:
+        # Caught rather than allowed to propagate: an uncaught raise here aborted the
+        # whole selfcheck with a traceback, so the one direction that says the probe is
+        # not simply refusing everything could never be reported as a failed check.
+        freed = False
+    check("the same port passes once the listener is gone", freed)
+
+    # The generator's recorded name is its kind of location. Every WSL record on disk
+    # says coroute-loadgen-wsl, and a namespace must not be filed under it.
+    from benchmark.adapters import LoadgenGenerator
+    def named(location: str) -> str:
+        return LoadgenGenerator(binary=Path("x"), port=1, threads=1, work_dir=Path("."),
+                                location=location).name
+    check("a host generator keeps its name", named("host") == "coroute-loadgen")
+    check("a WSL generator keeps the name the records already carry",
+          named("wsl:Ubuntu-24.04") == "coroute-loadgen-wsl")
+    check("a namespace generator is not filed as WSL", named("netns:gen") == "coroute-loadgen-netns")
+
+    print("\n== a server that is listening and will not name its backend says so ==")
+
+    # A binary built before the banner carried a backend prints "(multi-accept)" alone,
+    # BANNER_BACKEND never matches it, and the server is ready forever without ever
+    # being startable. wait_until_ready used to return False for that, which the driver
+    # files as "server did not become ready within 30s": the readiness timeout's message
+    # for a server that answered the readiness connection on the first try, and the one
+    # cause the rewritten failure path did not name. No timeout is long enough, so the
+    # operator spends the night raising it.
+    from benchmark.adapters import CorouteServer
+
+    listener = socket.socket()
+    if os.name != "nt":
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    silent_port = listener.getsockname()[1]
+    # _proc is None, so nothing here can be mistaken for a child that exited: this is
+    # the live-and-silent case and not the died-at-startup one.
+    silent = CorouteServer(binary=Path("x"),
+                           cell=ordering.Cell.of("coroute", protocol="http1.1",
+                                                 io_backend="io_uring"),
+                           port=silent_port)
+    silent._output.append(f"Server listening on port {silent_port} (multi-accept)\n")
+    message = ""
+    try:
+        try:
+            silent.wait_until_ready(0.3)
+            raised = False
+        except RunFailed as exc:
+            raised = True
+            message = str(exc)
+    finally:
+        listener.close()
+    check("a listening server with no backend banner is refused", raised)
+    check("the refusal says to rebuild, not to wait longer",
+          "rebuild" in message and "multi-accept" in message)
+
+
+def topology_checks() -> None:
+    print("\n== the affinity masks are checked against the sibling layout ==")
+
+    from benchmark import run_campaign
+
+    # One directory for the three fake trees, removed on the way out: mkdtemp left
+    # three behind per run, and this file uses TemporaryDirectory everywhere else.
+    with tempfile.TemporaryDirectory() as tmp:
+        def fake_sysfs(name: str, layout: list[str]) -> Path:
+            root = Path(tmp) / name / "cpu"
+            for i, siblings in enumerate(layout):
+                (root / f"cpu{i}" / "topology").mkdir(parents=True)
+                (root / f"cpu{i}" / "topology" / "thread_siblings_list").write_text(siblings + "\n")
+            # Files the real directory also holds and the probe must not read as CPUs.
+            (root / "cpufreq").mkdir()
+            (root / "online").write_text("0-11\n")
+            return root
+
+        # Zen and the Windows enumeration: siblings adjacent, 0ff and f00 disjoint.
+        paired = ["0-1", "0-1", "2-3", "2-3", "4-5", "4-5", "6-7", "6-7",
+                  "8-9", "8-9", "10-11", "10-11"]
+        siblings = env_mod._siblings(fake_sysfs("paired", paired))
+        check("siblings are read in CPU order, not lexicographic", siblings == paired)
+        check("adjacent pairs keep the masks disjoint",
+              run_campaign.mask_cores("0ff", siblings).isdisjoint(run_campaign.mask_cores("f00", siblings)))
+
+        # Cores first, then their SMT threads: the same two masks now share four cores.
+        interleaved = ["0,6", "1,7", "2,8", "3,9", "4,10", "5,11",
+                       "0,6", "1,7", "2,8", "3,9", "4,10", "5,11"]
+        siblings = env_mod._siblings(fake_sysfs("interleaved", interleaved))
+        check("an interleaved layout is caught",
+              run_campaign.mask_cores("0ff", siblings) & run_campaign.mask_cores("f00", siblings)
+              == {"2,8", "3,9", "4,10", "5,11"})
+        # With the masks the Linux campaign uses, whatever this platform asks for.
+        masks = run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY
+        run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY = "0ff", "f00"
+        try:
+            problem = run_campaign.isolation_problem({"cpu": {"siblings": siblings}})
+            check("and refused with the shared cores named", problem is not None and "2,8" in problem)
+            check("the paired layout passes",
+                  run_campaign.isolation_problem({"cpu": {"siblings": paired}}) is None)
+            check("a mask over CPUs the host does not have is refused",
+                  "does not have" in str(run_campaign.isolation_problem({"cpu": {"siblings": paired[:8]}})))
+            # Windows publishes no topology and the masks are applied unchecked, as every
+            # record on disk was. Linux publishes one, so failing to read it is a refusal:
+            # the masks would still be applied and the record would claim disjoint cores.
+            check("no topology to publish leaves the masks alone",
+                  run_campaign.isolation_problem(
+                      {"machine": {"system": "Windows"}, "cpu": {"siblings": None}}) is None)
+            check("a linux layout that could not be read is refused",
+                  "could not be read" in str(run_campaign.isolation_problem(
+                      {"machine": {"system": "Linux"}, "cpu": {"siblings": None}})))
+        finally:
+            run_campaign.SERVER_AFFINITY, run_campaign.GENERATOR_AFFINITY = masks
+        check("no sysfs is None, not an empty layout", env_mod._siblings(Path(tmp) / "absent") is None)
 
 
 def validity_checks() -> None:
@@ -157,6 +359,36 @@ def validity_checks() -> None:
 
     throttled = dict(good, cpu_mhz_end=3800.0)
     check("a thermally throttled run is refused", not validity.check_run(throttled).valid)
+    # The drift rule skipped None, and a failed probe on Linux or Windows returned None,
+    # so a clock nobody read passed as a clock that held. Unchecked is refused; None is
+    # still macOS, where the speed limit stands in.
+    check("a clock the probe could not read is refused",
+          any("could not read the clock" in r for r in validity.check_run(
+              dict(good, cpu_mhz_end=env_mod._UNCHECKED.format("no reading"))).reasons))
+    check("no clock to read is left to the speed limit",
+          validity.check_run(dict(good, cpu_mhz_start=None, cpu_mhz_end=None)).valid)
+
+    # The drift rule compares two instants, so under a dynamic governor it fires on the
+    # governor and calls it thermal. Only Linux publishes one; None stays clean because
+    # Windows and macOS have nothing to read and a value would be invented.
+    check("a dynamic governor is refused",
+          any("governor" in r for r in validity.check_run(dict(good, governor="schedutil")).reasons))
+    check("the performance governor is accepted", validity.check_run(dict(good, governor="performance")).valid)
+    check("no governor to read is left to the other rules", validity.check_run(dict(good, governor=None)).valid)
+    # Linux always has a governor, so a Linux host that cannot read it is unchecked and
+    # refused; the probe used to return the same None a Windows host does.
+    check("a governor that could not be read is refused",
+          any("governor" in r for r in validity.check_run(
+              dict(good, governor=env_mod._UNCHECKED.format("no scaling_governor"))).reasons))
+    missing = str(Path(tempfile.mkdtemp()) / "scaling_governor")
+    check("an unreadable governor on linux is unchecked",
+          "unchecked" in str(env_mod._governor(missing, system="Linux")))
+    check("and stays None on a platform with none to read",
+          env_mod._governor(missing, system="Windows") is None)
+    present = Path(tempfile.mkdtemp()) / "scaling_governor"
+    present.write_text("performance\n")
+    check("a readable governor is its stripped value",
+          env_mod._governor(str(present), system="Linux") == "performance")
 
     dropped = dict(good, counter_deltas={"UdpRcvbufErrors": 17, "TcpExtListenOverflows": 0})
     verdict = validity.check_run(dropped)
@@ -168,6 +400,11 @@ def validity_checks() -> None:
 
     dirty = dict(good, git_dirty=True)
     check("a run from a dirty tree is refused", not validity.check_run(dirty).valid)
+    # git that could not answer used to be folded to False on its way into the record.
+    check("a tree whose state could not be read is refused, not clean",
+          any("unknown is not clean" in r for r in validity.check_run(dict(good, git_dirty=None)).reasons))
+    check("a record with no tree state at all is refused",
+          not validity.check_run({k: v for k, v in good.items() if k != "git_dirty"}).valid)
 
     # Slow is a result, not a fault. A criterion that rejected slow runs would be
     # rejecting the finding.
@@ -194,18 +431,21 @@ def counter_checks() -> None:
         "TcpExt: 0 0 0\n"
     )
     before = validity.read_counters(snmp=snmp, netstat=netstat)
-    check("a UDP counter is found by name", before.get("RcvbufErrors") == 0)
+    # Under the name the watch list uses. This used to expect the bare key, and the
+    # delta below was built by hand with the prefixed one, so the check passed while the
+    # real path never produced the counter the gate watches.
+    check("a UDP counter is found by name", before.get("UdpRcvbufErrors") == 0)
     check("a TcpExt counter is prefixed", before.get("TcpExtListenOverflows") == 0)
 
     after = validity.read_counters(
         snmp=snmp.replace("Udp: 100 1 0 90 0 0", "Udp: 200 1 0 190 42 0"),
         netstat=netstat,
     )
-    deltas = validity.counter_deltas(
-        {"UdpRcvbufErrors": before.get("RcvbufErrors", 0), "TcpExtListenOverflows": 0},
-        {"UdpRcvbufErrors": after.get("RcvbufErrors", 0), "TcpExtListenOverflows": 0},
-    )
+    deltas = validity.counter_deltas(before, after)
     check("a delta is computed", deltas["UdpRcvbufErrors"] == 42)
+    check("and the gate fires on it",
+          any("UdpRcvbufErrors" in r for r in validity.check_run(
+              {"counter_deltas": deltas, "power_source": env_mod._NO_BATTERY}).reasons))
 
     # A counter that moved but is not watched must not appear. Otherwise every run has
     # something to point at and the criteria stop meaning anything.
@@ -412,6 +652,43 @@ def io_backend_checks() -> None:
     check("macOS reading io_uring is refused", isinstance(resolve("Darwin", "io_uring"), ValueError))
     check("Windows with no cache falls back to the platform", resolve("Windows", None) == "iocp")
 
+    print("\n== a cell names one arm, and only one the build actually contains ==")
+
+    def arm(system: str, cache_value: str | None, requested: str | None) -> object:
+        """run_io_backend with the platform and the CMakeCache both pinned."""
+        real_system = env_mod.platform.system
+        real_read = env_mod.io_backend_from_build
+        env_mod.platform.system = lambda: system
+        env_mod.io_backend_from_build = lambda _build: cache_value
+        try:
+            return env_mod.run_io_backend(Path("build/pretend"), requested)
+        except ValueError as exc:
+            return exc
+        finally:
+            env_mod.platform.system = real_system
+            env_mod.io_backend_from_build = real_read
+
+    # The default on a dual tree is io_uring, which is what every campaign already on
+    # disk recorded: adding the flag must not move a run that does not pass it.
+    check("a dual tree defaults to io_uring", arm("Linux", "dual", None) == "io_uring")
+    check("a dual tree can be asked for epoll", arm("Linux", "dual", "epoll") == "epoll")
+
+    # The one that used to make every cell of every campaign die at server start: an
+    # epoll build was told to run io_uring, because the arm came from the platform.
+    check("an epoll tree measures epoll without being asked",
+          arm("Linux", "epoll", None) == "epoll")
+    check("an epoll tree cannot be asked for io_uring",
+          isinstance(arm("Linux", "epoll", "io_uring"), ValueError))
+    check("an io_uring tree cannot be asked for epoll",
+          isinstance(arm("Linux", "io_uring", "epoll"), ValueError))
+
+    # Where the platform has one backend there is no arm to choose, and asking for one
+    # is a mislabelled run rather than a harmless flag.
+    check("macOS answers kqueue and refuses io_uring",
+          arm("Darwin", "kqueue", None) == "kqueue"
+          and isinstance(arm("Darwin", "kqueue", "io_uring"), ValueError))
+    check("Windows answers iocp", arm("Windows", None, None) == "iocp")
+
 
 def virtualisation_checks() -> None:
     print("\n== a host that cannot answer is not a clean host ==")
@@ -441,11 +718,18 @@ def virtualisation_checks() -> None:
     check("linux: none is metal", env_mod._virtualisation_linux("none") is None)
     check("linux without systemd falls back to DMI",
           env_mod._virtualisation_linux(None, "QEMU Standard PC") == "qemu")
+    # systemd-detect-virt says `none` with exit 1, so the bare-metal answer used to be
+    # read as no answer and the verdict came from the SMBIOS heuristic instead.
+    if sys.platform != "win32":
+        check("exit 1 with output is an answer when the probe says so",
+              env_mod._run(["sh", "-c", "echo none; exit 1"], ok=(0, 1)) == "none")
+        check("exit 1 is still a failure by default",
+              env_mod._run(["sh", "-c", "echo none; exit 1"]) is None)
 
     # The whole point. A probe that could not run must be distinguishable from a probe
     # that ran and found nothing, and must fail closed.
     real_run = env_mod._run
-    env_mod._run = lambda cmd: None
+    env_mod._run = lambda cmd, **kw: None
     try:
         check("a windows probe that does not answer is unchecked, not clean",
               "unchecked" in str(env_mod._virtualisation_windows()))
@@ -500,6 +784,19 @@ def power_checks() -> None:
     check("a battery that publishes no status is unchecked, not clean",
           "unchecked" in str(env_mod._power_source_linux(
               ["BAT0"], lambda n, f: "Battery" if f == "type" else "")))
+    # A wireless mouse is a Battery of scope Device and is Discharging whenever it is
+    # off its cable. It does not power the host and must not put a desktop on battery.
+    hidpp = {"type": "Battery", "scope": "Device", "status": "Discharging"}
+    check("a peripheral's battery is not the host's",
+          env_mod._power_source_linux(["hidpp_battery_0"], lambda n, f: hidpp.get(f))
+          == env_mod._NO_BATTERY)
+    # BAT0 publishes no scope file, so the default must be System or a discharging
+    # laptop with a wireless mouse would read as a desktop.
+    bat0 = {"type": "Battery", "status": "Discharging"}
+    check("a laptop battery without a scope file is still the host's",
+          "battery" in env_mod._power_source_linux(
+              ["BAT0", "hidpp_battery_0"],
+              lambda n, f: (bat0 if n == "BAT0" else hidpp).get(f)).lower())
 
     # The trap in the value itself: validity tests for the substring "battery", so a
     # healthy host's string must not contain it. "no battery present" would have refused
@@ -517,11 +814,19 @@ def power_checks() -> None:
     check("a windows reading that is not two numbers is None, not a guess",
           env_mod._cpu_mhz_windows("99,9") is None)
     check("an empty windows reading is None", env_mod._cpu_mhz_windows("") is None)
+    # And what the wrapper makes of that None on each platform.
+    check("a linux cpuinfo without cpu MHz lines is unchecked",
+          "unchecked" in str(env_mod.cpu_mhz("Linux", "processor\t: 0\n")))
+    check("a windows probe that did not answer is unchecked",
+          "unchecked" in str(env_mod.cpu_mhz("Windows", "")))
+    check("a linux reading is passed through",
+          env_mod.cpu_mhz("Linux", "cpu MHz\t: 3600.0\n") == 3600.0)
+    check("darwin has no clock probe and says None", env_mod.cpu_mhz("Darwin") is None)
 
     check("the desktop string does not trip the rule it is read by",
           "battery" not in env_mod._NO_BATTERY.lower())
     check("and a desktop is accepted end to end",
-          validity.check_run({"power_source": env_mod._NO_BATTERY,
+          validity.check_run({"power_source": env_mod._NO_BATTERY, "git_dirty": False,
                               "requests_total": 1, "requests_non_2xx": 0}).valid)
 
 
@@ -547,6 +852,9 @@ def main() -> int:
 
     fingerprint_checks()
     campaign_checks()
+    transport_checks()
+    port_checks()
+    topology_checks()
     validity_checks()
     counter_checks()
     schema_checks()

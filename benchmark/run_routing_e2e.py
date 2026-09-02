@@ -1,6 +1,6 @@
 """Level two of the routing experiment: the same three arms, through the whole server.
 
-    python -m benchmark.run_routing_e2e --design main --repetitions 5 \
+    python -m benchmark.run_routing_e2e --design main --repetitions 5 --build build/<preset> \
         --wsl-distro Ubuntu-24.04 --wsl-loadgen <path in the distribution> --host <gateway>
 
 This is the level the paper's title rests on. Level one says what a lookup costs; this
@@ -35,25 +35,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
-from benchmark.adapters import CorouteServer, LoadgenGenerator, to_wsl_path
-from benchmark.harness import driver, environment, schema
+from benchmark.adapters import CorouteServer, LoadgenGenerator
+from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
+from benchmark.run_campaign import (GENERATOR_AFFINITY, SERVER_AFFINITY, isolation_problem,
+                                    mask_cores, transport_mismatch)
 
 
 REPO = Path(__file__).resolve().parents[1]
 
 ARMS = ("dfa", "radix", "regex")
 
-# Six physical cores, and the server is the only thing on this side of the boundary that
-# has to be fast. The generator lives in the WSL virtual machine, whose vCPUs the
-# hypervisor places; that placement is not controlled here, which is one more reason the
-# throughput numbers are comparisons rather than capacities.
-SERVER_AFFINITY = "0ff"
+# The masks are run_campaign's, so the two Linux campaigns claim identical isolation and
+# a platform that grants none asks for none. With the generator in WSL its vCPUs are
+# placed by the hypervisor and it gets no mask; on the same kernel it gets its own cores,
+# because otherwise it is an unpinned sibling on the cores the server is pinned to and
+# nothing in the record can show the contention.
 
+# io_backend is the platform's default until main replaces it with the arm the build
+# offers; the designs below read BASE when they are called, which is after that. The
+# default is what a caller importing a design without going through main still gets.
 BASE = dict(
     protocol="http1.1",
     tls=False,
@@ -188,9 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--threads", type=int, default=2, help="generator threads")
     ap.add_argument("--results", type=Path,
                     default=REPO / "benchmark" / "results" / "routing-e2e")
-    ap.add_argument("--build", type=Path, default=REPO / "build" / "windows-routing")
+    ap.add_argument("--build", type=Path, required=True,
+                    help="build directory holding a benchmark_server with the router arms "
+                         "compiled in, and the generator; the bench preset does both")
     ap.add_argument("--readiness-timeout", type=float, default=180.0,
                     help="a large DFA table takes seconds to build before the port opens")
+    ap.add_argument("--io-backend", choices=("io_uring", "epoll"), default=None,
+                    help="which arm of a linux-dual build to measure; the default is "
+                         "whatever the build compiled in, io_uring when it compiled both")
 
     ap.add_argument("--host", required=True,
                     help="the server's address as the generator sees it; must not be a "
@@ -199,20 +210,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="run the generator inside this WSL distribution")
     ap.add_argument("--wsl-loadgen", default=None,
                     help="path to the Linux loadgen build, inside the distribution")
+    ap.add_argument("--generator-command", default=None,
+                    help="command prefix the generator is launched through, e.g. "
+                         "'sudo -n ip netns exec gen runuser -u $USER --'")
+    ap.add_argument("--generator-location", default=None,
+                    help="where that prefix puts the generator, as a label recorded with "
+                         "the campaign, e.g. netns:gen")
     ap.add_argument("--allow-loopback", action="store_true",
                     help="permit a loopback --host; the results then measure a path that "
                          "never reaches a network interface and must say so")
     args = ap.parse_args(argv)
-
-    # Refused rather than warned about. A loopback end-to-end run answers a different
-    # question from the one this level exists to ask, and a warning in a log is not a
-    # mechanism.
-    if args.host.startswith("127.") or args.host in ("localhost", "::1"):
-        if not args.allow_loopback:
-            print(f"--host {args.host} is loopback; this level is not measured over "
-                  f"loopback. Pass --allow-loopback to override, and say so in the paper.",
-                  file=sys.stderr)
-            return 2
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
     if not server_bin.exists():
@@ -222,10 +229,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     gen_command: list[str] | None = None
+    location = "host"
     gen_binary = args.build / "benchmark" / "loadgen.exe"
     if args.wsl_distro:
         if not args.wsl_loadgen:
             print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
+            return 2
+        if args.generator_command or args.generator_location:
+            print("--wsl-distro already says where the generator is; drop "
+                  "--generator-command and --generator-location", file=sys.stderr)
             return 2
         # Checked because a POSIX path handed to this script from an MSYS shell
         # (Git Bash) is rewritten to a Windows one before Python ever sees it, and
@@ -239,24 +251,80 @@ def main(argv: list[str] | None = None) -> int:
                   f"from PowerShell.", file=sys.stderr)
             return 2
         gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
-    elif not gen_binary.exists():
-        gen_binary = gen_binary.with_suffix("")
+        location = f"wsl:{args.wsl_distro}"
+    else:
+        if not gen_binary.exists():
+            gen_binary = gen_binary.with_suffix("")
         if not gen_binary.exists():
             print(f"not built: {gen_binary}", file=sys.stderr)
             return 2
+        if bool(args.generator_command) != bool(args.generator_location):
+            print("--generator-command and --generator-location go together",
+                  file=sys.stderr)
+            return 2
+        if args.generator_command:
+            gen_command = shlex.split(args.generator_command) + [str(gen_binary)]
+            location = args.generator_location
+
+    # Whether the load crosses a network interface is a property of where the generator
+    # runs, not of the address string: a host-side generator reaches any locally owned
+    # address, a veth end included, through the loopback interface.
+    address_is_loopback = args.host.startswith("127.") or args.host in ("localhost", "::1")
+    loopback = gen_command is None or address_is_loopback
+    if gen_command is not None and address_is_loopback:
+        # Nothing to override here: that address is the namespace's or the virtual
+        # machine's own loopback, and the generator would connect to nothing.
+        print(f"--host {args.host} is loopback and the generator is in {location}, where "
+              f"that address is not this host.", file=sys.stderr)
+        return 2
+    # Refused rather than warned about. A loopback end-to-end run answers a different
+    # question from the one this level exists to ask, and a warning in a log is not a
+    # mechanism.
+    if loopback and not args.allow_loopback:
+        print(f"the generator is on this host, so --host {args.host} is reached over "
+              f"loopback; this level is not measured over loopback. Pass --allow-loopback "
+              f"to override, and say so in the paper.", file=sys.stderr)
+        return 2
 
     out_dir = args.results / args.design
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / "runs.jsonl"
 
-    env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.resolve_io_backend(args.build))
+    # Same as run_campaign: both readings come from the build's CMakeCache and both
+    # refuse rather than guess, so the refusal reaches the operator in its own words.
+    try:
+        BASE["io_backend"] = environment.run_io_backend(args.build, args.io_backend)
+        env = environment.capture(repo=REPO, build_type="Release",
+                                  io_backend=environment.resolve_io_backend(args.build))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    problem = isolation_problem(env)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
     env["routing_e2e"] = {
         "host": args.host,
-        "loopback": bool(args.host.startswith("127.") or args.host in ("localhost", "::1")),
-        "generator_location": f"wsl:{args.wsl_distro}" if args.wsl_distro else "host",
+        "loopback": loopback,
+        "generator_location": location,
     }
+    # Same preflight as the other two entry points, for the same reason: every run would
+    # be refused for these anyway, and hours are cheaper to lose here than at run one.
+    blocking = validity.check_run({
+        "virtualisation": env.get("virtualisation"),
+        "git_dirty": env["build"]["git_dirty"],
+        "power_source": validity.current_power_source(),
+        "governor": env["cpu"]["governor"],
+    }).reasons
+    if blocking:
+        for reason in blocking:
+            print(f"refusing to measure: {reason}", file=sys.stderr)
+        return 1
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
+    mismatch = transport_mismatch(campaign, env, "routing_e2e")
+    if mismatch:
+        print(mismatch, file=sys.stderr)
+        return 2
 
     cells = DESIGNS[args.design]()
     schedule = plan(cells, repetitions=args.repetitions, seed=args.seed)
@@ -271,9 +339,12 @@ def main(argv: list[str] | None = None) -> int:
           f"= {len(schedule)} runs")
     print(f"about {len(schedule) * (args.duration + args.warmup + 6) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
-          f"{env.get('virtualisation') or 'none'}  git {env['build']['git_commit'][:12]}"
+          f"{env.get('virtualisation') or 'none'}  git {(env['build']['git_commit'] or '?')[:12]}"
           f"{' DIRTY' if env['build']['git_dirty'] else ''}")
-    print(f"generator {'wsl:' + args.wsl_distro if args.wsl_distro else 'host'} -> {args.host}")
+    if env["cpu"].get("siblings") and SERVER_AFFINITY and GENERATOR_AFFINITY:
+        print(f"cores server={sorted(mask_cores(SERVER_AFFINITY, env['cpu']['siblings']))} "
+              f"generator={sorted(mask_cores(GENERATOR_AFFINITY, env['cpu']['siblings']))}")
+    print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     print()
 
     samples_dir = out_dir / "samples"
@@ -287,12 +358,15 @@ def main(argv: list[str] | None = None) -> int:
             binary=gen_binary,
             port=args.port,
             threads=args.threads,
+            work_dir=out_dir,
             warmup_s=args.warmup,
+            affinity_mask=None if args.wsl_distro else GENERATOR_AFFINITY,
             samples_dir=samples_dir,
             host=args.host,
             command=gen_command,
             translate_paths=bool(args.wsl_distro),
             paths_file=paths,
+            location=location,
         )
 
     def key_of(cell: Cell) -> tuple:

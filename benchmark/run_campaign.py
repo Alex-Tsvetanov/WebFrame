@@ -1,14 +1,14 @@
 """Runs a campaign and writes one record per run.
 
-    python -m benchmark.run_campaign --design h1 --repetitions 7
+    python -m benchmark.run_campaign --design h1 --repetitions 7 --build build/<preset>
 
 The TLS arm, in the order it has to be done
 -------------------------------------------
 
     python -m benchmark.make_cert
-    python -m benchmark.run_campaign --design tls-smoke   --repetitions 1
-    python -m benchmark.run_campaign --design tls-ladder  --repetitions 1
-    python -m benchmark.run_campaign --design churn-ladder --repetitions 1
+    python -m benchmark.run_campaign --design tls-smoke    --repetitions 1 --build build/<preset>
+    python -m benchmark.run_campaign --design tls-ladder   --repetitions 1 --build build/<preset>
+    python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/<preset>
 
 The two ladders are not optional. TLS_OFFERED_RATES and CHURN_OFFERED_RATES below are
 this host's numbers, and on any other machine they are guesses: a generator that cannot
@@ -25,9 +25,10 @@ over sixty-four connections, so one extra read and one comparison per connection
 divided by every request that connection went on to serve, and a null result there was
 arithmetic before it was a measurement. churn divides by one.
 
-Add --wsl-distro and --wsl-loadgen to drive the load across a network interface instead
-of the loopback adapter. Both arrangements are worth having and they are not comparable
-with each other, so they go in separate result files.
+Add --wsl-distro and --wsl-loadgen (Windows) or --generator-command and
+--generator-location (Linux, a network namespace) to drive the load across a network
+interface instead of the loopback adapter. Both arrangements are worth having and they
+are not comparable with each other, so they go in separate result files.
 
 What this does that the previous script did not: a fresh server and a fresh generator
 for every run, a randomised order that differs per repetition, an environment
@@ -48,11 +49,12 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shlex
 import sys
 from pathlib import Path
 
 from benchmark.adapters import CorouteServer, LoadgenGenerator
-from benchmark.harness import driver, environment, schema
+from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
 
 
@@ -74,6 +76,54 @@ GENERATOR_THREADS = 2
 _HAS_AFFINITY = platform.system() in ("Windows", "Linux")
 SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY if _HAS_AFFINITY else None
 GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY if _HAS_AFFINITY else None
+
+
+def mask_cores(mask: str, siblings: list) -> set[str]:
+    """The physical cores a hexadecimal CPU mask covers, as the kernel names them.
+
+    Raises ValueError when the mask names a CPU the host does not have online, since a
+    bit the kernel ignores is isolation the record would claim and not have.
+    """
+    bits = int(mask, 16)
+    cpus = [i for i in range(bits.bit_length()) if bits >> i & 1]
+    for i in cpus:
+        if i >= len(siblings) or siblings[i] is None:
+            raise ValueError(f"mask {mask} names CPU {i}, which this host does not have online")
+    return {siblings[i] for i in cpus}
+
+
+def isolation_problem(env: dict) -> str | None:
+    """Why the two masks do not give the isolation the record will claim, or None.
+
+    The masks name logical CPUs, and the comment on them assumes siblings come in
+    adjacent pairs. Linux numbers CPUs in firmware order and can interleave them, in
+    which case 0ff and f00 put the generator on the SMT siblings of the server's cores
+    and validity's isolation rule, which only checks that a mask was applied, would let
+    the record claim isolation that does not exist. On the Windows campaign the
+    generator ran inside WSL with no mask, so a Linux campaign is the first arrangement
+    in which both masks are natively in force together. Nothing to check where the
+    platform publishes no topology or asks for no mask; on Linux, which does publish
+    one, a layout that could not be read is refused, since both masks would still be
+    applied and the record would claim an isolation nothing established.
+    """
+    if not (SERVER_AFFINITY and GENERATOR_AFFINITY):
+        return None
+    siblings = (env.get("cpu") or {}).get("siblings")
+    if not siblings:
+        if (env.get("machine") or {}).get("system") == "Linux":
+            return ("sibling layout could not be read from /sys/devices/system/cpu; "
+                    f"the isolation of masks {SERVER_AFFINITY} and {GENERATOR_AFFINITY} "
+                    "cannot be established")
+        return None
+    try:
+        shared = mask_cores(SERVER_AFFINITY, siblings) & mask_cores(GENERATOR_AFFINITY, siblings)
+    except ValueError as exc:
+        return str(exc)
+    if shared:
+        return (f"server mask {SERVER_AFFINITY} and generator mask {GENERATOR_AFFINITY} share "
+                f"physical core(s) {sorted(shared)}; the record would claim isolation the "
+                f"sibling layout does not give")
+    return None
 
 
 def system_name() -> str:
@@ -122,20 +172,54 @@ _MACOS_RATES = (10_000, 25_000, 40_000, 50_000)
 OFFERED_RATES = _MACOS_RATES if platform.system() == "Darwin" else _WINDOWS_RATES
 
 
+def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) -> str | None:
+    """Why this run's arrangement cannot join the campaign on disk, or None.
+
+    The fingerprint answers "same machine" and deliberately leaves the transport path
+    out, so a loopback campaign and a network-path one hash identically and
+    open_or_create accepts the append; the docstring of this module promised otherwise.
+    The two populations differ in exactly the fixed cost a per-connection difference is
+    measured against. Compared on the keys that name the arrangement and not on the
+    address, because a virtual switch or a veth end changes address between sessions of
+    the same arrangement. A file from before the section existed records nothing and is
+    refused, since nothing establishes what it holds.
+    """
+    stored = campaign.environment.get(section) or {}
+    current = env[section]
+    for key in ("loopback", "generator_location"):
+        if stored.get(key) != current[key]:
+            return (f"{campaign.path} records {key}={stored.get(key)!r} and this run is "
+                    f"{key}={current[key]!r}; the two arrangements are not comparable. "
+                    f"Use a different --results.")
+    return None
+
+
+# The arm every cell of this campaign carries, decided in main from the build and
+# --io-backend and read by the designs below. A module variable rather than an argument
+# threaded through eight design functions: they are all nullary and called by name out
+# of DESIGNS, and the alternative is eight signatures changed to carry one constant.
+_ARM: str | None = None
+
+
 def _io_backend() -> str:
-    """The backend the presets select for this host.
+    """The backend the cells of this run name.
 
     Recorded rather than assumed, because it is a factor in the record and a mislabelled
     factor is worse than a missing one: it makes two different measurements look like
     repetitions of one.
 
-    A runtime arm now, not a build option: CorouteServer passes whatever the cell
-    carries here to --io-backend, and the driver refuses the run if the server's banner
-    reports it started on a different one. So this must always name a single arm that
-    can be asked for, never the compiled set: "dual" is a valid COROUTE_IO_BACKEND and
-    would not be a valid answer here.
+    A runtime arm, not a build option: CorouteServer passes whatever the cell carries
+    here to --io-backend, and the driver refuses the run if the server's banner reports
+    it started on a different one. So this must always name a single arm that can be
+    asked for, never the compiled set: "dual" is a valid COROUTE_IO_BACKEND and would
+    not be a valid answer here.
+
+    Which arm that is comes from the build, via environment.run_io_backend, because the
+    platform cannot say: on Linux both io_uring and epoll are legitimate and only the
+    CMakeCache knows which one this tree has. The platform default is the fallback for a
+    caller that imports a design without going through main.
     """
-    return environment.default_io_backend()
+    return _ARM or environment.default_io_backend()
 
 
 def design_windows_h1() -> list[Cell]:
@@ -473,12 +557,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--results", type=Path, default=REPO / "benchmark" / "results" / "runs.jsonl")
     ap.add_argument("--samples", type=Path, default=None,
                     help="directory for raw per-request latency samples")
-    ap.add_argument("--build", type=Path,
-                    default=REPO / "build" / "windows-release",
+    # Required rather than defaulted to one platform's preset directory. The runbook
+    # passes it on every line, and a default that names a tree the host does not have
+    # exits with "not built" on every other platform.
+    ap.add_argument("--build", type=Path, required=True,
                     help="build directory holding the server and the generator")
     ap.add_argument("--cert", type=Path, default=REPO / "benchmark" / "certs" / "bench.crt",
                     help="certificate for the TLS designs; make it with benchmark.make_cert")
     ap.add_argument("--key", type=Path, default=REPO / "benchmark" / "certs" / "bench.key")
+    # The arm of the I/O-portability comparison. Only meaningful on a dual tree, which is
+    # the only build that contains a choice; elsewhere the build's one backend is the
+    # answer and passing anything else is refused rather than recorded.
+    ap.add_argument("--io-backend", choices=("io_uring", "epoll"), default=None,
+                    help="which arm of a linux-dual build to measure; the default is "
+                         "whatever the build compiled in, io_uring when it compiled both")
 
     # Where the load comes from. The default is loopback and on one host, which is what
     # the committed campaigns used and what keeps a new run comparable with them. The
@@ -495,6 +587,15 @@ def main(argv: list[str] | None = None) -> int:
                          "crosses a network interface instead of the loopback adapter")
     ap.add_argument("--wsl-loadgen", default=None,
                     help="path to the Linux loadgen build, inside the distribution")
+    # The Linux counterpart. The prefix is whatever enters the namespace and drops back
+    # to the invoking user, e.g. "sudo -n ip netns exec gen runuser -u alex --"; the
+    # build's own loadgen is appended, since the namespace shares the filesystem.
+    ap.add_argument("--generator-command", default=None,
+                    help="command prefix the generator is launched through, e.g. "
+                         "'sudo -n ip netns exec gen runuser -u $USER --'")
+    ap.add_argument("--generator-location", default=None,
+                    help="where that prefix puts the generator, as a label recorded with "
+                         "the campaign, e.g. netns:gen")
     args = ap.parse_args(argv)
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
@@ -508,9 +609,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     gen_command: list[str] | None = None
+    location = "host"
     if args.wsl_distro:
         if not args.wsl_loadgen:
             print("--wsl-distro needs --wsl-loadgen", file=sys.stderr)
+            return 2
+        if args.generator_command or args.generator_location:
+            print("--wsl-distro already says where the generator is; drop "
+                  "--generator-command and --generator-location", file=sys.stderr)
             return 2
         # A POSIX path handed to this script from an MSYS shell is rewritten to a
         # Windows one before Python sees it, so /home/x/loadgen arrives as
@@ -522,29 +628,70 @@ def main(argv: list[str] | None = None) -> int:
                   f"from PowerShell.", file=sys.stderr)
             return 2
         gen_command = ["wsl.exe", "-d", args.wsl_distro, "--", args.wsl_loadgen]
-    elif not gen_bin.exists():
-        print(f"not built: {gen_bin}", file=sys.stderr)
+        location = f"wsl:{args.wsl_distro}"
+    else:
+        if not gen_bin.exists():
+            print(f"not built: {gen_bin}", file=sys.stderr)
+            return 2
+        if bool(args.generator_command) != bool(args.generator_location):
+            # One without the other is a launcher nothing records, or a label nothing
+            # earns, and either is a mislabelled campaign.
+            print("--generator-command and --generator-location go together",
+                  file=sys.stderr)
+            return 2
+        if args.generator_command:
+            gen_command = shlex.split(args.generator_command) + [str(gen_bin)]
+            location = args.generator_location
+
+    # Derived from the launcher, not from the address alone. A generator on this host
+    # reaches any locally owned address, a veth end included, through the loopback
+    # interface; the address test only decides the case where the generator is elsewhere.
+    loopback = gen_command is None or args.host.startswith("127.") or args.host in ("localhost", "::1")
+    if gen_command is not None and loopback:
+        # The generator would reach its own namespace's or virtual machine's loopback,
+        # not the server, and every run would fail to connect. Caught here rather than
+        # as sixty identical connection failures.
+        print(f"--host {args.host} is loopback and the generator is in {location}, where "
+              f"that address is not this host. Pass the address the server answers on "
+              f"as the generator sees it.", file=sys.stderr)
         return 2
 
-    loopback = args.host.startswith("127.") or args.host in ("localhost", "::1")
-    if args.wsl_distro and loopback:
-        # The generator would reach the WSL virtual machine's own loopback, not the
-        # server, and every run would fail to connect. Caught here rather than as sixty
-        # identical connection failures.
-        print(f"--host {args.host} is loopback and the generator is in WSL, where that "
-              f"address is the distribution itself. Pass the address the server answers "
-              f"on as WSL sees it.", file=sys.stderr)
+    # Both of these read the build's CMakeCache and both refuse rather than guess, so an
+    # unconfigured --build or an arm the tree does not contain ends here in its own
+    # words instead of in a traceback.
+    global _ARM
+    try:
+        _ARM = environment.run_io_backend(args.build, args.io_backend)
+        env = environment.capture(repo=REPO, build_type="Release",
+                                  io_backend=environment.resolve_io_backend(args.build))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
         return 2
-
-    env = environment.capture(repo=REPO, build_type="Release",
-                            io_backend=environment.resolve_io_backend(args.build))
+    problem = isolation_problem(env)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
     env["transport_path"] = {
         "host": args.host,
         "loopback": loopback,
-        "generator_location": f"wsl:{args.wsl_distro}" if args.wsl_distro else "host",
+        "generator_location": location,
     }
+    # What every run would be refused for anyway, asked once before the hours are spent.
+    # The governor is asked again per run by the driver; here it stops the night before
+    # it starts, since a dynamic governor makes the drift gate fire on itself.
+    blocking = validity.check_run({
+        "virtualisation": env.get("virtualisation"),
+        "git_dirty": env["build"]["git_dirty"],
+        "power_source": validity.current_power_source(),
+        "governor": env["cpu"]["governor"],
+    }).reasons
+    if blocking:
+        for reason in blocking:
+            print(f"refusing to measure: {reason}", file=sys.stderr)
+        return 1
+
     args.results.parent.mkdir(parents=True, exist_ok=True)
 
     # Refuses to append to a campaign whose machine has changed. Mixing two populations
@@ -553,6 +700,10 @@ def main(argv: list[str] | None = None) -> int:
     campaign = environment.Campaign.open_or_create(
         args.results.with_suffix(".env.json"), env
     )
+    mismatch = transport_mismatch(campaign, env, "transport_path")
+    if mismatch:
+        print(mismatch, file=sys.stderr)
+        return 2
 
     cells = DESIGNS[args.design]()
 
@@ -575,21 +726,24 @@ def main(argv: list[str] | None = None) -> int:
     print(f"about {len(schedule) * (args.duration + args.warmup + 3) / 60:.0f} minutes")
     print(f"fingerprint {campaign.fingerprint[:12]}  virtualisation "
           f"{env.get('virtualisation') or 'none'}")
-    print(f"generator {'wsl:' + args.wsl_distro if args.wsl_distro else 'host'} -> "
-          f"{args.host}{'  (loopback)' if loopback else ''}")
+    if env["cpu"].get("siblings") and SERVER_AFFINITY and GENERATOR_AFFINITY:
+        print(f"cores server={sorted(mask_cores(SERVER_AFFINITY, env['cpu']['siblings']))} "
+              f"generator={sorted(mask_cores(GENERATOR_AFFINITY, env['cpu']['siblings']))}")
+    print(f"generator {location} -> {args.host}{'  (loopback)' if loopback else ''}")
     if wants_tls:
         print(f"tls certificate {args.cert}")
     print()
 
     generator = LoadgenGenerator(
         binary=gen_bin, port=args.port, threads=GENERATOR_THREADS,
-        warmup_s=args.warmup,
+        work_dir=args.results.parent, warmup_s=args.warmup,
         # No mask when the generator is in the virtual machine. Its vCPUs are placed by
         # the hypervisor and a mask over them would name cores that are not the host's,
-        # which the record would then claim as isolation it does not have.
+        # which the record would then claim as isolation it does not have. A namespace
+        # shares the host's kernel and cores, so there the mask is real and stays.
         affinity_mask=None if args.wsl_distro else GENERATOR_AFFINITY,
         samples_dir=args.samples, host=args.host, command=gen_command,
-        translate_paths=bool(args.wsl_distro),
+        translate_paths=bool(args.wsl_distro), location=location,
     )
 
     def server_factory(cell: Cell) -> CorouteServer:

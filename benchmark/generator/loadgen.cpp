@@ -164,6 +164,11 @@ namespace
 	struct ThreadResult
 	{
 		std::uint64_t completed = 0;
+		// Every response the connection scanner saw, warmup included. `completed` is
+		// the measured window only, so a counter that runs for the process lifetime,
+		// such as the server's syscalls, has to be divided by this one or the ratio
+		// moves with the warmup setting rather than with the server.
+		std::uint64_t responses_total = 0;
 		std::uint64_t non_2xx = 0;
 		std::uint64_t socket_errors = 0;
 		// A server closing a keep-alive connection on purpose is not an error and must
@@ -1124,7 +1129,13 @@ namespace
 					const int n = conn_recv(c, buf, sizeof(buf));
 					if (n > 0)
 					{
-						out.bytes_read += static_cast<std::uint64_t>(n);
+						// Under the same filter as `completed` below, so bytes per second
+						// and requests per second describe one window. Unfiltered, the
+						// warmup's bytes were divided by the measured wall.
+						if (c.issued >= warmup_end)
+						{
+							out.bytes_read += static_cast<std::uint64_t>(n);
+						}
 						c.scanner.buffer.append(buf, static_cast<std::size_t>(n));
 
 						std::size_t bad = 0;
@@ -1143,6 +1154,7 @@ namespace
 							// warmup and finishing just after it contributed its whole waiting time
 							// to the measured window: one run showed 2.1 second samples in the tail
 							// of a distribution whose p99 was 785 microseconds.
+							out.responses_total += done;
 							if (c.issued >= warmup_end)
 							{
 								const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1493,13 +1505,14 @@ int main(int argc, char** argv)
 	const double wall = std::chrono::duration<double>(Clock::now() - warmup_end).count();
 
 	std::uint64_t completed = 0, non_2xx = 0, sock_errors = 0, bytes = 0, closes = 0;
-	std::uint64_t established = 0, handshake_failures = 0;
+	std::uint64_t responses_total = 0, established = 0, handshake_failures = 0;
 	std::vector<std::uint32_t> all;
 	std::vector<std::uint32_t> pacing;
 	std::vector<std::uint32_t> connects;
 	for (const auto& r : results)
 	{
 		completed += r.completed;
+		responses_total += r.responses_total;
 		non_2xx += r.non_2xx;
 		sock_errors += r.socket_errors;
 		closes += r.server_closes;
@@ -1608,6 +1621,7 @@ int main(int argc, char** argv)
 	field_f("offered_rate", opt.rate, 3);
 	field_f("duration_s", wall, 6);
 	field_u("completed", completed);
+	field_u("responses_total", responses_total);
 	field_u("non_2xx", non_2xx);
 	field_u("socket_errors", sock_errors);
 	field_u("server_closes", closes);
