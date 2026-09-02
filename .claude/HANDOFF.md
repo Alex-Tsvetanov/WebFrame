@@ -551,8 +551,34 @@ been scheduled yet.
   appeared on a different platform at a different commit, which makes it more interesting, not less.
   **GAP, to follow without restarting: paper 2's syscall count is NOT in this set.** The mechanism
   design here varies the BACKEND; paper 2 needs classification ON and OFF, a different axis, and its
-  text says the syscall mechanism awaits the Linux run. Appended as a fourth design afterwards, own
-  directory, about twenty minutes, and it completes a paper that is otherwise done.
+  text says the syscall mechanism awaits the Linux run. **It cannot be appended:**
+  `design_mechanism` is deliberately fixed at `protocol_detection=True` (crossing detection there
+  would put another factor under the quantity it measures), so paper 2's axis needs a NEW design,
+  which means editing `run_campaign.py` -- and each campaign captures `git_dirty` at its own start,
+  so an edit mid-sequence would leave five of the six running campaigns against a dirty tree. Same
+  class as the shared build directory: a change made while a measurement is in flight, where the
+  measurement's own provenance is what gets damaged. **After the three finish: a branch off
+  `a4519ada2` with the design committed, and the fourth campaign run from THAT commit.** Paper 2's
+  numbers then trace to a child of mainline, which is correct provenance rather than a compromise,
+  since this is a new measurement and not a re-run to be pooled.
+  **RULED, overriding the laptop's io_uring-only default: BOTH arms, 40 minutes, EPOLL primary.**
+  Classification reads the first octets rather than peeking and replays them, so the expected cost is
+  one extra read per connection: ~1 per request under churn, ~0 under keep-alive. Under epoll that
+  read IS a syscall and shows up as one more `recvfrom` against a base of about eight, so the count
+  answers the question by construction. **Under io_uring it may cost NOTHING**, because the read
+  becomes a submission queue entry that may batch into an enter which was happening anyway -- a null
+  there would be an artefact of batching, not a finding about the classifier. The laptop's own
+  earlier result is the reason: epoll's syscall count tracks WORK, io_uring's tracks TIME, and "what
+  does this feature cost in syscalls" needs an instrument that tracks work. **Paper 2's sentence
+  rests on epoll.** io_uring runs anyway because the CONTRAST is a result, not a control: epoll
+  showing one syscall per connection while io_uring shows none is a real statement about the two
+  models, the same work costing a kernel crossing under readiness and absorbed into an existing
+  submission under completion, and it belongs in paper 3 beside the wait-policy decomposition. The
+  same increment in both kills a plausible story before anyone writes it down. Report separately,
+  never averaged. **Before the numbers arrive, read from the code whether the classification read is
+  submitted as its own operation or coalesced:** if it cannot batch, a null from io_uring means
+  something different from a null when it can, and that is five minutes that decides how the number
+  is interpreted rather than interpreting it afterwards to fit.
   Preflight also caught that `benchmark/certs/bench.crt` did not exist, which would have failed the
   TLS half an hour in. Third time tonight that checking a precondition beat discovering it.
 - **THE DECOMPOSITION IS DONE AND THE MECHANISMS GENUINELY DIFFER.** Three arms, 25 rotations,
