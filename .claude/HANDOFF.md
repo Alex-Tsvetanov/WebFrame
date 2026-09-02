@@ -288,6 +288,25 @@ Ordered by what unblocks the most. Nothing here was decided without you.
    `coordination/inbox/alex-laptop-2026-09-02T0122Z.md` on `coord/inbox`. A host reporting
    hpet is a host to fix rather than a number to correct afterwards, and fixing it removes a
    stated limitation from every Linux measurement.
+   **Established since:** it cannot be done without a reboot. Writing `tsc` to
+   `current_clocksource` makes `tee` exit 0 and changes nothing, and the kernel logs
+   "Override clocksource tsc is unstable and not HRT compatible - cannot switch while in
+   HRT/NOHZ mode". **The kernel's own advice in the boot log, `tsc=unstable`, is the opposite
+   of what is wanted**: it asks for the state the machine is already in, so following it would
+   reboot and fix nothing. The parameter is `tsc=nowatchdog`. The bootloader is GRUB, so it
+   goes in `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` followed by `grub-mkconfig`;
+   there is no systemd-boot loader entry.
+   **A reboot does not strand the machine**, which was the worry: `claude-daemon.service` is a
+   lingering user unit with `Restart=always`, `Linger=yes` is set, and there is no disk
+   encryption, so the user manager and the daemon start at boot with nobody logged in. It has
+   survived one restart already. But the current session runs from a terminal window rather
+   than the daemon and does die, and a cold boot has not been proven end to end, so **the
+   first reboot happens while Alex is at the keyboard, not while he is away.**
+   **Post-reboot gate, not optional:** `current_clocksource` must read `tsc`, and the clock
+   ladder must show about 20 ns and zero syscalls per read instead of 1931 ns and one. A
+   genuinely skewing TSC produces wrong timing rather than an obvious failure. Evidence that
+   this is the known false positive: the watchdog objected to 494302697 against 496024343 ns,
+   0.35%, on a single reading immediately after a remote-CPU read timeout.
 3. **May a campaign set the governor to `performance` for its duration and restore it after?**
    The laptop is already there; this is about making it explicit and repeatable rather than
    incidental.
