@@ -137,8 +137,8 @@ been scheduled yet.
     8 pages, 0 errors, no TikZ (tables only, pages checked visually); missing citations added,
     Nagle limitation added, README errors fixed (three socket errors not six; one fingerprint for
     every design; census commit f52c49521). Still to do: Word step (`build_docx.py` must be
-    written fresh, the template's carries the other paper's text), trim the abstract (~330 words),
-    venue running head, Alex's read.
+    written fresh, the template's carries the other paper's text; an agent is on it), venue
+    running head, Alex's read. Abstract is 254 words, fine.
   - **Alex (17:40): PDFs must be committed, not gitignored**, in the paper repos (and thesis). DONE: `main.pdf` versioned in the three
     scaffolded paper repos (draft/v1) and `doc/thesis/main.pdf` (latexmkrc copies it after every
     build). `paper-quic-cid-routing` scaffolded too (3a1c9c1 on draft/v1, PDF committed; 16 bib
@@ -244,6 +244,8 @@ been scheduled yet.
   tables untested). The keep-alive syscall finding stands (2 setsockopt per connection =
   0.000427/request); churn cells carry ~2/request and re-run anyway. Incidental: io_uring under
   strace did not exit on SIGTERM (epoll did), the shape a dead wake() predicts for stop().
+  macOS: the tip 9d85e2f00 builds and passes 178/178 here. Methodology paragraph on the shared
+  socket policy added to chapter V ("Еднакви опции на сокетите за всяко рамо").
 - **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
   bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
   the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
