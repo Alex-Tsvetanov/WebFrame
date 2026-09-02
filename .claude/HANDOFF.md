@@ -95,6 +95,27 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The reboot is not optional, and the clock is not why.** The hardened kernel confines
+  io_uring to root and the governor question is unsettled, so every timing number that host
+  produces is already pipeline validation rather than data, and no admissible Linux figure can
+  exist until it boots a different kernel. `tsc=nowatchdog` is one extra word on a boot line
+  that has to be typed anyway. So the axis is not reboot-versus-no-reboot but **not-today
+  versus never**, and nothing in the plan needs that machine before the stock kernel lands.
+  There is also an internal-consistency argument: the methodology chapter now states in
+  writing that a host reporting hpet is a host to fix rather than a number to correct, so
+  publishing timing from an unfixed one would contradict the method stated in the same
+  document.
+- **Considered and rejected: removing the idle-timeout clock read entirely.** The timeout only
+  answers whether any byte moved during the last period, which looks like an atomic flag rather
+  than a timestamp, and that would be portable with no conditional and a smaller diff. It does
+  not survive the re-arm path at `idle_timeout.hpp:151-185`, which computes
+  `remaining = period - quiet` and re-arms for exactly that, so the deadline fires close to one
+  period after the last activity. A flag cannot know how long ago the activity was, so it fires
+  between one and two periods, and the same path carries the handshake deadline, which is a
+  slowloris guard. Keeping the bound tight means ticking at half the period, which doubles calls
+  to `TimerQueue::schedule` at 2.01 clock reads per connection, giving about half the saving
+  back. The coarse clock keeps the deadline within a millisecond and saves the whole 4.00.
+
 - **The clock reads are attributed to three sites, none needing nanoseconds.** Call-graph
   profile of the server process only (the generator is a separate process in the other
   namespace, so the separation is structural), epoll churn, 8000 connections: `IdleTimeout`'s
@@ -211,7 +232,11 @@ been scheduled yet.
   What survives is stronger and belongs in the paper: **epoll's syscall count tracks work and
   io_uring's tracks time.** epoll costs 1 `recvfrom`, 1 `sendto`, 2 `epoll_ctl`, 2 `clock_gettime`
   per request under keep-alive, plus 1 `accept4` and 1 `close` under churn, with churn costing
-  4.264x keep-alive; those figures are stable and interpretable. The completion model as
+  4.264x keep-alive; those figures are stable and interpretable. **Quote the ratio with the
+  host's own overhead removed**: `clock_gettime` is 2.002 of the keep-alive syscalls and 9.293
+  of the churn ones, so excluding the clock rows it is about 5.09 against 21.24, a ratio of
+  roughly 4.18 rather than 4.26. The conclusion survives, which is why it was worth checking,
+  but both figures belong in the text with the clock source named. The completion model as
   implemented pays a per-second price, not a per-request one, so any syscall comparison between
   the two models must normalise by time, or by time and worker count, never by requests. It also
   points somewhere concrete: about 58 000 enters per worker per second while 400 requests a
