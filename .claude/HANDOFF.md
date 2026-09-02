@@ -163,6 +163,20 @@ been scheduled yet.
   The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
   a rebuild is a campaign boundary and the later designs would then need their own directory and
   fingerprint, as the schema split was handled.
+- **The laptop's own test caught kqueue on macOS, unprompted, and it is the before number.** Test 42,
+  "posted work reaches an idle worker without waiting out the poll timeout", written for epoll and
+  io_uring, fails on macOS at HEAD: median delivery **98480 us**, first 49699, worst 98658, against
+  its threshold of 200. Worse than epoll's 50 ms for an arithmetic reason: a burst of posts each waits
+  out its own 100 ms `kevent` cycle rather than sharing one. **The whole laptop stack is merged and
+  built on macOS in a scratch worktree (241 targets, self-checks 301 here against 304 on Linux, the
+  difference being the Linux-only checks) but is DELIBERATELY NOT PUSHED until the kqueue fix lands,
+  because mainline must not carry a failing test.** Merged tip is `0894c13b7`, one past the
+  `e6c507b9f` the laptop reported.
+  **For paper 3:** a portable test written for one backend found the same defect on three operating
+  systems, and every one of those backends passed a suite that looked complete. The suite could not
+  have caught it because nothing measured delivery latency on an idle loop. The finding is not that
+  the code had a bug; it is that a class of defect was invisible until someone measured the mechanism
+  rather than the outcome.
 - **THE WAKE DEFECT IS IN THREE BACKENDS OF FOUR, and that is the result rather than three bugs.**
   Confirmed by the coordinator on macOS: `kqueue` is epoll's case exactly. `post()`
   (src/net/kqueue/kqueue_context.cpp:245) pushes onto the callback queue and nothing wakes the loop;
@@ -209,6 +223,15 @@ been scheduled yet.
   point and therefore data, and the standing rule is that data traces to a mainline commit rather than
   to a branch tip. So: finish the findings, push, coordinator merges the stack, then the blocking-wait
   experiment AND the cross-arm re-runs both run on the merged HEAD.
+- **PRIVACY DEFECT FOUND: `coord/inbox` is on the PUBLIC repository and carries the laptop's
+  hostname** in ten filenames and twelve body lines (`gh repo view` confirms
+  `Alex-Tsvetanov/WebFrame` is `isPrivate: false`). No IP or MAC has leaked yet, but the laptop was
+  about to write link facts containing two addresses and three MACs into an inbox file. It has been
+  told: nothing identifying a machine goes on that repository, ever, and network identity comes to the
+  coordinator by message only. Machine identity belongs in the private paper repositories, which is
+  what `env.json` and `measurements/` are for. The existing hostname history needs a rewrite and a
+  force push, which is Alex's call and has been put to him; a backup ref `backup/coord-inbox-pre-redaction`
+  holds the current tip locally either way.
 - **NEW CAPABILITY (Alex, 18:45): the two machines share an Ethernet segment, so a genuine two-host
   benchmark is possible** -- server on one machine, generator on the other, across a real interface
   with a driver, interrupts and queueing. This is the first arrangement that can answer the loopback
