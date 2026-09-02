@@ -95,6 +95,21 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **A committed record is not the same bytes as the record on disk, and it mattered.** The
+  repository normalises line endings (`* text=auto`), so records written on Windows with CRLF
+  were stored as LF and restored as CRLF. The twelve data and environment files round-tripped
+  byte-identically because fixed-width JSONL had nothing to convert; **four notes files did
+  not**, so `git show <commit>:<path> | sha256sum` and `sha256sum <path>` disagree on them.
+  With provenance by hash that is a paper citing something a reader cannot reproduce. Fixed at
+  `cb56895da`: `benchmark/results/** -text`, so the bytes the harness wrote are the bytes
+  stored. The corrected hashes for those four files are in the desktop's report; the sixteen
+  others are unchanged.
+  The same episode produced a second lesson worth keeping: after committing on a results branch
+  and checking out the working branch, the force-added files vanished from the working tree,
+  because they are tracked on one branch and ignored on the other. Nothing was lost, but **"the
+  files are on disk" and "the files are in the commit" had stopped being the same statement**
+  while a report asserted the first.
+
 - **The coarse-clock change is merged and its before-and-after table accounts for itself.**
   Churn, epoll, 400/s, 10 000 connections each side, with futex counted (`c836cd9b4` adds that
   tracepoint permanently, lifting named coverage on this shape from 77% to 96.5%). Five
@@ -377,9 +392,17 @@ been scheduled yet.
   history at `068431b37`.
 - `Compile-time-Protobuf` has uncommitted rebuilt PDF/DOCX/presentation; not touched.
 
-## For Alex, in the morning: four decisions and one action
+## For Alex, in the morning: one urgent action, then four decisions
 
-Ordered by what unblocks the most. Nothing here was decided without you.
+**Do item 0 first. Everything else can wait; that one cannot.**
+
+0. **PUSH THE RESULTS BRANCH. The campaign exists in one place.** `71baff233` on
+   `measure/desktop-2026-09-02` on the desktop, 1184 records from three designs and eight
+   hours of machine time, is a local unpushed commit plus a copy on the same disk in the same
+   tree. No remote, no second machine. One disk failure loses the night. Push it to the
+   private `paper-socket-demux` repository (add it as a second remote; it must not go to the
+   public framework repo, because the environment records name the host). The desktop pushes
+   nothing by its own policy, so this is the one step nobody else can take.
 
 1. **The Windows firewall is blocking the off-host arm.** Two auto-created inbound block
    rules for the freshly built `benchmark_server.exe`, which is why every loopback design ran
@@ -416,9 +439,7 @@ Ordered by what unblocks the most. Nothing here was decided without you.
 3. **May a campaign set the governor to `performance` for its duration and restore it after?**
    The laptop is already there; this is about making it explicit and repeatable rather than
    incidental.
-4. **The desktop's results branch is ready and needs one push.** It is committed locally as
-   `71baff233` on `measure/desktop-2026-09-02`, 1184 records across the three loopback designs.
-   The desktop pushes nothing, by its own policy and your
+4. (now item 0, above; done first) The desktop pushes nothing, by its own policy and your
    wording that the coordinator places records in the paper repositories. Push that branch to
    the private `paper-socket-demux` repository and the coordinator will file the records with
    their provenance.
