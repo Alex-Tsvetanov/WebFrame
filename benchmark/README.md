@@ -15,11 +15,17 @@ the reasons behind each design are in the docstrings of `run_campaign.py`,
 | Clean tree at the commit you will cite | `git status -sb` | any modified or untracked source file |
 | Release build of that commit | `cmake --build build/<preset> --config Release` | binary older than HEAD |
 | TLS material | `python -m benchmark.make_cert` once; produces `benchmark/certs/bench.{crt,key}` | missing and a TLS design is planned |
-| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la /home/alex/loadgen`; Linux: the netns pair | not built, or reaches the server over loopback |
+| Off-host generator | Windows: `wsl -d Ubuntu-24.04 -- ls -la $HOME/`, and check the binary is newer than the campaign commit; Linux: the netns pair | not built, or reaches the server over loopback |
 | Fresh results directory | `benchmark/results/<yyyy-mm-dd>-<host>/` | appending to a file whose `.env.json` fingerprint differs; the driver refuses this itself |
 
-The generator inside WSL reaches the Windows host at the vEthernet address, which changes
-between reboots. Read it from inside the distribution rather than from an old note:
+Two values here are read from the machine every time, never carried from a note. Every
+absolute path written from memory in this project has been wrong: the repository moved from
+one drive path to another, the generator was looked for on the Windows drives when it lives
+inside the distribution, and the distribution's user is not the one the Windows user is
+named after. So the generator path comes from `wsl -d Ubuntu-24.04 -- ls -la $HOME/`, and
+the address comes from the default route below rather than from any of the three plausible
+adapters. The gateway changes between reboots and is not the vEthernet address the Windows
+side reports:
 
 ```powershell
 $wslHost = ([regex]::Match((wsl -d Ubuntu-24.04 -- ip route show default) -join ' ', '\bvia\s+(\d{1,3}(?:\.\d{1,3}){3})\b')).Groups[1].Value
@@ -31,10 +37,17 @@ a `via` address stops loudly instead of handing `--host` an interface name. If t
 ever looks space-separated per character, that is `wsl.exe` emitting UTF-16 for its own
 subcommands; a command run inside the distribution should not do that.
 
-That address is `--host` for every off-host design below. If the WSL generator is
-missing, build it inside the distribution from `benchmark/generator` with CMake. It is a
-Linux binary and lives in the WSL filesystem, so a search of the Windows drives will not
-find it.
+That address is `--host` for every off-host design below.
+
+**The generator must be built from the campaign commit, and its age must be checked.** A
+generator found at the expected path is not thereby the right generator: three stale ones
+were found on this host, the newest two days older than the commit it would have been used
+against, and one named for the TLS arm predating the commit that added it. Nothing in the
+records would have said so. `benchmark/generator/CMakeLists.txt` is a subdirectory file with
+no `project()`, so it cannot be configured alone; either configure the whole tree inside the
+distribution, or replicate the target's command line from the `compile_commands.json` of a
+tree already built from that commit. Name the binary after the commit, keep the old ones, and
+pass the path explicitly.
 
 ## The quiet-host gate is measured first, and the night stops if it fails
 
@@ -59,7 +72,7 @@ measurement:
 python -m benchmark.run_campaign --design tls-smoke    --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/tls-smoke.jsonl
 python -m benchmark.run_campaign --design tls-ladder   --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/tls-ladder.jsonl
 python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder.jsonl
-python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_campaign --design churn-ladder --repetitions 1 --build build/windows-tls --results benchmark/results/<dir>/churn-ladder-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
 ```
 
 If the admissible boundary moved, change the rate tables in `run_campaign.py`, commit
@@ -81,7 +94,7 @@ resolve the 5 percent threshold at four of five rates.
 
 ```
 python -m benchmark.run_campaign --design churn     --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/churn.jsonl
-python -m benchmark.run_campaign --design churn-net --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/churn-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_campaign --design churn-net --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/churn-net.jsonl --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
 python -m benchmark.run_campaign --design transport --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/transport.jsonl
 python -m benchmark.run_campaign --design h1-deep   --repetitions 25 --build build/windows-tls --results benchmark/results/<dir>/h1-deep.jsonl
 ```
@@ -110,7 +123,7 @@ End to end runs one worker (the DFA matcher's repeat counters are shared and not
 thread-safe upstream, stated as a limitation) and refuses a loopback `--host`:
 
 ```
-python -m benchmark.run_routing_e2e --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host <vEthernet address>
+python -m benchmark.run_routing_e2e --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing-e2e --wsl-distro Ubuntu-24.04 --wsl-loadgen <generator> --host <gateway>
 python -m benchmark.run_routing_e2e --design bracket     --repetitions 5 ... same generator flags
 python -m benchmark.run_routing_e2e --design bracket-low --repetitions 5 ... same generator flags
 python -m benchmark.run_routing_e2e --design large       --repetitions 5 ... same generator flags --readiness-timeout 600

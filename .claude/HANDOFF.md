@@ -21,7 +21,7 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 
 | Session name | Host | What it is for | State |
 | --- | --- | --- | --- |
-| `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator; repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
+| `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator (its user is not the Windows user; read `$HOME` from the distribution); repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
 | `ArchLinux` | the laptop: Ryzen 7 5800H, Arch on a hardened kernel, repo `~/GitHub/PhD-WebFrame`, presets `linux-dual` (validated) and `linux-epoll`; since late 2 Sep it has perf, strace, ninja, git-lfs, passwordless sudo and a wired link | Linux code work and, once the harness branch lands, netns runs and the perf syscall counter; io_uring runs only as root on this kernel (restricted, not off); governor still powersave | brief 3 (preset check + perf feasibility probe) running |
 | `Dispatch background conversation` | unknown | never answered a probe | ignore |
 

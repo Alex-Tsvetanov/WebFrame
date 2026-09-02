@@ -1,7 +1,7 @@
 """Level two of the routing experiment: the same three arms, through the whole server.
 
     python -m benchmark.run_routing_e2e --design main --repetitions 5 \
-        --wsl-distro Ubuntu-24.04 --wsl-loadgen /home/alex/loadgen --host 172.28.0.1
+        --wsl-distro Ubuntu-24.04 --wsl-loadgen <path in the distribution> --host <gateway>
 
 This is the level the paper's title rests on. Level one says what a lookup costs; this
 says whether that still shows once parsing, the event loop and the network are in front
