@@ -603,15 +603,45 @@ been scheduled yet.
   problem, but if two of the remaining 2.876 are unbatched submits then the timeout was the larger of
   TWO costs and the second is untouched and is a property of how the framework uses the interface
   rather than of the interface.
-  **CHECK BEFORE ANYONE WRITES IT DOWN, from records already held:** attribute the 2.876 in the
-  mechanism runs' syscall-table-by-type into submission enters against wait enters, and see whether
-  submissions come out near two per request under keep-alive and near three under churn where accept
-  and close add operations. No machine time. If it does not come out near two, the coordinator's
-  reading of the submit path is wrong in a way the laptop's code read did not cover.
+  **CONFIRMED BY SUBTRACTION, which is better than the attribution the coordinator asked for.** The
+  syscall table cannot split submit-enters from wait-enters (one tracepoint), but the three wait
+  variants give the split by difference. Keep-alive, 10 000 rps, 4 workers: 1 us -> 46.635 enters/req,
+  1 ms -> 2.876, blocking -> 2.501. **The blocking arm has no timeout wakeups at all**, so its 2.501 is
+  the timeout-free floor by construction. 1 ms minus blocking is 0.376 observed against 0.400
+  predicted from 4 workers x 1000/s / 9999.9 rps -- a rate that was not fitted. (Slightly under rather
+  than over, because some waits end on a completion before the timer: the timeout term is an upper
+  bound that load erodes, and that direction is a second confirmation.)
+  **So 2.876 = 2 unbatched submits + ~0.5 waits + ~0.4 timeout wakeups**, every term independently
+  motivated, none fitted. ~0.5 waits is sensible: two completions per request and roughly one wait
+  harvesting both.
+  **Consequences, to be stated rather than left to a reviewer.** (1) The central comparison is epoll
+  against an UNBATCHED io_uring, and batched submission is the completion model's principal advantage,
+  so the comparison is not measuring the model at its best -- the laptop's wording, and it is the
+  difference between a limitation and an oversight. (2) It reframes the wait-timeout result: "the
+  1 us to 1 ms change took 94% of the syscall reduction" is true and misleading; it removed the LARGER
+  OF TWO costs, and the remaining 2.5 is about 80% unbatched submission, untouched. The timeout was
+  the framework's use of the WAIT; this is its use of the SUBMISSION; neither is a property of
+  io_uring. (3) It reframes the blocking arm too: its further 13% is right against the REDUCIBLE
+  portion, but blocking removes most of the remaining wait cost and none of the submit cost, and
+  **cannot go below 2 per request while every operation submits alone.**
+  **FRAMING SO THE LIMITATION IS NOT A RETRACTION: give three numbers, not an apology.** Even
+  unbatched, io_uring is at 2.876 against epoll's ~5.09 excluding clock rows, so the completion model
+  is ahead while using none of its principal advantage; batched it would be about one submit plus half
+  a wait, near 1.5. The limitation then bounds the gap and tells a reader how much was not measured.
+  (The 5.09 comes from the earlier mechanism finding and must be checked against the records before it
+  is quoted.)
+  **PRE-REGISTERED for the queued churn arm, now a single value rather than a fork: THREE submits per
+  request** -- accept, read, write -- plus the same timeout term. The coordinator read the code:
+  **close does NOT go through the submission queue.** Every close in the io_uring backend is a plain
+  `::close` (connection at :904, listener at :855, teardown paths); there is no `IORING_OP_CLOSE` and
+  no `prep_close` in the file. Accept does go through it (:944, :1163). Four would mean the close path
+  was read wrongly. Second independent check from another column: because close is an ordinary
+  syscall it appears in the table BY NAME at one per request, while the submits are one
+  indistinguishable tracepoint.
   **Do NOT change the backend.** A batching change would invalidate six hours of running campaigns and
-  is a performance change to the arm under test. Record it; the thesis decides whether an optimisation
-  is in scope, and it may well not be, since the framework's job in this work is to be the constant
-  rather than to be fast.
+  is a performance change to the arm under test. If it ever comes into scope it is a separate
+  measurement against a separate commit, with this number as its baseline. The framework's job in this
+  work is to be the constant rather than to be fast.
   Preflight also caught that `benchmark/certs/bench.crt` did not exist, which would have failed the
   TLS half an hour in. Third time tonight that checking a precondition beat discovering it.
 - **THE DECOMPOSITION IS DONE AND THE MECHANISMS GENUINELY DIFFER.** Three arms, 25 rotations,
