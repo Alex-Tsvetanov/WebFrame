@@ -21,8 +21,8 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 
 | Session name | Host | What it is for | State |
 | --- | --- | --- | --- |
-| `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator (its user is not the Windows user; read `$HOME` from the distribution); repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
-| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch, **since 2 Sep ~13:00 on the stock kernel 7.2.2 with `tsc=nowatchdog`**, so clocksource tsc, io_uring unprivileged, perf_event_paranoid 2, governor performance (set by hand, not persistent); perf, strace, bpftrace, passwordless sudo, wired link; repo `~/GitHub/PhD-WebFrame` | Linux measurements proper, for the first time: the daemon survived the reboot under the same name | brief 5 running: clock gate, ff, mechanism run unprivileged, then the io_uring timeout experiment |
+| `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator (its user is not the Windows user; read `$HOME` from the distribution); repo paths and addresses are in the local memory note `benchmark-machines`, never here | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
+| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch, **since 2 Sep ~13:00 on the stock kernel 7.2.2 with `tsc=nowatchdog`**, so clocksource tsc, io_uring unprivileged, perf_event_paranoid 2, governor performance (set by hand, not persistent); perf, strace, bpftrace, wired link; repo `~/GitHub/PhD-WebFrame` | Linux measurements proper, for the first time: the daemon survived the reboot under the same name | brief 5 running: clock gate, ff, mechanism run unprivileged, then the io_uring timeout experiment |
 | `Dispatch background conversation` | unknown | never answered a probe | ignore |
 
 Both hosts are Alex's daily machines. No timed run without a window Alex names.
@@ -943,6 +943,17 @@ findings in the laptop's own words, unredacted as you authorised.
 6. Then paper 4's UDP-seam reconciliation on a scratch branch (design work, Linux).
 
 ## Who is the coordinator right now
+
+> **What may not appear in this repository, which is PUBLIC** (`Alex-Tsvetanov/WebFrame`,
+> `isPrivate: false`): hostnames, IP or MAC addresses, network names, router details, the shape of
+> the local network, login state, or a machine's security posture (that last one had leaked here as
+> a note about how one machine's sudo is configured, and is now gone). **Hardware models stay.** A
+> measurement paper that does not name its processor is unreproducible, so the CPU, core count and
+> operating system are apparatus, not identity, and they belong in the record. The line is between
+> what a reader needs to repeat the experiment and what a reader would need to find or enter the
+> machine. Machine identity goes to the private paper repositories, which is what `env.json` and
+> the `measurements/` directories are for.
+
 
 **`phd-webframe-93`, running on `claude-opus-5`.** This line is the tie-breaker: if two sessions
 ever claim coordination, the machines follow whichever name this file names on `origin/phase0-foundation`,
