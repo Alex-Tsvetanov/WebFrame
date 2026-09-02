@@ -1,432 +1,196 @@
-# The two-host run: what the harness can do for a generator on another host, and the design fixed before it runs
+# The two-host run: the design, fixed before the first run
 
 Both papers state loopback as a limitation. One measurement can replace that sentence with a
 number or show that loopback was the right medium: the framework's own load generator against the
 framework's own benchmark server across one gigabit Ethernet segment between two hosts, a Linux
-laptop and a Windows desktop, instead of over loopback, a namespace pair or a virtual switch inside
-one host.
+laptop and a Windows desktop, instead of over loopback, a namespace pair or a virtual switch
+inside one host. Alex approved it on 2 September for an overnight window, on the condition that
+the design is pre-declared and committed before it runs.
 
-This document does three things. It establishes, from the code and with line references, what the
-harness can and cannot do when the generator is on another host, so the design promises nothing the
-tool cannot deliver. It fixes the design: arrangement, rates, repetitions, order, and the decision
-rule with both outcomes worded in advance. And it is the runbook: the laptop and the desktop run it
-from this text alone. Anything that identifies a machine beyond its hardware class is deliberately
-absent; addresses, user names and paths on the two hosts are exchanged by message and appear here
-as placeholders in angle brackets.
+This is that design. The laptop and the desktop execute it from this text. Every value the text
+cannot carry (addresses, the user name, paths on each host, the wired interface's name) is a
+placeholder in angle brackets, exchanged by message and recorded, if at all, in the private paper
+repository. Nothing that identifies a machine beyond its hardware class and operating system
+appears here. Facts about the link and the hosts cited below are from the coordinator's record of
+2 September and are not re-measured by this run.
 
-## 1. The one quantity that decides it
+## 1. The one question, and the rule that answers it
 
-Paper 2's demultiplexing cost is 60 to 85 microseconds on a classification-off median of about
-1.4 ms establishment or 0.09 ms request latency. Whether a real path can resolve that is not decided
-by the per-packet spread of the path (a ping statistic; see the last two entries in
-`.claude/HANDOFF.md` under "NEW CAPABILITY"). We compare per-run medians, and the standard error of
-a median over a hundred thousand requests is a few microseconds if the noise is independent. What
-enters the bootstrap is the run-to-run spread of those medians, and the harness already reports it:
-`stats.compare` (`benchmark/harness/stats.py:161-216`) bootstraps the difference of medians between
-the two arms, and `results2tex` reports the half-width of that interval as a share of the
-classification-off median (`benchmark/harness/results2tex.py:296-316`), with 5 percent as the
-reportability floor (`stats.py:148`). That share is the resolution, and the decision rule in section
-7 is stated on it and on nothing else.
+**The question.** Paper 2's demultiplexing cost is 60 to 85 microseconds on a classification-off
+median of about 1.4 ms establishment or 0.09 ms request latency, measured over loopback. This run
+answers one question: can a real path resolve a difference of that size? Not whether it
+reproduces the number.
 
-## 2. What the harness does today for a generator that is not on this host
+**The quantity.** What decides resolution is not the per-packet spread of the path. We compare
+per-run medians, and the standard error of a median over the hundred thousand requests of one run
+is a few microseconds if the noise is independent; what enters the comparison is the run-to-run
+spread of those medians. The harness already reports it. `stats.compare`
+(`benchmark/harness/stats.py`) bootstraps the difference of medians between the two arms at 95
+percent, and `results2tex` reports the half-width of that interval as a share of the
+classification-off median (`benchmark/harness/results2tex.py`, `hypothesis_x1`), with 5 percent
+as the reportability floor (`stats.MIN_RELATIVE_DIFFERENCE`). Call that share **r**. It is the
+resolution: how small a difference the cell could have seen. The rule below is stated on r and on
+nothing else. No ping statistic enters it. The Linux end's ping to the gateway on the same wire
+(median 722 microseconds, 502 with cores held awake, standard deviation about 300, an upper bound
+because a router answers ICMP on a low-priority path) is a fact about the path, not about r.
 
-### 2.1 How the generator is launched
+**Per cell.** A cell is one offered rate, one transport (cleartext or TLS) and one shape
+(keep-alive, or one request per connection). Its two arms are classification off, the baseline,
+and classification on. The statistic is the per-run median: `connect_ms.p50` for establishment,
+`latency_ms.p50` for request latency. r is computed from accepted runs only, per arm, by
+`stats.compare` applied per full cell. `hypothesis_x1` as written keys cells by offered rate
+alone, which would pool TLS with cleartext at one rate, and reads the per-run p99 by default; it
+is called per full cell with `p50`, and the same figure on p99 is reported beside, never in place
+of, the rule's. A cell with fewer than three
+accepted runs in either arm has no interval, is UNRESOLVED by construction, and its counts are
+reported.
 
-`run_campaign.py` finds the build's own generator at `<build>/benchmark/loadgen[.exe]`
-(`benchmark/run_campaign.py:826-830`) and constructs one of three launchers:
+**The cells the claim rests on.** Establishment at 100 and 150 connections a second, cleartext and
+TLS: four cells. Request latency under keep-alive at 5 000, 10 000, 15 000, 25 000 and 35 000 a
+second, cleartext and TLS: ten cells. Establishment at 25 and 50 a second is in the design and
+reported but is diagnostic only (section 3.1) and does not enter the rule.
 
-- no prefix: the local binary (`adapters.py:1176`);
-- `--wsl-distro D --wsl-loadgen P`: `["wsl.exe", "-d", D, "--", P]` (`run_campaign.py:865`), with the
-  result path translated to the other side of the WSL boundary (`adapters.py:1109-1120, 1171-1172`);
-- `--generator-command PREFIX --generator-location LABEL`: `shlex.split(PREFIX) + [str(gen_bin)]`
-  (`run_campaign.py:877-879`), the namespace arrangement, where the prefix enters a namespace that
-  shares the filesystem.
+**The rule.**
 
-`LoadgenGenerator._argv` appends `--host`, `--port`, `--connections`, `--threads`, `--duration`,
-`--warmup` and `--out <work_dir>/loadgen-<port>.json` (`adapters.py:1174-1204`), runs it with
-`subprocess.run(..., capture_output=True, text=True, timeout=duration+warmup+120)`
-(`adapters.py:1240-1243`), and reads the result back **from the file**, not from stdout: a missing
-file is the only failure it recognises (`adapters.py:1249-1258`). The generator writes the same JSON
-to stdout and, when `--out` was given, to the file (`benchmark/generator/loadgen.cpp:1821-1830`);
-stdout carries nothing else (`usage()` at `loadgen.cpp:1394` prints only on `--help`). A failed
-`fopen` of the `--out` path is silent (`loadgen.cpp:1825`).
+1. A cell RESOLVES if r is under 5 percent at the repetition count taken.
+2. The arrangement carries the demultiplexing claim for establishment if all four establishment
+   cells at 100 and 150 resolve, and for request latency if all ten request-latency cells
+   resolve. The two halves are judged separately, and a half that resolves is written up as
+   resolved whatever the other did.
+3. The verdict is on r, never on the sign or size of the difference. r is a function of spread;
+   reading it does not choose an outcome.
+4. Where a cell resolves, the difference is reported as it comes: an interval excluding zero is a
+   measured cost of classification over a real path; an interval containing zero is a null result
+   at resolution r.
+5. Beside every cell: r, the relative difference, whether the interval excludes zero, the
+   run-to-run coefficient of variation of the medians per arm, the accepted count per arm, the
+   pacing p99 covariate per arm, and the median against repetition index, which is where
+   autocorrelated network noise or thermal drift would show as structure.
 
-### 2.2 What breaks if the prefix is `ssh user@host`
+**If the cells resolve, this is written:** over one gigabit Ethernet segment between two hosts,
+the demultiplexing difference was resolved to r in every cell the claim rests on, and its value
+there is whatever was measured, interval included. The loopback caveat is replaced by this
+measurement in both papers. The loopback figures stand as the figures for the medium in which the
+claim was first made; they are not revised by it.
 
-Passing `--generator-command 'ssh <target>'` fails at four places, in this order:
+**If they do not resolve, this is written:** over a real path the run-to-run spread of per-run
+medians is r in the cells the claim rests on, and at this n the design could not have seen a
+difference of 60 to 85 microseconds there. Loopback was the right medium for the demultiplexing
+claim: the claim is a difference between two arms that share one path, the medium adds spread and
+no information about the arms, and loopback's own r for the same cells was under 5 percent. That
+last clause is a condition, not a flourish. The sentence is written for a cell only where the
+filed loopback campaign's r, recomputed from its first n accepted repetitions in file order, was
+under 5 percent; where loopback did not resolve the cell either, neither medium did and the text
+says so. The real path is then named as the right medium for the questions in which the path is a
+factor rather than noise: the establishment ceiling of the arrangement, which loopback set at
+about 330 a second with the generator sharing the server's cores and the virtual-switch arm moved
+past 800; the idle-state mediation of low-load latency at the receiving end, which a generator
+sharing the host masks; the tail, p99 and above, under a real driver and interrupt path; and
+paper 3's shape comparison of epoll against io_uring over a real path (direction B).
 
-1. **The binary path.** The appended `gen_bin` is the driver host's path (`run_campaign.py:826,
-   878`). Driven from the desktop that is a Windows path to a Windows executable, executed on the
-   laptop; driven from the laptop it is the laptop's own build path, which happens to be right only
-   if the remote checkout is at the same absolute path.
-2. **The result file.** `--out` names a directory on the driver host (`adapters.py:1184, 1208`).
-   On the remote host the `fopen` fails silently, the JSON goes to stdout, and the driver refuses
-   the run with "generator produced no result file" (`adapters.py:1249-1253`). Every run fails the
-   same way. `--samples` (`adapters.py:1200-1201`) would likewise write on the remote host and
-   record a path that exists nowhere.
-3. **The affinity mask.** `GENERATOR_AFFINITY = "f00"` is passed unless the generator is in WSL
-   (`run_campaign.py:71-72, 1087`). On the laptop that pins the generator to logical CPUs 8 to 11 of
-   a different machine, and `isolation_problem` (`run_campaign.py:99-130`) checks the mask against
-   the driver host's sibling map, not the generator host's.
-4. **The environment.** Every gate and every fingerprinted field describes the driver host
-   (section 4).
-
-What does **not** break, and is why the change in 2.3 is small:
-
-- **The euid gate.** The three refusals under a launch prefix fire only when the *server* has one
-  (`driver.py:328-351`). With a local server, `result.euid` is recorded (`driver.py:352`) and the
-  asymmetry check at `driver.py:398-410` is skipped whenever `server_euid` is None, which it is on
-  Windows (`adapters.py:783-784`). A Linux generator's euid is read by the generator itself
-  (`loadgen.cpp:1750`) and survives remoting.
-- **Readiness.** `wait_until_ready` probes the server's own loopback when the server has no prefix
-  (`adapters.py:678-683`). That is the correct host for readiness. It does not prove the server is
-  reachable from the generator host; the runbook's one-request-from-each-end precondition does.
-- **The clock and the host gates.** `probes.cpu_mhz`, `power_source`, `speed_limit`, `governor`
-  and `counters` are host-level, not pid-level (`driver.py:163-167, 243-245, 289-291, 494-499`).
-  They read the driver host, which in the recommended placement is the server host.
-- **Generator CPU.** Self-reported by the generator from `getrusage` (`loadgen.cpp:1355-1379`),
-  so it needs no local pid.
-- **The interface field, pacing, achieved share.** All in the generator's JSON
-  (`loadgen.cpp:1756-1759, 1801-1806, 1863`), read by `adapters.py:1294-1295, 1311-1314`.
-- **Quoting.** The launcher is a list handed to `subprocess.run`; `ssh` joins it with spaces and
-  the remote shell splits it again. Every argument the harness passes is a bare word or a number;
-  the one path, the remote generator, is chosen without spaces.
-- **Timeouts.** `duration + warmup + 120` seconds (`adapters.py:1242`) covers ssh session setup.
-
-### 2.3 The change: mirror the WSL branch, read the JSON from stdout
-
-Two files, about thirty lines, no new dependency. The WSL branch is the template
-(`run_campaign.py:848-866`).
-
-`run_campaign.py`:
-
-- `--ssh-generator USER@HOST`, `--ssh-loadgen PATH` (the generator binary on that host),
-  `--ssh-repo PATH` (the repository checkout on that host), used together with the existing
-  `--generator-location LABEL`. Refused: `--wsl-distro`, `--generator-command`, `--server-command`
-  and `--samples` in combination with it.
-- `gen_command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", target, loadgen]`;
-  `location = LABEL`. `BatchMode` is what makes a missing key a refusal rather than a prompt, the
-  same reason `netns.py` uses `sudo -n` (`benchmark/netns.py:128-134`).
-- `affinity_mask=None` for the ssh generator, on the WSL branch's reasoning
-  (`run_campaign.py:1083-1087`): a mask names the driver host's cores.
-- Once, before `Campaign.open_or_create`: `ssh target "cd <repo> && python3 -c 'import json;
-  from benchmark.harness import environment as e; print(json.dumps(e.capture()))'"`, stored in the
-  manifest as `env["generator_environment"]`, with the output of `tc qdisc show dev <iface>` added
-  under `generator_environment["qdisc"]` when `--expect-interface` names one. Refuse to start if
-  `generator_environment["build"]["git_commit"]` differs from `env["build"]["git_commit"]`: both
-  binaries from one commit is the README's rule (`benchmark/README.md:44-52`), and
-  `build_staleness` (`run_campaign.py:838`) cannot see a remote binary.
-
-`adapters.py`, `LoadgenGenerator`:
-
-- `result_from_stdout: bool = False`. When set, `_argv` omits `--out`, and `run` parses
-  `json.loads(proc.stdout)`; unparseable stdout is `RunFailed` quoting stderr and the exit code.
-  Exit 3, the generator's own inadmissibility verdict (`loadgen.cpp:1865-1883`), still has the JSON
-  on stdout, because the write at `loadgen.cpp:1821` precedes it, and is parsed: the verdict belongs
-  to `validity.py`, once (`adapters.py:1245-1248`). Exit 255 is ssh failing and has no JSON.
-
-One self-check: a fake `subprocess.run` returning JSON on stdout with exit 3 produces a
-`GeneratorResult`; one returning empty stdout with exit 255 raises `RunFailed`.
-
-Nothing changes in `driver.py`, `schema.py`, `validity.py` or `environment.py`. The schema stays
-at 8. `generator_environment` is a manifest key, not a record field and not fingerprinted; that
-limitation is stated in section 4.
-
-### 2.4 Placement: the driver runs on the server host
-
-Two placements were compared. **Driver on the server host, generator remote** needs the change in
-2.3 and nothing else. **Driver on the generator host, server remote** would need `CorouteServer`
-rewritten in five places: `refuse_held_port` runs `ss -ltnH` through the prefix
-(`adapters.py:288-305`), which Windows does not have; `_connect_once` runs `sys.executable -c`
-through the prefix (`adapters.py:695-709`), a Linux interpreter path on Windows; `server_pid` walks
-`/proc` and falls back to `ss` (`adapters.py:711-757`), answers None, and `stop` then refuses every
-run as unlocatable (`adapters.py:1039-1062`); `stop` signals with `sudo -n kill`
-(`adapters.py:1072-1073`); `server_euid` returns None under a prefix, which `driver.py:335-339`
-refuses; and every host gate would judge the generator host while the server host, the one whose
-throttling matters, went unread. The cost estimate is roughly one to two hundred lines against
-thirty.
-
-So the rule, for both directions: **the driver runs where the server runs, and the generator is
-reached over ssh.** Direction A (Windows server, Linux generator) is driven from the desktop and
-needs an ssh client on Windows, key authentication that succeeds under `BatchMode`, and sshd on the
-laptop. Direction B (Linux server, Windows generator) is driven from the laptop and needs an sshd on
-Windows, which is an optional Windows feature and a system change; it is deferred to section 9.
-
-## 3. The arrangement, and what records it
-
-**One gigabit Ethernet segment, two hosts, no routed hop.** Both ends negotiate 1 Gbit/s full
-duplex, MTU 1500. The Linux end's egress qdisc is `fq_codel` and is part of the path. The Linux end
-is dual-homed, wired and wireless on one subnet with only a route metric between them. Windows'
-ICMP stack reports whole milliseconds, so no ping baseline exists from that end; the Linux end
-pinging the gateway on the same wire gave a median of 722 microseconds, 502 with cores held awake,
-standard deviation about 300, an upper bound because a router answers ICMP on a low-priority path.
-(All of the above from the coordinator's record; not re-measured here.)
-
-**What the records say about where the load came from.** `transport_path` in the campaign manifest
-carries `host`, `loopback`, `generator_location`, `server_location` and `netem_profile`
-(`run_campaign.py:988-1000`). `transport_mismatch` compares every key except `host` against the
-manifest on disk and refuses the append on any difference (`run_campaign.py:179-210`). A two-host
-campaign records `loopback=False` (the address is not loopback, `run_campaign.py:897`),
-`generator_location="lan:linux"`, `server_location="host"`, `netem_profile="none"`. That refuses
-pooling with loopback (`loopback=True, generator_location="host"`), with the namespace pair
-(`generator_location="netns:gen"`, `server_location` the netns prefix) and with WSL
-(`generator_location="wsl:<distro>"`). Every record also carries `generator="coroute-loadgen-lan"`,
-derived from the label's prefix (`adapters.py:1164-1169`). The label is a fact about the
-arrangement, not about a machine, and the manifest's `host` key and every record's
-`generator_argv` carry the server's address (`run_campaign.py:989`, `adapters.py:1178, 1315`) and
-now the ssh target, exactly as the WSL records already carry `--host <gateway>`. Results therefore go
-to the private paper repositories, as they do today (`README.md:156-160`).
-
-**`netem_profile="none"` is truthful and incomplete.** It says no netem impairment was applied
-(`run_campaign.py:912-913`); `observed_profile` parses only netem lines (`netns.py:94-111`), so
-`fq_codel` is recorded nowhere by the harness. `generator_environment["qdisc"]` (section 2.3)
-records it.
-
-**The interface field.** Read by the generator from its own established socket with
-`getsockname`, matched to an interface name, the address discarded, and the link's speed, duplex
-and MTU read from `/sys/class/net` (`loadgen.cpp:383-426, 349-374`). It therefore describes the
-**generator host's** interface, which is what a dual-homed generator host needs checked. The driver
-records it before judging (`driver.py:356-359`) and, when `--expect-interface` is given, refuses a run
-whose interface is absent or different (`driver.py:366-379`). A refusal is a rejected record with
-its reason, the server is stopped, and the campaign continues (`driver.py:445-446, 478-480,
-505-506`); it is not an abort, which is why the smoke run in section 8 comes first: a route metric
-that puts traffic on the wireless interface would otherwise cost 26 seconds per refused run for the
-whole night. The Windows generator reports no interface (`loadgen.cpp:427-430`), so
-`--expect-interface` refuses every run of direction B (`driver.py:367-372`); see section 9.
-
-**Socket policy and the commit.** The desktop's 2 September campaign is at `b4a01e8c7`, schema 7,
-IOCP with no `TCP_NODELAY`: Nagle was on (`include/coroute/net/socket_options.hpp:5-8`). Mainline
-has the shared policy, Nagle off everywhere, `TCP_QUICKACK` where present, `SO_SNDBUF` 256 KiB
-(`src/net/socket_options.cpp:38-48`), and schema 8 with the interface field. The generator has had
-Nagle off throughout (`loadgen.cpp:256-260`). **The desktop is rebuilt at mainline for this run.**
-Two reasons, the second sufficient on its own: Nagle on the server over a real path is a known
-confound, a request's small response waiting on an ack; and a schema 7 adapter does not read the
-interface field at all, so the dual-homing check is impossible without it. The cost is that the
-two-host cells are a separate population from paper 2's loopback data at `b4a01e8c7`, which they
-are anyway by `transport_mismatch`. The comparisons that remain licensed are within this campaign
-(classification on against off, over the wire) and, for shape only, against the loopback and WSL
-tables. **Single-commit precondition:** the run needs, in one commit that both hosts check out,
-schema 8 and the socket policy (mainline), the pacing-as-covariate change (landing on
-`harness/pacing-covariate`; `validity.py:132-137` in this tree still refuses on pacing over 1 ms),
-and the ssh change of 2.3. The commit is named in the results directory's README and is the commit both binaries carry.
-
-**Server affinity stays `0ff`** (`run_campaign.py:70, 1094`). The server's configuration is the
-one paper 2's loopback data used; only the path changes. The desktop's remaining cores sit idle
-rather than hosting the generator, which is itself a difference from the loopback arrangement and
-is stated.
-
-**Idle state.** CPU idle state mediates low-load latency by hundreds of microseconds at the
-receiving end (coordinator's record; the laptop's 495 against 74 microseconds at 100 requests a
-second). In direction A the receiving end is the Windows server and its cores are **allowed to
-idle**, under the power plan `powercfg /getactivescheme` reports, recorded in the results README.
-No awake control is taken in direction A: the question is within-arm (classification on against
-off under one idle regime), the keep-alive rates of 5000 and above keep the server busy every
-hundred microseconds or so, and the churn rates are the ones paper 2's loopback data was taken at
-under the same regime. What idle state can do to this design is inflate the run-to-run spread of
-the churn medians, which is exactly what the resolution figure reports; section 7 says what follows
-if it does. The generator's own waiting is the same code on both platforms: it spins when the next
-due slot is under 20 ms away and otherwise waits in 1 ms polls (`loadgen.cpp:1126-1153`,
-`kSpinBelowUs` at 1150-1151). So at churn rates of 25 and 50 per second either generator sleeps
-between slots, at 100 and above either spins, and every keep-alive rate spins. The platform
-difference is the accuracy of the 1 ms poll's wake (Windows raises the timer to 1 ms,
-`loadgen.cpp:1509-1515`), not sleeping against spinning.
-
-## 4. Environment and fingerprint: which host is described
-
-`environment.capture` runs on the driver host (`run_campaign.py:972-974`) and the fingerprint hashes
-that host's node, kernel, CPU, governor, memory, tuning, toolchain and build
-(`environment.py:54-75, 1010-1019`). In placement A that is the **server host**, which is the right
-host for every question the fingerprint and the per-run gates ask: the drift gate compares two
-clock samples taken on the driver host inside the measured window (`driver.py:286-291, 420, 494`;
-Windows reads base frequency times performance percentage, `environment.py:253-278`) and asks
-whether the machine under test throttled; the power and governor gates ask whether the machine
-under test is on mains and at a fixed clock (`validity.py:154-177, 245-259`).
-
-What the manifest then says nothing about is the generator host: its kernel, CPU, governor, power
-source, clocksource, its qdisc, and whether it was on battery. **Nothing in the harness refuses a
-laptop generator on battery or on the powersave governor.** The laptop's governor was set by hand
-and does not persist across a reboot. Two measures, both required:
-
-1. A manual precondition on the laptop, verified by command (section 8.1): mains, `performance`,
-   `tsc`.
-2. `generator_environment` captured once at campaign start into the manifest (section 2.3), by the
-   same `environment.capture()` the fingerprint uses, so the two hosts are described by one parser.
-
-Stated limitation: the generator host is described once per campaign, not per run, and is not
-fingerprinted, so a generator host that changed governor partway through would not be refused. Its
-per-run evidence is the pacing p99 covariate, recorded beside every cell, and its achieved share,
-which is an admission rule.
-
-**A known risk under that limitation: the laptop throttles under sustained TLS.** As a server in
-its own transport re-run it fell from its start clock to about 3300 MHz inside a twenty-second
-run and the TLS half was declared unusable (coordinator's record of 2 September, late evening). As
-the TLS generator of direction A it encrypts every request and decrypts every response at up to
-35 000 a second on two spinning threads, and no gate reads its clock. Two measures, fixed now:
-the clock the drift gate would read (`environment.py:224-250`, the fastest core's `cpu MHz`) is
-taken over ssh immediately before and immediately after the transport design and written into the
-results README; and the pacing covariate is plotted against repetition index for the TLS cells.
-If the laptop's clock fell by more than the drift gate's 2 percent across transport, or pacing
-rises with repetition in the TLS cells and not in the cleartext ones, the TLS half of transport is
-reported with that caveat and no TLS-against-cleartext sentence is written from it, by the same
-standard the laptop's own re-run applied to itself. The cleartext half and every other design are
-unaffected: the generator does no cryptography there.
-
-Clock: latency is measured at the generator from `std::chrono::steady_clock` (`loadgen.cpp:115`),
-from intended send time to response, so no clock synchronisation between the hosts is needed and
-none is assumed. The drift gate gates the server host's clock; the generator host's clock stability
-has no gate and is described by `generator_environment.cpu.governor` and
-`generator_environment.tuning.clocksource`.
-
-Kernel drop counters: `counter_deltas` reads `/proc/net/snmp` on the driver host
-(`driver.py:243, 499`; `validity.py:275-306`), which on Windows yields nothing (`README.md:176-178`),
-and the generator host's counters are not read. Drops on the real path are unobserved at both ends;
-socket errors and non-2xx remain admission rules and would show a drop's consequences.
-
-## 5. The link ceiling, computed from the bytes the h1 design sends
-
-The brief's estimate of 1100 bytes on the wire per request and response saturating the link near
-70 000 requests a second was a guess. Computed from the request the generator builds
-(`loadgen.cpp:1558-1561`, path `/` at 123) and the response the server serialises
-(`include/coroute/core/response.hpp:105-115`, `src/core/app.cpp:796-797`, timeout 30 s at
-`include/coroute/core/app.hpp:199`, body `Hello, World!` at
-`examples/Samples/benchmark_server/main.cpp:293, 439`):
-
-| Keep-alive, payload 0 | bytes |
-| --- | --- |
-| `GET / HTTP/1.1\r\n` | 16 |
-| `Host: <13-character address>\r\n` | 21 |
-| `Connection: keep-alive\r\n` | 24 |
-| `User-Agent: coroute-loadgen\r\n` | 29 |
-| blank line | 2 |
-| **request payload** | **92** |
-| `HTTP/1.1 200 OK\r\n` | 17 |
-| `Content-Type: text/plain\r\n` | 26 |
-| `Content-Length: 13\r\n` | 20 |
-| `Connection: keep-alive\r\n` | 24 |
-| `Keep-Alive: timeout=30\r\n` | 24 |
-| blank line, body | 2 + 13 |
-| **response payload** | **126** |
-
-Per frame: 8 preamble, 14 Ethernet, 4 FCS, 12 inter-frame gap, 20 IPv4, 20 TCP with no options
-(timestamps are negotiated only if both ends enable them; Windows does not by default; if on, add
-12 per segment). Request frame 170 bytes, response frame 204, a pure acknowledgement 84 (the
-64-byte minimum frame plus 20 of preamble and gap). The heavier direction is server to generator:
-204 bytes per request with the request's acknowledgement carried on the response, 288 if a pure
-acknowledgement precedes it. **Link ceiling for payload 0: 1e9 / (288 × 8) = 434 000 requests a
-second, worst case; 613 000 with acknowledgements piggybacked.** At the ladder's top of 70 000 the
-link carries 114 to 161 Mbit/s, 11 to 16 percent of capacity, and 70 000 to 140 000 frames a second
-per direction. The link is not the binding ceiling for any cell of transport, churn or h1-deep. The
-binding ceilings are the server's own, measured at about 75 000 on loopback with a generator
-sharing its cores (`run_campaign.py:147-153`), and the laptop generator's pacing over the wire,
-which no ladder has yet measured. Both are found by the ladders in section 8.3, at one repetition,
-before any timed design, so the ceiling is pre-declared by measurement rather than discovered as
-refusals.
-
-TLS (one record per message, 22 bytes of record overhead): 226-byte response frame; at 35 000 a
-second, 87 Mbit/s worst case. Churn at 800 connections a second: about ten frames and under two
-kilobytes per connection, 13 Mbit/s; the constraint there is the accept path and the generator's
-two-second connect timeout (`loadgen.cpp:236-246`), not the link.
-
-Where the link **would** bind, stated so nobody runs it unchanged: the `h1` design's payload sweep
-at 40 000 (`run_campaign.py:298-303`). Payload 1024 is 418 Mbit/s worst case, admissible. Payload
-8192 is 6 segments, about 9 kilobytes on the wire per request, a ceiling of about 13 800 a second
-against an offered 40 000. `h1` is out of scope for this run; if it is ever run over the wire the
-8192 cell is capped at 10 000.
-
-**Rate tables, pre-declared.** The existing ones, because they are the loopback tables and shared
-rates are what make shape comparison possible: `_WINDOWS_RATES` 10k, 25k, 40k, 55k, 70k for
-h1-deep (`run_campaign.py:153`); `TLS_OFFERED_RATES` 5k, 10k, 15k, 25k, 35k for transport
-(`run_campaign.py:369`); for churn, `CHURN_NET_OFFERED_RATES` 50, 150, 400, 800
-(`run_campaign.py:465`) if the churn ladder admits 800 by the admission rules of section 6, else
-`CHURN_OFFERED_RATES` 25, 50, 100, 150 (`run_campaign.py:389`). That choice is made by the ladder
-and by that rule, before the first timed run, and is written into the results README.
-
-## 6. Admission
-
-As decided on 2 September: achieved share at or above 0.99 (`validity.py:52, 138-143`), non-2xx at
-or below 0.1 percent (`validity.py:34, 110-118`), zero socket errors (`validity.py:202-207`), and
-the environment gates: virtualisation, dirty tree, governor, clock drift, power, interface
-(`validity.py:87-108, 154-177, 245-259`; `driver.py:366-379`). Pacing p99 is a recorded covariate
-reported beside every cell, not an admission rule. No threshold on any latency quantity. Rejections
-are counted and their reasons read before any number is (`README.md:154-156`).
-
-## 7. Design, repetitions, and the decision rule worded in advance
-
-**Direction A, in this order, stopping only at a design boundary** (`README.md:115-116`): churn at
-25 repetitions, transport at 25, h1-deep at 7. Churn first because it is the cell where the
-hypothesis can fail (`run_campaign.py:427-447`). Twenty-five is the number the X1 resolution
-analysis found necessary (`README.md:97-99`); the desktop's own loopback spread says seven resolves
-nine cells in ten, but the wire's spread is the unknown this run exists to measure, and a design
-that could not resolve its own question at the end of the night has spent the night. h1-deep at
-seven, because its cleartext cells at 5k to 35k are already inside transport.
-
-**Machine time.** One run is 26 seconds: 20 measured, 3 warmup, 3 turnover (`README.md:97`;
-`run_campaign.py:1069`), plus a fraction of a second of ssh session setup.
-
-| Block | Cells | n | Runs | Time |
-| --- | --- | --- | --- | --- |
-| smoke | 2 | 1 | 2 | 1 min |
-| ladder (10k to 120k) | 12 | 1 | 12 | 5 min |
-| tls-ladder (5k to 60k) | 12 | 1 | 12 | 5 min |
-| churn-ladder (25 to 800) | 11 | 1 | 11 | 5 min |
-| churn or churn-net | 16 | 25 | 400 | 2.9 h |
-| transport | 20 | 25 | 500 | 3.6 h |
-| h1-deep | 10 | 7 | 70 | 0.5 h |
-| **direction A** | | | **1007** | **7.3 h** |
-
-At seven repetitions throughout: 112 + 140 + 70 = 322 timed runs, 2.3 h, 2.6 h with the ladders.
-Extending a seven-repetition file to twenty-five afterwards is possible but the second invocation
-must use a different `--seed`: `plan` seeds each pass from `f"{seed}:{repetition}"`
-(`benchmark/harness/ordering.py:78`), so the same seed would replay the same orders under the same
-repetition indices, and the repetition column would then no longer mean pass number.
-
-**The decision rule.** For every cell of churn and transport (rate × TLS), the baseline is
-classification off and the other arm classification on; the statistic is the per-run median,
-establishment (`connect_ms.p50`) for churn and request latency (`latency_ms.p50`) for transport;
-the interval is `stats.compare`'s bootstrapped difference of medians at 95 percent; the resolution
-r is its half-width divided by the baseline median. Reported for every cell: r, the relative
-difference, whether the interval excludes zero, the run-to-run coefficient of variation of the
-medians per arm, the count of accepted runs per arm, and the pacing p99 covariate per arm. Also
-reported: median against repetition index per cell, which the interleaved shuffle provides for
-free and which is where autocorrelated network noise or thermal drift would show.
-
-Two outcomes, worded now:
-
-- **r ≤ 5 percent in a cell.** The wire resolves the difference in that cell at this n. The
-  difference is then reported as it comes: an interval excluding zero is a measured cost of
-  classification over a real path, an interval containing zero is a null result over a real path,
-  and each replaces the loopback caveat for that cell.
-- **r > 5 percent in a cell.** The wire does not resolve the difference in that cell at this n.
-  The loopback caveat stands for it, restated as a number: the run-to-run spread over the wire is
-  r. The sentence "loopback was the right medium for this claim" may be written for a cell only
-  where the loopback campaign's r for the same cell was at or under 5 percent at the same n; where
-  loopback did not resolve it either, neither medium did and the text says so.
-
-Two caveats that apply to either outcome and are reported, not adjudicated: network noise that is
-autocorrelated over a run's length collapses the effective sample count toward the number of runs,
-which the repetition plot would show as structure; and any variation correlated with the arm
-rather than added to it biases the comparison at any n, which the shuffle addresses for
+Any other pattern is reported per cell, and no sentence is written that the pattern does not
+support. Two caveats apply to either outcome and are reported, not adjudicated: network noise
+autocorrelated over a run's length collapses the effective sample count toward the number of
+runs, which the repetition plot shows as structure; and variation correlated with the arm rather
+than added to it biases the comparison at any n, which the interleaved shuffle addresses for
 time-correlated variation and nothing addresses for arm-correlated variation.
 
-**Follow-up, pre-declared.** If churn's r exceeds 5 percent in half or more of its cells, the next
-window runs churn again at the same n with the server host's cores held awake by idle-priority
-spinners, to a separate results file; the awake condition is written in the results README because
-no record field carries it. That is the only condition under which an awake control is taken in
-direction A.
+## 2. Arrangement: direction A
 
-**What is not licensed.** No cross-platform magnitude. The two ends are different hardware; the
-Linux server of direction B against the Windows server of direction A is shape only.
+### 2.1 Who does what
 
-## 8. Runbook
+- **The Windows desktop serves.** `benchmark_server` from `build/windows-tls`, IOCP, four
+  workers, affinity `0ff` as in every filed desktop campaign
+  (`run_campaign._WINDOWS_SERVER_AFFINITY`). The four logical CPUs that hosted the generator on
+  loopback sit idle. That is a difference from the loopback arrangement and is stated.
+- **The Linux laptop generates.** `loadgen` built from the same commit, two threads, sixty-four
+  connections, no affinity mask: a mask names the driver host's cores, and the WSL branch
+  already drops it for the same reason.
+- **The driver runs on the desktop**, where the server runs, and reaches the generator over ssh.
+  With the driver beside the server, every host gate (clock drift, power, governor,
+  virtualisation, dirty tree) and the fingerprint describe the server host, which is the host
+  whose throttling and idle state matter, and the server adapter is unchanged. The other
+  placement, driver on the laptop with the server remote, would have the Windows server adapter
+  rewritten in five places (the held-port check runs `ss`, readiness runs the local interpreter,
+  pid discovery walks `/proc`, stop signals with `sudo -n kill`, and a server under a prefix must
+  report a uid Windows has no notion of) and would leave the server host's gates unread. Same
+  rule for direction B: the driver runs where the server runs.
 
-Executable from this text. Placeholders: `<server-address>` the desktop's wired address as the
-laptop sees it; `<ssh-target>` `<user>@<generator-address>`, the laptop's wired address;
-`<loadgen>` the generator binary on the laptop; `<repo>` the repository on the laptop; `<iface>`
-the laptop's wired interface name (from `ip -br link`; a name, not an address); `<commit>` the
-single commit of section 3; `<dir>` `benchmark/results/<yyyy-mm-dd>-two-host/` on the desktop.
-The values are exchanged by message and never written to this repository.
+### 2.2 The commit both hosts build
 
-### 8.1 Laptop, the generator host
+The desktop's 2 September campaign is at `b4a01e8c7`: schema 7, IOCP with no `TCP_NODELAY`,
+Nagle on. Mainline from `a4519ada2` has the shared socket policy (Nagle off on every backend,
+`TCP_QUICKACK` where the platform has it, `SO_SNDBUF` 256 KiB; `src/net/socket_options.cpp`) and
+schema 8, which added the interface fields.
+
+**Steer, open to challenge: the desktop is rebuilt at mainline for this run.** Two reasons; the
+second is sufficient alone. Nagle on at the server over a real path is a known confound: a small
+response can wait on an acknowledgement and the measurement becomes one of Nagle, while the
+generator has had Nagle off throughout (`loadgen.cpp`, `connect_to`). And the interface field does
+not exist in a schema 7 record, so the dual-homing check of 2.4 cannot be made by the harness at
+all without the rebuild.
+
+The cost is that the two-host cells are a separate population from paper 2's loopback data at
+`b4a01e8c7`. They are a separate population anyway: the harness refuses to pool records whose
+`transport_path` differs (`run_campaign.transport_mismatch`), and a rebuild is a campaign boundary
+that changes the fingerprint. Nothing measured here is pooled with anything filed.
+
+**The single commit.** Both hosts build one commit, `<commit>` below. It must contain: schema 8
+or later with the interface fields; the shared socket policy; the pacing-as-covariate change
+(schema 9, on `harness/pacing-covariate`, not on mainline as this file is committed; in this tree
+`validity.py` still refuses a pacing p99 above 1 ms, which is not the admission rule of section
+4.1); and the ssh launcher of 2.3. If any of the four is missing from `<commit>`, the run does
+not start. There is no fallback to `b4a01e8c7`: a run with Nagle on, without the interface field
+and under the old admission rule is a different campaign, and this document does not pre-declare
+it.
+
+### 2.3 The launch
+
+The harness launches the generator locally, inside WSL, or under a free-form prefix that shares
+the driver's filesystem. None of those reaches another host: the generator's binary path and its
+`--out` result path are the driver host's, and the affinity mask names the driver host's cores.
+The change this run needs mirrors the WSL branch and is small:
+
+- `--ssh-generator <user>@<generator-address>`, `--ssh-loadgen <loadgen>`, `--ssh-repo <repo>`,
+  with the existing `--generator-location lan:linux`. The launcher is
+  `ssh -o BatchMode=yes -o ConnectTimeout=5 <target> <loadgen>` followed by the harness's own
+  generator arguments; `BatchMode` makes a missing key a refusal rather than a prompt, for the
+  reason `netns.py` uses `sudo -n`. No affinity mask. The result JSON is read from the
+  generator's stdout, where the generator already writes it, rather than from a file. `--samples`
+  is refused in this mode: the histogram percentiles in the record are the data.
+- Once per campaign, before the first run, the driver captures the generator host's environment
+  over ssh with the same `environment.capture()` the fingerprint uses and stores it in the
+  manifest as `generator_environment`, with `tc qdisc show dev <iface>` beside it. It refuses to
+  start if that capture's `build.git_commit` is not `<commit>`, because the staleness gate cannot
+  see a remote binary.
+
+Every record then carries `generator = coroute-loadgen-lan` and a `transport_path` of
+`loopback=false, generator_location=lan:linux, server_location=host, netem_profile=none`, which no
+filed campaign shares. Pooling is refused by the harness, not by discipline. `netem_profile=none`
+is truthful and incomplete: it says no impairment was applied and records no qdisc, which is why
+the qdisc is captured beside `generator_environment`.
+
+### 2.4 `--expect-interface` on the generator end
+
+The Linux laptop is dual-homed, wired and wireless on one subnet with only a route metric between
+them. The generator reads the interface its established socket actually used (`getsockname`,
+matched to an interface name; speed, duplex and MTU from `/sys/class/net`) and writes it into the
+record, and the driver refuses a run whose interface is absent or not the expected one
+(`driver.py`, `expect_interface`). Every command in this design passes `--expect-interface
+<iface>`, the wired interface's name. A refusal is a rejected record, not an abort, so the smoke
+run is read before anything else runs: a wrong route metric would otherwise cost 26 seconds per
+refused run all night.
+
+### 2.5 Preconditions, checked by command
+
+`<repo>` is the checkout on the laptop, `<loadgen>` its generator binary, `<iface>` its wired
+interface (from `ip -br link`; a name, not an address), `<server-address>` the desktop's wired
+address as the laptop sees it, `<ssh-target>` `<user>@<generator-address>`, `<clocklog>` a file
+on the laptop outside `<repo>`, `<dir>` a directory on the desktop outside the framework checkout
+(so the tree stays clean), for instance the private paper repository's
+`measurements/<yyyy-mm-dd>-two-host/`.
+
+**Laptop.**
 
 ```
 git -C <repo> fetch && git -C <repo> checkout <commit> && git -C <repo> status -sb
@@ -435,135 +199,424 @@ cmake --build <repo>/build/linux-dual --target loadgen
 cd <repo> && python3 -c 'from benchmark.harness import environment as e; print(e._power_source(), e._governor())'
 cat /sys/devices/system/clocksource/clocksource0/current_clocksource
 ip route get <server-address>
+cat /sys/class/net/<iface>/speed /sys/class/net/<iface>/duplex /sys/class/net/<iface>/mtu
+tc qdisc show dev <iface>
 systemctl is-active sshd
 ```
 
-Refuse if: the tree is not clean at `<commit>`; the power source is not mains; the governor is not
-`performance`; the clocksource is not `tsc`; `ip route get` names any interface but `<iface>`
-(fix the route metric, or take the wireless interface down for the night, which is the operator's
-call and is written in the results README if done); sshd is not active. Then leave the laptop idle:
-no editor, no browser, no agent session doing work.
-
-### 8.2 Desktop, the server host and the driver
+Refuse if: the tree is not clean at `<commit>`; the power source is not mains; the governor is
+not `performance`; the clocksource is not `tsc`; `ip route get` names any interface but
+`<iface>`; speed, duplex and MTU are not `1000`, `full`, `1500`; sshd is not active. The route
+metric is fixed or the wireless interface is taken down for the night, the operator's call,
+written in the results README if done. Then start the clock sampler of section 4.4 and leave the
+laptop idle: no editor, no browser, no agent session doing work.
 
 ```
-git fetch && git checkout <commit> && git status -sb
+nohup nice -n 19 sh -c 'while :; do printf "%s " "$(date +%s)"; grep "cpu MHz" /proc/cpuinfo | sort -t: -k2 -rn | head -1; sleep 5; done' > <clocklog> 2>/dev/null &
+```
+
+**Desktop.**
+
+```
+git fetch; git checkout <commit>; git status -sb
 cmake --build build/windows-tls --config Release
-ssh -o BatchMode=yes <ssh-target> true; echo $LASTEXITCODE
+ssh -o BatchMode=yes <ssh-target> true; $LASTEXITCODE
 ssh -o BatchMode=yes <ssh-target> <loadgen> --help
-powercfg /getactivescheme
-Get-NetAdapterAdvancedProperty -Name "<wired adapter>" | Select-Object DisplayName, DisplayValue
+powercfg /getactivescheme | Out-File <dir>\desktop-power.txt
+Get-NetAdapter -Name "<wired adapter>" | Select-Object LinkSpeed, FullDuplex
+Get-NetAdapterAdvancedProperty -Name "<wired adapter>" | Select-Object DisplayName, DisplayValue | Out-File <dir>\desktop-adapter.txt
 ```
 
-Refuse if: the tree is not clean at `<commit>`; the build fails (see the fallback below); ssh
-prompts or exits non-zero; the generator does not print its usage. Record the power plan and the
-adapter's advanced properties (interrupt moderation, RSS, offloads) in the results README; change
-none of them.
+Refuse if: the tree is not clean at `<commit>`; the build fails; ssh prompts or exits non-zero;
+the generator does not print its usage; the link is not 1 Gbps full duplex. The power plan and the
+adapter's advanced properties (interrupt moderation, receive-side scaling, offloads) are recorded
+and none is changed.
 
-Reachability, before anything is timed, with the server started once by hand on port 18080:
-
-```
-.\build\windows-tls\examples\Samples\benchmark_server\benchmark_server.exe --port 18080
-   (on the laptop)  curl -s -o /dev/null -w '%{http_code}\n' http://<server-address>:18080/
-   (on the desktop) curl.exe -s -o NUL -w '%{http_code}\n' http://127.0.0.1:18080/
-```
-
-Both print 200, then stop the server. Refuse otherwise; no firewall rule is changed on either
-machine.
-
-Fallback if mainline does not build on the desktop: the run stays at `b4a01e8c7`, schema 7,
-Nagle on, and the interface field does not exist; the wire is then checked out of band (the
-wireless interface down for the night) and both facts are stated as limitations. That is a
-different and weaker campaign and the results README says which one was run.
-
-### 8.3 The campaign, from the desktop
+**Reachability, before anything is timed.** The server is started once by hand on port 18080
+(`<server-exe>`, the executable of `build/windows-tls` the harness launches):
 
 ```
-python -m benchmark.run_campaign --design smoke        --repetitions 1  --build build/windows-tls --results <dir>/smoke.jsonl        --host <server-address> --ssh-generator <ssh-target> --ssh-loadgen <loadgen> --ssh-repo <repo> --generator-location lan:linux --expect-interface <iface>
+<server-exe> --port 18080
+   (laptop)   curl -s -o /dev/null -w '%{http_code}\n' http://<server-address>:18080/
+   (desktop)  curl.exe -s -o NUL -w '%{http_code}\n' http://127.0.0.1:18080/
 ```
 
-Read the two records before continuing: `accepted` true on both, `local_interface` `<iface>`,
-`local_interface_speed_mbit` 1000, `local_interface_duplex` full, `local_interface_mtu` 1500,
-`generator` `coroute-loadgen-lan`, `generator_euid` a non-zero number, `git_commit` `<commit>`,
-and in `smoke.env.json` a `generator_environment` whose `build.git_commit` is `<commit>` and
-`cpu.governor` is `performance`. Stop at the first field that is not so.
+Both print 200; the server is stopped; then, and only then, anything is timed. Refuse otherwise.
+No firewall rule is changed on either machine: the desktop's server rules are already on the
+profile its wired adapter uses.
+
+### 2.6 What the record carries about the other host
+
+The fingerprint, the per-run clock, power and governor gates and the drift gate all describe the
+driver host, which here is the server host. Nothing in the harness gates the generator host:
+nothing refuses a laptop generator on battery or on the `powersave` governor, and the laptop's
+governor is set by hand and does not survive a reboot. The smallest honest fix is the one in 2.3:
+`generator_environment` captured once per campaign into the manifest by the same parser, so both
+hosts are described by one code path. If that capture is not in `<commit>` on the night, the same
+facts are taken by hand from the laptop and saved to `<dir>`:
 
 ```
-python -m benchmark.run_campaign --design ladder       --repetitions 1  --build build/windows-tls --results <dir>/ladder.jsonl       <same options>
-python -m benchmark.run_campaign --design tls-ladder   --repetitions 1  --build build/windows-tls --results <dir>/tls-ladder.jsonl   <same options>
-python -m benchmark.run_campaign --design churn-ladder --repetitions 1  --build build/windows-tls --results <dir>/churn-ladder.jsonl <same options>
+ssh <ssh-target> "cd <repo> && python3 -c 'import json; from benchmark.harness import environment as e; print(json.dumps(e.capture(), indent=1))'" | Out-File <dir>\generator-environment.json
+ssh <ssh-target> "tc qdisc show dev <iface>" | Out-File <dir>\generator-qdisc.txt
 ```
 
-Read the ladders by the admission rules of section 6. If any rate in `_WINDOWS_RATES` or
-`TLS_OFFERED_RATES` is refused by achieved share, non-2xx or socket errors, the design is not run
-at that rate: the table is cut at the last admitted rate below it and that cut is written in the
-results README before the design starts. Churn's table is chosen by the rule in section 5.
+and the results README says they were taken by hand. Either way the stated limitation is the
+same: **the generator host is described once per campaign, not per run, and is not
+fingerprinted**; a generator host that changed state part-way through would not be refused. Its
+per-run witnesses are the achieved share, which is an admission rule, the pacing p99 covariate,
+and the clock log of section 4.4.
+
+## 3. Cells, rates, repetitions, time
+
+### 3.1 The cells
+
+**Request latency: `transport`** (`run_campaign.design_transport`). Five rates × cleartext and TLS
+× classification off and on: twenty cells. Keep-alive, sixty-four connections, four workers,
+payload 0. The rates are `TLS_OFFERED_RATES`, 5 000, 10 000, 15 000, 25 000 and 35 000, in both
+halves, so the halves are comparable to each other.
+
+**Establishment: `churn`** (`design_churn`). Four rates × cleartext and TLS × classification off
+and on: sixteen cells, one request per connection, so every request pays a fresh accept and a
+fresh classification and `connect_ms` measures it directly. The rates are `CHURN_OFFERED_RATES`,
+25, 50, 100 and 150. **100 and 150 carry the claim.** 25 and 50 are diagnostic only: on loopback
+those two rates are bimodal at the run level, an entire 20-second run either fast (0.3 to 1.2 ms)
+or slow (8.7 to 9.7 ms), thirty of forty-seven runs slow at 25 cleartext and none of 198 slow at
+100 and 150, and the cause is not established. A bootstrapped difference of medians over a
+bimodal per-run distribution reports the mode probability, not the path, so those cells are not
+judged by the rule. They are kept because the wire tests whether the bimodality belongs to the
+loopback arrangement or to the server host (section 8).
+
+`churn-net`'s table (50, 150, 400, 800) is not used. 400 and 800 are rates the paper does not
+rest on, and rates shared with the loopback table are what make shape comparison possible. The
+churn ladder still runs (3.4) so the arrangement's establishment ceiling is measured and read
+against section 8, but the table does not depend on it.
+
+`h1-deep` is not run. Its cleartext cells at 5 000 to 35 000 are inside `transport`; its 40 000
+to 70 000 cells are the ladder's business at one repetition (3.2); the machine time goes to the
+awake control of section 4.3 instead.
+
+### 3.2 The link ceiling, computed
+
+The figure of about 1 100 bytes on the wire per request and response, saturating the link near
+70 000 a second, was an estimate. Computed from the request the generator builds and the response
+the server serialises, keep-alive, payload 0:
+
+| Direction | Payload | On the wire |
+| --- | --- | --- |
+| request (`GET /`, `Host`, `Connection`, `User-Agent`) | 92 B | 170 B per frame |
+| response (`200 OK`, four headers, 13-byte body) | 126 B | 204 B per frame |
+| pure acknowledgement | 0 | 84 B per frame |
+
+Per frame: 8 preamble, 14 Ethernet, 4 FCS, 12 inter-frame gap, 20 IPv4, 20 TCP with no options
+(timestamps are negotiated only if both ends enable them; Windows does not by default; if on, add
+12 per segment). The heavier direction is server to generator: 204 bytes per request with the
+request's acknowledgement carried on the response, 288 if a pure acknowledgement precedes it.
+
+**Link ceiling for payload 0: 1e9 / (288 × 8) = 434 000 requests a second worst case; 613 000
+with acknowledgements piggybacked.** At 70 000 the link carries 114 to 161 Mbit/s, 11 to 16
+percent of capacity, 70 000 to 140 000 frames a second per direction. At the cleartext ladder's
+top of 120 000 it carries 28 percent. TLS adds 22 bytes of record overhead per message: 87 Mbit/s
+worst case at 35 000. Establishment at 800 a second is about ten frames and a kilobyte per
+cleartext connection, a few kilobytes with a TLS handshake, under 40 Mbit/s either way.
+
+**No table in this design is bound by the link.** The binding ceilings are the server's own,
+about 75 000 on loopback with a generator sharing its cores, and the laptop generator's pacing
+over the wire, which nothing has yet measured. The ladders of 3.4 measure both at one repetition
+before any timed run, so the ceilings are pre-declared by measurement rather than discovered as
+refusals. Cut rule: if a ladder refuses a table rate by achieved share, non-2xx or socket errors,
+the table is cut at the last admitted rate below it and the cut is written in the results README
+before the design starts. A cut table is a stated limitation; there is no re-laddering.
+
+Where the link would bind, stated so nobody runs it unchanged: the `h1` design's payload sweep at
+40 000. Payload 8 192 is six segments and about nine kilobytes on the wire per request, a ceiling
+near 13 800 a second against an offered 40 000. `h1` is out of scope for this run; if it is ever
+run over the wire, the 8 192 cell is capped at 10 000.
+
+### 3.3 Repetitions
+
+**n = 25 per cell**, the number the X1 resolution analysis found necessary on loopback
+(`benchmark/README.md`) and the number the filed churn and transport campaigns used, so that "at
+the same n" in section 1 is literal.
+
+The power calculation, from the desktop's filed loopback transport records (fifty accepted runs
+per cell, so a real estimate of run-to-run spread): at n = 7 the half-width of the difference
+interval as a share of the cell median is 1.2 to 4.7 percent in nine of ten cells; the tenth,
+25 000 with TLS, is 6.7 percent (run-to-run coefficient of variation 6.4 percent against 1 to 4
+elsewhere) and would reach 3.6 percent at n = 25. So seven repetitions resolves nine of ten cells
+on loopback. Assumed: a normal interval on a difference of means as a stand-in for the harness's
+bootstrapped difference of medians, and independence of runs. It is a prior from a different
+medium: it says what n = 25 buys if the wire's run-to-run spread is like loopback's, resolution
+with a margin of √(25/7) = 1.9 on the spread, and it says nothing if the wire's spread is not like
+loopback's, which is the unknown this run measures.
+
+**The clock rule.** n is chosen from the clock before the smoke run and never afterwards: 25 if
+ten hours remain in the window, otherwise 7 for every block, and the results README says which.
+No block runs at a third count, and no block's n is changed after a number from it has been read.
+If a 7-repetition block is later extended, the extension is a second file with a second seed
+(`--seed 20260903`; `ordering.plan` seeds each pass from `seed:repetition`, so the same seed would
+replay the same orders), pooled with the first for r, with the repetition index read as pass
+within file. At n = 7 the design reports r as measured and, beside it and marked as a projection,
+r scaled by √(7/25).
+
+### 3.4 The blocks, in order, with the commands
+
+One run is 26 seconds: 20 measured, 3 warmup, 3 turnover, plus ssh session setup.
+
+| Order | Block | Cells | n | Runs | Time | Stopping here licenses |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `smoke` | 2 | 1 | 2 | 1 min | the interface and the launch are right |
+| 2 | `ladder` (10 000 to 120 000) | 12 | 1 | 12 | 5 min | the cleartext ceiling |
+| 3 | `tls-ladder` (5 000 to 60 000) | 12 | 1 | 12 | 5 min | the TLS ceiling |
+| 4 | `churn-ladder` (25 to 800) | 11 | 1 | 11 | 5 min | the establishment ceiling |
+| 5 | `churn`, cores idle | 16 | 25 | 400 | 2.9 h | the establishment half of the rule |
+| 6 | `transport`, cores idle | 20 | 25 | 500 | 3.6 h | both halves of the rule |
+| 7 | `churn`, cores awake | 16 | 25 | 400 | 2.9 h | the idle-state control (4.3) |
+| | **total at n = 25** | | | **1 337** | **9.7 h** | |
+| | total at n = 7 | | | 401 | 2.9 h | |
+
+`<options>` in every command below is:
 
 ```
-python -m benchmark.run_campaign --design churn-net    --repetitions 25 --build build/windows-tls --results <dir>/churn.jsonl       <same options>
-python -m benchmark.run_campaign --design transport    --repetitions 25 --build build/windows-tls --results <dir>/transport.jsonl   <same options>
-python -m benchmark.run_campaign --design h1-deep      --repetitions 7  --build build/windows-tls --results <dir>/h1-deep.jsonl     <same options>
+--build build/windows-tls --host <server-address> --ssh-generator <ssh-target> --ssh-loadgen <loadgen> --ssh-repo <repo> --generator-location lan:linux --expect-interface <iface>
 ```
 
-`churn` in place of `churn-net` if the ladder chose the loopback table. A finished design is
-citable, half of one is not; stop at the boundary if the window closes.
+```
+python -m benchmark.run_campaign --design smoke        --repetitions 1  --results <dir>/smoke.jsonl        <options>
+```
 
-### 8.4 After
+The two smoke records are read before anything else runs: `accepted` true on both,
+`local_interface` `<iface>`, `local_interface_speed_mbit` 1000, `local_interface_duplex` `full`,
+`local_interface_mtu` 1500, `generator` `coroute-loadgen-lan`, `generator_euid` a non-zero
+number, `git_commit` `<commit>`, `admission_rules` naming the covariate rule set; and in
+`smoke.env.json`, `generator_environment.build.git_commit` `<commit>` and
+`generator_environment.cpu.governor` `performance`. Stop at the first field that is not so.
 
-1. Count rejections per file and read every reason before reading a number
-   (`README.md:154-156`).
-2. Write `<dir>/README.md`: the commit, the two hosts by hardware class and operating system, the
-   power plan, the adapter properties, the qdisc, the churn table chosen and why, any table cut,
-   whether the wireless interface was taken down, and that cores were allowed to idle.
-3. Commit `<dir>` including every `.env.json` on `measure/two-host-<yyyy-mm-dd>` and push it to the
-   private paper repository, never here: the manifest carries the host name and the records carry
-   the addresses.
-4. `results2tex` produces the per-cell resolutions; section 7's rule is applied to them as written.
+```
+python -m benchmark.run_campaign --design ladder       --repetitions 1  --results <dir>/ladder.jsonl       <options>
+python -m benchmark.run_campaign --design tls-ladder   --repetitions 1  --results <dir>/tls-ladder.jsonl   <options>
+python -m benchmark.run_campaign --design churn-ladder --repetitions 1  --results <dir>/churn-ladder.jsonl <options>
+```
 
-## 9. Direction B: Linux server, Windows generator
+The ladders are read by the admission rules of 4.1 and the cut rule of 3.2, and the ceilings are
+written in the results README before the next command.
 
-For paper 3's epoll and io_uring arms over a real path. By the placement rule the driver runs on
-the laptop and reaches the Windows generator over ssh, which needs the OpenSSH Server feature on
-Windows and a key: a system change that is Alex's decision, so direction B is deferred until it is
-made. When it runs:
+```
+python -m benchmark.run_campaign --design churn        --repetitions <n> --results <dir>/churn-idle.jsonl  <options>
+python -m benchmark.run_campaign --design transport    --repetitions <n> --results <dir>/transport.jsonl   <options>
+```
 
-- `--expect-interface` cannot be used: the Windows generator reports no interface
-  (`loadgen.cpp:427-430`) and the driver refuses every run with an unmet expectation
-  (`driver.py:367-372`). The dual-homed host is then the server, whose interface nothing reads; the
-  wireless interface is taken down for the night and the fact is recorded.
-- The generator reports no euid (`loadgen.cpp:1743-1751`); with no server prefix nothing refuses
-  it (`driver.py:328, 398-403`).
-- The receiving end is the Linux server and its idle state mediates low-load latency by hundreds
-  of microseconds. Direction B takes the awake control the laptop already uses, sixteen `nice -n
-  19` spinners, as its own arm of every low-rate design, or states the idle regime as a caveat on
-  every low-rate cell.
-- The Windows generator's 1 ms poll is quantised to the raised system timer; at churn rates of 25
-  and 50 a second it sleeps between slots and the pacing covariate is read with that in mind.
-- `generator_environment` from a Windows host has no governor, no clocksource, no qdisc; the
-  power plan is recorded by hand.
+Then the spinners of 4.3 are started, two minutes pass, and:
 
-## 10. Limitations stated before the run
+```
+python -m benchmark.run_campaign --design churn        --repetitions <n> --results <dir>/churn-awake.jsonl <options>
+```
 
-1. The generator host is described once per campaign in the manifest and is not fingerprinted;
-   its per-run evidence is the pacing covariate and the achieved share.
-2. Kernel drop counters are read at neither end.
-3. `fq_codel` on the laptop's egress and the desktop adapter's interrupt moderation are part of
-   the path, recorded, and not controlled.
-4. Cores at the server are allowed to idle; no awake control in direction A unless the pre-declared
-   follow-up condition in section 7 is met.
-5. The server keeps its loopback-campaign affinity while the desktop's other cores are idle, a
-   difference from the loopback arrangement in which they hosted the generator.
-6. Raw per-request samples (`--samples`) are not taken over ssh; the histogram percentiles in the
-   record are the data.
-7. The two-host cells are a separate population from every filed campaign and are compared with
-   them for shape only.
-8. Windows ICMP resolution makes a ping baseline from the desktop impossible; none is reported, and
-   the design does not need one.
-9. No cross-platform magnitude between directions A and B.
+Then the spinners are stopped by recorded PID. **Stop only at a block boundary**: a finished
+block is citable, half of one is not. If the window closes before block 7, block 7 is the
+pre-declared next window and runs unchanged. The clock sampler on the laptop is stopped after the
+last block, and `<clocklog>` is copied into `<dir>`.
 
-## 11. Why this file exists
+## 4. Gates
 
-Alex's decision of 2 September: the two-host run is approved for overnight and its design is
-pre-declared and committed before it runs. Every rule above is fixed now. A rule that is added after
-the records exist is a filter on the outcome, and this file's timestamp is the evidence that none
+### 4.1 Admission
+
+As decided on 2 September: achieved share at or above 0.99; non-2xx at or below 0.1 percent;
+zero socket errors; and the environment gates: virtualisation, dirty tree, governor where the
+platform has one, clock drift within 2 percent across the run on the server host, mains power,
+and the interface expectation of 2.4. **Pacing p99 is a recorded covariate reported beside every
+cell, not an admission rule**, and every record names the rule set that judged it
+(`admission_rules`, schema 9). No threshold on any latency quantity. Rejections are counted and
+their reasons read before any number is.
+
+### 4.2 The link
+
+1. **Interface.** Every run reports `<iface>`, 1000 Mbit, full duplex, MTU 1500, or is refused.
+2. **Where the reading "the link saturated" applies.** For payload 0 the link cannot bind below
+   434 000 requests a second, and no table in this design offers a fifth of that. So **no
+   refusal in this design is read as the link's.** The reading applies only at or above that
+   rate, or in the `h1` payload sweep, which is not run.
+3. **What a refusal by achieved share is read as.** One of two things, told apart by fields
+   already in the record. The generator: pacing p99 rising with rate and `generator_cpu_fraction`
+   at both threads' full share, on the ladder, before any timed run. The server: achieved share
+   falling while pacing stays in the tens of microseconds, because the generator hands a due slot
+   only to a connection not awaiting a response, so a server that holds connections starves the
+   schedule. Either is a **ceiling finding about the arrangement**, written as such, and is a
+   property of the server only where the second pattern shows. The results README says which.
+4. **Drops.** Read at neither end: Windows has no counter the harness reads and the generator
+   host's are not read. Socket errors and non-2xx remain admission rules and would carry a drop's
+   consequences. Stated limitation.
+
+### 4.3 Idle state
+
+CPU idle state mediates low-load latency by hundreds of microseconds at the receiving end (the
+laptop's 495 against 74 microseconds at 100 requests a second; its ping's 722 against 502). The
+two ends differ in whether they can pay that cost:
+
+- **The generator end spins.** For the last 20 ms before every due slot the generator spins
+  rather than sleeps (`loadgen.cpp`, `kSpinBelowUs`), so at every keep-alive rate and at 100 and
+  150 establishments a second it never sleeps and cannot charge a wake to the server. At 25 and
+  50 a second (periods 40 and 20 ms) it sleeps in 1 ms polls between slots, one more reason those
+  cells are diagnostic.
+- **The server end may idle.** The desktop runs under the power plan `powercfg /getactivescheme`
+  reports, recorded and unchanged, and between connections at 25 to 150 a second its cores have
+  6.7 to 40 ms to park, past the 5 ms at which the measured wake cost plateaus.
+
+So **the establishment cells are taken twice**, once as-is with cores idle and once with the
+server's cores held awake, in two files, both reported. The idle file is the arrangement as the
+filed loopback campaigns ran; the awake file is the control that says how much of the idle file
+is the idle governor. **On this direction the control costs the generator nothing**: the spinners
+run on the server host and the generator is on the other machine. In the namespace arrangement
+the same control raised the generator's pacing p50 from 5 to 52 microseconds because they shared
+cores; here the pacing covariate in the awake file is expected to match the idle file's, and
+section 8 says so.
+
+The Windows form of the documented control (the Linux form is sixteen `nice -n 19` spinners,
+`design/socket-options-inventory.md` section 4): twelve PowerShell processes, one per logical
+processor of the Ryzen 5 3600, each spinning, priority class Idle, started before block 7 and
+stopped by recorded PID after it.
+
+```
+$spin = 1..12 | ForEach-Object { Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','while ($true) {}' -WindowStyle Hidden -PassThru }
+$spin | ForEach-Object { $_.PriorityClass = 'Idle' }
+$spin.Id -join ' ' | Set-Content <dir>\spinners.txt
+Get-Process -Id (Get-Content <dir>\spinners.txt).Split(' ') | Select-Object Id, PriorityClass, CPU
+```
+
+```
+(Get-Content <dir>\spinners.txt).Split(' ') | ForEach-Object { Stop-Process -Id $_ }
+```
+
+The server runs at Normal class and Windows preempts an Idle-class thread immediately, which is
+what makes the block a test of idleness and not of contention. That it did is read in the
+result, as on Linux: an establishment median that falls under the control is not a server starved
+of CPU. The cost of the control shows in the tail and is a property of the control. The spinners
+start two minutes before the block's first run so the package clock is at its sustained level
+before the drift gate's first sample; drift refusals in the awake block are counted and not
+re-run. The awake condition is carried by no record field, so the two churn files are never
+concatenated, and the results README names the condition of each.
+
+`transport` is not taken awake. At 5 000 a second and above the per-worker gap is under a
+millisecond, where the measured wake cost is about 9 microseconds (the idle ladder: 1 ms gives 9,
+2 ms 26, 5 ms and beyond 63); section 8 predicts the size and the prediction is falsifiable in
+direction B or a later window.
+
+### 4.4 The generator host's clock
+
+The laptop throttles under sustained TLS: as a server on 2 September it fell from 4 067 to 3 322
+MHz inside a twenty-second run and its TLS half was declared unusable. As direction A's TLS
+generator it does the symmetric record-layer work at up to 35 000 a second on two spinning
+threads, and no gate reads its clock. The witness is the sampler of 2.5: every five seconds, a
+timestamp and the fastest core's `cpu MHz`, at nice 19, for the whole campaign, beside the pacing
+covariate per run.
+
+Reading rule, fixed now: for each TLS transport run, the lowest sample inside its window against
+the campaign's first sample, at the same 2 percent the drift gate applies to the server. If any
+TLS cell has a run below that, or pacing p99 rises with repetition in the TLS cells and not in
+the cleartext ones, the TLS half of transport is reported with that caveat and no
+TLS-against-cleartext sentence is written from it, by the standard the laptop's own re-run applied
+to itself. The cleartext half is unaffected, the generator doing no cryptography there, and churn
+is unaffected at its rates.
+
+## 5. What may and may not be compared
+
+**Within this arrangement:** arms against each other. Classification on against off in every
+cell, with its interval; TLS against cleartext at a shared rate; cores awake against idle at the
+same establishment cell. These are the only magnitudes this run produces.
+
+**Against loopback and against the virtual-switch arm:** the resolution figure and the shape
+only. Whether r is under 5 percent in the same cell; the sign of the difference; its trend with
+rate; whether the bimodality at 25 and 50 is present. Never magnitudes: the medium changed, the
+commit changed, and the server host's spare cores changed from hosting the generator to idling.
+
+**Across platforms:** never. Direction A's Windows server against direction B's Linux server, or
+either against paper 3's filed Linux arms, is shape only, because the two ends are different
+hardware.
+
+**Across files:** never. The idle and awake churn files are not concatenated; nothing measured
+here is pooled with anything filed, and the harness refuses the attempt where it can see it.
+
+## 6. Direction B, later
+
+Linux server, epoll and io_uring, for paper 3's arms over a real path; Windows generator; driver
+on the laptop, by the placement rule of 2.1, reaching the generator over ssh. That needs the
+OpenSSH Server feature on Windows and a key: a system change and Alex's decision, so direction B
+is deferred until it is made.
+
+It is second because **the generator end sleeps**. The Windows generator's 1 ms poll is quantised
+to the raised system timer, so at 25 and 50 establishments a second it sleeps between slots and
+charges its own wake to the system under test; at 100 and above, and at every keep-alive rate, it
+spins as the Linux one does. Three more things follow from the code and are stated now:
+`--expect-interface` cannot be used, because the Windows generator reports no interface and the
+driver would refuse every run, so the dual-homed host, now the server, has its wireless interface
+taken down for the night and the fact recorded; the idle control at the Linux server is the
+documented sixteen `nice -n 19` spinners; and the laptop's TLS throttling as a server is gated by
+the drift gate as before, so direction B's TLS cells are not promised. Cells, rates, n and the
+rule are those of this document, re-declared in a dated addendum to this file before direction B
+runs.
+
+## 7. Provenance
+
+Results go to the private paper repository, `measurements/<yyyy-mm-dd>-two-host/`, on a branch
+`measure/two-host-<yyyy-mm-dd>`, and nowhere else: the manifest carries the server's address and
+every record's `generator_argv` carries the ssh target. The directory holds every `.jsonl` and
+`.env.json`, `generator-environment.json`, `generator-qdisc.txt`, the clock log, `spinners.txt`,
+`desktop-power.txt`, `desktop-adapter.txt`, and a README that names: `<commit>`, one commit for
+both hosts, with the note that the run is refused if they differ; both builds, `build/windows-tls`
+Release on the desktop and the laptop's build directory and generator path; the fingerprint from
+`.env.json`; the interface fields as recorded, `local_interface`, speed, duplex and MTU; the
+power plan and the adapter's advanced properties; the qdisc; whether the wireless interface was
+taken down; the n chosen and from what clock; any table cut and why; the rejection count and every
+reason per file; and, for each churn file, whether cores were allowed to idle.
+
+Into the framework repository, which is public, go this design, the harness change of 2.3 and its
+documentation, all with placeholders. No hostname, address, MAC, network name or router detail,
+and no description of the network beyond one gigabit Ethernet segment, two hosts.
+
+## 8. Pre-registered predictions
+
+Stated so the outcome is judged rather than explained.
+
+1. **The link ceiling.** No rate in any table is refused for the link. The cleartext ladder
+   admits 70 000, and its first refusal lies between 80 000 and 120 000, by pacing at the laptop
+   generator or by the server, not by the link, which binds at 434 000 to 613 000. The TLS ladder
+   admits 35 000. The churn ladder admits through 800, as the virtual-switch arm did, because the
+   generator has its own cores; the loopback ceiling of about 330 a second is thereby confirmed to
+   have been the arrangement's.
+2. **Establishment at 100 and 150 resolves**, cleartext and TLS, at n = 25. The path's
+   contribution to a per-run median is under one percent of the 1.4 ms baseline (a per-packet
+   spread of 300 microseconds over 2 000 to 3 000 connections a run gives a standard error near
+   7 microseconds), so r over the wire is set by run-level state, and at 100 and 150 loopback
+   showed none in 198 runs. If this is wrong, the failure is a second mode in the medians, not a
+   wide unimodal spread, and the repetition plot shows it.
+3. **25 and 50 stay bimodal over the wire**, with the slow-mode share in loopback's range (thirty
+   to thirty-seven runs in about fifty). The state lives in the server host, not in a loopback
+   generator sharing its cores. If instead no slow mode appears over the wire, the state was the
+   loopback arrangement's, which is the more useful outcome for paper 2 and is written as such.
+4. **The idle mediator shows in establishment unless cores are held awake.** In the awake file
+   the classification-off establishment median is lower than in the idle file by 100 to 500
+   microseconds at every rate from 25 to 150; the demultiplexing difference itself is unchanged
+   within its interval, the idle cost being added to both arms. Request latency at 5 000 a second
+   would move by under 30 microseconds under the same control; it is not taken awake here.
+5. **The awake control costs the generator nothing.** Pacing p50 and p99 in the awake churn file
+   lie within the idle file's range.
+6. **Request latency resolves in every cleartext cell.** TLS at 25 000 and 35 000 may not: the
+   loopback cell at 25 000 TLS was the one that failed at n = 7, and over the wire the TLS
+   generator's clock is the unknown of 4.4.
+7. **The laptop's clock falls under TLS transport**, and by more than 2 percent within a run at
+   25 000 and 35 000, the rates at which it throttled as a server, so the TLS half at those two
+   rates is expected to carry the caveat of 4.4. If it does not fall, the generator's TLS work is
+   lighter than the server's at the same rate, and that is recorded.
+8. **Magnitudes, for shape only.** Request-latency medians over the wire are two to four times
+   loopback's, the path's round trip added; establishment medians are within a factor of two of
+   loopback's fast mode. Neither is a comparison the papers may draw; they are recorded so the
+   medium's effect is judged and not explained.
+
+## 9. Why this file exists
+
+A design declared in advance and then reported afterwards is only as good as the evidence that it
+really was declared in advance. Alex's decision of 2 September was that the two-host run is
+approved for overnight and its design is pre-declared and committed before it runs. Every rule
+above is fixed now: the cells, the rates, n and the clock that chooses it, the admission rules,
+the reading of every refusal, the two conclusions and the predictions. A rule added after the
+records exist is a filter on the outcome, and this file's timestamp is the evidence that none
 was.
