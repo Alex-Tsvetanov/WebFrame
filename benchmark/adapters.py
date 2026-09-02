@@ -768,17 +768,34 @@ class CorouteServer:
         The third field of Uid: is the effective uid, which is the one that decides
         whether this process is exempt from RLIMIT_MEMLOCK; the real uid can differ from
         it under runuser and is not what the kernel checks.
+
+        None means "this platform has no such notion", and nothing else. It used to also
+        mean "the read failed", which made an unreadable /proc indistinguishable from
+        Windows and let a run whose server privilege could not be established be filed as
+        clean. On Linux a failure now raises: /proc is not optional there, so a status
+        file that cannot be read or has no Uid: line is a broken assumption rather than
+        an absent feature, and the one thing that must not happen is for it to be quietly
+        recorded as unknown.
         """
         pid = self.server_pid()
         if pid is None:
+            return None
+        if _platform.system() != "Linux":
             return None
         try:
             for line in Path(f"/proc/{pid}/status").read_text().splitlines():
                 if line.startswith("Uid:"):
                     return int(line.split()[2])
-        except (OSError, IndexError, ValueError):
-            return None
-        return None
+        except (OSError, IndexError, ValueError) as exc:
+            raise RunFailed(
+                f"could not read the effective uid of server pid {pid} from /proc: {exc!r}. "
+                "On Linux that is not an absent feature, and a run whose server privilege "
+                "cannot be established must not be filed as though it could"
+            ) from exc
+        raise RunFailed(
+            f"/proc/{pid}/status has no Uid: line, so the server's effective uid could "
+            "not be established"
+        )
 
     def _listening_pids(self) -> list[int]:
         """Every pid holding this server's port inside the launch namespace."""

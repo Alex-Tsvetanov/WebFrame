@@ -303,7 +303,27 @@ def run_one(
         # the runuser gets a root process and a record that reads exactly like a correct
         # run. Asked of the generator rather than read from /proc, where the pid under
         # `sudo -n ip netns exec` is sudo's.
+        # Read before the refusals below rather than after, so a record that is about to
+        # be refused still carries what was measured. A refused run with an empty
+        # server_euid cannot be diagnosed from the file afterwards.
+        server_euid = None
+        get_euid = getattr(server, "server_euid", None)
+        if callable(get_euid):
+            server_euid = get_euid()
+        record.server_euid = server_euid
+
         if getattr(server, "launch_prefix", None):
+            # An adapter that answers None under a prefix has not told us the server ran
+            # unprivileged; it has told us nothing. That is the same defect as a
+            # generator that does not report its uid, and it is refused for the same
+            # reason: the whole arrangement rests on knowing which user each end was.
+            # Without a prefix, None is ordinary and means the platform has no such
+            # notion, which is every macOS and Windows run.
+            if server_euid is None:
+                raise RunFailed(
+                    "the server did not report its uid, and under a launch prefix that "
+                    "is the only thing establishing which user it ran as"
+                )
             if result.euid is None:
                 raise RunFailed(
                     "the generator did not report its uid, and under a launch prefix "
@@ -312,8 +332,9 @@ def run_one(
             if result.euid == 0:
                 raise RunFailed(
                     "the generator ran as root; its prefix did not drop back to the "
-                    "invoking user, so both ends of the comparison share a privilege "
-                    "the arrangement says only the server has"
+                    "invoking user. Both ends are supposed to run unprivileged, and a "
+                    "root process is exempt from the RLIMIT_MEMLOCK budget io_uring "
+                    "rings are charged against"
                 )
         record.generator_euid = result.euid
 
@@ -330,13 +351,10 @@ def run_one(
         # only, and measuring it there means running the server as root on purpose. The
         # cell has to say so, so that the asymmetry appears in the design rather than in
         # an accident.
-        server_euid = None
-        get_euid = getattr(server, "server_euid", None)
-        if callable(get_euid):
-            server_euid = get_euid()
-        record.server_euid = server_euid
-
         declared = factors.get("privilege_asymmetry")
+        # Recorded whether or not it was needed, so a file says on its face that nothing
+        # was declared rather than leaving the reader to infer it from the euids.
+        record.privilege_asymmetry = declared or None
         if (
             not declared
             and server_euid is not None

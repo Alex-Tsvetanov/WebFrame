@@ -643,6 +643,12 @@ namespace coroute::net
 			// Every actual submission stays under the lock either way. This changes only
 			// the wait.
 			//
+			// What this removes, where the feature is present: an off-worker submit_sqe
+			// blocking on sq_mutex until the parked worker's timeout expires or a
+			// completion arrives. Today only test fixtures submit off-worker, so no
+			// measured path went through it, but it was a real stall and it is gone on
+			// any kernel from 5.11.
+			//
 			// What is still true on a kernel without the feature bit, which is the case
 			// the code below no longer makes obvious: there the wait really is a
 			// submission-queue producer, the lock really is required, and an off-worker

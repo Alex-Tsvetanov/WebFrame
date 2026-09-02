@@ -271,7 +271,10 @@ def run(check: Callable[[str, bool], None]) -> None:
     # and an operator who omits the runuser gets a root generator whose record reads like
     # a correct run.
     def prefixed(cell: ordering.Cell) -> FakeServer:
-        server = FakeServer(cell=cell, log=[])
+        # euid set, because these cases are about the generator. A server that answered
+        # None would be refused first, on its own account, and the checks below would
+        # pass for the wrong reason.
+        server = FakeServer(cell=cell, log=[], euid=1000)
         server.launch_prefix = ["sudo", "-n", "ip", "netns", "exec", "srv"]
         return server
 
@@ -340,13 +343,35 @@ def run(check: Callable[[str, bool], None]) -> None:
         environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
     )
     check("unless the cell declares it", record.accepted)
+    # Recorded verbatim, so the file says why rather than only that it was permitted.
+    check("and the reason is recorded on the run",
+          record.privilege_asymmetry == "io_uring needs CAP_SYS_ADMIN here")
 
-    # An adapter that cannot answer must not be read as agreeing.
+    # Absent when nothing was declared, rather than an empty string, so "not declared"
+    # and "declared as nothing" cannot be confused in a file.
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("an undeclared run records no reason", record.privilege_asymmetry is None)
+
+    # An adapter that cannot answer has not said the server was unprivileged, it has
+    # said nothing, and under a prefix that is refused for the same reason a silent
+    # generator is.
     record = _run_one(
         _scheduled(), server_factory=prefixed_as(None), generator=with_euid(1000),
         environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
     )
-    check("an adapter with no notion of a server uid is not a mismatch", record.accepted)
+    check("a prefixed run whose server uid is unknown is refused",
+          not record.accepted and any("uid" in r for r in record.rejection_reasons))
+
+    # Without a prefix it is ordinary: that is every macOS and Windows run.
+    record = _run_one(
+        _scheduled(), server_factory=lambda cell: FakeServer(cell=cell, log=[], euid=None),
+        generator=with_euid(None), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("an unprefixed run with no server uid is ordinary", record.accepted)
     check("and records None rather than a number it did not measure",
           record.server_euid is None)
 

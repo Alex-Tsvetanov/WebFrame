@@ -760,13 +760,20 @@ def main(argv: list[str] | None = None) -> int:
     # build's own loadgen is appended, since the namespace shares the filesystem.
     ap.add_argument("--generator-command", default=None,
                     help="command prefix the generator is launched through, e.g. "
-                         "'sudo -n ip netns exec gen runuser -u $USER --'")
+                         "'sudo -n ip netns exec gen runuser -u $USER --'; pairs with "
+                         "--server-command, and both must end as the same user")
     ap.add_argument("--generator-location", default=None,
                     help="where that prefix puts the generator, as a label recorded with "
                          "the campaign, e.g. netns:gen")
     # The server's counterpart. Without it the generator sits in a namespace and the
     # server sits on the host, which is not the arrangement the methodology names and
     # would only work at all because the veth address is locally owned.
+    #
+    # Both prefixes must end as the same user. The runuser is not decoration: without it
+    # the prefix leaves the process as root, and a root server is exempt from the
+    # RLIMIT_MEMLOCK budget io_uring rings are charged against while the generator is
+    # not. The driver refuses a run whose two euids differ unless
+    # --privilege-asymmetry says why.
     # Opt-in, and deliberately awkward to combine with a real campaign: a per-syscall
     # tracepoint costs time roughly in proportion to the syscall rate, which is exactly
     # the quantity a comparison is comparing, so a counted run is not a timed run.
@@ -777,7 +784,16 @@ def main(argv: list[str] | None = None) -> int:
                          "not for a latency campaign")
     ap.add_argument("--server-command", default=None,
                     help="command prefix the server is launched through, e.g. "
-                         "'sudo -n ip netns exec srv'; pairs with --generator-command")
+                         "'sudo -n ip netns exec srv runuser -u $USER --'; pairs with "
+                         "--generator-command, and both must end as the same user")
+    # Not a factor. See schema.RunRecord.privilege_asymmetry: it explains a campaign
+    # rather than varying within it, so it is applied to every cell rather than
+    # distinguishing between them.
+    ap.add_argument("--privilege-asymmetry", default=None, metavar="REASON",
+                    help="permit the server and generator to run as different users, "
+                         "giving the reason; recorded with every run. Needed only where "
+                         "the asymmetry is the point, e.g. a hardened kernel that gives "
+                         "io_uring to CAP_SYS_ADMIN only, so the server must be root")
     args = ap.parse_args(argv)
 
     # Refused here rather than one cell at a time. perf exists only on Linux and only
@@ -1013,6 +1029,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     cells = DESIGNS[args.design]()
+
+    # Applied to every cell rather than distinguishing between them, which is what makes
+    # it a property of the campaign and not a factor. Rebuilding through Cell.of keeps
+    # the factors sorted, so a declared cell still compares equal to itself and the
+    # duplicate check in ordering.plan still sees what it expects.
+    if args.privilege_asymmetry:
+        cells = [
+            Cell.of(cell.system,
+                    **{**dict(cell.factors),
+                       "privilege_asymmetry": args.privilege_asymmetry})
+            for cell in cells
+        ]
 
     # Checked before the campaign starts rather than when the first TLS cell comes up.
     # The shuffle can put that cell an hour in, and an hour of machine time spent to

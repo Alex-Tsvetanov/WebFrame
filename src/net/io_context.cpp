@@ -102,6 +102,24 @@ namespace coroute::net
 	{
 
 		// Refuses a backend, saying which of the two reasons it is.
+		/// The errno's name, for a message a machine can match on.
+		///
+		/// strerror gives prose that is localised and reworded between libcs, so a script
+		/// deciding whether a refusal is a skip or a failure cannot key on it. The name
+		/// is stable. Bracketed so it can be matched exactly rather than by substring:
+		/// "[ENOMEM]" cannot appear inside another token the way ENOMEM could.
+		const char* errno_name(int err)
+		{
+			switch (err)
+			{
+				case EPERM: return "EPERM";
+				case EACCES: return "EACCES";
+				case ENOSYS: return "ENOSYS";
+				case ENOMEM: return "ENOMEM";
+				default: return nullptr;
+			}
+		}
+
 		[[noreturn]] void refuse(IoBackend backend, int err)
 		{
 			std::string message = "I/O backend '";
@@ -123,6 +141,20 @@ namespace coroute::net
 			{
 				message += "is not available on this host: ";
 				message += std::strerror(err);
+				// The name after the prose, because the prose is for a person and the
+				// name is for the demux scripts, which decide skip-or-fail from it.
+				if (const char* name = errno_name(err))
+				{
+					message += " [";
+					message += name;
+					message += "]";
+				}
+				else
+				{
+					message += " [errno ";
+					message += std::to_string(err);
+					message += "]";
+				}
 				if (err == EPERM)
 				{
 					// Named because it is the one that has a cause an operator can act

@@ -349,6 +349,17 @@ int main(int argc, char** argv)
 		{
 			std::cerr << "--io-backend " << io_backend_arm << " is not available on this host: "
 			          << std::strerror(probe);
+			// The errno's name as well as its prose. strerror text is localised and
+			// reworded between libcs; the name is stable, and the demux scripts decide
+			// whether this is a skip or a failure by matching on it.
+			switch (probe)
+			{
+				case EPERM: std::cerr << " [EPERM]"; break;
+				case EACCES: std::cerr << " [EACCES]"; break;
+				case ENOSYS: std::cerr << " [ENOSYS]"; break;
+				case ENOMEM: std::cerr << " [ENOMEM]"; break;
+				default: std::cerr << " [errno " << probe << "]"; break;
+			}
 			if (probe == EPERM)
 			{
 				std::cerr << " (EPERM; check kernel.io_uring_disabled and kernel.io_uring_group)";
@@ -476,7 +487,21 @@ int main(int argc, char** argv)
 			  << (spec.params ? "on" : "off") << ", route build " << route_build_ms << "ms"
 			  << ")" << std::endl;
 
-	app.run(static_cast<uint16_t>(port));
+	// Caught rather than left to terminate. An uncaught exception here exits through
+	// std::terminate, which prints its own text to stderr and aborts with SIGABRT, so
+	// the harness saw a signal death and a message it did not choose the shape of. The
+	// io_uring ring-init failure is the one that actually happens, and the scripts that
+	// decide skip-from-failure read this stream; they should not have to parse a
+	// terminate handler's output to do it.
+	try
+	{
+		app.run(static_cast<uint16_t>(port));
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "server failed: " << e.what() << "\n";
+		return 1;
+	}
 
 	return 0;
 }
