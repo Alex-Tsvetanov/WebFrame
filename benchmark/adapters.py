@@ -341,6 +341,19 @@ SYSCALL_TRACEPOINTS = (
 
 TOTAL_TRACEPOINT = "raw_syscalls:sys_enter"
 
+# The readiness probe run inside the launch namespace. A constant so the selfcheck
+# exercises the script the harness actually runs rather than a copy of it.
+#
+# Exit 3 for "nothing is listening yet", and only 3: sudo, `ip netns exec` and a failed
+# exec all exit 1, so 1 must not mean keep waiting.
+READINESS_PROBE = (
+    "import socket,sys\n"
+    "try:\n"
+    "    socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25).close()\n"
+    "except OSError:\n"
+    "    sys.exit(3)\n"
+)
+
 
 def _is_sudo_wrapper(path: str | None) -> bool:
     """Whether the tool on PATH is a shell script that re-invokes itself under sudo.
@@ -674,12 +687,7 @@ class CorouteServer:
         #
         # 3 rather than 1 because sudo, `ip netns exec` and a failed exec all exit 1.
         probe = subprocess.run(
-            [*self.launch_prefix, sys.executable, "-c",
-             "import socket,sys\n"
-             "try:\n"
-             "    socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25).close()\n"
-             "except OSError:\n"
-             "    sys.exit(3)\n", str(self.port)],
+            [*self.launch_prefix, sys.executable, "-c", READINESS_PROBE, str(self.port)],
             capture_output=True,
         )
         if probe.returncode == 3:
@@ -991,10 +999,12 @@ class CorouteServer:
             # launched through `ip netns exec`, so the server outlives the run holding
             # the port. The handle is killed so nothing is left waiting here, and the run
             # is refused: it cannot be stopped for certain and its cost is not its own.
-            self._proc.kill()
             try:
+                self._proc.kill()
                 self._proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+            except (OSError, subprocess.TimeoutExpired):
+                # An unprivileged parent cannot signal its own setuid child, and a raise
+                # here would replace the refusal below with an errno about the launcher.
                 pass
             self._proc = None
             raise RunFailed(

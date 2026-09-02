@@ -250,13 +250,10 @@ def readiness_probe_checks() -> None:
 
     import subprocess as sp
 
-    # The probe the prefixed branch runs, lifted out of the argv it is built into so the
-    # exit codes it relies on can be checked without a namespace. 3 is "nothing is
+    # The script the prefixed branch actually runs, not a copy of it. 3 is "nothing is
     # listening yet"; anything else means the probe itself could not run, and the loop
     # must say so rather than spinning to the readiness deadline.
-    probe = ("import socket,sys\ntry:\n"
-             "    socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25).close()\n"
-             "except OSError:\n    sys.exit(3)\n")
+    from benchmark.adapters import READINESS_PROBE as probe
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
