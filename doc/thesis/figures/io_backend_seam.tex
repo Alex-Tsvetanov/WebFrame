@@ -15,14 +15,14 @@
   compl/.style={impl},                    % модел на завършване
   ready/.style={impl, densely dashed},    % модел на готовност
   seam/.style={box, minimum width=12.8cm, minimum height=1.15cm, fill=gray!25, thick},
-  side/.style={note, rotate=90},
+  side/.style={rotate=90, font=\footnotesize},
 ]
 
 % ---- Над шева: това, което не се сменя ------------------------------------
 \node[lane, minimum width=12.8cm] (app) at (4.875,5.3)
      {Маршрутизатор и middleware верига};
 
-\node[note] at (4.875,4.62) {протоколни слоеве};
+\node[font=\footnotesize] at (4.875,4.62) {протоколни слоеве};
 
 \node[lane] (h11) at (0.00,3.9) {\code{HTTP/1.1}};
 \node[lane] (h2)  at (3.25,3.9) {\code{HTTP/2}};
@@ -56,13 +56,13 @@
 \draw[decorate, decoration={brace, mirror, amplitude=5pt}, semithick]
      ($(uring.south west)+(0,-0.10)$) -- ($(epoll.south east)+(0,-0.10)$);
 
-\node[note, text width=12.8cm, anchor=north west] at (-1.525,-1.05)
+\node[note, text width=12.3cm, anchor=north] (mnote) at (4.875,-1.25)
      {И двата модела са налични на една и съща система. Моделът на интерфейса,
       готовност или завършване, се мери като независима променлива: една машина,
       един двоичен файл, сменя се само бекендът. На macOS и Windows моделът върви
       заедно с операционната система и двете не могат да се разделят.};
 
-\node[note, text width=12.8cm, anchor=north west] at (-1.525,-2.35)
+\node[note, text width=12.3cm, anchor=north] at ($(mnote.south)+(0,-0.15)$)
      {Плътна рамка: модел на завършване. Пунктирана рамка: модел на готовност.};
 
 % Завъртените етикети отляво носят цялото послание на фигурата. Центрирани са
