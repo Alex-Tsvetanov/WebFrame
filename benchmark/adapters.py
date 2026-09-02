@@ -663,14 +663,36 @@ class CorouteServer:
             except OSError:
                 return False
 
+        # Exit 3 for "not listening yet", so that nothing else can look like it. The
+        # probe used to report only whether the exit status was zero, which collapsed
+        # every reason a prefixed command can fail -- a sudoers rule that permits
+        # `ip netns exec srv ss` and not this, a namespace deleted after the server
+        # started and still serving inside it, an interpreter the prefix cannot exec --
+        # into "not connectable". The loop then spun to the deadline and the run was
+        # filed as a readiness timeout with the one line that explains it captured and
+        # thrown away, which is the failure _startup_failure was written to end.
+        #
+        # 3 rather than 1 because sudo, `ip netns exec` and a failed exec all exit 1.
         probe = subprocess.run(
             [*self.launch_prefix, sys.executable, "-c",
-             "import socket,sys;"
-             "s=socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25);"
-             "s.close()", str(self.port)],
+             "import socket,sys\n"
+             "try:\n"
+             "    socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25).close()\n"
+             "except OSError:\n"
+             "    sys.exit(3)\n", str(self.port)],
             capture_output=True,
         )
-        return probe.returncode == 0
+        if probe.returncode == 3:
+            return False
+        if probe.returncode != 0:
+            raise RunFailed(
+                f"the readiness probe could not run through "
+                f"{' '.join(self.launch_prefix)} (exit {probe.returncode}), so nothing "
+                f"here establishes whether the server is listening: "
+                f"{(probe.stderr or probe.stdout or b'').decode(errors='replace').strip()[:300]
+                   or '(no output)'}"
+            )
+        return True
 
     def server_pid(self) -> int | None:
         """The benchmark_server process, not whatever was used to launch it.

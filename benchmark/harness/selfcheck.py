@@ -245,6 +245,32 @@ def perf_counts_checks() -> None:
 
 
 
+def readiness_probe_checks() -> None:
+    print("\n== the namespaced readiness probe tells refused from broken ==")
+
+    import subprocess as sp
+
+    # The probe the prefixed branch runs, lifted out of the argv it is built into so the
+    # exit codes it relies on can be checked without a namespace. 3 is "nothing is
+    # listening yet"; anything else means the probe itself could not run, and the loop
+    # must say so rather than spinning to the readiness deadline.
+    probe = ("import socket,sys\ntry:\n"
+             "    socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25).close()\n"
+             "except OSError:\n    sys.exit(3)\n")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        check("a live listener answers zero",
+              sp.run([sys.executable, "-c", probe, str(port)]).returncode == 0)
+    check("a refused connection answers three, not one",
+          sp.run([sys.executable, "-c", probe, str(port)]).returncode == 3)
+    # sudo, `ip netns exec` and a failed exec all exit 1, which is why 1 must not mean
+    # "keep waiting".
+    check("and a probe that could not run at all answers something else",
+          sp.run([sys.executable, "-c", "import sys; sys.exit(1)"]).returncode == 1)
+
+
 def perf_privilege_checks() -> None:
     print("\n== a perf that is not installed is answered, not raised ==")
 
@@ -1161,6 +1187,7 @@ def main() -> int:
     transport_checks()
     netem_checks()
     perf_counts_checks()
+    readiness_probe_checks()
     perf_privilege_checks()
     listener_checks()
     port_checks()
