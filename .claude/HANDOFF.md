@@ -139,6 +139,10 @@ been scheduled yet.
   Compile-time-Protobuf `paper/` template (IEEEtran conference, sections as files, bibliography,
   a Word step for submission). Paper 2 drafting now; paper 3 drafts when the laptop's E and F
   land; paper 1 drafts when the routing night lands; paper 4 stays future work.
+- **Paper 1 and paper 3 scaffolds** exist on `draft/v1` in `paper-dfa-routing` (fa524bc) and
+  `paper-io-portability` (b77e0d4): IEEEtran template, eight empty section files carrying `% TODO`
+  notes, both build clean. The scaffold slip that wrote notes into filenames is fixed; nothing
+  is drafted in either yet, by the no-drafts-ahead-of-data rule.
 
 ## Findings that came out of tonight, worth keeping
 
