@@ -330,15 +330,36 @@ been scheduled yet.
   history at `068431b37`.
 - `Compile-time-Protobuf` has uncommitted rebuilt PDF/DOCX/presentation; not touched.
 
-## Open questions for Alex
+## For Alex, in the morning: four decisions and one action
 
-1. How long is tonight's desktop window; morning stop is fine at a design boundary.
-2. Laptop: may a campaign set the governor to `performance` for its duration
-   (`cpupower frequency-set -g performance`, restored afterwards)? Everything else on the
-   old list is done: tools installed, passwordless sudo, Ethernet up; Alex declined a reboot
-   and the io_uring sysctl, so io_uring arms run as root and the record must say so.
-3. (done: the laptop is wired) A two-host validity check desktop<->laptop over the LAN is now possible; worth a night later.
-4. Protobuf rebuilds: commit or discard.
+Ordered by what unblocks the most. Nothing here was decided without you.
+
+1. **The Windows firewall is blocking the off-host arm.** Two auto-created inbound block
+   rules for the freshly built `benchmark_server.exe`, which is why every loopback design ran
+   tonight and `churn-net` delivered 0.0%. Several matching rules still name the repository's
+   old path, so they have accumulated since the move. One rule scoped to the WSL subnet, or
+   deleting the two blocks, unblocks it. No session touches a firewall, so this waits for you.
+2. **The Linux laptop's TSC was disqualified at boot**, so its clock source is HPET and every
+   `clock_gettime` costs 1931 ns and a syscall instead of about 20 ns in userspace. That
+   inflates every syscall count and every latency that host produces, by roughly 3.3
+   microseconds a request. `tsc=nowatchdog` on the kernel command line is the usual remedy for
+   this AMD false positive; the dmesg evidence is in
+   `coordination/inbox/alex-laptop-2026-09-02T0122Z.md` on `coord/inbox`. A host reporting
+   hpet is a host to fix rather than a number to correct afterwards, and fixing it removes a
+   stated limitation from every Linux measurement.
+3. **May a campaign set the governor to `performance` for its duration and restore it after?**
+   The laptop is already there; this is about making it explicit and repeatable rather than
+   incidental.
+4. **The desktop's results branch needs one push.** When its designs finish it commits them
+   locally on `measure/desktop-2026-09-02` and pushes nothing, by its own policy and your
+   wording that the coordinator places records in the paper repositories. Push that branch to
+   the private `paper-socket-demux` repository and the coordinator will file the records with
+   their provenance.
+5. **`Compile-time-Protobuf` has uncommitted rebuilt PDF, DOCX and presentation files**,
+   untouched all night. Commit or discard.
+
+Worth reading whatever you decide: the six reports on `coord/inbox`, which carry the night's
+findings in the laptop's own words, unredacted as you authorised.
 
 ## Next steps, in order
 
