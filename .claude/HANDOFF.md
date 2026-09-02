@@ -327,11 +327,33 @@ been scheduled yet.
   6 ms, forty times h1-deep's, so its accepted maximum is a HIGH BAR and a refusal must travel further
   to clear it. They are inside because the bar is high, and they still rank second of 23 and second of
   24.
-  **Offered to both machines to be shot down, not adopted: `connections / rate` contains no
-  measurement at all** -- it is how long a total stall must last before the pool empties. 0.91 ms at
+  **`connections / rate` was offered as a clean replacement and was SHOT DOWN too, on a second
+  ground.** It contains no measurement -- it is how long a total stall must last before the pool empties. 0.91 ms at
   h1-deep's top rate; 12.8 ms at transport 5000; 2560 ms at churn 25. It predicts NOTHING about which
-  runs were refused and must not be used for that. It states how coupled the gate is to the server in
-  each cell, as a property of the design computable before any run.
+  runs were refused and must not be used for that. It is not circular, and the desktop
+  confirmed the derivation against the source. **But it is DEGENERATE: `connections` is 64 in ALL 1184
+  filed records** (verified by the coordinator across every design: churn 400, h1-deep 250, transport
+  500, tls-ladder 12, both churn ladders 8 each, smoke 2, tls-smoke 4), so the quantity is 1/rate
+  rescaled, and any ordering it produces IS the rate ordering. As a column headed "coupling" it would
+  read as an independent measurement of a mechanism while being the rate column divided into a
+  constant. Same failure as the ratio in different clothes: the coordinator had checked for
+  circularity and not for degeneracy.
+  **And the sharper objection, which is the coordinator's own argument turned around: it measures
+  sensitivity to ROUTE 1, which we have evidence was not what happened.** It describes the coupling we
+  ruled out and is silent on the one that operated. Honest label, with `total` load-bearing: "how
+  quickly a TOTAL server stall would starve the generator in each cell", because a partial slowdown
+  never exhausts the pool and a partial slowdown is what was observed. **Keep it as ONE SENTENCE of
+  illustration, never a column** -- a number in a table gets used whatever sentence sits beside it.
+  **THE HONEST ESTIMATOR ALREADY EXISTS and is the desktop's own non-circular table.** Accepted-run
+  latency x rate / connections is the pool's utilisation under normal operation, computed from runs
+  exogenous to any refused run being judged; it ranged 0.3% to 32%. The independence needed is from
+  the RUN, not from the cell, and this has it; it also varies between cells at the same rate whenever
+  the arms differ, which `connections/rate` cannot. Caveat that keeps it honest: it is not independent
+  of the cell's own server behaviour, so it cannot compare a slow server's cell against a fast one's
+  as though the difference were about the pool.
+  **General rule worth keeping on its own account (the desktop's): not every quantity worth knowing
+  has an exogenous estimator, and the text should say so rather than reach for one that is clean by
+  being uninformative.**
 - **ROUTE 3 IS NOT AN INDEPENDENT CAUSE and the two machines were never in conflict; the coordinator
   created the disagreement.** The laptop showed the socket buffer cannot fill (one outstanding request
   per connection, a ~100-byte GET against tens of KB). The desktop confirmed pacing is taken at SEND
