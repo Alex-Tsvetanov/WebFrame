@@ -1023,6 +1023,29 @@ been scheduled yet.
   with a driver, interrupts and queueing. This is the first arrangement that can answer the loopback
   limitation both papers currently state as a caveat, and it is stronger than the WSL arm, whose
   "network" is a virtual switch inside the Windows host.
+  **THE JITTER BASELINE CANNOT BE TAKEN BY PING, AND THE REQUEST WAS MISCONCEIVED ANYWAY.** Windows'
+  ICMP stack reports round-trip time as WHOLE MILLISECONDS: 300 echoes to the gateway gave 274 replies
+  with every value 0 or 1 ms, median 0, sd 0.248. The floor is ten times above the 60-85 us effect, so
+  it cannot distinguish the two outcomes the measurement existed to distinguish. Not a weak result --
+  an unsuitable instrument. (The Linux side DOES report microseconds and measured the same segment at
+  722 us median plain, 502 awake, so the resolution problem is Windows' ICMP stack, not the network,
+  and baselines from the two ends are not comparable.)
+  **Larger admission: ping was never going to answer it even at microsecond resolution.** What decides
+  whether a two-host arm can resolve a 60 us difference is not per-packet spread but the RUN-TO-RUN
+  spread of per-run medians, which is what the harness's own resolution figure reports and what no
+  ping baseline produces. The coordinator asked for a number that could not have settled the question
+  it was asked for; the desktop's inability to take it cost nothing.
+  **What would work, and it is NEW SCOPE for Alex:** a short two-host run of the real generator against
+  the real server across the physical link, measured with the campaign's own instrument and reported
+  as a resolution. Needs both machines, and the laptop is mid-campaign, so it cannot happen tonight.
+  **Link facts settled otherwise.** Desktop: Realtek GbE, 1 Gbps, 192.168.1.3/24, default route via
+  192.168.1.1 on the physical adapter (metric 0), so off-host traffic to the laptop leaves by the wire
+  and not by either Hyper-V switch (172.22.208.1/20 is the WSL path tonight's campaign used;
+  172.22.160.1/20 is the Default Switch; both report a meaningless virtual 10 Gbps). Same layer-2
+  segment, no routed hop. Firewall: the Ethernet profile is Public and the existing benchmark_server
+  Allow rules are Public, so they already cover the physical interface; nothing needs adding and
+  nothing was changed. Laptop is 192.168.1.62 on the wire and .9 on wireless, dual-homed with only a
+  route metric between them, so the interface field must be CHECKED on any two-host run.
   **The number that decides the design is the path's own jitter, not its throughput.** Paper 2's
   demultiplexing difference is 60 to 85 microseconds. If the round-trip standard deviation over this
   link is in the hundreds of microseconds, no number of repetitions recovers that difference, and the
