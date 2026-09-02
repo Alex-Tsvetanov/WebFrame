@@ -455,7 +455,7 @@ def design_tls_ladder() -> list[Cell]:
     """
     return [
         Cell.of(system_name(), **_base(tls=True), protocol_detection=True, offered_rate=rate)
-        for rate in range(5_000, 65_000, 5_000)
+        for rate in sorted(set(range(5_000, 65_000, 5_000)) | set(TLS_OFFERED_RATES))
     ]
 
 
@@ -467,19 +467,38 @@ def design_churn_ladder() -> list[Cell]:
     lower than the request ceiling by two orders of magnitude and has to be found before
     the churn design can claim a rate.
     """
+    # Built from the table it validates, so the two cannot drift apart. They had: the
+    # table asks for 150 and the ladder stepped 100 to 200, which is the interval the
+    # boundary lies in, so the one rate the campaign most needed checked was the one rate
+    # the ladder skipped. Interpolation is not available there either, since 100 paced at
+    # 83 microseconds and 200 at 3012.
     return [
         Cell.of(system_name(), **_base(tls=True, max_requests_per_connection=1),
                 protocol_detection=True, offered_rate=rate)
-        for rate in (25, 50, 100, 200, 300, 400, 600, 800)
+        for rate in sorted({25, 50, 100, 125, 175, 200, 300, 400, 600, 800}
+                           | set(CHURN_OFFERED_RATES) | set(CHURN_NET_OFFERED_RATES))
     ]
 
 
 def design_tls_smoke() -> list[Cell]:
-    """Four cells: enough to prove the TLS rig works before spending a night on it."""
+    """Four cells: enough to prove the TLS rig works before spending a night on it.
+
+    The two shapes get different rates, and that is the whole correction. This design
+    used to offer 1000 to both, which is nothing for a keep-alive connection and roughly
+    seven times the admissible boundary for establishment, so its two churn cells were
+    refused on every host and always would have been. Read without the shape in view they
+    look like a host that paces at 57 microseconds in one run and eight seconds behind in
+    the next, at the same offered rate, which is a machine fault nobody can find because
+    it is not there.
+
+    That is this file's own rule broken by this file: never carry an offered rate from one
+    design into another. A smoke test whose failures are structural teaches the operator
+    to expect failures, which is the opposite of what it is for.
+    """
     return [
         Cell.of(system_name(), **_base(tls=True, max_requests_per_connection=churn),
-                protocol_detection=detect, offered_rate=1_000)
-        for churn in (0, 1)
+                protocol_detection=detect, offered_rate=rate)
+        for churn, rate in ((0, 1_000), (1, CHURN_OFFERED_RATES[0]))
         for detect in (True, False)
     ]
 
@@ -622,6 +641,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"not built: {server_bin}", file=sys.stderr)
         return 2
 
+    # A binary is not the commit the record will claim just because it sits in the
+    # tree that commit is checked out at. Refused here rather than discovered later,
+    # because a stale binary produces a record that looks exactly like a good one.
+    stale = environment.build_staleness(args.build, REPO, (server_bin, gen_bin))
+    if stale:
+        for problem in stale:
+            print(problem, file=sys.stderr)
+        print("rebuild the tree, or point --build at one built from this source.",
+              file=sys.stderr)
+        return 2
+
     gen_command: list[str] | None = None
     location = "host"
     if args.wsl_distro:
@@ -690,6 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _ARM = environment.run_io_backend(args.build, args.io_backend)
         env = environment.capture(repo=REPO, build_type="Release",
+                                  build_dir=args.build,
                                   io_backend=environment.resolve_io_backend(args.build))
     except ValueError as exc:
         print(exc, file=sys.stderr)

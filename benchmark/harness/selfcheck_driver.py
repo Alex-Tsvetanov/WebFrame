@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -63,6 +64,7 @@ class FakeServer:
 @dataclass
 class FakeGenerator:
     name_value: str = "fake"
+    warmup_s: float = 0.0
     raises: bool = False
     result: driver.GeneratorResult = field(
         default_factory=lambda: driver.GeneratorResult(
@@ -246,6 +248,45 @@ def run(check: Callable[[str, bool], None]) -> None:
     check("a governor that moved during the campaign rejects the run",
           not record.accepted and any("governor" in r for r in record.rejection_reasons))
     check("and the record says which governor it was", record.governor == "powersave")
+
+    # --- the drift gate compares two clocks from inside the measured window --
+    #
+    # Sampled before the server started it compared an idle machine against a loaded one,
+    # which is ramp-up rather than throttling, and refused healthy runs on any host whose
+    # governor scales. The fake generator's warmup is where the difference shows: the
+    # first sample must be taken after it, so a clock that rises during warmup and then
+    # holds is accepted, and one that moves during the measured window is still refused.
+    started = time.monotonic()
+    warmup = 0.15
+
+    def _ramping_clock() -> float:
+        # 3000 MHz while the machine is still warming up, 4000 once it is under load.
+        # If the first sample were taken before the load, it would read 3000 against a
+        # 4000 finish and the run would be refused for a 33% drift it never had.
+        return 3000.0 if time.monotonic() - started < warmup else 4000.0
+
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=FakeGenerator(warmup_s=warmup), environment=_env(),
+        campaign_fingerprint="fp", duration_s=1.0,
+        probes=dataclasses.replace(driver.IDLE_PROBES, cpu_mhz=_ramping_clock),
+    )
+    check("the first clock is sampled after warmup, not before the load",
+          record.cpu_mhz_start == 4000.0)
+    check("so a machine that only ramped up is accepted", record.accepted)
+
+    falling = iter([4000.0, 3000.0])
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=FakeGenerator(warmup_s=0.01), environment=_env(),
+        campaign_fingerprint="fp", duration_s=1.0,
+        probes=dataclasses.replace(driver.IDLE_PROBES,
+                                   cpu_mhz=lambda: next(falling, 3000.0)),
+    )
+    check("a clock that moved during the measured window is still refused",
+          not record.accepted and any("drift" in r for r in record.rejection_reasons))
 
     # --- rejected runs are kept and counted ---------------------------------
     with tempfile.TemporaryDirectory() as tmp:

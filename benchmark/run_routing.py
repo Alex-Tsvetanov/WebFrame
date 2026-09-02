@@ -196,12 +196,24 @@ def main(argv: list[str] | None = None) -> int:
         print("configure with -DCOROUTE_ROUTER_ARMS=ON", file=sys.stderr)
         return 2
 
+    # A binary is not the commit the record will claim just because it sits in the tree
+    # that commit is checked out at. Refused here rather than discovered later, because a
+    # stale binary produces a record that looks exactly like a good one.
+    stale = environment.build_staleness(args.build, REPO, (binary,))
+    if stale:
+        for problem in stale:
+            print(problem, file=sys.stderr)
+        print("rebuild the tree, or point --build at one built from this source.",
+              file=sys.stderr)
+        return 2
+
     out_dir = args.results / args.design
     raw_dir = out_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     records_path = out_dir / "runs.jsonl"
 
     env = environment.capture(repo=REPO, build_type="Release",
+                            build_dir=args.build,
                             io_backend=environment.resolve_io_backend(args.build))
     campaign = environment.Campaign.open_or_create(out_dir / "campaign.env.json", env)
 

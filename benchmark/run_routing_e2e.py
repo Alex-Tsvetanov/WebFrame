@@ -228,6 +228,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"not built: {server_bin}", file=sys.stderr)
         return 2
 
+    # A binary is not the commit the record will claim just because it sits in the
+    # tree that commit is checked out at. Refused here rather than discovered later,
+    # because a stale binary produces a record that looks exactly like a good one.
+    stale = environment.build_staleness(args.build, REPO, (server_bin,))
+    if stale:
+        for problem in stale:
+            print(problem, file=sys.stderr)
+        print("rebuild the tree, or point --build at one built from this source.",
+              file=sys.stderr)
+        return 2
+
     gen_command: list[str] | None = None
     location = "host"
     gen_binary = args.build / "benchmark" / "loadgen.exe"
@@ -295,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         BASE["io_backend"] = environment.run_io_backend(args.build, args.io_backend)
         env = environment.capture(repo=REPO, build_type="Release",
+                                  build_dir=args.build,
                                   io_backend=environment.resolve_io_backend(args.build))
     except ValueError as exc:
         print(exc, file=sys.stderr)

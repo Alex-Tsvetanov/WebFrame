@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:35 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:55 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -93,6 +93,22 @@ doc/thesis/data` and `results2tex <runs.jsonl> doc/thesis/generated/results.tex`
 been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
+
+- **Two ladders could not validate what the campaign offers** (fixed, `2bbc55353`). The churn
+  ladder stepped 100 to 200 while its table asks for 150, so the rate most in need of checking
+  was the one never visited, and it cannot be interpolated: 100 paced at 83 microseconds and
+  200 at 3012. And `tls-smoke` offered 1000 to both shapes, which is nothing for a reused
+  connection and about seven times the establishment boundary, so its two churn cells were
+  refused on every host and always would have been; read without the shape in view that looks
+  like a machine pacing at 57 microseconds in one run and eight seconds behind in the next at
+  the same rate, a fault nobody can find because it is not there. Both ladders are now built
+  from the tables they validate and a selfcheck fails if either property is reverted.
+- **The desktop's WSL arm is blocked by Windows Firewall**, not by the harness: two auto-created
+  inbound block rules for the freshly rebuilt `benchmark_server.exe`, which is why every
+  loopback design works and only the off-host arm sees 0.0% delivered. Several matching rules
+  still name the repository's old path, so they have accumulated since the move. **Alex's
+  call in the morning**, one rule scoped to the WSL subnet or delete the two blocks; no
+  session touches a firewall. Until then the desktop runs loopback designs only.
 
 - **A half-specified off-host arrangement runs silently as an on-host one.**
   `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it

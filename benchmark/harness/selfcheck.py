@@ -716,8 +716,20 @@ def virtualisation_checks() -> None:
     check("darwin: 0 is metal", env_mod._virtualisation_darwin("0") is None)
     check("linux prefers systemd-detect-virt", env_mod._virtualisation_linux("docker") == "docker")
     check("linux: none is metal", env_mod._virtualisation_linux("none") is None)
-    check("linux without systemd falls back to DMI",
-          env_mod._virtualisation_linux(None, "QEMU Standard PC") == "qemu")
+    # None is the function's "go and ask" sentinel, not "there is nothing to ask", so
+    # this case has to make the probe genuinely absent. Passing None asserted nothing on
+    # a host that has systemd-detect-virt: the call answered `none`, returned before the
+    # fallback the case is about, and the check failed on every Linux machine while
+    # passing on this one.
+    _real_run = env_mod._run
+    env_mod._run = lambda cmd, **kw: None
+    try:
+        check("linux without systemd falls back to DMI",
+              env_mod._virtualisation_linux(identity="QEMU Standard PC") == "qemu")
+        check("linux with neither systemd nor DMI is unchecked, not clean",
+              str(env_mod._virtualisation_linux(identity="  ")).startswith("unchecked"))
+    finally:
+        env_mod._run = _real_run
     # systemd-detect-virt says `none` with exit 1, so the bare-metal answer used to be
     # read as no answer and the verdict came from the SMBIOS heuristic instead.
     if sys.platform != "win32":
@@ -847,6 +859,114 @@ def live_capture_check() -> None:
         print("     so it is correctly refused as a source of performance records")
 
 
+def ladder_coverage_checks() -> None:
+    """A ladder that does not test the rates it validates is not a ladder.
+
+    The campaign's offered rates are chosen from a ladder run on the host, and the rule
+    that lets a campaign start is that every rate in the table was accepted in its ladder.
+    That rule is unsatisfiable for a rate the ladder never visits, and the gap does not
+    announce itself: the campaign simply offers a rate nobody measured. It happened, at
+    the one rate whose tested neighbours paced at 83 microseconds and at 3012.
+
+    The second half is the same rule from the other side. One design, one shape, one
+    ceiling: a rate that is nothing for a reused connection can be several times what
+    establishment sustains, and a design that offers one rate to both shapes fails half
+    its cells on every host for ever.
+    """
+    from benchmark import run_campaign as rc
+
+    print("\n== a ladder visits the rates it exists to validate ==")
+    for design, table in (
+        ("churn-ladder", set(rc.CHURN_OFFERED_RATES) | set(rc.CHURN_NET_OFFERED_RATES)),
+        ("tls-ladder", set(rc.TLS_OFFERED_RATES)),
+    ):
+        rates = {cell.as_dict()["offered_rate"] for cell in rc.DESIGNS[design]()}
+        check(f"{design} visits every rate it validates", table <= rates)
+
+    ceiling = max(set(rc.CHURN_OFFERED_RATES) | set(rc.CHURN_NET_OFFERED_RATES))
+    for design in ("tls-smoke", "churn", "churn-net", "transport", "h1-deep"):
+        offered = {
+            cell.as_dict()["offered_rate"]
+            for cell in rc.DESIGNS[design]()
+            if int(cell.as_dict().get("max_requests_per_connection", 0)) == 1
+        }
+        check(
+            f"{design} offers establishment no rate above what a ladder admitted",
+            not offered or max(offered) <= ceiling,
+        )
+
+
+def staleness_checks() -> None:
+    """A binary that does not contain the source its record will claim.
+
+    Both halves are here because each caught a real case on one machine in one night: a
+    tree that could not rebuild at all, whose binaries were three days behind, and a tree
+    reconfigured and never rebuilt, whose cache and executable described different source.
+    The fallback path is exercised too, since a machine without ninja is the one where the
+    coarse comparison decides.
+    """
+    from benchmark.harness import environment as env_mod
+
+    print("\n== a binary is not the commit the tree is checked out at ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = root / "repo"
+        (repo / "src").mkdir(parents=True)
+        source = repo / "src" / "app.cpp"
+        source.write_text("int main() { return 0; }\n")
+
+        build = root / "build"
+        build.mkdir()
+        cache = build / "CMakeCache.txt"
+        cache.write_text("COROUTE_IO_BACKEND:STRING=epoll\n")
+        exe = build / "server"
+        exe.write_text("binary")
+
+        # No build.ninja, so this exercises the file-comparison fallback throughout.
+        os.utime(source, (1_000, 1_000))
+        os.utime(cache, (1_000, 1_000))
+        os.utime(exe, (2_000, 2_000))
+        check("a binary newer than its source and its cache passes",
+              env_mod.build_staleness(build, repo, (exe,)) == [])
+
+        os.utime(source, (3_000, 3_000))
+        problems = env_mod.build_staleness(build, repo, (exe,))
+        check("a binary older than a compiled source is refused",
+              len(problems) == 1 and "older than" in problems[0])
+
+        os.utime(source, (1_000, 1_000))
+        os.utime(cache, (3_000, 3_000))
+        problems = env_mod.build_staleness(build, repo, (exe,))
+        check("a tree reconfigured and not rebuilt is refused",
+              len(problems) == 1 and "CMakeCache" in problems[0])
+
+        check("an executable that does not exist is not a staleness problem",
+              env_mod.build_staleness(build, repo, (build / "absent",)) == [])
+
+        empty = root / "empty"
+        (empty).mkdir()
+        os.utime(cache, (1_000, 1_000))
+        problems = env_mod.build_staleness(build, empty, (exe,))
+        check("a tree with no compiled source at all refuses rather than passes",
+              len(problems) == 1 and problems[0].startswith("unchecked"))
+
+    # The matcher commit is a dependency version and is read from the build tree, because
+    # it is fetched by commit at configure time and pkg-config never sees it.
+    with tempfile.TemporaryDirectory() as tmp:
+        build = Path(tmp)
+        (build / "CMakeCache.txt").write_text(
+            "COROUTE_IO_BACKEND:STRING=dual\n"
+            "COROUTE_URL_MATCHER_TAG:STRING=d16f30a81158d620e5a5514087b175a2251e4fa3\n"
+        )
+        check("the matcher commit is read from the build tree",
+              env_mod.cache_value(build, "COROUTE_URL_MATCHER_TAG")
+              == "d16f30a81158d620e5a5514087b175a2251e4fa3")
+        check("a key the cache does not carry reads as absent",
+              env_mod.cache_value(build, "COROUTE_NOT_A_KEY") is None)
+        check("a build tree that cannot be read reads as absent",
+              env_mod.cache_value(Path(tmp) / "nope", "COROUTE_URL_MATCHER_TAG") is None)
+
+
 def main() -> int:
     from benchmark.harness import selfcheck_driver, selfcheck_results
 
@@ -859,6 +979,8 @@ def main() -> int:
     counter_checks()
     schema_checks()
     ordering_checks()
+    ladder_coverage_checks()
+    staleness_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
     darwin_parser_checks()
