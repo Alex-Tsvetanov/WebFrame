@@ -105,13 +105,26 @@ been scheduled yet.
   **Authorised: change `idle_timeout.hpp:126` `now_ns()` itself**, not just `touch()`, since
   the expiry check at `:169` reads the same function and both sides of the subtraction must
   share a clock. Worth 4.00 of 9.69 per connection.
-  **Not authorised yet: the `TimerQueue` pair.** The read at `:107` is not redundant, it is
-  what decides to pop; deleting it would spin on an already-past deadline without popping.
-  Restructuring to pop on `wait_until` reporting a timeout is possible but depends on a number
-  nobody has: how many clock reads `cv_.wait_until` makes internally on this platform. If
-  libstdc++ passes the absolute deadline to `pthread_cond_clockwait` the restructure saves the
-  full 3.68; if it converts to a relative timeout it moves the read and saves nothing. That
-  microbenchmark is queued and decides whether the 59% is reachable.
+  **The `TimerQueue` pair is closed, by measurement, and not in the way either of us
+  expected.** `cv_.wait_until` makes exactly one clock read per wait whether the deadline is
+  future or already past (2000 waits, 2001 reads, and 2001 futex calls, so it enters the kernel
+  even for an expired deadline), so waiting unconditionally and popping on the timeout return
+  does not remove that read. And more decisively, **`pthread_cond_clockwait` accepts
+  `CLOCK_MONOTONIC` and `CLOCK_REALTIME` and rejects both coarse clocks with EINVAL**, so a
+  deadline a condition variable will wait on cannot live in the cheap clock at either site.
+  The 59% is therefore not reachable by substitution under any arrangement that keeps
+  `condition_variable`; it is a hard API constraint rather than a design trade. The restructure
+  would recover only the explicit read, estimated at about 1.84 per connection, and that figure
+  is an inference from the arithmetic (three buckets summing to 100%, one read per wait) rather
+  than a measurement, resting on an assumption a pop-without-waiting iteration would break.
+  **Future work, noted and explicitly not authorised:** an absolute-deadline timerfd in the
+  epoll set removes the timer thread, its wait and both its reads, since the event loop is
+  already blocked in `epoll_wait` and the kernel would do the waiting for free. That is a
+  redesign with no counterpart on kqueue or IOCP.
+  **Thesis note:** the EINVAL constraint belongs in the implementation chapter. The obvious
+  optimisation is unavailable because the waiting primitive constrains which clock a deadline
+  may live in, so the cost is structural for any timer built on a condition variable, and that
+  is measured on the platform rather than asserted from documentation.
 - **A ladder separated two explanations a single point could not, for the third time.** The
   same line was first guessed to be a fixed-rate reader, withdrawn when the keep-alive ladder
   showed no floor, and is now confirmed as the largest site: the loop is event-driven, so its
