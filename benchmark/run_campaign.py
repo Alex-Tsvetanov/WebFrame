@@ -500,6 +500,39 @@ def design_churn_proportion() -> list[Cell]:
         for rate in CHURN_PROPORTION_RATES
     ]
 
+
+# The two rates that straddle the step the five-rate design found.
+CHURN_PROPORTION_FINE_RATES = (90, 95)
+
+
+def design_churn_proportion_fine() -> list[Cell]:
+    """Straddle the step that churn-proportion localised to between 85 and 100.
+
+    That design found the slow-mode probability at 93.3 per cent at 85 establishments a
+    second and 6.7 per cent at 100: a step across a fifteen per cent change of rate, not a
+    slope. It also killed the variable-depth reading, because the increment between the
+    modes stayed at 8.57 to 9.33 ms while the available slack halved.
+
+    The candidate controlling quantity is the gap between connections in the FAST mode,
+    which is the period less about 0.3 ms: 11.5 ms at rate 85 and 9.7 ms at 100. If a
+    threshold on that gap is what the step crosses, it lies near 10.5 ms. These two rates
+    put 10.81 ms on one side of that and 10.23 ms on the other, half a millisecond each
+    way.
+
+    PREDICTED, before the data: 90 mostly slow and 95 mostly fast, placing the step
+    between two rates five per cent apart. Both slow puts the threshold below 10.2 ms;
+    both fast puts it above 10.8; both intermediate and alike means there is no threshold
+    on this quantity and the collapse is something else. All four outcomes discriminate.
+
+    This locates a boundary. It does not identify the event, and three mechanisms proposed
+    for that event have already been withdrawn against evidence. No paper depends on it.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=False, max_requests_per_connection=1),
+                protocol_detection=True, offered_rate=rate)
+        for rate in CHURN_PROPORTION_FINE_RATES
+    ]
+
 def design_churn_net() -> list[Cell]:
     """churn over a network interface, at rates loopback could not reach.
 
@@ -738,6 +771,7 @@ DESIGNS = {
     "tls-deep": design_tls_deep,
     "churn": design_churn,
     "churn-proportion": design_churn_proportion,
+    "churn-proportion-fine": design_churn_proportion_fine,
     "churn-net": design_churn_net,
     "tls-ladder": design_tls_ladder,
     "churn-ladder": design_churn_ladder,
