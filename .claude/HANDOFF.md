@@ -214,21 +214,41 @@ been scheduled yet.
   **But it does not reconcile with the load cell and about 350 us is unaccounted for.** At 10 ms the
   ladder says a wake costs 62 us; the load cell at 100/s, same interval, same machine, same arm, shows
   an idle-versus-awake difference of 413 us, nearly seven times larger.
-  **Coordinator's hypothesis, to be tested first because it is nearly free: the open loop charges the
-  GENERATOR'S OWN WAKE to the server.** Latency is measured from the assigned due instant, not from
-  when the request left, which is the whole point of the design and what stops coordinated omission.
-  But at 100/s on a machine allowed to idle, the generator's core has been parked for 10 ms when the
-  due instant arrives, and its exit cost lands inside the measured latency, attributed to the server.
-  The delivery test cannot see this by construction: its poster timestamps AFTER waking, so 62 us is
-  the cost of waking one receiver only. **Test: compare latency from the due instant against latency
-  from the actual send timestamp, same runs. Near 350 us at 100/s and near zero at 10 000/s confirms
-  it.** The records may already carry what is needed; if not it is one field in loadgen and worth
-  having permanently.
-  **If confirmed this belongs in the methodology chapter, not only in paper 3: an open-loop generator
-  on a machine that is allowed to idle charges its own wake-up cost to the system under test, and the
-  error grows as the offered rate falls.** It applies to anyone using this design, and it would mean
-  our own low-load latencies are overstated by an amount we can measure. It fits everything else:
-  absent under load because the generator never parks, present in every low-load cell.
+  **REFUTED, by a field that was already in the records.** The coordinator hypothesised that the open
+  loop charges the GENERATOR'S OWN WAKE to the server: latency is measured from the assigned due
+  instant, so a generator whose core had parked for 10 ms would have its exit cost land inside the
+  measured latency and be attributed to the server. **`pacing_us` already records exactly that
+  quantity, the lateness of the send against the due instant, and in the 469 us cell the generator was
+  5 us late at the median, not 350.** The reason is that our generator paces by SPINNING --
+  `generator_cpu_fraction` is 0.996 in every one of those cells -- and a core that never sleeps cannot
+  pay a wake cost. (Third time today a CPU fraction near 0.996 has been the key to something after
+  nearly being reported as saturation.)
+  **THE FINDING SURVIVES RESHAPED AND IS STRONGER, and this is the version for the methodology
+  chapter: an open-loop generator that SLEEPS between sends charges its wake-up cost to the system
+  under test, and the error grows as the offered rate falls; a generator that paces by SPINNING is
+  immune, at the cost of a fully occupied core. Ours spins.** That names the condition and exhibits a
+  design that avoids it, rather than warning that a whole class of measurement is suspect, and it
+  tells a reader with a sleeping generator what they are measuring. The immunity was not designed for:
+  the spinning was chosen for pacing accuracy, and saying so is worth more than claiming foresight.
+  **It sharpens the other direction too.** In the AWAKE cells the generator IS late, pacing p50 rising
+  5 -> 52 us because the spinners compete with it, so the awake cell's 56 us of latency is mostly
+  generator lateness. Server-and-path is then about 464 idle against about 4 awake, making the idle
+  penalty LARGER than the 413 first reported. One more reason the spinner control applies only to arms
+  that would otherwise idle: it costs the generator accuracy while buying the server wakefulness.
+  **Caveat on that subtraction:** a p50 minus a p50 has no interpretation unless the distributions
+  align request by request. Do it PER REQUEST and take the percentile of the differences, and confirm
+  from the code that latency includes pacing by construction rather than from the field names.
+  **THE ARITHMETIC STILL DOES NOT CLOSE, which is now the open question.** One in-process wake at a
+  10 ms interval costs 62 us; server-and-path is about 464. Several wakes at 62 each would need about
+  seven, and a request over a veth pair plausibly involves two to four. So the several-wakes
+  explanation does not reach it either. **Third candidate, named but untested: frequency ramp.** The
+  package sits at 1921 MHz in the blocking idle arm, and a core that wakes at a low clock must do the
+  request's real work while ramping, whereas the delivery test's callback does almost nothing and
+  never needs the clock to rise. Consistent with C-state exit and frequency ramp never having been
+  separated. **Discriminator needing no privileged write: give the delivery callback a fixed
+  non-trivial amount of arithmetic and see whether the cost grows with the work.** A pure wake cost
+  does not care what the callback does; a ramp does. The one-sided spinner run and this are two
+  candidates for one question, not a sequence, and neither is for tonight.
   The laptop's competing hypothesis stays alive and is not exclusive: a request path wakes several
   components (generator core, softirq, server core, and the return), while the delivery test wakes
   one. The residual after subtracting the generator's exit is what that accounts for, and the way to
