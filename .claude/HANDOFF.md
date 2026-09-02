@@ -235,6 +235,31 @@ been scheduled yet.
   generator lateness. Server-and-path is then about 464 idle against about 4 awake, making the idle
   penalty LARGER than the 413 first reported. One more reason the spinner control applies only to arms
   that would otherwise idle: it costs the generator accuracy while buying the server wakefulness.
+  **Confirmed from the code, and the subtraction IS principled:** both quantities are measured from
+  the same origin, `c.issued = next_due`, with pacing pushed at send completion and latency at
+  response arrival, so `latency - pacing` is exactly response-arrival minus send-completion, with no
+  double counting. **But the per-request pairing does not exist:** they are separate vectors,
+  aggregated across threads and sorted independently, and `pacing_us` gets one push per completed send
+  while `latencies_us` gets one per response in a batch, so the two are not the same length when
+  responses coalesce. There is no request identity in the JSON. So 464 against 4 is a difference of
+  percentiles, approximate, and the text must say so with that reason.
+  **SCHEMA-9 CANDIDATE, and it is bigger than a convenience: the queueing decomposition.** A third
+  vector recorded per request at response arrival, when both timestamps are in hand, gives the paired
+  quantity with no identity plumbing. Response time equals wait plus service: we measure response time
+  from the due instant, which is what makes it proof against coordinated omission, and the wait is the
+  generator's own lateness. A run reporting both, with their per-request difference, says what the
+  server did AND what the client experienced from one measurement, and shows the gap rather than
+  asking a reader to trust it is small. `latency_kind` already distinguishes the two and an open loop
+  currently reports only the first. Two conditions before it becomes a field:
+  (i) **Do not call it service time.** It measures send-completion to response-arrival, which includes
+  the path, the softirqs and the veth pair, and over the two-host arm will conspicuously not be the
+  server's own occupancy. Name it for what it measures and let the text say it bounds service time
+  from above; a field named for a quantity it does not contain will be quoted as that quantity.
+  (ii) **Check the pairing is well defined at all.** `c.issued` is per CONNECTION. If a connection can
+  hold more than one request outstanding there is no single send timestamp to subtract at response
+  arrival, and the field would be silently wrong in exactly the cells that pipeline. Churn is one
+  request per connection and safe; the keep-alive designs at high rates are the ones to check. If
+  requests overlap, this needs a per-request timestamp and is a larger change than one vector.
   **Caveat on that subtraction:** a p50 minus a p50 has no interpretation unless the distributions
   align request by request. Do it PER REQUEST and take the percentile of the differences, and confirm
   from the code that latency includes pacing by construction rather than from the field names.
@@ -245,9 +270,16 @@ been scheduled yet.
   package sits at 1921 MHz in the blocking idle arm, and a core that wakes at a low clock must do the
   request's real work while ramping, whereas the delivery test's callback does almost nothing and
   never needs the clock to rise. Consistent with C-state exit and frequency ramp never having been
-  separated. **Discriminator needing no privileged write: give the delivery callback a fixed
-  non-trivial amount of arithmetic and see whether the cost grows with the work.** A pure wake cost
-  does not care what the callback does; a ramp does. The one-sided spinner run and this are two
+  separated. **Discriminator needing no privileged write, in its sharpened form:
+  parameterise the callback's arithmetic and SWEEP it, in TWO arms, idle and cores-held-awake.** Flat
+  in the work parameter means a pure wake cost; rising then flattening means a ramp, and the knee
+  locates where the clock catches up. The awake arm isolates the ramp by control rather than by
+  inference, and doubles as the baseline for how much of the curve is simply the work getting longer;
+  one arm alone leaves the rising curve arguable. The frequency story also explains the SHAPE and not
+  just the magnitude: the delivery callback sets a promise and returns, so it can finish inside the
+  wake latency and never needs the clock to rise, while a request must parse, route and write while
+  the core ramps from 1921 MHz. Those are not the same measurement and no count of wakes reconciles
+  them. The one-sided spinner run and this are two
   candidates for one question, not a sequence, and neither is for tonight.
   The laptop's competing hypothesis stays alive and is not exclusive: a request path wakes several
   components (generator core, softirq, server core, and the return), while the delivery test wakes
