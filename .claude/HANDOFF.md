@@ -130,7 +130,12 @@ been scheduled yet.
   never rebuilt, and anyone reading that cache to learn what the binary was built from would
   have been wrong. A check against the commit alone catches the frozen-tree case; only the
   cache comparison catches reconfigured-but-not-rebuilt, which is the one that actually
-  happened.
+  happened. **The check covers the generator too**: three stale generators were found inside
+  the desktop's WSL, the newest two days older than the commit it would have driven, one named
+  for the TLS arm and older than the commit that added it. Note also that FetchContent bakes
+  the absolute source path into every `_deps/*-subbuild/CMakeCache.txt`, so a repository that
+  has moved leaves one stale cache per tree plus one per vendored dependency, and clearing the
+  top-level cache alone is not enough.
 - **The matcher commit is not recorded either.** `COROUTE_URL_MATCHER_TAG` decides the DFA
   router's performance and is the dependency the routing paper's claim turns on, yet the
   environment captures `openssl`, `ngtcp2`, `nghttp3`, `liburing` and not it. **To add: read it
