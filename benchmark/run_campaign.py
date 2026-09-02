@@ -465,6 +465,41 @@ def design_churn() -> list[Cell]:
 CHURN_NET_OFFERED_RATES = (50, 150, 400, 800)
 
 
+
+# Where the slow mode stops happening, which the churn design cannot answer because its
+# rates are too far apart.
+CHURN_PROPORTION_RATES = (50, 60, 70, 85, 100)
+
+
+def design_churn_proportion() -> list[Cell]:
+    """Locate the rate at which the slow establishment mode stops occurring.
+
+    In the churn design an entire run lands in one of two modes and never between them:
+    an establishment median of about 0.3 ms or about 9.3 ms, with the gap empty in every
+    cell measured. What the offered rate governs is not the magnitude but the
+    PROBABILITY. At 25 and 50 establishments a second, 134 of 196 accepted runs were
+    slow; at 100 and 150, none of 198 were. Slow runs are interleaved with fast ones
+    throughout a campaign rather than clustered, so it is not drift or warm-up, and the
+    same state costs request latency only about 25 per cent while costing establishment
+    about thirty-five times.
+
+    Two mechanisms were proposed for it and both were withdrawn: the generator's poll
+    timeout, which cannot be involved because conn_open waits for the connect on its own
+    poll rather than the main loop's, and a connection-pool threshold, which the accepted
+    runs show is nowhere near binding. The cause is unknown.
+
+    This design does not attempt the cause. It measures where the probability goes to
+    zero and whether it does so as a step or as a slope, which is the shape a mechanism
+    would have to explain. Cleartext only, classification on, one cell per rate, so that
+    the proportion at each rate is estimated from repetitions rather than confounded with
+    an arm. Nothing in either paper depends on the answer.
+    """
+    return [
+        Cell.of(system_name(), **_base(tls=False, max_requests_per_connection=1),
+                protocol_detection=True, offered_rate=rate)
+        for rate in CHURN_PROPORTION_RATES
+    ]
+
 def design_churn_net() -> list[Cell]:
     """churn over a network interface, at rates loopback could not reach.
 
@@ -702,6 +737,7 @@ DESIGNS = {
     "transport": design_transport,
     "tls-deep": design_tls_deep,
     "churn": design_churn,
+    "churn-proportion": design_churn_proportion,
     "churn-net": design_churn_net,
     "tls-ladder": design_tls_ladder,
     "churn-ladder": design_churn_ladder,
