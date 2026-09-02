@@ -161,6 +161,27 @@ been scheduled yet.
   files are on disk" and "the files are in the commit" had stopped being the same statement**
   while a report asserted the first.
 
+- **RESOLVED: the epoll ~1 ms structure is the cost of cores going idle, not a line of code.**
+  Laptop control: same epoll netns cell, 100 rps, 4 connections, with 16 niced spinners keeping
+  the cores awake (server still preempts them instantly): p50 495 µs idle → 74 µs awake; io_uring
+  25 µs (its 1 µs loop never lets the core sleep, the parking finding seen from the other side).
+  Corroboration: strace erases it (p50 182, the tracer keeps the worker busy); in the trace the
+  server spends 119 µs per request then sits in a 9.79 ms epoll_wait; worker count irrelevant
+  (1 worker 490, 4 workers 497); gone at 10 000 rps (p50 42 µs). C-state exit vs frequency ramp
+  not separated (needs cpuidle/cpufreq writes we do not make); the paper claims "the core was
+  idle" and no more. **Paper 3's central result:** the low-load epoll-vs-io_uring latency gap is
+  mediated by CPU idle state, not by the I/O mechanism; a busy loop buys ~470 µs of wake-up
+  latency at the price of a worker's worth of cores kept awake. The blocking-wait experiment is
+  to be measured as latency-from-idle (three wait variants × idle/awake at 100 rps, plus 10k).
+- **CONFOUND: the backends configure accepted sockets differently.** io_uring sets TCP_NODELAY,
+  TCP_QUICKACK and SO_SNDBUF 256 KB (uring_context.cpp:979-989); epoll sets TCP_NODELAY only
+  (epoll_context.cpp:507-508). Every cross-arm cell so far partly compares socket options. Not
+  the cause of the 500 µs (the spinner control settles that) but it violates "vary only the
+  mechanism". Laptop is inventorying all four backends (accepted and listening options) on
+  `linux/socket-opts-shared` and finding the single call site for a shared helper; the policy
+  direction is the coordinator's ruling, pending. Affected: the transport design's epoll cells
+  re-run after the fix; io_uring-only results (X1, wait-timeout before/after, syscall counts)
+  stand.
 - **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
   bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
   the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
