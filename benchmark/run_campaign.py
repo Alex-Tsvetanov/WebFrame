@@ -543,40 +543,50 @@ def design_smoke() -> list[Cell]:
 # reproducing that campaign will find those names in the commit messages; nothing about
 # either design is Windows-specific, and the cells they build carry whichever system
 # name and I/O backend the host implies.
-# The rate the mechanism design offers, in requests per second, for both connection
-# shapes.
+# The rates the mechanism design offers, one per connection shape.
 #
-# Chosen for headroom rather than for load. Syscalls per request is a ratio, so it does
-# not need a high rate; what it needs is a rate neither arm is throughput-limited at,
-# because a limited arm is batching differently from an unlimited one and the ratio then
-# describes the limiting rather than the backend. The feasibility probe on this host
-# offered 20000 and the churn shape delivered about 10500 on epoll and 11000 on
-# io_uring, so both were limited and the -8.8% difference it produced was confounded.
-# 2000 is under a fifth of the lower of those two ceilings, and the keep-alive shape
-# reached the full 20000 with room to spare.
-MECHANISM_OFFERED_RATE = 2_000
+# Two rates rather than one, because the two shapes have very different ceilings over a
+# network path and the comparison being made is between backends within a shape, not
+# between shapes. Holding a single rate across both would have meant running keep-alive
+# far below what it can do, or running churn above what it can do, and the second is
+# what makes a ratio describe the limiting rather than the backend.
+#
+# Sized from what this rig has actually delivered. Keep-alive over the namespace pair
+# achieved a full 10000 with the offered rate met exactly, so 10000 stands. Churn is the
+# one that surprised: the feasibility probe reached about 10500 establishments a second
+# over LOOPBACK, but over the pair a first attempt at 2000 delivered 84.6% and ran three
+# seconds behind its own schedule, because establishment over a veth pays a driver and a
+# softirq that loopback does not. The project's own network churn table runs 50 to 800
+# for the same reason. 400 is half of that table's top rate and well inside what was
+# just demonstrated to fail at 2000.
+MECHANISM_KEEPALIVE_RATE = 10_000
+MECHANISM_CHURN_RATE = 400
 
 
 def design_mechanism() -> list[Cell]:
     """Syscalls per request, one connection shape against the other, one arm per run.
 
-    The two cells differ in exactly one factor: whether the server closes after a single
-    request. Everything else is held, including the offered rate, so the shapes can be
-    read against each other; the backend is chosen per invocation with --io-backend, so
-    the four cells of the comparison are this design run twice.
+    The two cells differ in whether the server closes after a single request, and in the
+    offered rate that shape can sustain. Everything else is held; the backend is chosen
+    per invocation with --io-backend, so the four cells of the comparison are this design
+    run twice.
 
     Cleartext and classification on, deliberately. The other designs cross TLS and
     detection because those are their questions; here they would be two more factors
     moving underneath the one being measured, and a TLS record layer in particular adds
     syscalls of its own that belong to neither backend.
 
+    The rates differ between the two cells, so the two shapes are not comparable with
+    each other for anything rate-dependent. Syscalls per request is a ratio and is the
+    quantity this design exists for; throughput and latency from these cells are not.
+
     Meant to be run with --count-syscalls, which is why it is small: counting changes
     what a run measures, so a counted campaign buys nothing by being large.
     """
     return [
         Cell.of(system_name(), **_base(max_requests_per_connection=limit),
-                protocol_detection=True, offered_rate=MECHANISM_OFFERED_RATE)
-        for limit in (0, 1)
+                protocol_detection=True, offered_rate=rate)
+        for limit, rate in ((0, MECHANISM_KEEPALIVE_RATE), (1, MECHANISM_CHURN_RATE))
     ]
 
 
