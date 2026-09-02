@@ -163,6 +163,18 @@ been scheduled yet.
   The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
   a rebuild is a campaign boundary and the later designs would then need their own directory and
   fingerprint, as the schema split was handled.
+- **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
+  (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
+  sources (the sibling's script carries the other paper's text and must not be copied);
+  `wkuxtjk3o` audits every thesis chapter except VI against today's findings and the code at HEAD,
+  five chapter groups, each audit adversarially verified before anything is applied. The laptop is
+  building the eventfd wake for io_uring and epoll on `linux/review-fixes`. The desktop is running
+  the routing designs at b4a01e8c7 into `benchmark/results/2026-09-02-desktop-routing/`, then
+  dispatch, then the h1 sweep, about four hours in total.
+- **For Alex, when he is next at the machines:** the desktop cannot push, so
+  `measure/desktop-2026-09-02-net` (9b3ba079a, seven files, the network campaign) needs pushing to
+  the private `paper-socket-demux` repository, as `measure/desktop-2026-09-02` was this morning.
+  The routing results will need the same treatment into `paper-dfa-routing` when they finish.
 - **Status at 17:30 (all three local workflows landed):**
   - Chapter VI rewritten against the real campaign (baf85cec5, 1f5fd1740: 118 sentences; the
     two-campaign/seven-repetition story was the deleted campaign's and is gone); the check's three
