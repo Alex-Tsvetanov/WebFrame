@@ -689,6 +689,38 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
+- **A MECHANISM FOR THE PER-RUN BISTABILITY, pre-registered before the proportion data exists.** The
+  desktop predicted the fall sits between 85 and 100/s, from arithmetic rather than mechanism: the
+  slow mode costs ~9.3 ms of establishment and the offered period is 20.0, 16.7, 14.3, 11.8, 10.0 ms
+  at 50, 60, 70, 85, 100, so only at the top does the period approach the slow mode's own cost.
+  **The coordinator added one step, which turns it into a feedback loop and explains what neither
+  party could explain.** Read it as a duty cycle: in the slow mode the machine works 9.3 ms of every
+  period, i.e. 0.47, 0.56, 0.65, 0.79, 0.93 of the time at those rates. At 50/s the machine is idle
+  for more than half of every period, so it parks, so the next connection pays the wake, so **the run
+  stays slow**. At 100/s it is busy 93% of every period, never parks, and **the slow mode cannot
+  sustain itself**. The slow mode is self-sustaining at low rates and self-extinguishing at high ones.
+  **This predicts all three unexplained observations:** per-run BISTABILITY (a run falls into whichever
+  attractor its first connections put it in and stays there -- no threshold explains that); a SHARP
+  boundary rather than a gradient (the loop gain crosses one abruptly); and the boundary sitting where
+  the duty cycle reaches unity, about 1/9.3 ms ~ 107/s, just above the highest rate at which a slow run
+  has ever been seen and just above the lowest at which none has.
+  **Judgement rule fixed in advance:** high and flat at 50/60/70, lower at 85, zero at 100 supports it,
+  and the follow-up is then rates 95 (predicted small but non-zero) and 120 or 150 (predicted zero),
+  ten minutes, turning a located boundary into a predicted one. A smooth fall across all five refutes
+  it and leaves a slope with no mechanism. A fall between 60 and 70 means neither party has it.
+  The extra rates are NOT to be run before the five are in.
+- **The quiet-host gate fired for the first time on a genuinely disturbed host** and then passed: first
+  smoke attempt refused at a pacing p99 of 5 392 636 us (5.4 seconds) with the CPU-clock reading
+  'unchecked', while Alex was closing tray applications mid-run; second attempt 2 of 2 accepted at
+  pacing p99 of 54-64 us. **The failed records are KEPT in the file with a README saying what
+  happened** -- deleting the evidence of a failed precondition to leave a directory containing only a
+  passing gate is the opposite of the method.
+- **Standing limitation, not an incident: the agent sessions are the largest process class on the
+  measurement host.** Six of them, totalling about an hour of accumulated CPU over the evening. That
+  is lifetime rather than current CPU and is consistent with the 54-64 us of pacing measured, so the
+  risk is one of them waking mid-run rather than loading the machine now. **The honest version, for
+  the method: the quiet-host precondition cannot be fully satisfied while an agent drives the
+  campaign.** It applies to every measurement this project has taken.
 - **THE CHURN RESULT COMPLETES THE DEMULTIPLEXING CLAIM, and the negative beside it is what makes it
   a claim.** Cleartext, both arms, detect on minus off at p50, every cell resolving:
 
