@@ -163,6 +163,20 @@ been scheduled yet.
   The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
   a rebuild is a campaign boundary and the later designs would then need their own directory and
   fingerprint, as the schema split was handled.
+- **THE WAKE DEFECT IS IN THREE BACKENDS OF FOUR, and that is the result rather than three bugs.**
+  Confirmed by the coordinator on macOS: `kqueue` is epoll's case exactly. `post()`
+  (src/net/kqueue/kqueue_context.cpp:245) pushes onto the callback queue and nothing wakes the loop;
+  `process_events()` blocks in `kevent()` with a 100 ms timeout (:279) and `process_callbacks()` runs
+  only after it returns; `EVFILT_USER` and `NOTE_TRIGGER` appear nowhere in `src/` or `include/`
+  (zero hits); and the timer queue is a lambda calling `post()` (:261), so every idle timeout and
+  handshake deadline on macOS is late by the same amount. Being fixed on `macos/kqueue-wake` with an
+  `EVFILT_USER`/`NOTE_TRIGGER` wake, which like the eventfd needs no lock because `kevent()` is safe
+  from another thread on the same descriptor. **IOCP is correct and needs nothing:** its `post()`
+  calls `PostQueuedCompletionStatus`, which wakes a thread parked in `GetQueuedCompletionStatus`.
+  **The pattern, for paper 3:** the one backend whose wake was right is the one whose platform gives a
+  wake primitive that cannot be forgotten; the three that were wrong all needed a separate mechanism
+  to be remembered and wired up. And all four passed a suite that never measured delivery latency on
+  an idle loop, so the suite could not have caught it because nothing asked.
 - **The wake defect is fixed and measured, on `linux/review-fixes` (tip 79e0015d8).** A single-shot
   POLL_ADD stands on the eventfd, `wake()` is a plain 8-byte write taking no lock and no submission
   queue entry, the counter is cleared with an ordinary read in the drain and re-armed under `sq_mutex`
