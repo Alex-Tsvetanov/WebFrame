@@ -31,3 +31,6 @@ benchmark/results/
 # the tree dirty, which is a rejection criterion for every run in a campaign.
 __pycache__/
 *.pyc
+
+# Finder metadata; an untracked file is a dirty tree to the validity gate
+.DS_Store

@@ -271,6 +271,77 @@ been scheduled yet.
   read the same way.
 - **Second design complete: `transport`, 500 runs, 499 accepted, 1 rejected (0.2%)**, 3 h 27 m.
   Third, `h1-deep`, started 09:52 local.
+- **RETIRED: "io_uring holds the package clock about 145 MHz lower".** That run had io_uring
+  as root and epoll unprivileged, so the arms differed in scheduling class and in
+  RLIMIT_MEMLOCK exemption as well as in backend, and it isolated nothing. Do not quote it and
+  do not reconcile it. Replaced by the idle measurement on the repaired host, both arms as the
+  same unprivileged user: with zero clients connected, epoll parks eight cores at the 1103 MHz
+  floor and io_uring parks about four, and the four that never park are the four workers
+  spinning on the one-microsecond timeout at `uring_context.cpp:492`. Package mean at idle 2283
+  against 3053 MHz (+770, +33.7%); under load 3347 against 3458 (+111, +3.3%). **The completion
+  model as implemented does not slow the package; it keeps a worker's worth of cores awake**,
+  a power and thermal cost rather than a clock cost, and under load the io_uring package runs
+  slightly faster, which if anything favours it in a latency comparison. Still a mediator (the
+  treatment causes it), still part of what io_uring costs, opposite direction. The enter rate
+  on the stock kernel is about 417 000 a second, up from 230 000 on the hardened one because an
+  enter is cheaper there: one more sign the rate is set by the cost of an enter, not the load.
+- **RLIMIT_MEMLOCK is charged per user, not per process, and released 7 to 14 ms after the
+  holding process exits.** Found while a ctest `RESOURCE_LOCK` fix was refuted: failures
+  persisted at `-j1`, so they never needed parallelism; consecutive io_uring tests overlap in
+  accounting while never overlapping in time. Gap ladder, 12 runs each: 0 ms gives 8 failures,
+  50 ms gives 1, 200 ms gives 0. A green run that preceded this would have shipped a false fix;
+  repeated five times it was luck. **Ruled: a test-side fixture that waits, bounded, for the
+  per-user budget before creating a context; not a retry in ring init (changes the binary under
+  study mid-campaign; recorded as a candidate production improvement), not a smaller ring
+  (changes what is measured), not a larger ulimit (hides the constraint).** Portability chapter,
+  beside the EINVAL result. Schema 7 adds `server_euid`: root is exempt from the limit, and that
+  exemption is exactly what hid it.
+- **Syscalls per request on the repaired host, both arms unprivileged, over the pair**
+  (`clock_gettime` 0.0000 in every cell now, vDSO plus the coarse clock): epoll keep-alive
+  5.167, io_uring keep-alive 42.230, epoll churn 19.380, io_uring churn 1050.756 (that cell
+  still refused by the drift rule, a rise, expected). epoll churn over keep-alive is 3.751 on
+  this kernel against 4.116 predicted for the old host: a prediction that did not survive a
+  change of kernel.
+- **The cause is one line, found by reading and not yet changed.**
+  `src/net/io_uring/uring_context.cpp:492` sets `ts.tv_nsec = 1000`, a one-microsecond
+  timeout, and `:473` runs `poll_and_resume` / `process_callbacks` in an unconditional loop
+  with nothing blocking it, so every iteration issues an `io_uring_enter` with
+  `IORING_ENTER_GETEVENTS` and a deadline that has usually already passed. Four workers at
+  about 58 000 iterations a second is the measured 230 000. The rate is set by how long an
+  enter takes on the host, not by the workload, which is exactly the time-proportional
+  signature. The comment at `:489` names the trade deliberately ("balance between latency and
+  CPU usage"), so this is a design choice to re-price, not a bug. Incidental correction: the
+  comment at `:145` describes a kernel without `IORING_FEAT_EXT_ARG`; this one has it
+  (features 0x3ffff read from a live ring), so no timeout SQE is consumed here.
+  **Complete chain, all measured:** 1 us timeout to about 230 000 enters a second, to a
+  syscalls-per-request figure that measures the poll loop rather than the work, to a package
+  clock held about 145 MHz lower at zero load, to every latency comparison between the
+  backends carrying that as part of io_uring's cost. That chain is the spine of the
+  I/O-portability paper's first sub-study.
+  **Authorised next, on its own branch off the merged HEAD:** raise the timeout to about 1 ms,
+  one line, and measure before and after identically, including the cost the comment names,
+  which is added latency on the first request after an idle gap. A blocking wait when nothing
+  is in flight is the better design and should be attempted only after the one-line version
+  has shown the size of the effect.
+- **Nine `clock_gettime` per established connection is real per-connection work.** Stated,
+  retracted, and reinstated in one night, and the third version is the measured one. A rate
+  ladder at three points on a fixed shape (2000, 5000, 10000 requests a second, epoll, all
+  accepted) gives 2.005, 2.004, 2.002 clock reads per request: flat across a fivefold change,
+  with a least-squares floor of 10 a second, which is zero to within measurement. A fixed
+  reader of the size the earlier fit claimed would have made the per-request figure fall from
+  about 3.5 to 2.3 across that ladder, so there is no such reader and `timer_queue.hpp:107` is
+  not the explanation. **So about 9.3 reads per established connection against 2.00 per
+  request on an established one means roughly 7.3 genuine reads per connection**, and the
+  deadline machinery arming and disarming more than once per connection is back to being the
+  live hypothesis. Keep-alive is measured; churn is still inferred from a single rate and
+  wants its own ladder.
+  The retraction that failed was a two-point fit in which rate and shape moved together, so it
+  could not separate them, and two backends agreeing on it corroborated only that both mixed
+  the same two shapes the same way. **A decomposition that separates two effects needs at
+  least one more point than it has unknowns, and a fit whose variables moved together is not
+  evidence about either of them separately.** The io_uring conclusion is unaffected and the
+  reason is worth keeping: its two cells differ 25-fold in rate while the enter rate differs
+  1.04-fold, and no shape difference makes a per-request cost fall 25-fold.
 - **A half-specified off-host arrangement runs silently as an on-host one.**
   `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
   alone is ignored without a word, while `--host` is read unconditionally. The opposite
