@@ -734,9 +734,9 @@ def run_io_backend(build_dir: Path | None, requested: str | None = None) -> str:
     if arm not in arms:
         raise ValueError(
             f"the build in {build_dir} was configured with COROUTE_IO_BACKEND="
-            f"{compiled}, which does not contain {arm}. Configure a tree with the "
-            f"linux-dual preset to choose between the two arms at run time, or with "
-            f"linux-{arm} to measure that one."
+            f"{compiled}, which does not contain {arm}. The linux-dual preset builds "
+            f"both Linux arms and lets --io-backend choose between them; linux-release "
+            f"builds io_uring alone and linux-epoll builds epoll alone."
         )
     return arm
 
