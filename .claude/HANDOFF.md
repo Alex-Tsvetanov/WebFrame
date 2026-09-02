@@ -838,11 +838,42 @@ been scheduled yet.
   so there is no spurious re-arm per loop iteration. The cost is one submit per ACTUAL wake, which
   makes the hypothesis an arithmetic claim: +0.329 per request at 10 000/s means ~3300 genuine wakes a
   second, and something must be posting at that rate during a keep-alive run.
-  **AND IT IS TESTABLE FOR FREE, NO REBUILD: `wake()` is a plain 8-byte `::write` to the eventfd, and
-  a write is a syscall counted by name. The server's responses go out through the ring, so the `write`
-  count in those records IS the wake count.** About 0.33 per request confirms the hypothesis to three
-  significant figures; about zero means nothing is waking those workers and the rebuild would have
-  chased the wrong thing. Read the column first; rebuild only if it confirms.
+  **REFUTED FOR FREE, no rebuild: `write` is ZERO in the io_uring keep-alive cells** (below 0.0005 per
+  request), so `wake()` is never called, nothing posts work during a keep-alive run, and the re-arm
+  cannot be paying anything. **The wake fix costs nothing on this workload and is not a regression.**
+  The 3300-wakes-a-second arithmetic was a strong claim and simply false. The check was reading one
+  column of records already taken.
+  **WHAT THE +0.329 ACTUALLY IS: the enter count is BIMODAL at two exact values**, every run at one or
+  the other to three decimals: low mode 2.804 (n=3, futex 0.0014), high mode 3.205 (n=4, futex 0.1177).
+  **The gap is 0.4006 and the timer term is 4 workers x 1000/s ÷ 10 000 rps = 0.400: one WHOLE timer
+  term, present or absent.** Submits cannot vary (one per operation, two per request, structural) and
+  the timer term cannot vary (same workers, same timeout), so the earlier un-gated 2.876 sits between
+  the modes, near the low one.
+  **Two readings, and the exact size favours the second.** The laptop's: completion batching varies,
+  i.e. how many completions a wait harvests. The coordinator's: an exactly-one-timer-term gap is
+  BINARY, so in the low mode workers essentially never wait out the timeout because a completion always
+  arrives first, and in the high mode they do at the full rate. Graded batching would give a continuum
+  or a gap of no particular size.
+  **That sharpens the laptop's own best candidate: uneven connection distribution across the four
+  SO_REUSEPORT rings.** Connections are distributed at connect time and the distribution holds for the
+  run, so a run lands either with all four workers too busy to time out or with some light enough to
+  time out at full rate -- which accounts for the bimodality, its stability within a run, and the gap
+  being precisely one timer term. The futex signal moving with it fits (uneven load, more cross-thread
+  traffic).
+  **Discriminator, cheap, not for tonight: run the same cell with ONE worker.** With a single ring
+  there is no distribution to be uneven, so the mode should be fixed. If bimodality survives at one
+  worker, distribution is not the cause and the batching reading is better. One cell, minutes, changes
+  no result held.
+  **Consequence for the attribution:** epoll is stable (5.160, sd 0.030, agreeing with 5.090 to 1.4%);
+  io_uring is 2.804 or 3.205 by regime. So the crossing difference at 10 000 rps is 2.36 or 1.96 per
+  request against a 7-9 us gap, giving **3.0-3.8 or 3.6-4.6 us per crossing** -- both inside the
+  pre-registered 3-4, at opposite ends. Report as a range with the bimodality named, and name the gap
+  as one timer term rather than as an unexplained 0.4.
+  **The stop was still correct**: 13% against an sd of 0.251 is not a fluctuation. The cause is that an
+  sd is the wrong summary for a bimodal variable.
+  **And the frequency caveat is now carrying evidence rather than hedging:** two terms exactly
+  frequency-independent, one not, and the one that moved is the one flagged -- flagged BEFORE it moved,
+  which is the difference between a caveat and a post-hoc note.
 - **THE CHURN RESULT COMPLETES THE DEMULTIPLEXING CLAIM, and the negative beside it is what makes it
   a claim.** Cleartext, both arms, detect on minus off at p50, every cell resolving:
 
