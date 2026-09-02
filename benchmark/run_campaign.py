@@ -628,6 +628,28 @@ def design_mechanism() -> list[Cell]:
     ]
 
 
+def design_tls_thermal_probe() -> list[Cell]:
+    """One TLS cell, to find out whether spacing runs rescues TLS on a laptop.
+
+    Not a design that answers a question about the server. It answers a question about
+    the machine: whether a deliberate gap between runs sheds enough heat that a TLS run
+    holds its clock for its own duration.
+
+    It exists because the cross-arm transport campaign lost its entire TLS half to
+    frequency drift -- 76 of 140 runs refused against 0 of 140 cleartext, the refusals
+    directional and the surviving runs therefore the coolest fraction rather than a
+    random sample. Before designing a spaced campaign around that, one cell is measured
+    to see whether spacing works at all.
+
+    Read the drift, not the latency. If most runs pass the gate with a gap where they
+    failed without one, spacing is a route to the TLS half and the arrangement change
+    gets declared and designed properly. If they still fail, the limitation stands and
+    six minutes bought the certainty.
+    """
+    return [Cell.of(system_name(), **_base(tls=True), protocol_detection=True,
+                    offered_rate=10_000)]
+
+
 def design_demux_counted() -> list[Cell]:
     """What classification costs in kernel crossings, which is paper 2's missing number.
 
@@ -760,6 +782,8 @@ DESIGNS = {
     # Paper 2's syscall count. Run once per arm; see the design's docstring for why its
     # latency figures are not reportable.
     "demux-counted": design_demux_counted,
+    # One TLS cell, for the thermal question rather than a server question.
+    "tls-thermal-probe": design_tls_thermal_probe,
 }
 
 
@@ -853,6 +877,12 @@ def main(argv: list[str] | None = None) -> int:
                          "chose, and a run over anything else is refused. Use it wherever "
                          "the host has more than one interface on the subnet, where only "
                          "a route metric decides which carries the traffic")
+    # An arrangement change, not a convenience. See driver.run_campaign.
+    ap.add_argument("--run-gap", type=float, default=0.0, metavar="SECONDS",
+                    help="idle this long between runs. For a thermally limited machine "
+                         "where a run sheds clock through its own window and is refused "
+                         "for drift; the gap lets the machine return to a repeatable "
+                         "state. Changes what the campaign measures, so say so when used")
     args = ap.parse_args(argv)
 
     # Refused here rather than one cell at a time. perf exists only on Linux and only
@@ -1177,6 +1207,7 @@ def main(argv: list[str] | None = None) -> int:
         on_record=report,
         probes=probes,
         expect_interface=args.expect_interface,
+        run_gap_s=args.run_gap,
     )
 
     summary = driver.summarise(records)
