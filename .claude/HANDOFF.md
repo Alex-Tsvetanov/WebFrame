@@ -238,10 +238,13 @@ been scheduled yet.
   **Confirmed from the code, and the subtraction IS principled:** both quantities are measured from
   the same origin, `c.issued = next_due`, with pacing pushed at send completion and latency at
   response arrival, so `latency - pacing` is exactly response-arrival minus send-completion, with no
-  double counting. **But the per-request pairing does not exist:** they are separate vectors,
-  aggregated across threads and sorted independently, and `pacing_us` gets one push per completed send
-  while `latencies_us` gets one per response in a batch, so the two are not the same length when
-  responses coalesce. There is no request identity in the JSON. So 464 against 4 is a difference of
+  double counting. **The per-request pairing does not exist, but NOT for the reason first
+  given.** The laptop first said the vectors differ in length and then corrected itself: they are the
+  same length in every record (checked across nine records at both rates), because the generator hands
+  new work only to connections that are not already awaiting a response, so exactly one request is
+  outstanding per connection and the batch loop always pushes one. **The real reason is that the two
+  vectors are sorted INDEPENDENTLY before percentiles are taken, so a difference of percentiles is not
+  a percentile of differences.** That reason stands alone and is the one for the text. So 464 against 4 is a difference of
   percentiles, approximate, and the text must say so with that reason.
   **SCHEMA-9 CANDIDATE, and it is bigger than a convenience: the queueing decomposition.** A third
   vector recorded per request at response arrival, when both timestamps are in hand, gives the paired
@@ -255,11 +258,11 @@ been scheduled yet.
   the path, the softirqs and the veth pair, and over the two-host arm will conspicuously not be the
   server's own occupancy. Name it for what it measures and let the text say it bounds service time
   from above; a field named for a quantity it does not contain will be quoted as that quantity.
-  (ii) **Check the pairing is well defined at all.** `c.issued` is per CONNECTION. If a connection can
-  hold more than one request outstanding there is no single send timestamp to subtract at response
-  arrival, and the field would be silently wrong in exactly the cells that pipeline. Churn is one
-  request per connection and safe; the keep-alive designs at high rates are the ones to check. If
-  requests overlap, this needs a per-request timestamp and is a larger change than one vector.
+  (ii) **Pairing is well defined: pipelining cannot happen.** `loadgen.cpp:1061` skips any connection
+  with `awaiting` set, and that clears only on response completion, so one request is outstanding per
+  connection always, structurally rather than by design choice. At response arrival there is exactly
+  one send timestamp to subtract. So this really is one vector computed where both timestamps are
+  already in hand, not the larger change. Name agreed: `time_after_send_us`.
   **Caveat on that subtraction:** a p50 minus a p50 has no interpretation unless the distributions
   align request by request. Do it PER REQUEST and take the percentile of the differences, and confirm
   from the code that latency includes pacing by construction rather than from the field names.
@@ -289,6 +292,27 @@ been scheduled yet.
   how many components must leave idle on the path, so an end-to-end figure cannot be built by
   multiplying a single-wake cost. The three appearances are then not one curve: 62 us is one wake at
   10 ms, 413 us is a whole request path at 10 ms, 220 us is a kernel-to-kernel path at 200 ms.
+- **A MECHANISM FOR THE STALL FINDING, and a PREDICTION put on the record before the desktop's check
+  runs.** The two machines found halves of one thing without noticing. The generator hands new
+  requests only to connections not already awaiting a response (`loadgen.cpp:1061`), and that flag
+  clears only when the response completes. So a slow server holds connections in `awaiting`, held
+  connections cannot take new work, due instants keep arriving with nothing to issue them on, and the
+  generator falls behind schedule. **Server slowness propagates into pacing lateness BY CONSTRUCTION,
+  through the connection pool.** That is why the desktop's three refused runs were the runs where the
+  server's own distribution had moved: not a coincidence in ten runs but a path in the generator.
+  **PREDICTION, recorded 2026-09-02 evening, before the refusal-bias table exists: the seven
+  informative refusals will come out OUTSIDE.** If they come out inside, either the pool was not the
+  binding constraint in those cells or the code reading is wrong; both would be worth knowing. The
+  laptop is confirming the reading from the source with line numbers rather than from the
+  coordinator's paraphrase. **The procedure at `1b756e905` is NOT to be adjusted for this** -- a
+  prediction made in advance tests the mechanism, a procedure adjusted to meet one tests nothing.
+  What it changes is the meaning of a positive result: not "refusal appears to remove slow runs and we
+  do not know why" but "refusal removes slow runs and here is the path by which it must", which is a
+  different class of claim and answers the reviewer who asks whether ten runs found a coincidence.
+  **And it sharpens what the thesis owes: the pacing gate is described as a check on the GENERATOR,
+  and if this holds it is partly a SERVER-health signal by construction. That is a correction to the
+  methodology chapter, not an addition -- the guard built against coordinated omission is coupled to
+  the thing it was guarding.**
 - **THE SYSTEMIC QUESTION THIS OPENS, and the check that settles it.** If pacing refusals correlate
   with the server being slow, that is a property of pacing refusals, not of rate 400 -- and we discard
   them everywhere. h1-deep refused 4 at 40 000 and above, transport 1 at 5000, churn 2 at 25/s,
