@@ -760,11 +760,20 @@ class CorouteServer:
             counts = parse_perf_counts(text)
             total = counts.get(TOTAL_TRACEPOINT, 0)
             if total <= 0:
+                # perf's own words, not a guess at them. Piping its stderr and never
+                # reading it is how the server's startup failures used to become a
+                # thirty second timeout with no reason attached; the same mistake here
+                # would leave "counted zero" with nothing to act on.
+                detail = ""
+                if self._perf is not None and self._perf.stderr is not None:
+                    raw = self._perf.stderr.read()
+                    detail = (raw.decode(errors="replace") if isinstance(raw, bytes) else raw or "").strip()
                 raise RunFailed(
                     f"syscall counting produced {TOTAL_TRACEPOINT}={total}, which cannot "
                     f"be true of a server that served this run. perf attached to the "
                     f"wrong process or could not open the events; the counts are not "
-                    f"usable and the run is refused rather than recorded as quiet."
+                    f"usable and the run is refused rather than recorded as quiet. "
+                    f"perf said: {detail[:400] or '(nothing)'}"
                 )
             return counts
         finally:
