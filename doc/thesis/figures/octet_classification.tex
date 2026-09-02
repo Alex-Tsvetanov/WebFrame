@@ -18,6 +18,8 @@
     drop/.style={proc, fill=gray!10, densely dashed, thick, text width=2.6cm},
     lbl/.style={font=\fontsize{8}{9.5}\selectfont, align=left, inner sep=1.5pt,
                 fill=white},
+    % Бележките локално са с по-дребен шрифт, за да са в мащаба на кутиите.
+    note/.append style={font=\fontsize{8}{10}\selectfont, inner sep=4pt},
   ]
 
   % ---- корен -------------------------------------------------------------
@@ -39,7 +41,7 @@
   \node[lbl, anchor=north west] at (8.62,6.62) {\code{[0x41, 0x5A]}\\главна буква ASCII};
   \node[lbl, anchor=south east] at (12.88,6.80) {друга стойност};
 
-  \node[note, anchor=north, text width=3.0cm] at (13.0,4.75)
+  \node[note, anchor=north, text width=3.0cm] at (13.0,4.45)
     {Не се гадае по следващите байтове.};
 
   % ---- ниво 2 ------------------------------------------------------------
@@ -52,7 +54,7 @@
   % Сравнението е инкрементално. При съвпадащ префикс решението се отлага, вместо
   % да се чакат и 24-те байта на преамбюла. Оттам примката обратно към ромба.
   \draw[thin flow] (dec.north west) to[out=135, in=180, looseness=1.6] (dec.west);
-  \node[note, anchor=south east] at (7.1,4.60) {\code{Maybe}: още байтове};
+  \node[note, anchor=south east] at (7.0,4.60) {\code{Maybe}: още байтове};
 
   % ---- листа -------------------------------------------------------------
   \node[leaf] (h2tls) at (0.6,1.9)  {\code{h2}\\над TLS};
@@ -71,13 +73,13 @@
   \node[lbl] at (7.55,2.90) {\code{Yes}};
   \node[lbl] at (9.55,2.90) {\code{No}};
 
-  \node[note, anchor=north, text width=3.0cm] at (6.9,1.35)
+  \node[note, anchor=north, text width=2.7cm] at (6.9,1.35)
     {Предварително знание, без \code{ALPN}.};
-  \node[note, anchor=north, text width=3.0cm] at (10.15,1.35)
+  \node[note, anchor=north, text width=2.7cm] at (10.15,1.35)
     {Надграждане до \code{WebSocket} или \code{h2c}.};
 
   % ---- твърдението, върху което стъпва решението с един байт ---------------
-  \node[grp, note, text width=13.0cm, fill=gray!10] at (6.85,-0.35)
+  \node[grp, note, text width=13.0cm, fill=gray!10] at (6.85,-0.6)
     {Двете начални множества не се пресичат. Точно един октет започва TLS запис,
      точно 26 октета започват метод в открит текст, нито един не прави и двете.
      Затова един байт стига. Проверено изчерпателно върху всичките 256 стойности
