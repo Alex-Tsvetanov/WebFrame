@@ -184,6 +184,28 @@ been scheduled yet.
   have caught it because nothing measured delivery latency on an idle loop. The finding is not that
   the code had a bug; it is that a class of defect was invisible until someone measured the mechanism
   rather than the outcome.
+- **ALL THREE WAKES ARE FIXED AND MAINLINE IS GREEN EVERYWHERE.** macOS: 179 of 179 including the
+  laptop's test 42, 310 self-checks. Delivery of a posted callback on an idle context, one table for
+  the whole finding:
+
+  | backend | before | after |
+  |---|---|---|
+  | epoll | 50138 us | 34 us (worst 74) |
+  | io_uring (1 ms wait) | 962 us | 9 us (worst 39) |
+  | kqueue | 98486 us | 6 to 12 us (worst 32) |
+  | IOCP | correct already | unchanged |
+
+  kqueue's fix is `EVFILT_USER` armed with `EV_ADD | EV_CLEAR` at init and triggered by
+  `NOTE_TRIGGER` from `wake()`, which takes no lock because `kevent()` is safe from another thread on
+  the same descriptor; null `udata` is what the dispatch loop already used to skip it. `stop()` wakes
+  too, so teardown no longer waits out a worker's current `kevent()`. 21 of 21 posts delivered before
+  AND after, so the old failure was latency and not loss.
+  **Why kqueue's before is 98 ms and not the ~50 ms predicted:** ~50 ms is the average over randomly
+  phased arrivals; this test phase-locks to the worst case, because both workers are spawned together
+  and each post goes out 2 ms after the previous one was delivered by a timeout, so it lands 2 ms into
+  a fresh 100 ms park every time. kqueue is not worse than epoll; the cadence locks harder here.
+  Note the 100 ms timeout is deliberately KEPT in all three as a backstop: a missed wake now costs
+  100 ms instead of parking a worker forever. It stopped being the mechanism and became the fallback.
 - **THE WAKE DEFECT IS IN THREE BACKENDS OF FOUR, and that is the result rather than three bugs.**
   Confirmed by the coordinator on macOS: `kqueue` is epoll's case exactly. `post()`
   (src/net/kqueue/kqueue_context.cpp:245) pushes onto the callback queue and nothing wakes the loop;
