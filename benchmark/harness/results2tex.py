@@ -378,6 +378,15 @@ def main(argv: Sequence[str]) -> int:
     # different population and merging the two would hide that behind a larger n.
     also = [Path(a) for a in argv[3:] if a.endswith(".jsonl")]
     rest = [a for a in argv[3:] if not a.endswith(".jsonl")]
+    # The campaign's name in the derived keys (campaign.<name>.runs and so on) is the
+    # file's stem unless `name=` says otherwise. The chapter's keys were written for a
+    # campaign called x1, after the hypothesis, and the design that produces it is
+    # called h1-deep, after what it runs. Renaming the file to satisfy the key would put
+    # a second copy of the evidence under a name the harness never wrote; naming the
+    # campaign explicitly keeps one file and says which hypothesis it serves.
+    names = [a for a in rest if a.startswith("name=")]
+    name = names[0][len("name="):] if names else runs.stem
+    rest = [a for a in rest if not a.startswith("name=")]
     key_factors = tuple(rest[0].split(",")) if rest else DEFAULT_KEY_FACTORS
 
     records = list(schema.read(runs))
@@ -387,9 +396,9 @@ def main(argv: Sequence[str]) -> int:
         print("nothing to emit; every run was rejected")
         return 1
 
-    counts = campaign_counts(runs.stem, records)
-    counts.update(hypothesis_x1(runs.stem, records))
-    counts.update(tail_modes(runs.stem, records))
+    counts = campaign_counts(name, records)
+    counts.update(hypothesis_x1(name, records))
+    counts.update(tail_modes(name, records))
     for path in also:
         other = list(schema.read(path))
         counts.update(campaign_counts(path.stem, other))
