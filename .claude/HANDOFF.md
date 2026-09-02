@@ -718,8 +718,25 @@ been scheduled yet.
   measured independently on another machine; the duty-cycle story was fitted to the boundary it was
   explaining.** It also gives sharpness without needing a loop gain to cross exactly one, and an
   absolute wake threshold is the kind of thing an operating system has.
-  **Refined prediction: if parking needs roughly 1-2 ms of slack to matter, the boundary is where the
-  period is about 10.3-11.3 ms, a rate of about 88 to 97.**
+  **CAVEAT, from the desktop, and it is the same species of borrowing caught twice already: THE
+  AMPLITUDES DIFFER BY 150x.** The Linux ladder saturates at 62-65 MICROSECONDS; the Windows slow mode
+  costs 9.3 MILLISECONDS. So the ladder's SHAPE may transfer (depth grows with interval and saturates)
+  and that shape is what the argument needs, but its SCALE demonstrably does not -- and "saturation by
+  about 5 ms" is a property of the scale. Predicting the Windows boundary from the Linux saturation
+  point assumes the time axis carries over while the vertical axis provably does not.
+  **So: the refined prediction of 88 to 97 per second is CONDITIONAL on that unstated assumption, and
+  the honest interval is wider. The desktop's 85 to 100 rests on desktop data alone and is the one to
+  defend.** A boundary landing at 92 would be consistent with the Linux curve without confirming it,
+  since 92 is also the middle of the interval already held.
+  **AND THE AMPLITUDE MAY ARGUE AGAINST PARKING ALTOGETHER, which cuts against both framings.** 9.3 ms
+  is not a plausible idle-exit cost -- those are microseconds to tens of microseconds, which is what
+  the laptop measured. 9.3 ms is the order of a TIMER TICK or a scheduling quantum. The slow mode's
+  range across cells is 8.67 to 10.66 ms, straddling ten, against a fast mode of 0.3 to 2.4. That
+  looks less like a deeper park than like ONE EXTRA TICK -- and a tick is either missed or not, which
+  would explain the bistability more directly than a feedback loop or a depth threshold, there being
+  nothing continuous to cross. Not proposed as a mechanism (no candidate timer; one timer story was
+  already killed from the source tonight), but a reason to hold the parking framing loosely rather
+  than treat the mechanism as settled with only the boundary open.
   **Judgement rule fixed in advance:** high and flat at 50/60/70, lower at 85, zero at 100 supports it,
   and the follow-up is then rates **90 and 95**, 15 repetitions each,
   as a SECOND committed design `churn-proportion-fine` on the same branch, run only if the five come
