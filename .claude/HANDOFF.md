@@ -206,6 +206,37 @@ been scheduled yet.
   **For the methodology chapter: an open-loop generator's pacing gate is a detector of SERVER stalls,
   not merely a check on the generator.** It was built against coordinated omission and has caught a
   server-side event nothing else in the harness watches for.
+- **THE IDLE LADDER IS MEASURED, and it opens a gap that may be the biggest methodological finding
+  of the two days.** Blocking arm, 200 posts per gap, delivery cost against the interval between
+  posts: 1 ms -> 9 us, 2 ms -> 26, 5 ms -> 63, 10 ms -> 62, 20 ms -> 63, 50 ms -> 65. It climbs and
+  **plateaus flat from 5 ms onward**, so parking depth grows with the idle interval and saturates.
+  An idle-cost figure without its interval is meaningless, now measured rather than asserted.
+  **But it does not reconcile with the load cell and about 350 us is unaccounted for.** At 10 ms the
+  ladder says a wake costs 62 us; the load cell at 100/s, same interval, same machine, same arm, shows
+  an idle-versus-awake difference of 413 us, nearly seven times larger.
+  **Coordinator's hypothesis, to be tested first because it is nearly free: the open loop charges the
+  GENERATOR'S OWN WAKE to the server.** Latency is measured from the assigned due instant, not from
+  when the request left, which is the whole point of the design and what stops coordinated omission.
+  But at 100/s on a machine allowed to idle, the generator's core has been parked for 10 ms when the
+  due instant arrives, and its exit cost lands inside the measured latency, attributed to the server.
+  The delivery test cannot see this by construction: its poster timestamps AFTER waking, so 62 us is
+  the cost of waking one receiver only. **Test: compare latency from the due instant against latency
+  from the actual send timestamp, same runs. Near 350 us at 100/s and near zero at 10 000/s confirms
+  it.** The records may already carry what is needed; if not it is one field in loadgen and worth
+  having permanently.
+  **If confirmed this belongs in the methodology chapter, not only in paper 3: an open-loop generator
+  on a machine that is allowed to idle charges its own wake-up cost to the system under test, and the
+  error grows as the offered rate falls.** It applies to anyone using this design, and it would mean
+  our own low-load latencies are overstated by an amount we can measure. It fits everything else:
+  absent under load because the generator never parks, present in every low-load cell.
+  The laptop's competing hypothesis stays alive and is not exclusive: a request path wakes several
+  components (generator core, softirq, server core, and the return), while the delivery test wakes
+  one. The residual after subtracting the generator's exit is what that accounts for, and the way to
+  split it is spinners on ONE side only. That is the second experiment, not the first.
+  Either way, keep the laptop's general statement: a wake cost is a property of the interval AND of
+  how many components must leave idle on the path, so an end-to-end figure cannot be built by
+  multiplying a single-wake cost. The three appearances are then not one curve: 62 us is one wake at
+  10 ms, 413 us is a whole request path at 10 ms, 220 us is a kernel-to-kernel path at 200 ms.
 - **THE SYSTEMIC QUESTION THIS OPENS, and the check that settles it.** If pacing refusals correlate
   with the server being slow, that is a property of pacing refusals, not of rate 400 -- and we discard
   them everywhere. h1-deep refused 4 at 40 000 and above, transport 1 at 5000, churn 2 at 25/s,
@@ -217,6 +248,34 @@ been scheduled yet.
   is harmless and we will have shown it rather than assumed it; mostly outside means the thesis needs
   a statement that pre-declared refusal is not neutral, that it preferentially removes the runs where
   the server behaved worst, and that reported tails are optimistic. Either answer is publishable.
+  **PRE-DECLARED IN FULL BEFORE THE DESKTOP LOOKS AT ANY OF THE FIFTY** (this is the point of the
+  exercise; none of it may be fitted afterwards):
+  (a) A refusal is OUTSIDE if its latency p99 exceeds the maximum latency p99 of the accepted runs in
+  the same cell. One statistic, one direction.
+  (b) A cell is the FULL factor combination the design varies, and a refusal is compared only against
+  accepted runs identical on every factor, factors read from the records. Never pool to enlarge the
+  comparison set: pooling the arms at rate 400 would have compared TLS refusals against faster
+  cleartext runs and systematically weakened the test towards "inside". A test that can be weakened by
+  choosing a larger comparison set is not a test.
+  (c) Ranks on latency p50/p99 and establishment p50/p99 reported beside the binary, plus the accepted
+  count in every row: "above all 47" and "twelfth of 47" are different facts.
+  (d) Fewer than five accepted runs in a cell is a WEAK BOUND and marked; zero accepted is UNDEFINED
+  and counts for neither side. The test is not equally powerful across rows, and it is biased TOWARD
+  the finding in thin cells, since exceeding the maximum of four runs is easy.
+  (e) **The systemic conclusion is drawn only if the outside verdicts survive removing every
+  weak-bound row.** Report both counts.
+  (f) Rate 800's forty are reported but marked UNINFORMATIVE, because at a rate past the arrangement's
+  ceiling the server is expected to be slow, so the test is undefined there rather than merely untidy:
+  those runs cannot distinguish a stall from a ceiling behaving like one. Including them would inflate
+  the count while weakening the finding.
+  So the finding rests on **ten** runs: 2 in churn at 25/s, 1 in transport at 5000, 4 in h1-deep at
+  40 000 and above, 3 in churn-net at 400. **Three of those ten are the rate-400 cases already known
+  to be outside and used to define the pattern, so the interesting number is the other seven.**
+  Claim wording fixed in advance both ways. Outside: refusal is not demonstrably neutral and the
+  thesis must say reported tails are optimistic by an unbounded amount -- a flag on the method, NOT a
+  measurement of the bias. Inside: on the refusals we have, at the rates we can test, the discard
+  shows no sign of removing slow runs -- not that it is harmless in general, and the rate-400 case
+  stands on its own evidence regardless.
 - **Routing e2e ran, and `main` lost its first nine runs to a firewall warm-up race.** 90 runs, 81
   accepted; the nine refusals are "delivered 0.0% of the offered rate" with socket errors, at the low
   rates 1000 and 4000, and they are **positions 1 through 9 consecutively**, followed by 81 consecutive
