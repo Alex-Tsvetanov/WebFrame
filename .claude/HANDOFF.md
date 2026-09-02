@@ -580,6 +580,26 @@ been scheduled yet.
   the other at the moment of writing. A third adds only the appearance of a survey. A chapter arguing
   for independent review is the last place to put a statistic assembled by the two people it
   flatters.
+  **FINAL FORM, after the desktop sharpened it once more: the sample is SELECTED ON THE OUTCOME.** An
+  error produces a long exchange precisely when it is subtle enough to survive its author's own check,
+  which is the definition of the class being estimated, so the selection criterion and the quantity
+  are the same variable. The sample would show a high proportion of framing errors whatever the true
+  proportion was. That is the circular ratio one level up, and neither party saw it until the desktop
+  did.
+  **The operative sentence, and the actionable half: a second reader must be running DIFFERENT
+  REASONING, not reading the same argument again.** The desktop and the laptop read the same source
+  lines and reached compatible conclusions; that was duplication, not independent review, and it
+  produced nothing until the two readings were framed against each other.
+  **Corollary for the chapter: tonight's independence came from three different POSITIONS relative to
+  the claim** -- one holding Linux source and Linux measurements, one holding the same source but
+  another platform's data and a different campaign, one holding neither but holding what the thesis
+  asserts. The reasoning differed because the vantage points did. So the instruction a reader can
+  follow is not "have someone check it" but "have it read by someone standing somewhere else", and the
+  thing to engineer is the difference in position rather than the number of readers.
+  **The chapter carries: the mechanism, two worked examples, one plain sentence that other errors that
+  evening were ordinary ones self-review does catch, and the independence-of-position instruction.
+  Nothing further -- continuing to polish a paragraph about over-elaboration would be its own
+  demonstration.**
 - **CROSS-ARM RE-RUNS ARE RUNNING on `a4519ada2`, through the driver, about six hours.** Preflight
   passed on both arms (smoke 2/2 each) and confirms schema 8 live end to end: `server_euid` 1000 and
   `generator_euid` 1000 attested, `local_interface` recorded as `veth-gen` from the socket with speed
