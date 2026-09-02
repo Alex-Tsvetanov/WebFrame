@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 04:55 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 13:15 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -392,17 +392,16 @@ been scheduled yet.
   history at `068431b37`.
 - `Compile-time-Protobuf` has uncommitted rebuilt PDF/DOCX/presentation; not touched.
 
-## For Alex, in the morning: one urgent action, then four decisions
+## For Alex: what is done and what remains
 
-**Do item 0 first. Everything else can wait; that one cannot.**
+**Item 0 is done; the campaign is safe and filed.** Item 1 is the one that unblocks the most now.
 
-0. **PUSH THE RESULTS BRANCH. The campaign exists in one place.** `71baff233` on
-   `measure/desktop-2026-09-02` on the desktop, 1184 records from three designs and eight
-   hours of machine time, is a local unpushed commit plus a copy on the same disk in the same
-   tree. No remote, no second machine. One disk failure loses the night. Push it to the
-   private `paper-socket-demux` repository (add it as a second remote; it must not go to the
-   public framework repo, because the environment records name the host). The desktop pushes
-   nothing by its own policy, so this is the one step nobody else can take.
+0. (DONE 2 Sep ~13:10.) Alex pushed `measure/desktop-2026-09-02` to the private
+   `paper-socket-demux` repository, and the coordinator filed the twenty files into
+   `measurements/2026-09-02-desktop/` on its `main` at `e2b16448`, byte-identical to the
+   branch blobs, with a README entry stating provenance and what the data does not show.
+   That branch in the paper repo carries the whole framework history and can be deleted at
+   leisure; the files on `main` are the record.
 
 1. **The Windows firewall is blocking the off-host arm.** Two auto-created inbound block
    rules for the freshly built server binary, which is why every loopback design ran and
