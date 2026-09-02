@@ -19,6 +19,7 @@ import platform as _platform
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -435,10 +436,9 @@ class CorouteServer:
             if self._proc is not None and self._proc.poll() is not None:
                 raise RunFailed(self._startup_failure())
             if not connected:
-                try:
-                    with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
-                        connected = True
-                except OSError:
+                if self._connect_once():
+                    connected = True
+                else:
                     time.sleep(0.05)
                     continue
             # Listening and having said which backend it is listening on are not the
@@ -463,6 +463,36 @@ class CorouteServer:
                 f"{''.join(self._output).strip()[:500] or '(nothing)'}"
             )
         return False
+
+    def _connect_once(self) -> bool:
+        """One readiness connection, made from wherever the server is.
+
+        Without a prefix that is this host's loopback, as before. With one it is not,
+        and connecting here would be connecting to the wrong namespace: a server behind
+        `ip netns exec srv` holds no port this host can reach, so every poll fails and
+        every run is filed as a 30 second readiness timeout no matter how healthy the
+        server is. That is precisely what the first namespace campaign did.
+
+        The connection is still a connection rather than a listening check, because
+        answering is what readiness means here and a bound socket that never accepts
+        would otherwise pass. Inside the namespace 127.0.0.1 is that namespace's own
+        loopback, which netns.py brings up, and the server binds the wildcard address.
+        """
+        if not self.launch_prefix:
+            try:
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.25):
+                    return True
+            except OSError:
+                return False
+
+        probe = subprocess.run(
+            [*self.launch_prefix, sys.executable, "-c",
+             "import socket,sys;"
+             "s=socket.create_connection(('127.0.0.1',int(sys.argv[1])),timeout=0.25);"
+             "s.close()", str(self.port)],
+            capture_output=True,
+        )
+        return probe.returncode == 0
 
     def server_pid(self) -> int | None:
         """The benchmark_server process, not whatever was used to launch it.
