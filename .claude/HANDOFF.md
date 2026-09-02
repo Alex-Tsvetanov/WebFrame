@@ -1726,6 +1726,24 @@ findings in the laptop's own words, unredacted as you authorised.
    "mechanism" both papers 2 and 3 rest on).
 6. Then paper 4's UDP-seam reconciliation on a scratch branch (design work, Linux).
 
+## Alex's decisions, 2 September ~22:30 EEST
+
+1. **The desktop pushes its own measurement branches** to the private paper repositories; no need to
+   ask. Instructed: `-net` and `-sweeps` to `paper-socket-demux`, `-routing` to `paper-dfa-routing`.
+2. **The pacing gate is demoted from admission rule to recorded covariate.** Admission rests on
+   achieved share, non-2xx and socket errors, and the environment gates; pacing p99 is reported beside
+   every cell. This re-evaluates every filed campaign (a re-analysis from stored fields, not a re-run)
+   and changes chapter V, chapter VI and paper 2's refusal counts. In progress on the coordinator's
+   side.
+3. **The two-host run across the physical Ethernet is approved**, for overnight, after the laptop's
+   cross-arm campaign and after Alex has finished using the desktop. Design to be pre-declared and
+   committed before it runs.
+4. **Venues stay as TODO** in all three paper headers.
+5. **The establishment-anomaly proportion experiment runs overnight** on the desktop, after Alex is
+   done with it. Not before.
+**Until told otherwise the desktop is Alex's: he is playing a game on it. The desktop session pushes
+the branches and then does nothing at all.**
+
 ## Who is the coordinator right now
 
 > **What may not appear in this repository, which is PUBLIC** (`Alex-Tsvetanov/WebFrame`,
