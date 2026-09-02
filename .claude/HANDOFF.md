@@ -192,6 +192,21 @@ been scheduled yet.
   on/off CSVs, X1, the wait-timeout before/after, epoll's own per-request syscall list) stand.
   Windows has no within-platform cross-arm comparison, so the desktop's running campaign stands;
   IOCP joins the shared helper and the desktop rebuilds only between campaigns.
+  **Inventory (laptop, `design/socket-options-inventory.md` on `linux/socket-opts-shared`):**
+  three problems, not one. (a) epoll vs io_uring as above. (b) io_uring vs itself: only the
+  multi-accept loop calls `set_tcp_opts` (uring_context.cpp:1023); `async_accept` (:792) builds an
+  unconfigured connection, so unit tests and any TLS listener on that path differ from the
+  benchmark's cleartext path (laptop is checking whether the filed TLS cells went through it;
+  if so, "what TLS costs" is confounded, tls demux on/off still stands). (c) **kqueue and IOCP set
+  no TCP_NODELAY at all: macOS and Windows ran with Nagle on, Linux with it off.** Listening
+  sockets: kqueue has no SO_REUSEPORT (recorded, out of scope). Ruled: helper
+  `configure_accepted_socket(NativeSocket)` in `include/coroute/net/socket_options.hpp` +
+  `src/net/socket_options.cpp`, called from every connection constructor (epoll's shape, no
+  accept path can bypass it); policy NODELAY everywhere, QUICKACK Linux one-shot at accept
+  (stated as such), SO_SNDBUF 256 KB everywhere; SO_NOSIGPIPE and SO_UPDATE_ACCEPT_CONTEXT stay
+  outside the helper as platform obligations. Laptop building it now, with before/after on the
+  epoll cell (100 idle, 100 awake, 500). The awake control is 16 `nice -n 19` bash spinners,
+  one per logical core, started after listen and before the generator, killed by PID.
 - **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
   bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
   the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
