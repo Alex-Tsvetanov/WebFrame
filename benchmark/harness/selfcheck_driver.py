@@ -258,6 +258,45 @@ def run(check: Callable[[str, bool], None]) -> None:
     check("and keeps the counts the first stop returned",
           record.syscall_counts == {"raw_syscalls:sys_enter": 5})
 
+    # --- a namespaced run proves the generator was not root -------------------
+    #
+    # The asymmetry the namespace rig rests on -- root server, unprivileged generator --
+    # was asserted in a comment and measured nowhere. Both prefixes are free-form strings
+    # and an operator who omits the runuser gets a root generator whose record reads like
+    # a correct run.
+    def prefixed(cell: ordering.Cell) -> FakeServer:
+        server = FakeServer(cell=cell, log=[])
+        server.launch_prefix = ["sudo", "-n", "ip", "netns", "exec", "srv"]
+        return server
+
+    def with_euid(value: int | None) -> FakeGenerator:
+        return FakeGenerator(result=dataclasses.replace(FakeGenerator().result, euid=value))
+
+    for euid, label in ((None, "that did not say who it was"),
+                        (0, "that ran as root")):
+        record = _run_one(
+            _scheduled(), server_factory=prefixed, generator=with_euid(euid),
+            environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+        )
+        check(f"a namespaced run with a generator {label} is refused",
+              not record.accepted and any("generator" in r for r in record.rejection_reasons))
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed, generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("one that dropped back to a user is accepted", record.accepted)
+    check("and the record says which user", record.generator_euid == 1000)
+
+    # Without a prefix there is no asymmetry to keep, so a generator that reports nothing
+    # is ordinary: that is every macOS and Windows run.
+    record = _run_one(
+        _scheduled(), server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=with_euid(None), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("an unprefixed run needs no uid at all", record.accepted)
+
     # --- guards decide -------------------------------------------------------
     record = _run_one(
         _scheduled(),

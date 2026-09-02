@@ -61,7 +61,13 @@ from typing import Any, Iterator
 # requests_total, because the counter spans the generator's warmup as well as its
 # measured window and dividing a whole-lifetime count by a measured-window count would
 # inflate syscalls per request by roughly (warmup + duration) / duration.
-SCHEMA_VERSION = 5
+#
+# 6 added generator_euid, which says who ran the load rather than who was asked to. A
+# file at version 5 or below cannot answer it: the namespace arrangement asserts that the
+# generator drops back to the invoking user while the server stays root, and until this
+# version nothing measured either half, so a run there whose prefix silently failed to
+# drop is indistinguishable in a version 5 record from one that dropped correctly.
+SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -210,6 +216,10 @@ class RunRecord:
     # pinned one rather than assumed to be either.
     affinity_requested: str | None = None
     affinity_applied: bool | None = None
+    # Who ran the load, as the generator reports it. None on Windows, which has no such
+    # id, and on a run whose generator predates the field. Under a launch prefix a None
+    # or a zero is refused: the whole arrangement rests on the generator not being root.
+    generator_euid: int | None = None
     # A laptop can change its power and thermal regime mid-campaign in a way the desktop
     # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
     # and caps clocks, which makes the number uncitable for the same reason a virtualised

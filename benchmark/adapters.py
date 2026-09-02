@@ -1075,6 +1075,9 @@ class LoadgenGenerator:
                                 and mask_hex.strip("0") else None),
             affinity_applied=_as_bool(data.get("affinity_applied"))
             if "affinity_applied" in data else None,
+            # Absent on Windows and from a generator built before it reported one, which
+            # is why this is None rather than a number the driver could compare blindly.
+            euid=int(euid) if (euid := data.get("euid")) is not None else None,
             argv=list(argv),
         )
         return result

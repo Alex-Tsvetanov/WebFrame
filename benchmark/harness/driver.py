@@ -76,6 +76,9 @@ class GeneratorResult:
     # because on macOS they differ and the difference is not visible in any other field.
     affinity_requested: str | None = None
     affinity_applied: bool | None = None
+    # Who ran the load. None from Windows, which has no such id, and from a generator
+    # built before it reported one; neither is a failure on its own.
+    euid: int | None = None
     argv: list[str] = field(default_factory=list)
 
 
@@ -284,6 +287,28 @@ def run_one(
             server.start_syscall_count()
 
         result = generator.run(cell, duration_s)
+
+        # Under a namespace prefix the two ends are supposed to differ in privilege: the
+        # server stays root, because io_uring needs CAP_SYS_ADMIN on this host and an
+        # epoll arm that differed from it in scheduling class as well as in backend would
+        # carry the one confound this comparison cannot, while the generator's prefix
+        # drops back to the invoking user. Both prefixes are free-form strings nothing
+        # inspects, and an operator who omits the runuser gets a root generator and a
+        # record that reads exactly like a correct run. Asked of the generator rather
+        # than read from /proc, where the pid under `sudo -n ip netns exec` is sudo's.
+        if getattr(server, "launch_prefix", None):
+            if result.euid is None:
+                raise RunFailed(
+                    "the generator did not report its uid, and under a launch prefix "
+                    "that is the only thing establishing it was not run as root"
+                )
+            if result.euid == 0:
+                raise RunFailed(
+                    "the generator ran as root; its prefix did not drop back to the "
+                    "invoking user, so both ends of the comparison share a privilege "
+                    "the arrangement says only the server has"
+                )
+        record.generator_euid = result.euid
 
         # The clock sample is taken from the thread before the counter is stopped, so a
         # counting failure, which raises, still leaves the run with the clock it was
