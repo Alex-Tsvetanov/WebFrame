@@ -1847,8 +1847,13 @@ findings in the laptop's own words, unredacted as you authorised.
 4. **Venues stay as TODO** in all three paper headers.
 5. **The establishment-anomaly proportion experiment runs overnight** on the desktop, after Alex is
    done with it. Not before.
-**Until told otherwise the desktop is Alex's: he is playing a game on it. The desktop session pushes
-the branches and then does nothing at all.**
+**~23:30 EEST: Alex has finished with the desktop and it is free. Fable 5.1's limit is reached and the
+session continues on Opus (`claude-opus-5`); nothing about the work changes. The desktop's first
+overnight item has started: the establishment-proportion experiment as a committed design
+`churn-proportion` on `windows/churn-proportion` off `b4a01e8c7` (rates 50, 60, 70, 85, 100, cleartext,
+15 repetitions, split at 5 ms pre-declared), results to `measure/desktop-2026-09-02-proportion`,
+pushed by nobody but Alex. The two-host run follows once `design/two-host-run.md` is committed and
+the laptop's campaign is done.**
 
 ## Who is the coordinator right now
 
