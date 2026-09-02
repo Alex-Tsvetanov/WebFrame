@@ -95,6 +95,18 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The ratio has four defensible values and the spread is wider than the effect.**
+  On the one run that produced it: 4.264 raw; 4.116 with the clock rows subtracted (5.132
+  against 21.125); and after the coarse-clock change, 4.821 raw and 3.843 with clock rows
+  subtracted. **Quote 4.116**, because on a healthy host those reads never enter the count at
+  all, and say why rather than just printing the digit. Do not compute it the way the
+  coordinator first did, by taking totals from one run and clock counts from another; that
+  gave 4.176 and mixed two populations, which is the failure this project keeps finding.
+  **The subtraction is not exact and that is the point**: removing 4.308 clock reads per
+  connection removed 5.945 syscalls, so about 1.64 non-clock syscalls went with them, and an
+  arithmetic subtraction of one row is therefore not the same measurement as deleting the
+  calls and re-running. Attribution of those 1.64 is queued.
+
 - **The reboot is not optional, and the clock is not why.** The hardened kernel confines
   io_uring to root and the governor question is unsettled, so every timing number that host
   produces is already pipeline validation rather than data, and no admissible Linux figure can
