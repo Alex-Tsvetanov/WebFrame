@@ -209,6 +209,32 @@ been scheduled yet.
   point and therefore data, and the standing rule is that data traces to a mainline commit rather than
   to a branch tip. So: finish the findings, push, coordinator merges the stack, then the blocking-wait
   experiment AND the cross-arm re-runs both run on the merged HEAD.
+- **NEW CAPABILITY (Alex, 18:45): the two machines share an Ethernet segment, so a genuine two-host
+  benchmark is possible** -- server on one machine, generator on the other, across a real interface
+  with a driver, interrupts and queueing. This is the first arrangement that can answer the loopback
+  limitation both papers currently state as a caveat, and it is stronger than the WSL arm, whose
+  "network" is a virtual switch inside the Windows host.
+  **The number that decides the design is the path's own jitter, not its throughput.** Paper 2's
+  demultiplexing difference is 60 to 85 microseconds. If the round-trip standard deviation over this
+  link is in the hundreds of microseconds, no number of repetitions recovers that difference, and the
+  honest conclusion is that loopback was the RIGHT medium for that claim while a real path is the
+  right medium for others. If the jitter is tens of microseconds, the caveat is replaced by a
+  measurement. Both machines have been asked for link facts (interface, negotiated speed, route,
+  same-switch or routed) and a 300-ping baseline reporting min, median, mean, max and standard
+  deviation. The laptop reports now (it is doing code work, not measurement); the desktop reports
+  after routing, dispatch and the sweep, because its host must stay quiet.
+  Note also that the arrangement recorded until now had the laptop on WiFi and the desktop on
+  Ethernet; the laptop has been asked to confirm which it is on, since a WiFi end would make the
+  jitter question answer itself.
+  **Declared in advance, so it is not discovered as a wall of refusals:** at 1 gigabit and roughly
+  1100 bytes on the wire per request and response, the link saturates near 70 000 requests per second,
+  which is the top of the existing ladder. A real network arm therefore has a ceiling set by the LINK
+  rather than by the server, and that ceiling belongs in the design. Discovering it instead is the
+  mistake the 800-per-second establishment rate already made once.
+  **Which direction serves which paper:** a Windows server with a Linux generator extends paper 2's
+  existing IOCP dataset with a real path; a Linux server with a Windows generator gives paper 3 its
+  epoll and io_uring arms over one. Neither licenses a cross-platform comparison, which stays
+  shape-only, because the two ends are different hardware.
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
