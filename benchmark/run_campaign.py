@@ -543,6 +543,43 @@ def design_smoke() -> list[Cell]:
 # reproducing that campaign will find those names in the commit messages; nothing about
 # either design is Windows-specific, and the cells they build carry whichever system
 # name and I/O backend the host implies.
+# The rate the mechanism design offers, in requests per second, for both connection
+# shapes.
+#
+# Chosen for headroom rather than for load. Syscalls per request is a ratio, so it does
+# not need a high rate; what it needs is a rate neither arm is throughput-limited at,
+# because a limited arm is batching differently from an unlimited one and the ratio then
+# describes the limiting rather than the backend. The feasibility probe on this host
+# offered 20000 and the churn shape delivered about 10500 on epoll and 11000 on
+# io_uring, so both were limited and the -8.8% difference it produced was confounded.
+# 2000 is under a fifth of the lower of those two ceilings, and the keep-alive shape
+# reached the full 20000 with room to spare.
+MECHANISM_OFFERED_RATE = 2_000
+
+
+def design_mechanism() -> list[Cell]:
+    """Syscalls per request, one connection shape against the other, one arm per run.
+
+    The two cells differ in exactly one factor: whether the server closes after a single
+    request. Everything else is held, including the offered rate, so the shapes can be
+    read against each other; the backend is chosen per invocation with --io-backend, so
+    the four cells of the comparison are this design run twice.
+
+    Cleartext and classification on, deliberately. The other designs cross TLS and
+    detection because those are their questions; here they would be two more factors
+    moving underneath the one being measured, and a TLS record layer in particular adds
+    syscalls of its own that belong to neither backend.
+
+    Meant to be run with --count-syscalls, which is why it is small: counting changes
+    what a run measures, so a counted campaign buys nothing by being large.
+    """
+    return [
+        Cell.of(system_name(), **_base(max_requests_per_connection=limit),
+                protocol_detection=True, offered_rate=MECHANISM_OFFERED_RATE)
+        for limit in (0, 1)
+    ]
+
+
 DESIGNS = {
     "h1": design_windows_h1,
     "h1-deep": design_windows_h1_deep,
@@ -560,6 +597,7 @@ DESIGNS = {
     "tls-ladder": design_tls_ladder,
     "churn-ladder": design_churn_ladder,
     "tls-smoke": design_tls_smoke,
+    "mechanism": design_mechanism,
 }
 
 
