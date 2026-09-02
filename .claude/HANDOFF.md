@@ -735,16 +735,42 @@ been scheduled yet.
   costs ONE READ, and one read costs 4.5 syscalls under establishment, because it costs a ROUND OF THE
   EVENT LOOP.** The read accounts for 2 of the 4.5 (recvfrom plus the epoll_ctl arming for it); the
   rest is waiting for it (+0.63 epoll_wait) and a cross-thread handoff (+1.85 futex).
-  **Hypothesis for the futex term, checkable in the SOURCE rather than by measurement:** futex
-  operations come in pairs, so +1.85 is close to one synchronisation event per connection; the
-  classification path arms a deadline (`App::detect_protocol` carries a `Deadline`, `deadline.replace`
-  around `read_prefix`), and if the timer queue is a thread on a condition variable, scheduling one
-  timer costs a wake and a wait -- exactly two futex, once per connection. **If it holds the
-  decomposition closes with nothing left over**, and it sharpens the paper in the direction paper 3
-  already argues: the READ is intrinsic to classifying, while the loop round and the timer are the
-  framework's IMPLEMENTATION of classification and another design could avoid both. The same
-  distinction appearing independently in two papers is worth a sentence in each. If it does not hold,
-  the futex term stays unattributed and the paper says so.
+  **THE FUTEX TERM IS CONFIRMED FROM THE SOURCE AND THE DECOMPOSITION CLOSES WITH NOTHING LEFT OVER.**
+  `App::detect_protocol` arms exactly ONE deadline per classified connection (`deadline.replace()`
+  swaps the action on existing state rather than scheduling; `~Deadline` disarms by clearing the
+  action), and the detect-off cleartext path arms none at all. `TimerQueue::schedule` takes the mutex,
+  pushes, releases and `notify_all`s (`timer_queue.hpp:63`) against a thread in `cv_.wait`/`wait_until`
+  (:104, :109), so one schedule costs one FUTEX_WAKE plus one FUTEX_WAIT: two per connection, measured
+  +1.8476, the shortfall being notifies that find no waiter.
+
+  | term | value | mechanism |
+  |---|---|---|
+  | recvfrom | +1.0000 | the classifying read itself |
+  | epoll_ctl | +1.0000 | arming interest for it |
+  | epoll_wait | +0.6273 | the extra round of the event loop it forces |
+  | futex | +1.8476 | the deadline guarding the read: notify plus re-wait |
+  | **total** | **+4.5121** | nothing unattributed |
+
+  **THE SENTENCE FOR THE PAPER: classification costs 4.5 syscalls per connection, of which ONE is
+  intrinsic (you cannot look at the first octet without reading it) and 3.5 are this framework's
+  implementation of classification.** Each term was found by a different route -- the read by
+  prediction, the arming by counting, the loop round by subtraction, the futex by a code reading that
+  followed a hypothesis. **Same distinction paper 3 makes about the wait timeout and unbatched
+  submits: two papers, different subsystems, arriving independently at the mechanism's cost against
+  the framework's use of it. Worth a sentence in each.**
+- **A POSSIBLE DEFECT, RAISED BY THAT DECOMPOSITION AND NOT YET ANSWERED: `Connection::set_timeout` is
+  STORED by all four backends and ENFORCED BY NONE**, which is why the demultiplexer arms its own
+  timer -- the comment at `detect_protocol` says nothing else in the stack will wake a parked
+  classification read. **Question put to the laptop: with classification OFF, what bounds the window
+  between accept and the first byte?** If the answer is nothing, the server holds a connection open
+  indefinitely for a peer that connects and says nothing, on every backend -- classic slow-connection
+  exhaustion, a correctness and availability defect independent of either paper. The idle timeout may
+  cover it, in which case the deadline is merely redundant there. **Do not fix tonight**: a change to
+  connection lifetime mid-campaign is the last thing needed, and a real defect wants its own branch, a
+  test and a thesis note rather than a quiet patch.
+  **It also decides which sentence paper 2 gets.** If nothing else bounds that window, the 1.85 futex
+  is not droppable overhead but the framework paying for a guarantee nothing else provides, and the
+  claim changes from "avoidable" to "the only implementation that currently provides it".
   **The declaration is doing its work:** drift 3.7-4.7% on all 28 runs, so every one would have been
   refused under a gate, while the counts have a per-run sd of 0.055-0.087 against differences of
   1.0000 and 4.5121 -- two orders of magnitude of headroom, and the latency figures stay unquoted.
