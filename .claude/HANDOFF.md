@@ -650,6 +650,33 @@ been scheduled yet.
   evening were ordinary ones self-review does catch, and the independence-of-position instruction.
   Nothing further -- continuing to polish a paragraph about over-elaboration would be its own
   demonstration.**
+- **TRANSPORT RE-RUN: THE CLEARTEXT HALF IS CLEAN AND THE TLS HALF IS UNUSABLE, and the reason is a
+  third gate correlated with its arm.** Cleartext: 140 of 140 accepted, both backends, seven
+  repetitions in all ten cells, drift median 0.6%. TLS: 64 of 140 accepted, not one cell reaching
+  seven, and **every one of the 76 rejections is CPU-frequency drift**: rejected runs start at 4067
+  MHz and END at 3322, so the laptop thermally throttles under sustained TLS within a twenty-second
+  run and does not under cleartext. Not heat soak over the campaign: cells are interleaved and
+  cleartext is 7/7 from first repetition to last while TLS fails from the first.
+  **RULED (the laptop's own default): report the cleartext half as the cross-arm transport result;
+  the TLS half is NOT reported from this platform at these rates; no further TLS on this machine
+  tonight; the drift gate stays.** The surviving TLS runs are the coolest 46%, selected by a
+  mechanism correlated with the arm, so there is no TLS-versus-cleartext comparison and no
+  io_uring-versus-epoll comparison under TLS from this campaign; more repetitions would give more
+  survivors of the same selection. The TLS transport claim rests on the desktop's within-platform
+  data, where both arms share the platform and nothing throttled -- say so in the limitation. Not
+  taken: lowering TLS rates (breaks the halves' comparability, the design's stated purpose) and
+  spacing runs to shed heat (a new arrangement needing its own pre-declaration, and not obviously
+  sufficient since the clock falls within one run from a cool start). Spaced runs are recorded as a
+  candidate for a future TLS campaign here, to be tested on one cell first.
+  **METHODOLOGY PARAGRAPH, adopted from the laptop with one sharpening:** a validity gate on a
+  quantity the treatment affects is a selection rule rather than a filter, and all three found
+  tonight (pacing with server speed, drift with the TLS arm, and pacing again through the blocking
+  connect) were built as filters. They are not one case. Pacing was DOWNSTREAM of the thing under
+  test and had to be demoted. Drift is UPSTREAM, a real property of the run, and stays; its selection
+  effect is handled by the existing chapter V rule that asymmetric refusals turn a comparison into a
+  bound, and here the asymmetry (0 against 76) is total. **General rule: every gate is checked for
+  correlation with the arm before its refusals are treated as attrition, and that check is part of
+  what a campaign reports.**
 - **CROSS-ARM RE-RUNS ARE RUNNING on `a4519ada2`, through the driver, about six hours.** Preflight
   passed on both arms (smoke 2/2 each) and confirms schema 8 live end to end: `server_euid` 1000 and
   `generator_euid` 1000 attested, `local_interface` recorded as `veth-gen` from the socket with speed
@@ -1728,8 +1755,13 @@ findings in the laptop's own words, unredacted as you authorised.
 
 ## Alex's decisions, 2 September ~22:30 EEST
 
-1. **The desktop pushes its own measurement branches** to the private paper repositories; no need to
-   ask. Instructed: `-net` and `-sweeps` to `paper-socket-demux`, `-routing` to `paper-dfa-routing`.
+1. **Alex pushes the desktop's measurement branches himself** (`-net` and `-sweeps` to
+   `paper-socket-demux`, `-routing` to `paper-dfa-routing`, which needs a remote added). The
+   coordinator relayed his answer as an authorisation for the desktop to push; the desktop asked him
+   directly, he said he pushes, and it was right to ask: a relayed change to a direct instruction
+   about an outbound action is exactly the case for a question. The commands are ready on the
+   desktop. The original READMEs stay as written (counts under the gates at run time); the
+   re-evaluation adds a second directory and README, never edits theirs.
 2. **The pacing gate is demoted from admission rule to recorded covariate.** Admission rests on
    achieved share, non-2xx and socket errors, and the environment gates; pacing p99 is reported beside
    every cell. This re-evaluates every filed campaign (a re-analysis from stored fields, not a re-run)
