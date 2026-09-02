@@ -242,8 +242,14 @@ def describe_signal(number: int) -> str:
         return f"signal {number}"
 
 
-def refuse_held_port(port: int) -> None:
+def refuse_held_port(port: int, launch_prefix: list[str] | None = None) -> None:
     """Refuses to start a server on a port something already listens on.
+
+    With a launch prefix the port that matters is not this host's. A server behind
+    `ip netns exec srv` binds inside that namespace, where a local bind probe can say
+    nothing at all: it would succeed against a stale server in the namespace and the
+    gate would pass every time it was most needed. The check is run through the same
+    prefix in that case, so it looks where the server is about to look.
 
     On Windows and macOS a second server on a held port fails to bind and the run fails
     loudly. On Linux both backends set SO_REUSEPORT, so a leftover benchmark_server and
@@ -259,11 +265,30 @@ def refuse_held_port(port: int) -> None:
     dual-stack listener on [::], which holds the IPv4 wildcard port as well, so an IPv4
     probe conflicts with it on every platform.
     """
+    if launch_prefix:
+        # ss inside the namespace rather than a bind here. Reading a listener is enough
+        # to refuse, and it needs no socket in a namespace this process is not in.
+        probe = subprocess.run([*launch_prefix, "ss", "-ltnH"],
+                               capture_output=True, text=True)
+        if probe.returncode != 0:
+            raise RunFailed(
+                f"could not check port {port} through {' '.join(launch_prefix)}: "
+                f"{(probe.stderr or probe.stdout).strip()[:200]}"
+            )
+        for line in probe.stdout.splitlines():
+            fields = line.split()
+            if len(fields) >= 4 and fields[3].rsplit(":", 1)[-1] == str(port):
+                raise RunFailed(
+                    f"port {port} is already held inside the launch namespace "
+                    f"({line.strip()}); a stale server is running"
+                )
+        return
+
     try:
-        with socket.socket() as probe:
+        with socket.socket() as probe_sock:
             if os.name != "nt":
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(("0.0.0.0", port))
+                probe_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe_sock.bind(("0.0.0.0", port))
     except OSError as exc:
         raise RunFailed(
             f"port {port} is already held ({exc.strerror or exc}); a stale server is running"
@@ -284,6 +309,17 @@ class CorouteServer:
     cell: Cell
     port: int
     affinity_mask: str | None = None
+    # What the server is launched through, if anything: the Linux counterpart of the
+    # generator's --generator-command. For the namespace rig this is
+    # ["sudo", "-n", "ip", "netns", "exec", "srv"], which puts the server on the far end
+    # of the veth instead of on loopback.
+    #
+    # Deliberately NOT dropped back to the invoking user the way the generator's prefix
+    # is. io_uring needs CAP_SYS_ADMIN on a host with kernel.io_uring_disabled=1, so an
+    # io_uring cell has to stay root; and if only that arm were root, the epoll arm
+    # would differ from it in scheduling class as well as in backend, which is the one
+    # confound this comparison cannot carry. Both arms run the same way.
+    launch_prefix: list[str] = field(default_factory=list)
     # Where the rig's self-signed certificate lives. Only consulted when the cell asks
     # for TLS, so a cleartext campaign runs on a machine that has none.
     cert_file: Path | None = None
@@ -299,6 +335,7 @@ class CorouteServer:
     def argv(self) -> list[str]:
         factors = self.cell.as_dict()
         args = [
+            *self.launch_prefix,
             str(self.binary),
             "--port", str(self.port),
             "--workers", str(factors.get("workers", 4)),
@@ -350,7 +387,7 @@ class CorouteServer:
         return args
 
     def start(self) -> None:
-        refuse_held_port(self.port)
+        refuse_held_port(self.port, self.launch_prefix)
         self._proc = subprocess.Popen(
             self.argv,
             stdout=subprocess.PIPE,
@@ -427,6 +464,46 @@ class CorouteServer:
             )
         return False
 
+    def server_pid(self) -> int | None:
+        """The benchmark_server process, not whatever was used to launch it.
+
+        Without a prefix this is simply Popen's pid. With one it is not: Popen holds
+        sudo, which holds ip, which holds the server, and anything that reads the wrong
+        one gets a process asleep in wait(). That failure is silent in both places it
+        matters. perf reports `<not counted>` rather than an error, and the resource
+        cost comes back as a few milliseconds of sudo.
+
+        Resolved by walking children rather than by matching /proc/PID/comm, because
+        TASK_COMM_LEN truncates comm to 15 characters and "benchmark_server" is 16, so
+        an exact match on the name never fires and the search silently finds nothing.
+        The first argv entry is compared instead, which is not truncated.
+        """
+        if self._proc is None:
+            return None
+        if not self.launch_prefix:
+            return self._proc.pid
+
+        target = str(self.binary)
+        seen: set[int] = set()
+        frontier = [self._proc.pid]
+        while frontier:
+            pid = frontier.pop()
+            if pid in seen:
+                continue
+            seen.add(pid)
+            try:
+                argv0 = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")[0].decode()
+            except OSError:
+                argv0 = ""
+            if argv0 == target:
+                return pid
+            try:
+                children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+            except OSError:
+                children = []
+            frontier.extend(int(c) for c in children)
+        return None
+
     def _startup_failure(self) -> str:
         """Why the server is already gone, in the words it used.
 
@@ -460,12 +537,22 @@ class CorouteServer:
 
         # Read the cost while the process still exists. After it exits the handle
         # reports nothing and the run would silently carry no server-side numbers.
-        cpu, peak = _process_cost(self._proc.pid)
+        cpu, peak = _process_cost(self.server_pid() or self._proc.pid)
 
-        self._proc.terminate()
+        # With a prefix, terminate() reaches sudo, which does not pass the signal on to
+        # a process it launched through ip netns exec. The server would outlive the run,
+        # hold the port, and be found by the next run's held-port gate if it is lucky or
+        # split the next run's connections through SO_REUSEPORT if it is not.
+        pid = self.server_pid()
+        if self.launch_prefix and pid is not None:
+            subprocess.run(["sudo", "-n", "kill", str(pid)], capture_output=True)
+        else:
+            self._proc.terminate()
         try:
             self._proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
+            if self.launch_prefix and pid is not None:
+                subprocess.run(["sudo", "-n", "kill", "-9", str(pid)], capture_output=True)
             self._proc.kill()
             self._proc.wait(timeout=10)
         self._proc = None

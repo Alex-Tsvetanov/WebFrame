@@ -596,6 +596,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--generator-location", default=None,
                     help="where that prefix puts the generator, as a label recorded with "
                          "the campaign, e.g. netns:gen")
+    # The server's counterpart. Without it the generator sits in a namespace and the
+    # server sits on the host, which is not the arrangement the methodology names and
+    # would only work at all because the veth address is locally owned.
+    ap.add_argument("--server-command", default=None,
+                    help="command prefix the server is launched through, e.g. "
+                         "'sudo -n ip netns exec srv'; pairs with --generator-command")
     args = ap.parse_args(argv)
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
@@ -643,6 +649,19 @@ def main(argv: list[str] | None = None) -> int:
             gen_command = shlex.split(args.generator_command) + [str(gen_bin)]
             location = args.generator_location
 
+    server_prefix: list[str] = []
+    if args.server_command:
+        if args.wsl_distro:
+            print("--wsl-distro drives the generator only; --server-command is for the "
+                  "Linux namespace arrangement", file=sys.stderr)
+            return 2
+        if not args.generator_command:
+            # A server in a namespace and a generator on the host is not the two-ended
+            # arrangement either; it is a one-ended one with an extra hop.
+            print("--server-command goes with --generator-command", file=sys.stderr)
+            return 2
+        server_prefix = shlex.split(args.server_command)
+
     # Derived from the launcher, not from the address alone. A generator on this host
     # reaches any locally owned address, a veth end included, through the loopback
     # interface; the address test only decides the case where the generator is elsewhere.
@@ -677,6 +696,10 @@ def main(argv: list[str] | None = None) -> int:
         "host": args.host,
         "loopback": loopback,
         "generator_location": location,
+        # Recorded for the same reason generator_location is: a campaign whose server
+        # was in a namespace and one whose server was on the host are not the same
+        # measurement, and nothing else in the record would say which this was.
+        "server_location": args.server_command or "host",
     }
     # What every run would be refused for anyway, asked once before the hours are spent.
     # The governor is asked again per run by the driver; here it stops the night before
@@ -749,7 +772,8 @@ def main(argv: list[str] | None = None) -> int:
     def server_factory(cell: Cell) -> CorouteServer:
         return CorouteServer(binary=server_bin, cell=cell, port=args.port,
                              affinity_mask=SERVER_AFFINITY,
-                             cert_file=args.cert, key_file=args.key)
+                             cert_file=args.cert, key_file=args.key,
+                             launch_prefix=server_prefix)
 
     done = {"n": 0}
 
