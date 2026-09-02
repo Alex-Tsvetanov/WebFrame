@@ -152,6 +152,70 @@ been scheduled yet.
   a deliberate pin and is a fossil, the repository's own default until `48ec1c81a` on 30 Aug;
   three pins have landed since. The 30 August routing records were produced with it, and
   nothing in them says so.
+- **Syscalls per request is not a valid normaliser for io_uring as implemented, and that
+  is the mechanism finding.** Measured on the laptop over the network-namespace pair, four
+  cells, every one meeting its offered rate (keep-alive 10000/s, churn 400/s):
+  `io_uring_enter` fires about 230 000 times a second across four workers whatever the load,
+  so between two cells whose request rate differs 25-fold its rate differs 1.04-fold. Dividing
+  it by requests yields 25.7 and 586.5 "syscalls per request", which are arithmetically correct
+  and measure the poll loop rather than the work. **Do not quote those ratios, or the earlier
+  loopback figures, as per-request comparisons.** The earlier probe's "io_uring_enter at 4.752
+  per request" was the same misreading: 950 000 enters over 13 seconds with one worker is about
+  73 000 a second, and it only resembled a ratio because the load happened to be 20 000 requests
+  a second. Retracted by its author before anyone quoted it.
+  What survives is stronger and belongs in the paper: **epoll's syscall count tracks work and
+  io_uring's tracks time.** epoll costs 1 `recvfrom`, 1 `sendto`, 2 `epoll_ctl`, 2 `clock_gettime`
+  per request under keep-alive, plus 1 `accept4` and 1 `close` under churn, with churn costing
+  4.264x keep-alive; those figures are stable and interpretable. The completion model as
+  implemented pays a per-second price, not a per-request one, so any syscall comparison between
+  the two models must normalise by time, or by time and worker count, never by requests. It also
+  points somewhere concrete: about 58 000 enters per worker per second while 400 requests a
+  second arrive is a loop that is almost entirely empty, which suggests a short-timeout spin
+  rather than a blocking wait. Measure before tuning; nothing in the backend has been touched.
+  One epoll detail worth its own look: `clock_gettime` rises from 2.002 per request under
+  keep-alive to 9.293 under churn, and unlike the io_uring number it does scale with work.
+- **A half-specified off-host arrangement runs silently as an on-host one.**
+  `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
+  alone is ignored without a word, while `--host` is read unconditionally. The opposite
+  direction errors out. So a generator flag that was meant to move the load off the host is
+  dropped, the host-side generator runs against a foreign gateway address, and the result is a
+  plausible number rather than a refusal. **The harness branch's `--generator-command` /
+  `--generator-location` pair must refuse the half-specified case in both directions.** Found
+  when a coordinator instruction wrongly added those flags to the loopback smoke gate and the
+  desktop read the code instead of obeying: the quiet-host gate measures whether the host can
+  pace a generator, so it is loopback by design, and only `churn-net` and `churn-ladder-net`
+  take the off-host flags.
+
+- **The harness records no binary provenance.** `_FINGERPRINTED` carries `build.git_commit`,
+  `build.type`, `build.io_backend`, `toolchain.compiler` and four dependency versions, and
+  nothing about the executable: no hash, no mtime, no size. `git_commit` describes the source
+  the tree is checked out at, never the source the binary was built from. The desktop found
+  this the hard way: every build tree there was pinned to the repository's old path
+  (`D:\GitHub\...` before it moved), so no tree could be incrementally rebuilt and the
+  binaries were frozen at 30 August while HEAD is 35 commits later. A campaign run without
+  noticing would have stamped records with a commit whose validity gates the binary predates.
+  **To add: a preflight that refuses when an executable is older than the commit the record
+  will claim OR older than its own `CMakeCache.txt`.** Both halves are needed, and the desktop
+  proved why: that routing tree's binary is dated 30 Aug 11:43, its cache holds a value that
+  only became the default at 15:17, and the variable holding it did not exist until 14:19. The
+  binary predates its own cache by three and a half hours, so the tree was reconfigured and
+  never rebuilt, and anyone reading that cache to learn what the binary was built from would
+  have been wrong. A check against the commit alone catches the frozen-tree case; only the
+  cache comparison catches reconfigured-but-not-rebuilt, which is the one that actually
+  happened. **The check covers the generator too**: three stale generators were found inside
+  the desktop's WSL, the newest two days older than the commit it would have driven, one named
+  for the TLS arm and older than the commit that added it. Note also that FetchContent bakes
+  the absolute source path into every `_deps/*-subbuild/CMakeCache.txt`, so a repository that
+  has moved leaves one stale cache per tree plus one per vendored dependency, and clearing the
+  top-level cache alone is not enough.
+- **The matcher commit is not recorded either.** `COROUTE_URL_MATCHER_TAG` decides the DFA
+  router's performance and is the dependency the routing paper's claim turns on, yet the
+  environment captures `openssl`, `ngtcp2`, `nghttp3`, `liburing` and not it. **To add: read it
+  from `CMakeCache.txt` beside the others** (same shape as `resolve_io_backend`).
+  Consequence found tonight: the desktop's routing tree still had `2220b61b`, which looked like
+  a deliberate pin and is a fossil, the repository's own default until `48ec1c81a` on 30 Aug;
+  three pins have landed since. The 30 August routing records were produced with it, and
+  nothing in them says so.
 - **Syscalls per request is measurable and has been measured** (laptop, loopback, one worker,
   pipeline validation only, corrected once by its author): epoll keep-alive 6.514, io_uring
   keep-alive 6.759, epoll churn 29.713, io_uring churn 27.097 syscalls per request. So churn
