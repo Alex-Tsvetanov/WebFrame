@@ -575,10 +575,43 @@ been scheduled yet.
   models, the same work costing a kernel crossing under readiness and absorbed into an existing
   submission under completion, and it belongs in paper 3 beside the wait-policy decomposition. The
   same increment in both kills a plausible story before anyone writes it down. Report separately,
-  never averaged. **Before the numbers arrive, read from the code whether the classification read is
-  submitted as its own operation or coalesced:** if it cannot batch, a null from io_uring means
-  something different from a null when it can, and that is five minutes that decides how the number
-  is interpreted rather than interpreting it afterwards to fit.
+  never averaged. **CODE READ DONE BEFORE ANY NUMBERS EXIST, and it REFUTES the
+  coordinator's batching hypothesis.** `App::detect_protocol` (app.cpp:95) calls
+  `net::read_prefix(conn, 1)`, a real one-byte read, which on io_uring goes through
+  `UringConnection::async_read` to `submit_sqe`, whose LAST LINE is an unconditional
+  `io_uring_submit` (uring_context.cpp:471). Nothing accumulates SQEs across operations and SQPOLL is
+  explicitly off (:203), so **every submitted operation is a real kernel entry**. The classification
+  read therefore costs one extra enter per connection by the same construction that makes it one extra
+  `recvfrom` on epoll, and **a null from io_uring would be an anomaly needing explanation, not a
+  batching artefact.** Epoll stays primary for the reason that still holds: a count that tracks work
+  is the right instrument for "what does this feature cost".
+  **PRE-REGISTERED before the run: epoll +1 `recvfrom` per request under churn; io_uring +1
+  `io_uring_enter` per request under churn; both approximately nothing under keep-alive** (one extra
+  per CONNECTION against thousands of requests, so invisible there by arithmetic rather than by
+  finding). Quantified so the second case cannot be misread: at the 1 ms timeout the churn arm ran at
+  about 2.5 enters per request, so +1 takes it to ~3.5, a 40% rise, comfortably resolvable.
+- **A LARGER CONSEQUENCE OF THE SAME LINE: this backend never batches anything, and unbatched submits
+  may be most of io_uring's remaining kernel entries.** If every operation submits by itself, a
+  keep-alive request needs a read and a write, so two submissions, so two enters before any wait --
+  and the measured figure at the 1 ms timeout is **2.876 enters per request**, leaving 0.876 for
+  waits. If that decomposition holds, roughly two thirds of io_uring's remaining entries come from
+  submitting each operation separately rather than from anything intrinsic to the completion model,
+  whose principal advantage is batched submission.
+  **Two consequences for paper 3, both to be stated rather than left to a reviewer.** (1) The central
+  comparison is epoll against an UNBATCHED io_uring, and the paper must say so in those words. (2) It
+  reframes the wait-timeout result: 46.6 enters per request down to 2.876 reads as having solved the
+  problem, but if two of the remaining 2.876 are unbatched submits then the timeout was the larger of
+  TWO costs and the second is untouched and is a property of how the framework uses the interface
+  rather than of the interface.
+  **CHECK BEFORE ANYONE WRITES IT DOWN, from records already held:** attribute the 2.876 in the
+  mechanism runs' syscall-table-by-type into submission enters against wait enters, and see whether
+  submissions come out near two per request under keep-alive and near three under churn where accept
+  and close add operations. No machine time. If it does not come out near two, the coordinator's
+  reading of the submit path is wrong in a way the laptop's code read did not cover.
+  **Do NOT change the backend.** A batching change would invalidate six hours of running campaigns and
+  is a performance change to the arm under test. Record it; the thesis decides whether an optimisation
+  is in scope, and it may well not be, since the framework's job in this work is to be the constant
+  rather than to be fast.
   Preflight also caught that `benchmark/certs/bench.crt` did not exist, which would have failed the
   TLS half an hour in. Third time tonight that checking a precondition beat discovering it.
 - **THE DECOMPOSITION IS DONE AND THE MECHANISMS GENUINELY DIFFER.** Three arms, 25 rotations,
