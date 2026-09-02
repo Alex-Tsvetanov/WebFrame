@@ -689,6 +689,45 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
+- **THE CHURN RESULT COMPLETES THE DEMULTIPLEXING CLAIM, and the negative beside it is what makes it
+  a claim.** Cleartext, both arms, detect on minus off at p50, every cell resolving:
+
+  | arm | rate | off | on | diff | % | 95% CI |
+  |---|---|---|---|---|---|---|
+  | io_uring | 25 | 50.5 | 61.0 | +10.5 | +20.8 | [+6.0, +15.5] |
+  | io_uring | 50 | 46.0 | 54.0 | +8.0 | +17.4 | [+7.0, +9.0] |
+  | io_uring | 100 | 39.0 | 46.0 | +7.0 | +17.9 | [+7.0, +8.0] |
+  | io_uring | 150 | 37.0 | 44.0 | +7.0 | +18.9 | [+6.0, +8.0] |
+  | epoll | 100 | 67.0 | 86.0 | +19.0 | +28.4 | [+16.0, +22.0] |
+  | epoll | 150 | 52.0 | 73.0 | +21.0 | +40.4 | [+19.0, +22.0] |
+
+  **THE PAIR IS THE FINDING:** amortised over a keep-alive connection the extra read is invisible
+  (0 ± 1 us, every interval containing zero); paid once per connection under establishment it is 7 us
+  on io_uring and ~20 on epoll. Report as ONE sentence with the amortisation in it -- the second alone
+  reads as "classification is expensive", the first alone as "classification is free".
+  **AND THE CONNECT COLUMN IS THE PART TO LEAD WITH: establishment time does NOT move** (0 to +1 us,
+  nothing resolved) while latency resolves everywhere. So the cost is not a slower connection setup;
+  it is an extra read on the FIRST REQUEST the connection serves. **This corrects how paper 2 words
+  the TLS finding:** on cleartext the classifying read sits inside the first request, on TLS inside
+  the handshake, so the two arms charge it to different columns and the paper must not blur them.
+  The threefold arm gap for identical logical work matches the transport ordering and ratio; put the
+  two adjacent.
+- **THE THIRD DRIFT CASE IS A GATE DEFECT, NOT A TAXONOMY ENTRY, and the taxonomy stays at two.**
+  churn's drift rejections split: TLS, 67 of 71 ended LOWER, median 15.9% -- thermal, directional, the
+  refusal is correct. Low-rate cleartext (25 and 50/s), 28 rejected but **19 of 28 ended HIGHER**,
+  median 3.4% against a 2% threshold, while accepted runs in the same cells sit at 0.3-0.8%. Nothing
+  happened to those runs: **the gate is measuring the variance of its own two-sample estimator and
+  calling it an environmental change.** Pacing was downstream of the treatment; TLS drift is a real
+  change falling unevenly between arms; this is neither.
+  **It makes the mid-run clock sampling candidate necessary rather than tidy:** two endpoints cannot
+  separate a monotone 15.9% fall from a 3.4% wander, and here they demonstrably do not, discarding
+  about half the runs at the rates where churn's claim lives.
+  **RULED: do not change the drift gate tonight and do not re-evaluate those runs.** Unlike pacing,
+  where the change was to stop gating on a quantity the treatment moves, this would change the
+  ESTIMATOR, and a threshold on a better estimator is a different rule needing its own
+  pre-declaration and re-evaluation. Not blocking: io_uring's low-rate cells survived with 3-6
+  accepted each, all resolving, and epoll's were correctly marked unavailable rather than quoting a
+  median of one.
 - **CLEARTEXT TRANSPORT RESULT, both arms, 140/140, seven repetitions, ten cells, on `a4519ada2`.**
   (1) **Demultiplexing costs nothing measurable on either backend under keep-alive.** Detect on minus
   off at p50 is 0 or ±1 us against medians of 23-39 us; every epoll interval INCLUDES zero (so nothing
