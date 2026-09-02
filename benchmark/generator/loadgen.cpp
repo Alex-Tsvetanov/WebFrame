@@ -319,11 +319,11 @@ namespace
 
 	// Which interface the kernel actually sent the load over, and what that interface is.
 	//
-	// The arrangement is asserted by a route metric and nothing else: this machine has
-	// Ethernet and WiFi up on the same subnet, so which one carries a run is decided by a
-	// number that DHCP can change at a lease renewal. A run that silently moved to WiFi
-	// would still produce a plausible figure, and nothing in the record would say the
-	// medium had changed underneath it.
+	// The arrangement is asserted by a route metric and nothing else. Where a host has
+	// more than one interface on the same subnet, which of them carries a run is decided
+	// by a number DHCP can change at a lease renewal, and a run that moved from a wired
+	// link to a wireless one would still produce a plausible figure with nothing in the
+	// record to say the medium had changed underneath it.
 	//
 	// So this is read rather than configured. getsockname on an established connection is
 	// the address the kernel chose as a source, which is ground truth about the path;
