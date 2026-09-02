@@ -15,6 +15,9 @@
     stage/.style={box, minimum width=3.4cm, text width=3.2cm, minimum height=1.1cm},
     party/.style={box, minimum width=3.2cm, text width=3.0cm},
     part/.style={font=\fontsize{9}{11}\selectfont\bfseries},
+    % Локално връщаме note към чист текст: глобалният стил в preamble.tex я прави
+    % запълнена пунктирана кутия с голямо поле, което покрива съседите.
+    note/.style={align=left, font=\fontsize{8}{10}\selectfont},
     lbl/.style={note, font=\fontsize{8}{9.5}\selectfont},
   ]
 
@@ -90,7 +93,7 @@
 \draw[flow] (s1.east) -- (s2.west);
 \draw[flow] (s2.east) -- (s3.west);
 
-\node[lbl, align=center, text width=3.4cm] at (9.25,-5.85)
+\node[lbl, align=center] at (9.25,-5.9)
   {препращане в потребителското пространство};
 
 \draw[thin flow] (b0.south) -- (s2.north west)
