@@ -398,45 +398,53 @@ been scheduled yet.
   cleartext establishment arm, because a thread blocked in connect is not issuing anyone's slots, so
   the load genuinely was not offered as a steady process even if all of it eventually arrives.
   Achieved share should catch that, which argues FOR the split, but the two cases must not be merged.
-- **SOLVED: the 35x establishment jump at low rates is the GENERATOR'S OWN POLL TIMEOUT, not the
-  server.** Characterised before explained: min is ~0.17 ms and max ~11.7 ms at EVERY rate, so both
-  paths always exist and only the FRACTION taking the slow one changes; it is a bimodal step between
-  rates 50 and 100, not a gradient. Alternatives named before looking and disposed of by evidence:
-  TIME_WAIT predicts the wrong sign (more churn at higher rates, yet 150 is best); accept backlog and
-  power state are ruled out by the off-host control, which holds the Windows server constant and
-  changes only the generator's operating system -- rate 50 is 9.317 ms on loopback against 0.308 ms
-  off-host, thirty times, with generator CPU 0.49 against 0.51 so not saturation.
-  **The mechanism, from the source:** `loadgen.cpp` ~1008-1035 spins when the next due slot is under
-  `kSpinBelowUs` = 20 ms away and otherwise sleeps in poll for 1 ms, which Windows quantises to the
-  ~10 ms system tick. In an establishment design the period is one over the rate: 25 -> 40 ms and
-  50 -> 20 ms both sleep (`20000 < 20000` is false, so the design's second-lowest rate sits on the
-  wrong side by a rounding); 100 -> 10 ms and 150 -> 6.7 ms both spin. **The boundary in the code is
-  exactly the step in the data.** `connect_us` runs to the poll-observed completion, so a sleeping
-  generator timestamps the handshake when it wakes. The file's own comment three lines above says this
-  for PACING and names the establishment design as the reason the threshold exists; nobody noticed the
-  same sleep also inflates `connect_us`.
-  **PAPER 2 IS NOT DAMAGED, IT IS IMPROVED** (checked, not assumed). Every establishment claim rests on
-  rates 100 and 150: the reportable 0.085 ms classification cost at 100, the 1.227 ms handshake
-  denominator at 100 and 150, the cleartext intervals at 100 and 150. Rates 25 and 50 appear in ONE
-  paragraph, which already says the jump is present in every arm and that **"the record does not
-  explain it"**. That sentence now becomes the explanation with the threshold arithmetic beside it: a
-  loose end becomes a characterised instrument effect, and the paper's honesty is what earned it.
-  **THE DECISIVE TEST NEEDS NO CODE CHANGE, and the coordinator declined the desktop's rebuild in its
-  favour.** The rebuild (raise `kSpinBelowUs` past 40 ms, re-run rate 25) changes the instrument, the
-  fingerprint, and confounds rebuild with threshold unless a control rate is added. Instead: **run
-  churn at rates 50 and 51, adjacent, one session, on the existing binary.** Period 20000 vs 19608, so
-  50 sleeps and 51 spins; two percent more offered load should give roughly thirty-five times less
-  reported establishment time (~9.3 ms against a few hundred microseconds). Same commit, same
-  fingerprint, poolable, minutes. AUTHORISED. The rebuild is held in reserve as a second confirmation
-  only if the step appears.
-  **One gap in the mechanism to close from the code:** a poll with a 1 ms timeout should return as soon
-  as a socket in its set becomes writable, so a completing handshake ought to wake it in 0.17 ms. That
-  the cost is the full tick suggests the connecting socket is NOT in the poll set of the iteration that
-  created it and is registered only on the next pass, which begins when the sleep ends. Read the order
-  of operations around connect and poll: it decides whether the wording is "the sleep delays
-  observation" or "the connect misses its own poll", and only one is true.
-  **This is a methodology-chapter finding about the instrument**, and it generalises: any establishment
-  design whose period reaches 20 ms is affected on Windows.
+- **THE 35x ESTABLISHMENT JUMP AT LOW RATES IS OPEN, WELL CHARACTERISED, AND TWO MECHANISMS HAVE BEEN
+  PROPOSED AND WITHDRAWN. Do NOT edit paper 2; its paragraph is correct as written.**
+  **What survives (the characterisation).** The effect is **bimodal AT THE RUN LEVEL**: an entire
+  20-second run is either fast or slow, with nothing between the modes in any cell, and the same cell
+  produces both across repetitions. So the mode is a property of the RUN, not of the rate or the arm;
+  the rate governs only the PROBABILITY.
+
+  | rate | tls | n | fast | slow | fast range | slow range |
+  |---|---|---|---|---|---|---|
+  | 25 | off | 47 | 17 | 30 | 0.34-1.23 ms | 8.67-9.71 ms |
+  | 25 | on | 50 | 18 | 32 | 1.39-2.39 | 9.79-10.66 |
+  | 50 | off | 49 | 12 | 37 | 0.32-0.94 | 9.18-9.59 |
+  | 50 | on | 50 | 15 | 35 | 1.26-1.83 | 9.92-10.46 |
+  | 100/150 | both | 198 | 198 | **0** | 0.20-1.53 | none |
+
+  Cells were INTERLEAVED in execution, so this is not drift or warm-up: slow and fast runs are mixed
+  throughout the half hour. Within one rate and arm, slow runs are also ~25% slower in request latency
+  (server CPU roughly doubles but is quantised to the Windows tick and carries little weight).
+  **The constraint worth keeping: establishment moves 35x while request latency on the same runs moves
+  1.25x. Whatever the state is, it is not a uniform slowdown; it lands almost entirely on the
+  establishment path.**
+  **Mechanism 1, WITHDRAWN (desktop's, and it was seductive):** `kSpinBelowUs` = 20 ms in the main
+  loop, with periods 40/20 ms sleeping at rates 25/50 and 10/6.7 ms spinning at 100/150, so the code
+  threshold sat exactly at the step. **Refuted from the source: `conn_open` does not hand the
+  connecting socket to the main loop at all.** It has its own dedicated poll with a 2000 ms timeout
+  (loadgen.cpp:282, `kConnectTimeoutMs` at :245) and returns only once the handshake completes, and
+  `note_established` fires at :876 the moment it returns on the cleartext arm. The main loop's
+  `timeout_ms` governs only the third `note_established` site (:1085), which is not the cleartext
+  path -- and cleartext is where the effect is cleanest. The threshold arithmetic was a coincidence,
+  made seductive because 1/50 is exactly 20 ms. The coordinator's question about loop ordering is what
+  exposed it, and the answer was neither option offered.
+  **Also now live again: the off-host contrast is confounded by commit.** 4645e5e03 to b4a01e8c7
+  includes the io-backend merge, which touched `src/net/iocp/iocp_context.cpp` -- the accept path on
+  the very platform where the effect appears. The desktop noted the confound and reasoned past it
+  because it had a mechanism that did not need it; with the mechanism gone the confound may be the
+  whole story. **So power state and accept backlog are NOT ruled out any more**, since they were ruled
+  out by that comparison. Only TIME_WAIT stays ruled out, by predicting the wrong sign.
+  **Mechanism 2, WITHDRAWN (coordinator's test, not a mechanism):** the 50-versus-51 rate test cannot
+  work. With one run per rate it samples a coin whose bias is the quantity of interest.
+  **THE EXPERIMENT THAT WOULD LOCATE IT, no code change: rates 50, 60, 70, 85, 100, ~15 runs each,
+  cleartext, reporting the PROPORTION of slow runs per rate rather than the median.** Half an hour,
+  same binary and commit, poolable. A sharp boundary at a particular period names the clue; a smooth
+  fall means no threshold is involved and both mechanisms were pattern-matching. Neither paper depends
+  on it.
+  **Paper 2's quarantine has now been vindicated twice in one evening** -- once when the desktop found
+  something and once when the something turned out to be wrong. Its sentence that the record does not
+  explain the jump stays exactly as it is.
 - **The h1 sweep's single refusal is a genuine OUT-OF-SAMPLE test of `1b756e905`** and comes out
   OUTSIDE: latency p99 41.977 ms against a cell maximum of 0.108 ms over six accepted peers, rank above
   all six, not a weak bound, in a design and at a commit fixed after the rule was written. Worth more
