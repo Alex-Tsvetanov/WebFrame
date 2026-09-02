@@ -176,9 +176,30 @@ visible in the command line.
    `measure/<host>-<yyyy-mm-dd>`, force-adding if the directory is ignored, and push.
    The coordinator moves the files into the paper repository's `measurements/` with a
    README entry that names the machine, commit, command and what the table does not show.
-3. Tables and scalars for the thesis are generated, never typed:
-   `python -m benchmark.harness.results2csv <runs.jsonl> doc/thesis/data` and
-   `python -m benchmark.harness.results2tex <runs.jsonl> doc/thesis/generated/results.tex`.
+3. Tables and scalars for the thesis are generated, never typed, and they are generated
+   from the records the thesis cites. For the desktop campaign that is the re-evaluated
+   sibling directory, `measurements/2026-09-02-desktop-reevaluated/`, not the originals
+   beside it: the originals carry the verdicts the gates gave at run time, and running
+   these two commands over them reproduces the pre-withdrawal numbers with exit 0 and no
+   warning. Scalars, one invocation over all three designs, the last argument naming the
+   factors that identify a cell:
+
+   ```
+   python -m benchmark.harness.results2tex <dir>/h1-deep.jsonl doc/thesis/generated/results.tex \
+       <dir>/transport.jsonl <dir>/churn.jsonl name=x1 \
+       system,protocol,protocol_detection,offered_rate,workers,payload_bytes,backlog
+   ```
+
+   Without `name=x1` the keys carry the file's stem; without the factor list `h1-deep`
+   raises `AmbiguousKey` and writes nothing. Tables, one invocation per design, and take
+   only the files that design owns, because two designs both emit `h1_demux.csv` and
+   `transport.csv` and the second invocation overwrites the first:
+
+   ```
+   python -m benchmark.harness.results2csv <dir>/h1-deep.jsonl   doc/thesis/data  # h1_demux, rejections
+   python -m benchmark.harness.results2csv <dir>/transport.jsonl doc/thesis/data  # tls_demux, transport
+   python -m benchmark.harness.results2csv <dir>/churn.jsonl     doc/thesis/data  # churn_demux, churn_demux_cleartext, churn_transport
+   ```
 
 ## Structural counts need no quiet host
 

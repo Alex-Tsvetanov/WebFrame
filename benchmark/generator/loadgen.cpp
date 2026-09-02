@@ -1855,9 +1855,10 @@ int main(int argc, char** argv)
 	//
 	// A closed loop can only be limited by its own CPU, so that is the check. An open
 	// loop paces by spinning and is at full CPU by construction, so CPU says nothing;
-	// what matters is whether it met the schedule it promised. A generator that fell
-	// milliseconds behind its own due times was offering a different load than the one
-	// recorded, and the run is a measurement of the generator.
+	// what matters is whether it delivered the rate it promised. A generator that put
+	// materially fewer requests on the wire than the record claims was offering a
+	// different load, and the run is a measurement of the generator. Its lateness
+	// against its own schedule is printed beside that verdict, not tested by it.
 	const bool open_loop = opt.rate > 0.0;
 	const std::uint32_t pacing_p99 = percentile(pacing, 0.99);
 	const double achieved_share = opt.rate > 0.0 ? rps / opt.rate : 1.0;
