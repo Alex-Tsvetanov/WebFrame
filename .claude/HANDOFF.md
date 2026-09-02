@@ -161,6 +161,18 @@ been scheduled yet.
   files are on disk" and "the files are in the commit" had stopped being the same statement**
   while a report asserted the first.
 
+- **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
+  bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
+  the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
+  500/490 at HEAD, at 500 and 100 rps; min 28-36 µs, ceiling ~1000 µs, uniform spread in
+  between; io_uring on the same cell is 28/44 µs. Shape says requests wait for the next edge of a
+  1 ms periodic wake, not a per-request cost. No 1 ms constant exists in src/net/epoll or
+  include/coroute/net (the epoll_wait timeout is 100 ms). Laptop authorised, bounded to about an
+  hour: repo-wide grep for waits and handoff queues, then strace the epoll server at 100 rps and
+  read back from the response write to the wake; one-line fix on `linux/epoll-tick` with
+  before/after if a line is named, else report and move to the blocking-wait experiment. Paper 3
+  needs this settled (epoll vs io_uring at low load would otherwise measure the tick); paper 2's
+  demux on/off run is admissible either way (equal rate, equal tick cost).
 - **The coarse-clock change is merged and its before-and-after table accounts for itself.**
   Churn, epoll, 400/s, 10 000 connections each side, with futex counted (`c836cd9b4` adds that
   tracepoint permanently, lifting named coverage on this shape from 77% to 96.5%). Five
