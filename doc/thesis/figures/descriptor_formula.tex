@@ -88,9 +88,10 @@
   }
 
   % === пояснения =============================================================
-  % Текстът е разбит на къси редове, за да не опре в спускането на HTTP/3 вдясно.
-  \node[note, anchor=north west] at (5.9,3.75)
-    {трите протокола\\над \code{TCP} делят\\един дескриптор};
+  % Два реда с по-дребен шрифт, за да се побере в лентата между cf и cu и да свърши
+  % вляво от спускането на HTTP/3.
+  \node[note, anchor=north west, inner sep=3pt, font=\fontsize{8}{9}\selectfont] at (3.9,3.49)
+    {трите протокола над \code{TCP}\\делят един дескриптор};
   \node[note, anchor=west] at (10.6,1.15) {$|T| = 2$\\дескриптора\\на нишка};
 
   % Десният край взема само абсцисата на многоточието; ординатата е тази на работните
@@ -101,11 +102,11 @@
   \node[note, anchor=north] at (5.5,-0.72) {$W$ работни нишки};
 
   % === двете сметки една до друга ============================================
-  \node[fbox, fill=gray!25, thick, minimum width=4.6cm] (fa) at (2.1,-2.35)
+  \node[fbox, fill=gray!25, thick, minimum width=4.6cm] (fa) at (2.1,-2.65)
     {предложение\\[2pt]
      $L_{\text{demux}} = A \cdot |T|$\\[2pt]
      {\fontsize{8}{9.5}\selectfont броят не зависи от $|P|$}};
-  \node[fbox, fill=gray!10, minimum width=7.8cm] (fb) at (8.7,-2.35)
+  \node[fbox, fill=gray!10, minimum width=7.8cm] (fb) at (8.7,-2.65)
     {обичайна конфигурация\\[2pt]
      $L_{\text{conv}} = W \cdot \bigl([\,S \neq \varnothing\,] + [\,P \setminus S \neq \varnothing\,]\bigr)$\\[2pt]
      {\fontsize{8}{9.5}\selectfont отделен слушащ сокет за криптиран}\\
