@@ -859,6 +859,29 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
+- **SPACING DOES NOT RESCUE TLS: candidate tested and CLOSED, not left pending.** TLS at 10 000,
+  io_uring, 7 repetitions, no-gap arm first as a within-session control: 4 of 7 accepted against 5 of 7
+  with a 30 s gap, which at n=7 is one run and not an improvement. **The mechanism is the answer, not
+  the count. Drift is BIMODAL** -- every run either holds its clock at 0.2-1.0% or collapses by 19-23%,
+  with nothing between -- **and the starting clock does not predict which**: throttled and held runs
+  begin within 15 MHz of each other, and in the no-gap arm the throttled runs began HIGHER. The gap
+  raised the median start clock by 0.8%. So spacing addresses a variable that does not decide the
+  outcome, which is why 60 or 120 seconds is not worth trying.
+  **And the improved rate would not have fixed the real problem anyway:** the fatal property was never
+  the count of lost runs but that the survivors are SELECTED. 5 of 7 leaves the selection intact and
+  only makes it less visible; removing it needs essentially every run to pass, which the bimodality
+  says a gap cannot buy. **The TLS half of transport stays unavailable from the laptop, the limitation
+  stands as written, and the TLS claims rest on the desktop's within-platform data.**
+- **FOUR BIMODAL PHENOMENA IN ONE NIGHT, on two machines, in three subsystems**, and this is what the
+  per-run-values rule should rest on rather than the single instance it was drawn from: the Windows
+  establishment modes; io_uring's kernel-entry count; this TLS drift; and the split where establishment
+  carries a 35x effect while request latency in the same runs carries a quarter. **Every one was
+  invisible in the summary statistic and obvious in the per-run list, and TWO would have been reported
+  wrongly** -- the -0.4990 that came eight ten-thousandths from a resolved negative cost, and a drift
+  median that would have read as a moderate trend when it is two populations with nothing between.
+  Wording for the thesis: not "look at per-run values because bimodality can hide", but "four separate
+  phenomena across two platforms turned out to be bimodal, none was visible in the interval, and two
+  would have been reported wrongly". Evidence rather than prudence.
 - **THE COORDINATOR HAD PAPER 2'S OWN CLAIM WRONG ALL NIGHT AND IT PROPAGATED.** "60 to 85 us on a
   ~0.09 ms request-latency baseline" joins the numerator of one cell to the denominator of another.
   Verified against the paper's own CSVs:
