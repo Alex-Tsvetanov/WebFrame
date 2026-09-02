@@ -118,6 +118,28 @@ been scheduled yet.
   (four-cell mechanism comparison, both arms unprivileged), F (the io_uring timeout
   experiment, one line at `uring_context.cpp:492`, before/after with the idle-gap latency cost
   measured) are running in that order.
+- **Status at 17:30 (all three local workflows landed):**
+  - Chapter VI rewritten against the real campaign (baf85cec5, 1f5fd1740: 118 sentences; the
+    two-campaign/seven-repetition story was the deleted campaign's and is gone); the check's three
+    residuals applied, the abstract (`abstract/02_chapters.tex`), `back_conclusion.tex` and the
+    English annotation rewritten to match (5b4a4b505 and after). `data/transport.csv` had been
+    clobbered by the h1-deep emission (results2csv shares file names); regenerated from
+    transport.jsonl alone, now both arms. Thesis builds: 157 pages, 0 errors, 15 red markers
+    (sweeps table on purpose, macOS/Linux/h3/ttfb keys pending data).
+  - `thesis/figure-overlaps` merged (1f75fac90); branch can be deleted.
+  - Three-branch review: 3 high, 7 medium, 3 low, nothing refuted; macOS verification of the tip
+    passed (241 targets, 178/178, selfcheck 301, smoke 2/2 schema 7). Headline: **io_uring's
+    wake() is dead** (eventfd written, never read through the ring), so posted work, timers and
+    cross-worker handoffs wait the full timeout, now 1 ms; fix = NOP SQE under sq_mutex. Whole
+    list sent to the laptop for `linux/review-fixes` stacked on `linux/socket-opts-shared`; the
+    wake fix precedes the blocking-wait experiment (a blocking wait with a dead wake hangs).
+  - Paper 2 (`paper-socket-demux` draft/v1, d3932ab4): drafted, reviewed (17 findings applied),
+    8 pages, 0 errors, no TikZ (tables only, pages checked visually); missing citations added,
+    Nagle limitation added, README errors fixed (three socket errors not six; one fingerprint for
+    every design; census commit f52c49521). Still to do: Word step (`build_docx.py` must be
+    written fresh, the template's carries the other paper's text), trim the abstract (~330 words),
+    venue running head, Alex's read.
+  - **Alex (17:40): PDFs must be committed, not gitignored**, in the paper repos (and thesis).
 - **Local workflow `waafab14v`: paper 2 draft** in `paper-socket-demux` on branch `draft/v1`,
   scaffolded from the Compile-time-Protobuf IEEEtran template, eight sections drafted from the
   filed evidence with every number traced to a file, assembled, reviewed by three lenses,

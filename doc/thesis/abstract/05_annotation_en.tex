@@ -53,11 +53,12 @@ produces plausible numbers. Both arms of every comparison come from one binary
 selected by a runtime flag, the environment is fingerprinted and a change in it stops
 the campaign, and the rejection criteria are declared before any run.
 
-Two campaigns of \R{campaign.sweeps.runs} and \R{campaign.x1.runs} runs were carried
-out on one unvirtualised machine under Windows, for HTTP/1.1 without TLS. No run was
-rejected by the admissibility rules, and the worst value each rule reached is reported
-alongside that count, since zero rejections otherwise reads as loose rules rather than
-as clean runs.
+One campaign of three designs, \R{campaign.x1.runs}, \R{campaign.transport.runs} and
+\R{campaign.churn.runs} runs, was carried out on one unvirtualised machine under Windows, for
+HTTP/1.1 in cleartext and over TLS. \R{campaign.x1.rejected}, \R{campaign.transport.rejected}
+and \R{campaign.churn.rejected} runs respectively were refused by the admissibility rules, each
+with its reason recorded, and the worst value each rule reached is reported alongside those
+counts.
 
 The first hypothesis is not rejected. Across five offered loads from 10\,000 to
 70\,000 requests per second, the difference in the 99th percentile between the
