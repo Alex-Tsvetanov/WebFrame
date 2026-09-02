@@ -126,17 +126,15 @@ been scheduled yet.
   `06_results.tex` against the regenerated keys and CSVs, rewrites contradictions, commits and
   pushes `06_results.tex` only. One false sentence is already known (the worst pacing "about half
   the limit" is now 979 809 us from a refused run).
-- **Figure overlap audit done (`wzb6k7g16`): 7 of 15 figures clean, 8 flagged**, every
-  overlap confirmed by a second reader looking at a 220 dpi render. Common root cause in three
-  of them: the global `note` style in `preamble.tex` gives every small label a filled dashed
-  frame with 6 pt padding, so labels placed beside lines sit on top of them; the fix is a
-  local style override inside those figures, not a preamble change. **Local workflow
-  `w201pdtr6` is applying the confirmed fixes** in an isolated worktree on branch
-  `thesis/figure-overlaps` with its own build directory (so it cannot collide with the chapter
-  VI rebuild), re-rendering and re-inspecting each figure, and pushing the branch. Merge it
-  into `phase0-foundation` after `wici08xnv` has pushed, then rebuild and look at all 15 pages
-  once more. Alex's standing rule (memory `tikz-visual-check`): every diagram page is rendered
-  and looked at, and overlaps are fixed; this applies to the papers too.
+- **Figure overlaps fixed and pushed: branch `thesis/figure-overlaps` at `ecde5e66d`, eight
+  commits, one per figure**, each re-rendered at 220 to 440 dpi and re-inspected after the
+  fix; two needed a second pass and are now clean; the coordinator spot-checked `cid_routing`
+  and `closed_vs_open_loop` by eye and agrees. Common root cause in three figures was the
+  global `note` style (filled dashed frame, 6 pt padding) applied to labels beside lines; fixed
+  by local overrides, preamble untouched. **Merge into `phase0-foundation` once `wici08xnv` has
+  pushed its chapter VI rewrite** (it builds in the shared tree; the figure branch built in its
+  own worktree), then rebuild and glance at all 15 figure pages once more. Alex's standing rule
+  (memory `tikz-visual-check`) applies to the papers too.
 - **Alex's stated deliverable:** ready papers in all four paper repositories, following the
   Compile-time-Protobuf `paper/` template (IEEEtran conference, sections as files, bibliography,
   a Word step for submission). Paper 2 drafting now; paper 3 drafts when the laptop's E and F
