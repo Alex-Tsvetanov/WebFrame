@@ -134,6 +134,10 @@ namespace coroute::net
 	struct WorkerRing
 	{
 		io_uring ring;
+		// Whether this kernel takes a wait's timeout as an argument to io_uring_enter
+		// rather than as an operation occupying an SQE. It decides whether waiting is a
+		// submission-queue producer. Since 5.11.
+		bool ext_arg = false;
 		// Written by wake() to interrupt this ring's wait. Watched by a POLL_ADD armed
 		// on the ring itself, which is what makes writing to it sufficient.
 		int wake_fd = -1;
@@ -202,6 +206,8 @@ namespace coroute::net
 			{
 				return false;
 			}
+
+			ext_arg = (params.features & IORING_FEAT_EXT_ARG) != 0;
 
 
 			wake_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -618,12 +624,35 @@ namespace coroute::net
 			// worker, which is what makes releasing here safe rather than merely
 			// convenient.
 			//
-			// This lock is held for the whole duration of a blocking wait, so any other
-			// producer stalls for up to the timeout. wake() deliberately is not one:
-			// see it for why a wake that needs an SQE cannot work from here. Off-worker
-			// submit_sqe still can stall, which today only test fixtures do; that is a
-			// separate finding and a separate branch.
+			// This lock is held for the whole duration of a blocking wait, so while it
+			// is held every other producer stalls for up to the timeout. wake() is
+			// deliberately not one of them, but an off-worker submit_sqe is, and it waits
+			// out the timeout for no reason on a kernel where this wait submits nothing.
+			//
+			// Whether it submits anything is a property of the kernel, and the direction
+			// is the opposite of what the name suggests, so it was verified rather than
+			// assumed. From io_uring_wait_cqe_timeout(3): "If ts is specified and an
+			// older kernel without IORING_FEAT_EXT_ARG is used, the application does not
+			// need to call io_uring_submit(3) before calling io_uring_wait_cqes(3). For
+			// newer kernels with that feature flag set, there is no implied submit when
+			// waiting for a request." So the implied submit is on OLD kernels: there the
+			// wait is a producer and must hold the lock. With the feature it submits
+			// nothing, is not a producer, and the lock protects nothing while blocking
+			// everyone.
+			//
+			// Every actual submission stays under the lock either way. This changes only
+			// the wait.
+			//
+			// Either way the lock is not held below: completions are resumed inline, and
+			// a resumed coroutine's next act is usually to submit again, so holding it
+			// across that would deadlock the worker against itself. The completion queue
+			// needs no lock regardless, having exactly one consumer, this worker.
 			int ret = 0;
+			if (worker_ring->ext_arg)
+			{
+				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
+			}
+			else
 			{
 				std::lock_guard lock(worker_ring->sq_mutex);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
