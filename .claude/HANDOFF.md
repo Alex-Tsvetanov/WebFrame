@@ -231,6 +231,17 @@ been scheduled yet.
   outside the helper as platform obligations. Laptop building it now, with before/after on the
   epoll cell (100 idle, 100 awake, 500). The awake control is 16 `nice -n 19` bash spinners,
   one per logical core, started after listen and before the generator, killed by PID.
+  **DONE (laptop, `linux/socket-opts-shared` pushed):** `configure_accepted_socket()` in
+  `src/net/socket_options.cpp`, called from the four connection constructors (TlsConnection and
+  PrefaceConnection wrap an existing Connection and inherit it); `set_tcp_opts` deleted; verified
+  under strace that both Linux backends set all three. **TLS was never confounded:** App::run has
+  one accept path (multi-accept, banner records it), TLS is a per-connection wrapper. **The
+  policy's own effect on epoll is nil** at 100 idle/awake and 500 rps (p50 502→502, 77→79,
+  487→494 µs): the confound was real and its size at these cells is below noise; say so in the
+  method section, and it does not excuse the cross-arm re-runs (throughput, churn, syscall
+  tables untested). The keep-alive syscall finding stands (2 setsockopt per connection =
+  0.000427/request); churn cells carry ~2/request and re-run anyway. Incidental: io_uring under
+  strace did not exit on SIGTERM (epoll did), the shape a dead wake() predicts for stop().
 - **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
   bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
   the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
