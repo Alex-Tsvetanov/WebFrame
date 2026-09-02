@@ -721,6 +721,19 @@ findings in the laptop's own words, unredacted as you authorised.
 
 ## Succession, automated (set up 02:30 EEST)
 
+> **RETIRED 17:55 EEST on 2 September.** The handoff this mechanism existed for happened
+> inside the live session instead: Fable 5.1 hit its session limit (a subagent took a 429 at
+> 17:47) and Alex switched this same session to `claude-opus-5`, so the coordinator never died
+> and its context was never lost. The heartbeat cron (`f9755231`) was then cancelled, which
+> would have left the `coordinator-alive` file ageing while the coordinator was still working;
+> at 75 minutes the successor would have woken a **second** coordinator alongside this one, and
+> two of them messaging the laptop and the desktop and pushing to `phase0-foundation` is worse
+> than no safety net. The `coordinator-successor` task is therefore **paused, not deleted** --
+> its SKILL.md is untouched and one `update_scheduled_task(enabled: true)` brings it back. Do
+> that only together with a heartbeat writer; the two are one mechanism. The description below
+> is kept because it documents how to restart it.
+
+
 The switch is mechanical, so it needs nobody awake:
 
 - The primary session refreshes
