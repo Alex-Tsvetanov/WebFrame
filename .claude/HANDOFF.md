@@ -523,6 +523,48 @@ been scheduled yet.
   confirms it is not the host: churn-net's single zero-delivery run is at position 292 of 400, not
   early, so it is not the same cause and remains a rate past the ceiling.
   Other blocks clean: bracket 60/60, bracket-low 30/30, large 14/15 (one CPU-frequency drift).
+- **THE DECOMPOSITION IS DONE AND THE MECHANISMS GENUINELY DIFFER.** Three arms, 25 rotations,
+  interleaved, one session, on `a389023ba`; all 75 runs admissible, worst pacing p99 21 us, so the pool
+  never came near binding and none of tonight's coupling touches these numbers.
+
+  | | wait policy | mechanism | residual 95% CI | resolution |
+  |---|---|---|---|---|
+  | mean, all 25 | 430.24 us (93.0%) | 32.32 us (7.0%) | [+9.56, +68.56] | 6.00% |
+  | **median of medians (QUOTED)** | **449.00 us (95.9%)** | **19.00 us (4.1%)** | **[+14.00, +27.00]** | **1.31%** |
+  | mean, outlier removed | 446.12 us (96.4%) | 16.44 us (3.6%) | [+6.74, +23.72] | 1.73% |
+
+  **The mechanism residual excludes zero in all three, so this is NOT a null result: the mechanisms
+  differ by about 4% of the gap.** The coordinator's reframing from equivalence to decomposition was
+  right for a reason neither party anticipated -- there was something there to measure, and an
+  equivalence claim would have discarded it.
+  **Sentence for the paper:** of the 468 us gap between a readiness backend and a completion backend at
+  low load, the wait policy accounts for 449 us and the mechanism for 19 us, residual resolved to 1.3%.
+  **The contaminated-run adjudication, done properly and settled AGAINST the laptop's story.** One
+  blocking repetition returned 78 us against 454-485 for the other 24. The laptop attributed it to its
+  own `procwait` commit; the coordinator refused to let an estimator be chosen to tolerate it and
+  required external evidence, since noticing a condition BECAUSE of a value is the shape of post-hoc
+  rationalisation. **The git timestamp refutes the story:** the commit lands 48 s AFTER that cell
+  finished, inside rotation 10, whose values are entirely normal. So the run STAYS and the anomaly is
+  recorded as unexplained. The laptop also flagged, unprompted, that the honest path happens to give
+  the TIGHTEST resolution (1.31% against 1.73%) and said so while it ran in its favour -- that sentence
+  belongs in the paper, because a reader cannot otherwise tell a forced choice from a chosen one.
+  **Judgement so nobody spends machine time: the conclusion is robust to the anomaly** (all three
+  versions exclude zero and agree on the wait policy's share within three points), so it needs no
+  resolving; 100 rotations to find three more instances would not move the answer.
+- **THE UPSTREAM LESSON FROM BOTH OF TONIGHT'S ADJUDICATIONS: experiments that bypass the driver lose
+  the harness's witnesses.** The laptop's script drove `loadgen` directly, so those records carry no
+  `cpu_mhz_start`/`end` and the second witness did not exist when it was needed. Tonight's two most
+  argued-over numbers, this one and the parking row, both came from outside the harness. **Rule:
+  exploratory experiments go through the driver too unless there is a stated reason they cannot.** The
+  harness is not only a runner; it is what records what else was true while a number was taken.
+- **SCHEMA-9 CANDIDATE 2, ruled in: sample the clock DURING the run, not only at its ends.** The drift
+  gate compares start against end, so a disturbance in the middle passes both gates -- and the middle
+  is most of the run, so that is not bad luck. The driver already samples from a thread inside the
+  measured window, so extending it to a cadence and recording the spread is small, and it would have
+  turned both of tonight's adjudications into a lookup rather than an argument. **Note the shape the
+  two schema-9 candidates share: both record what ACTUALLY HAPPENED during a run rather than what was
+  configured or inferred** -- which wire carried it, what the clock did, when the request really left.
+  The interface field was the first of them. Worth its own paragraph in the methodology chapter.
 - **THE BLOCKING-WAIT EXPERIMENT, and the finding that carries paper 3.** Three binaries from
   `a389023ba` differing only in the wait, 300 000 completions per loaded cell.
 
