@@ -145,6 +145,16 @@ namespace coroute::net
 		// granularity is four orders of magnitude finer than the decision, and a timeout
 		// that fires a millisecond late is not a different answer.
 		//
+		// It does impose a floor, which is worth stating because a test found it rather
+		// than a reader. A timeout of the same order as the tick is no longer resolvable:
+		// the store in touch() and the later subtraction can land on the same tick or on
+		// adjacent ones, so an interval of about a millisecond reads as either zero or a
+		// full tick depending on where the boundary falls. A 1 ms idle timeout under this
+		// clock is therefore not a 1 ms timeout, and a test written to one is a coin
+		// flip; it cost 2 failures in 200 runs before its timeout was raised clear of the
+		// tick. Callers wanting sub-tick deadlines want TimerQueue, which is on
+		// CLOCK_MONOTONIC for the unrelated reason above.
+		//
 		// Both sides of the comparison come through here, the store in touch() and the
 		// subtraction in the expiry check, so they cannot end up on different clocks.
 		// That is why this is the function that changed rather than touch().
