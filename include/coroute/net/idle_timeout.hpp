@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -123,8 +124,47 @@ namespace coroute::net
 			std::atomic<bool> expired{false};
 		};
 
+		// The coarse monotonic clock where there is one, because this decides a timeout
+		// measured in seconds and steady_clock is not free.
+		//
+		// steady_clock::now() is clock_gettime(CLOCK_MONOTONIC), which the vDSO usually
+		// serves without entering the kernel. Usually is not always: where the TSC has
+		// been disqualified the vDSO cannot serve it and every call becomes a syscall.
+		// Measured on the Linux rig, whose clocksource is hpet because the boot-time
+		// watchdog marked the TSC unstable, CLOCK_MONOTONIC costs 1931 ns and one
+		// syscall per call against 5 ns and none for CLOCK_MONOTONIC_COARSE. Profiling a
+		// churn workload there put four of the roughly nine clock reads per established
+		// connection in this one function, which is the largest single group and the only
+		// one that can be moved: the timer queue's reads cannot, because
+		// pthread_cond_clockwait rejects both coarse clocks with EINVAL and its deadline
+		// has to live in a clock the wait will accept.
+		//
+		// What is given up is precision this caller never had a use for. The coarse clock
+		// advances once per tick, measured at 1.00 ms on that host, and the quantity it
+		// decides is App's keep-alive timeout, which defaults to 30 000 ms. The
+		// granularity is four orders of magnitude finer than the decision, and a timeout
+		// that fires a millisecond late is not a different answer.
+		//
+		// Both sides of the comparison come through here, the store in touch() and the
+		// subtraction in the expiry check, so they cannot end up on different clocks.
+		// That is why this is the function that changed rather than touch().
+		//
+		// Elsewhere, and on any platform without a coarse monotonic clock, this is
+		// steady_clock exactly as before: Windows and macOS have no CLOCK_MONOTONIC_COARSE,
+		// and neither needs one, since their steady_clock is not paying for a disqualified
+		// TSC.
 		static std::int64_t now_ns()
 		{
+#if defined(__linux__) && defined(CLOCK_MONOTONIC_COARSE)
+			::timespec ts{};
+			if (::clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0)
+			{
+				return static_cast<std::int64_t>(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
+			}
+			// Falls through to steady_clock rather than returning a wrong answer. A
+			// clock_gettime that fails on a clock the kernel advertises is not something
+			// to paper over with a zero.
+#endif
 			return std::chrono::duration_cast<std::chrono::nanoseconds>(
 			           std::chrono::steady_clock::now().time_since_epoch())
 			    .count();
