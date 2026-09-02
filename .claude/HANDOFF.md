@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 02:45 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:15 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -36,7 +36,9 @@ never change the system or enter a sudo password (skip and report); a blocked pe
 prompt is reported and skipped; when unsure, stop that step and report. Both sessions were told; the desktop session keeps its own
 channel to Alex on principle, which is fine because Alex pre-authorised its whole sequence.
 
-**This repository is public.** Nothing that identifies a machine beyond its hardware class
+**This repository is public.** (Enforced the hard way twice: the runbook I wrote named the
+desktop by hostname, on both this branch and the harness branch, and a review lens caught it.
+Grep every branch before pushing, not only the diff.) Nothing that identifies a machine beyond its hardware class
 belongs here or in any commit, branch or inbox file on it: no hostnames, addresses, SSIDs,
 login state or security posture. Those live in the local memory notes. Measurement result
 branches (whose environment records carry the host name) go to the private paper
