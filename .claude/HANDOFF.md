@@ -650,6 +650,31 @@ been scheduled yet.
   evening were ordinary ones self-review does catch, and the independence-of-position instruction.
   Nothing further -- continuing to polish a paragraph about over-elaboration would be its own
   demonstration.**
+- **CLEARTEXT TRANSPORT RESULT, both arms, 140/140, seven repetitions, ten cells, on `a4519ada2`.**
+  (1) **Demultiplexing costs nothing measurable on either backend under keep-alive.** Detect on minus
+  off at p50 is 0 or ±1 us against medians of 23-39 us; every epoll interval INCLUDES zero (so nothing
+  is reportable by our rule even before the size floor) and its resolution is 1.3-1.8%, a tight null:
+  **classification costs under 2% of request latency on a connection already up**, the structural
+  prediction (one extra read amortised over every request). On io_uring the null is bounded by the
+  INSTRUMENT, not the data: latency is quantised to whole microseconds, a 1 us step is 4.3% of a 23 us
+  median, so say "under about 4 us" there and never a percentage.
+  (2) **io_uring is 22-50% faster than epoll on every cleartext cell, all ten resolved**: +13 us at
+  5000/s narrowing to +5-6 us at 35000/s, intervals excluding zero everywhere. **Resolved but NOT YET
+  ATTRIBUTED**: at 100/s the wait policy was 96% of the gap; at 10 000/s the three io_uring wait
+  variants were indistinguishable, so at load the wait policy is not what separates the arms and the
+  residual is plausibly the mechanism plus epoll's per-request syscall count. The mechanism arms
+  running next measure exactly that; the laptop is to put syscalls per request beside the latency gap
+  at the same rates before "io_uring is faster" is quoted.
+  (3) **Artefact: `latency_ms` carries three decimals, so a p50 is an integer number of microseconds**
+  (raw per-run values at 35000: io_uring 23 23 23 23 27 27 27; epoll 28 28 29 29 29 29 29). Does not
+  touch the cross-arm result (differences of 5-13 us are above the step). **Schema-9 candidate 3**,
+  after `time_after_send_us` and mid-run clock samples -- but the laptop is to check whether the
+  truncation is at CAPTURE (steady-clock duration cast to integer microseconds into the `_us` vector)
+  or at report; if at capture, the fix is the sample resolution in loadgen, a measurement change that
+  touches the histogram, not a reporting one.
+  Coordinator's n=7 prior (nine of ten cells resolving) was about the demux comparison and is neither
+  confirmed nor refuted: the cross-arm comparison resolved ten of ten and the demux one is a tight
+  null rather than a failure to measure.
 - **TRANSPORT RE-RUN: THE CLEARTEXT HALF IS CLEAN AND THE TLS HALF IS UNUSABLE, and the reason is a
   third gate correlated with its arm.** Cleartext: 140 of 140 accepted, both backends, seven
   repetitions in all ten cells, drift median 0.6%. TLS: 64 of 140 accepted, not one cell reaching
