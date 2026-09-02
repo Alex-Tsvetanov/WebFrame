@@ -214,6 +214,36 @@ def netem_checks() -> None:
           netns.observed_profile("qdisc fq_codel 0: root refcnt 2 limit 10240p") == "none")
 
 
+def perf_counts_checks() -> None:
+    print("\n== a syscall breakdown that lost part of itself is refused ==")
+
+    from benchmark.adapters import SYSCALL_TRACEPOINTS, parse_perf_counts
+
+    def csv(rows: dict[str, str]) -> str:
+        return "".join(f"{v},,{k},1000000,100.00\n" for k, v in rows.items())
+
+    full = parse_perf_counts(csv({name: "1000" for name in SYSCALL_TRACEPOINTS}))
+    check("every requested tracepoint is parsed", len(full) == len(SYSCALL_TRACEPOINTS))
+    # perf marks a single evsel unsupported and carries on with the rest, so this is what
+    # a partial attach looks like: a plausible total and a breakdown missing a member.
+    rows = {name: "1000" for name in SYSCALL_TRACEPOINTS}
+    rows["syscalls:sys_enter_epoll_wait"] = "<not supported>"
+    partial = parse_perf_counts(csv(rows))
+    check("an unsupported tracepoint is dropped rather than stored",
+          "syscalls:sys_enter_epoll_wait" not in partial)
+    check("so absence is what the assertion has to look for",
+          [n for n in SYSCALL_TRACEPOINTS if n not in partial]
+          == ["syscalls:sys_enter_epoll_wait"])
+    # A tracepoint that legitimately fired zero times is a key with the value 0, which is
+    # what makes absence mean "never opened" rather than "counted nothing".
+    zeroed = parse_perf_counts(csv({**{n: "1000" for n in SYSCALL_TRACEPOINTS},
+                                    "syscalls:sys_enter_io_uring_enter": "0"}))
+    check("a tracepoint that counted zero is still present",
+          zeroed.get("syscalls:sys_enter_io_uring_enter") == 0
+          and not [n for n in SYSCALL_TRACEPOINTS if n not in zeroed])
+
+
+
 def listener_checks() -> None:
     print("\n== the server behind a prefix is found by what it listens on ==")
 
@@ -1113,6 +1143,7 @@ def main() -> int:
     campaign_checks()
     transport_checks()
     netem_checks()
+    perf_counts_checks()
     listener_checks()
     port_checks()
     topology_checks()

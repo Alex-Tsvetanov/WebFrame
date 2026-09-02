@@ -855,7 +855,20 @@ class CorouteServer:
             text = self._perf_out.read_text() if self._perf_out else ""
             counts = parse_perf_counts(text)
             total = counts.get(TOTAL_TRACEPOINT, 0)
-            if total <= 0:
+            # Every requested tracepoint, not only the total. parse_perf_counts drops any
+            # row whose count field is not a number -- `<not counted>`, `<not supported>`
+            # -- and says in its own docstring that doing so is safe only because the
+            # caller asserts afterwards; the caller asserted about one of twelve. perf
+            # marks a single evsel unsupported and carries on with the rest, so a run
+            # could come back with a plausible total and eleven absent keys, which the
+            # schema documents as "the per-tracepoint totals" and which hands any reader
+            # doing counts.get(name, 0) the falsy default this project refuses. The named
+            # set exists to attribute the total; a set that quietly lost most of itself
+            # makes the unattributed remainder look like the thing it was added to
+            # prevent. A tracepoint that counted zero is a key with the value 0, so
+            # absence means the event never opened.
+            missing = [name for name in SYSCALL_TRACEPOINTS if name not in counts]
+            if total <= 0 or missing:
                 # perf's own words, not a guess at them. Piping its stderr and never
                 # reading it is how the server's startup failures used to become a
                 # thirty second timeout with no reason attached; the same mistake here
@@ -869,10 +882,12 @@ class CorouteServer:
                     f"{(interrupted.stderr or b'').decode(errors='replace').strip()[:200]}."
                 )
                 raise RunFailed(
-                    f"syscall counting produced {TOTAL_TRACEPOINT}={total}, which cannot "
-                    f"be true of a server that served this run. perf attached to the "
-                    f"wrong process or could not open the events; the counts are not "
-                    f"usable and the run is refused rather than recorded as quiet.{sent} "
+                    f"syscall counting is not usable: {TOTAL_TRACEPOINT}={total} and "
+                    f"{len(missing)} of {len(SYSCALL_TRACEPOINTS)} tracepoints never "
+                    f"opened ({', '.join(missing) or 'none'}). A zero total cannot be "
+                    f"true of a server that served this run, and a breakdown recorded as "
+                    f"a whole one attributes what it lost to nothing; the run is refused "
+                    f"rather than recorded as quiet.{sent} "
                     f"perf said: {perf_said()[:400] or '(nothing)'}"
                 )
             return counts
