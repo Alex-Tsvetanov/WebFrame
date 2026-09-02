@@ -859,6 +859,37 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
+- **THE COORDINATOR HAD PAPER 2'S OWN CLAIM WRONG ALL NIGHT AND IT PROPAGATED.** "60 to 85 us on a
+  ~0.09 ms request-latency baseline" joins the numerator of one cell to the denominator of another.
+  Verified against the paper's own CSVs:
+
+  | arm | statistic | effect | baseline | reportable |
+  |---|---|---|---|---|
+  | cleartext | request latency | +28 to +30 us | 88-105 us | all eight cells |
+  | TLS | establishment | +85 us at 100/s, +61 at 150 | 1.396 / 1.383 ms | 100/s only |
+  | TLS | request latency | ~0 | 154-169 us | none |
+
+  **Two quantities in two arms.** In relative terms the cleartext claim is ~30% of its baseline and the
+  TLS claim ~6%, so **the two-host resolution question was framed far harder than it is**; the
+  coordinator's "can a real path resolve 60 us" reasoning rested on the conflation. The two-host design
+  has been rebuilt around the six churn cells that carry the claim rather than the transport cells
+  named in the brief, which are a null by arithmetic (once-per-connection cost divided by tens of
+  thousands of requests) and would have spent 640 runs and 4.6 hours measuring nothing.
+- **THE BIMODALITY IS IN ONE STATISTIC, NOT IN THE RUN, and that locates the event.** `connect_ms`
+  carries it; request latency in the same runs moves ~25% while establishment moves 35x. The reason is
+  structural: latency is measured from the instant a request was DUE, so it begins after the handshake
+  completes, while establishment spans the handshake. **So the ~9 ms event happens BEFORE the handshake
+  finishes and does not recur in the connection's subsequent life.** A narrowing the proportions could
+  not give, costing nothing. Consequence for wording: "the run is slow" overstates it -- the
+  ESTABLISHMENT is slow, and the two statistics disagree because they measure windows that do not
+  overlap.
+- **The link-ceiling figure the coordinator used all night was ~5x wrong.** Computed from the actual
+  request (92 B) and response (126 B) plus framing: 204-288 B per request on the heavier direction, so
+  the gigabit link saturates at 434k to 613k requests a second, not the ~70k claimed. **The link does
+  not bind for transport, churn or h1-deep at any rate in the tables** (70k is 11-16% of the link; TLS
+  at 35k is 87 Mbit/s; churn at 800/s is 13 Mbit/s). It WOULD bind for the `h1` design's 8192-byte
+  payload cell at 40k, whose ceiling is about 13.8k requests a second; cap that at 10k if it is ever
+  run.
 - **THE ESTABLISHMENT ANOMALY IS CHARACTERISED AND CLOSED FOR THE NIGHT; the mechanism is unknown and
   every account either party proposed has been withdrawn against evidence.** Seven rates, 105 runs,
   plus the earlier 196.
