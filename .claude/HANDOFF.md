@@ -191,21 +191,34 @@ been scheduled yet.
   overruns both at the lowest offered rate. **The 150-rate fear did not materialise**, 99 of
   100 accepted with the single failure a socket error rather than an admissibility one, so the
   ladder gap mattered less than expected; worth a sentence in the results.
-- **Pacing rejections land at the bottom of every table, and the cause is open.** Three of
-  three pacing refusals across 900 runs sit at a design's lowest offered rate: both of churn's
-  at 25 establishments a second (of 25/50/100/150) and transport's single one at 5000 requests
-  a second (of 5000 to 35000). Two shapes, rates two orders of magnitude apart, every higher
-  rate spotless. A sample-count explanation was offered and **refuted**: at 5000/s over 20 s
-  there are ~100 000 pacing samples so the p99 is about the thousandth worst, which no single
-  hiccup reaches, though the argument does hold for churn's ~500 samples. Two live hypotheses,
-  both predicting the pattern at either scale: the generator sleeps until near the due slot and
-  spins only the last segment, so at a low rate every sample inherits timer granularity and
-  wake-up latency while at a high rate the loop paces itself; or the generator is idle enough
-  between sends to be descheduled or dropped to a lower power state, paying the wake-up on
-  every sample. **Decidable offline from the 900 stored records at no machine cost**: compare
-  the median, p90 and p99 of pacing by offered rate per design, plus the generator's CPU share.
-  If the median also moves, the cause is in every sample; if only the tail moves, something
-  rarer is happening. Queued for after the third design.
+- **CAMPAIGN COMPLETE: three loopback designs, 1150 runs, 13 rejected (1.1%).** `churn`
+  400/394, `transport` 500/499, `h1-deep` 250/244, committed locally on the desktop as
+  `71baff233` on branch `measure/desktop-2026-09-02`, 20 files, 1184 records, **pushed
+  nowhere**. Every loopback `.env.json` shares one hash and only the network ladder's differs,
+  which is the transport-path separation working.
+- **The "lowest rate is most fragile" generalisation is dead, and the analysis that killed it
+  produced something better.** It was drawn from one design plus one run; `h1-deep` refutes it,
+  since all four of its pacing failures are at 40 000 requests a second and above and its
+  median pacing rises monotonically with rate (47.5, 47.0, 51.5, 60.0, 80.0), the opposite
+  direction from churn. Comparing the whole distribution rather than the tail, with
+  `generator_cpu_fraction` alongside, separates **three phenomena that had been conflated**:
+  (1) an unsaturated generator, which is churn at 25/s and the only such cell in the campaign
+  at 0.257 CPU share, where the entire distribution moves (median 94.5 against 71.0 at rate
+  150) rather than only the tail; (2) a generator near its ceiling, `h1-deep` at 40 000 and
+  above, degrading with load in the ordinary way; and (3) a rare isolated event needing no
+  mechanism at all, `transport` at 5000, which is saturated at 0.996 with median, p90 and p99
+  indistinguishable from every other cell and only one run's maximum standing out. Both earlier
+  explanations, the coordinator's sampling story and the desktop's saturation story, were
+  reaching for case 1 and were wrong about the other two.
+  Still open and stated as such: within case 1, sleep granularity and descheduling both predict
+  a low CPU share at a low rate, and separating them needs per-sample wake latency, which is not
+  recorded. One suggestive record in case 2: the worst run in 1150 lost about 16% of its CPU
+  share and fell nearly a second behind, which looks like descheduling rather than slowness.
+- **A sentence already in chapter VI was false in general and is corrected** (`db66ac674`): the
+  generator's CPU share is unity *while saturated*, not at every offered load. It stays refused
+  as a rejection criterion for the reason it always gave, and becomes the diagnostic that
+  separates a saturated arrangement from an unsaturated one. A rule and an observation are not
+  read the same way.
 - **Second design complete: `transport`, 500 runs, 499 accepted, 1 rejected (0.2%)**, 3 h 27 m.
   Third, `h1-deep`, started 09:52 local.
 - **A half-specified off-host arrangement runs silently as an on-host one.**
@@ -403,8 +416,9 @@ Ordered by what unblocks the most. Nothing here was decided without you.
 3. **May a campaign set the governor to `performance` for its duration and restore it after?**
    The laptop is already there; this is about making it explicit and repeatable rather than
    incidental.
-4. **The desktop's results branch needs one push.** When its designs finish it commits them
-   locally on `measure/desktop-2026-09-02` and pushes nothing, by its own policy and your
+4. **The desktop's results branch is ready and needs one push.** It is committed locally as
+   `71baff233` on `measure/desktop-2026-09-02`, 1184 records across the three loopback designs.
+   The desktop pushes nothing, by its own policy and your
    wording that the coordinator places records in the paper repositories. Push that branch to
    the private `paper-socket-demux` repository and the coordinator will file the records with
    their provenance.
