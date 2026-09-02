@@ -51,7 +51,7 @@ would be admissible, and the gate would refuse it only after the hours were spen
 ## Ladders: re-run them whenever the binary or the host changed
 
 The offered rates hard-coded in `run_campaign.py` (`TLS_OFFERED_RATES`,
-`CHURN_OFFERED_RATES`, `CHURN_NET_OFFERED_RATES`) were measured on `alex-pc` at an
+`CHURN_OFFERED_RATES`, `CHURN_NET_OFFERED_RATES`) were measured on the desktop at an
 earlier commit. They are this host's numbers and nobody else's, and a rebuilt binary can
 move them. The three ladders cost about eight minutes together and turn a guess into a
 measurement:
@@ -97,8 +97,8 @@ WSL arrangements go in separate files and are never merged; the driver records
 Dispatch-only starts no server and needs no network. It is x86-only because it times with
 `rdtsc`. The 10 000-route DFA cells are split off because the parameterised table does
 not fit in this host's memory and a run that pages would contaminate whatever the shuffle
-placed after it. `build/windows-routing` is the tree alex-pc already has with the router arms
-compiled in; on Linux and macOS the equivalent is `build/bench` from the `bench` preset.
+placed after it. `build/windows-routing` is the tree the desktop already has with the router
+arms compiled in; on Linux and macOS the equivalent is `build/bench` from the `bench` preset.
 
 ```
 python -m benchmark.run_routing --design main        --repetitions 5 --build build/windows-routing --results benchmark/results/<dir>/routing
