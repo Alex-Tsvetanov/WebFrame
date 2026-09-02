@@ -26,6 +26,7 @@
 #include <cerrno>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 namespace coroute::net
 {
@@ -497,15 +498,13 @@ namespace coroute::net
 	public:
 		EpollConnection(EpollContext& ctx, int fd, const sockaddr_in& addr) : ctx_(ctx), fd_(fd)
 		{
+			configure_accepted_socket(fd);
 			std::array<char, INET_ADDRSTRLEN> ip{};
 			if (::inet_ntop(AF_INET, &addr.sin_addr, ip.data(), ip.size()) != nullptr)
 			{
 				remote_addr_ = ip.data();
 			}
 			remote_port_ = ntohs(addr.sin_port);
-
-			int one = 1;
-			::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 		}
 
 		~EpollConnection() override { close(); }

@@ -25,6 +25,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include "coroute/net/socket_options.hpp"
 
 namespace coroute::net
 {
@@ -709,6 +710,7 @@ namespace coroute::net
 		UringConnection(UringContext& ctx, int fd, const sockaddr_in& addr, size_t ring_index = 0)
 			: ctx_(ctx), fd_(fd), ring_index_(ring_index)
 		{
+			configure_accepted_socket(fd);
 			char ip[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
 			remote_addr_ = ip;
@@ -974,19 +976,6 @@ namespace coroute::net
 	// Accept Loop Implementation (for SO_REUSEPORT multi-accept)
 	// ============================================================================
 
-	// Helper to set TCP optimizations on accepted sockets
-	static void set_tcp_opts(int fd)
-	{
-		int opt = 1;
-		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef TCP_QUICKACK
-		setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &opt, sizeof(opt));
-#endif
-		// Increase send buffer for better throughput
-		int sndbuf = 256 * 1024;
-		setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-	}
-
 	Task<void> UringContext::accept_loop(size_t ring_index)
 	{
 		auto* worker_ring = rings_[ring_index].get();
@@ -1018,9 +1007,6 @@ namespace coroute::net
 				// Accept error - continue unless stopped
 				continue;
 			}
-
-			// Set TCP optimizations
-			set_tcp_opts(op.result);
 
 			// Create connection on this ring
 			auto conn = std::make_unique<UringConnection>(*this, op.result, op.client_addr, ring_index);
