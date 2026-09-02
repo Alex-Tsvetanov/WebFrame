@@ -304,6 +304,31 @@ been scheduled yet.
   existing IOCP dataset with a real path; a Linux server with a Windows generator gives paper 3 its
   epoll and io_uring arms over one. Neither licenses a cross-platform comparison, which stays
   shape-only, because the two ends are different hardware.
+- **MAINLINE IS `a389023ba`, pushed. Schema 8. Everything measured from now on comes from it.**
+  Contents: the eventfd wake for io_uring and epoll, the EXT_ARG lock change with its pre-5.11
+  caveat, all thirteen review findings, and the per-run interface recording. macOS: 310 self-checks,
+  241 targets, and **one known failing test, number 42, which is the kqueue wake defect**; the fix is
+  on `macos/kqueue-wake` and merges next. The coordinator reversed its own "no push until it passes"
+  on the grounds that the failure is macOS-only, cannot touch any Linux number, and holding two
+  machines idle for a platform neither measures on is the wrong trade. **If test 42 ever fails on
+  LINUX that is a regression of the eventfd wake and must be reported at once.**
+  The interface field is per-run on `RunRecord`, not per-campaign, at the laptop's insistence and it
+  was right: the failure guarded against is the medium changing PARTWAY THROUGH a campaign, which a
+  campaign-level field cannot express, and per-run also refuses only the affected runs instead of
+  invalidating a campaign retroactively. Read from `getsockname` after a connection is established,
+  matched to an interface, and the address then DISCARDED; records name, speed, duplex and MTU, never
+  an address or a MAC. Verified end to end: a loopback run reports `lo`, a namespaced run reports
+  `veth-gen` from inside the namespace rather than the host's Ethernet, so the reading follows the
+  socket rather than the machine. `--expect-interface` refuses a run over anything else, and refuses
+  an unknown interface too when an expectation was stated.
+  Consequence: the desktop's campaign is at its own commit and produces schema 7, so its routing and
+  sweep results are a separate population from everything after this merge, and the refusal to pool
+  them is correct rather than an inconvenience.
+- **The laptop withdrew the resolution conclusion** after the coordinator's correction, and restated
+  the open questions itself: autocorrelated network noise collapsing the effective sample count toward
+  the number of runs, and any variation correlated with the arm. Neither is settled by a ping
+  statistic. **Nobody writes a sentence about which medium was right for the demux claim until the
+  run-to-run spread of per-run medians exists for the wire.**
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
