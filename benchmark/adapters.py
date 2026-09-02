@@ -756,6 +756,30 @@ class CorouteServer:
         found = self._listening_pids()
         return found[0] if found else None
 
+    def server_euid(self) -> int | None:
+        """The effective uid the server is actually running as.
+
+        Read from /proc rather than inferred from the launch prefix, for the same reason
+        generator_euid is reported by the generator rather than assumed: a prefix that
+        silently failed to drop privilege looks exactly like one that worked. Under
+        `sudo -n ip netns exec srv runuser -u alex --` the intended answer is the
+        invoking user, and every link in that chain is a place it could come back 0.
+
+        The third field of Uid: is the effective uid, which is the one that decides
+        whether this process is exempt from RLIMIT_MEMLOCK; the real uid can differ from
+        it under runuser and is not what the kernel checks.
+        """
+        pid = self.server_pid()
+        if pid is None:
+            return None
+        try:
+            for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+                if line.startswith("Uid:"):
+                    return int(line.split()[2])
+        except (OSError, IndexError, ValueError):
+            return None
+        return None
+
     def _listening_pids(self) -> list[int]:
         """Every pid holding this server's port inside the launch namespace."""
         if not self.launch_prefix:

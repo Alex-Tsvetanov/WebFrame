@@ -288,14 +288,21 @@ def run_one(
 
         result = generator.run(cell, duration_s)
 
-        # Under a namespace prefix the two ends are supposed to differ in privilege: the
-        # server stays root, because io_uring needs CAP_SYS_ADMIN on this host and an
-        # epoll arm that differed from it in scheduling class as well as in backend would
-        # carry the one confound this comparison cannot, while the generator's prefix
-        # drops back to the invoking user. Both prefixes are free-form strings nothing
-        # inspects, and an operator who omits the runuser gets a root generator and a
-        # record that reads exactly like a correct run. Asked of the generator rather
-        # than read from /proc, where the pid under `sudo -n ip netns exec` is sudo's.
+        # Under a namespace prefix both ends are supposed to run as the invoking user.
+        #
+        # This once said the opposite: that the server stays root because io_uring needs
+        # CAP_SYS_ADMIN. That was true of the hardened kernel the rig ran at the time,
+        # where kernel.io_uring_disabled=1 gave io_uring to CAP_SYS_ADMIN only. It is no
+        # longer true, and keeping the root server would now be the confound rather than
+        # the way round one, because a root server is exempt from the RLIMIT_MEMLOCK
+        # budget io_uring rings are charged against while the epoll arm is exempt from
+        # nothing. A host that still needs the old arrangement declares it on the cell;
+        # see privilege_asymmetry below.
+        #
+        # Both prefixes are free-form strings nothing inspects, and an operator who omits
+        # the runuser gets a root process and a record that reads exactly like a correct
+        # run. Asked of the generator rather than read from /proc, where the pid under
+        # `sudo -n ip netns exec` is sudo's.
         if getattr(server, "launch_prefix", None):
             if result.euid is None:
                 raise RunFailed(
@@ -309,6 +316,40 @@ def run_one(
                     "the arrangement says only the server has"
                 )
         record.generator_euid = result.euid
+
+        # The other half of the pair, and the reason it is checked rather than merely
+        # recorded: root is exempt from RLIMIT_MEMLOCK, and io_uring charges its ring
+        # memory against a per-user budget under that limit. A server that came up as
+        # root therefore never meets a ceiling the unprivileged one hits, so a run whose
+        # two ends differ in privilege is not comparing backends, it is comparing
+        # privileges. That difference is invisible in the throughput number and was
+        # invisible in the record until this field existed.
+        #
+        # Declared asymmetry is still allowed, because it is sometimes the point: a
+        # hardened kernel with kernel.io_uring_disabled=1 gives io_uring to CAP_SYS_ADMIN
+        # only, and measuring it there means running the server as root on purpose. The
+        # cell has to say so, so that the asymmetry appears in the design rather than in
+        # an accident.
+        server_euid = None
+        get_euid = getattr(server, "server_euid", None)
+        if callable(get_euid):
+            server_euid = get_euid()
+        record.server_euid = server_euid
+
+        declared = factors.get("privilege_asymmetry")
+        if (
+            not declared
+            and server_euid is not None
+            and result.euid is not None
+            and server_euid != result.euid
+        ):
+            raise RunFailed(
+                f"the server ran as uid {server_euid} and the generator as "
+                f"{result.euid}; a run whose two ends differ in privilege is not "
+                "comparing backends, and root is exempt from the RLIMIT_MEMLOCK budget "
+                "io_uring rings are charged against. Set privilege_asymmetry on the "
+                "cell if this is intended"
+            )
 
         # The clock sample is taken from the thread before the counter is stopped, so a
         # counting failure, which raises, still leaves the run with the clock it was

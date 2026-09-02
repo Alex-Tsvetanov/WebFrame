@@ -40,6 +40,12 @@ class FakeServer:
     died: str | None = None
     argv_value: list[str] = field(default_factory=lambda: ["fake-server"])
     syscall_counter: str | None = None
+    # None means "this adapter has no such notion", which is every pre-v7 adapter and
+    # every Windows one, and must stay distinguishable from a measured 0.
+    euid: int | None = None
+
+    def server_euid(self) -> int | None:
+        return self.euid
 
     @property
     def argv(self) -> list[str]:
@@ -296,6 +302,53 @@ def run(check: Callable[[str, bool], None]) -> None:
         campaign_fingerprint="fp", duration_s=30.0,
     )
     check("an unprefixed run needs no uid at all", record.accepted)
+
+    # --- the server's own privilege, schema 7 --------------------------------
+    #
+    # The pair matters more than either half. root is exempt from RLIMIT_MEMLOCK, which
+    # is what io_uring ring memory is charged against, so a root server against an
+    # unprivileged generator is not a backend comparison; and that difference shows up
+    # nowhere in the throughput number.
+    def prefixed_as(euid: int | None):
+        def make(cell):
+            server = FakeServer(cell=cell, log=[], euid=euid)
+            server.launch_prefix = ["sudo", "-n", "ip", "netns", "exec", "srv"]
+            return server
+        return make
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("both ends as the same user is accepted", record.accepted)
+    check("and the record says which user the server was", record.server_euid == 1000)
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(0), generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("a root server against a user generator is refused",
+          not record.accepted and any("privilege" in r for r in record.rejection_reasons))
+    check("and the refused run still records both uids",
+          record.server_euid == 0 and record.generator_euid == 1000)
+
+    # Declared, it is a design point rather than an accident: measuring io_uring on a
+    # hardened kernel that gives it to CAP_SYS_ADMIN only means a root server on purpose.
+    record = _run_one(
+        _scheduled(_cell(privilege_asymmetry="io_uring needs CAP_SYS_ADMIN here")),
+        server_factory=prefixed_as(0), generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("unless the cell declares it", record.accepted)
+
+    # An adapter that cannot answer must not be read as agreeing.
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(None), generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("an adapter with no notion of a server uid is not a mismatch", record.accepted)
+    check("and records None rather than a number it did not measure",
+          record.server_euid is None)
 
     # --- guards decide -------------------------------------------------------
     record = _run_one(
