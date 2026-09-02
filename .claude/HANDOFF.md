@@ -728,6 +728,27 @@ been scheduled yet.
   the honest interval is wider. The desktop's 85 to 100 rests on desktop data alone and is the one to
   defend.** A boundary landing at 92 would be consistent with the Linux curve without confirming it,
   since 92 is also the middle of the interval already held.
+  **THE INCREMENT BETWEEN THE MODES IS ADDITIVE AND CONSTANT (desktop, from filed numbers):** about
+  8.3-8.9 ms at both rates and in both arms, with TLS about a millisecond slower than cleartext in
+  BOTH modes. So the slow mode adds a fixed quantity; it does not multiply and does not scale with
+  handshake work. That narrows the desktop's own position to a threshold on OCCURRENCE rather than on
+  depth, which is closer to the tick reading than to what it argued an hour earlier. Neither 8.5 nor
+  9.3 ms is an obvious Windows constant (default clock interval 15.625 ms, raised 1 ms).
+  **But it does not yet discriminate:** both compared rates sit far past any plausible saturation
+  (slack ~30 ms at 25/s, ~11 at 50), where a saturating DEPTH model predicts equal increments too.
+  **The discriminating cells are near the boundary, where slack is 2.5 ms at 85, 1.8 at 90, 1.2 at 95.
+  So report the INCREMENT as well as the proportion at those rates: a fixed event keeps its size and
+  only becomes rarer; a depth shrinks as available idle shrinks.** That discriminator is already
+  inside the runs in progress and costs nothing.
+  **AND A HARDER PROBLEM THAT HURTS THE WHOLE PARKING FAMILY, arithmetic on filed data: THE FAST MODE
+  HAS MORE IDLE THAN THE SLOW MODE, AT EVERY RATE.** In the fast mode at 100/s, establishment costs
+  0.20-0.48 ms against a 10 ms period, so the machine is idle for over 9.5 ms of every period -- more
+  than a slow run has at any measured rate, and far past saturation in either story. If available idle
+  caused the slow mode, every fast run at 100 should tip into it on its first connection; 50 of 50 did
+  not, and 99 of 99 across both arms did not. **Whatever selects the mode, it cannot be how much idle
+  time is available**, which is what both the duty-cycle and the absolute-interval accounts were built
+  on. Stronger than the amplitude objection and it applies to the family rather than to a constant.
+  What survives: the correlation with rate, real and unexplained, and the fixed-increment fact.
   **AND THE AMPLITUDE MAY ARGUE AGAINST PARKING ALTOGETHER, which cuts against both framings.** 9.3 ms
   is not a plausible idle-exit cost -- those are microseconds to tens of microseconds, which is what
   the laptop measured. 9.3 ms is the order of a TIMER TICK or a scheduling quantum. The slow mode's
