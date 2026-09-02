@@ -712,6 +712,42 @@ been scheduled yet.
   and `paper-dfa-routing` is confirmed private (`isPrivate: true`), which is exactly where machine
   identity is allowed to live. **The paper itself is clean**: no hostname, address, MAC, username or
   local path in any `.tex`, the `.bib` or the PDF. Nobody should "fix" the notes.
+- **PAPER 2 HAS ITS SYSCALL NUMBER, and the structural prediction is confirmed to four decimals.**
+  epoll arm complete (io_uring's still running and expected to be unresolvable, which is why epoll was
+  made primary).
+
+  | tracepoint | est. off | est. on | delta | keep-alive delta |
+  |---|---|---|---|---|
+  | raw_syscalls | 16.7385 | 21.2505 | **+4.5121** | +0.0436 |
+  | recvfrom | 1.0070 | 2.0070 | **+1.0000** | **+0.0002** |
+  | epoll_ctl | 5.0278 | 6.0278 | +1.0000 | +0.0002 |
+  | epoll_wait | 2.1164 | 2.7437 | +0.6273 | |
+  | futex | 2.5324 | 4.3800 | +1.8476 | |
+  | accept4 / close / sendto | | | **+0.0000** | |
+
+  **One extra read per connection, seen as itself in the column that names it, and the same mechanism
+  amortised to +0.0002 where a connection serves many requests. Those two numbers are ONE FACT** and
+  the paper states them as one sentence. **The control was unplanned and is the strongest thing in the
+  table:** `accept4`, `close` and `sendto` unchanged to four decimals, so classification touches the
+  read path and nothing else, demonstrated rather than argued.
+  Establishment +4.5121 [+4.3893, +4.5448] resolved; keep-alive +0.0436 [-0.0187, +0.0680] includes
+  zero. **The three-number framing, which is sharper than the paper's current claim: classification
+  costs ONE READ, and one read costs 4.5 syscalls under establishment, because it costs a ROUND OF THE
+  EVENT LOOP.** The read accounts for 2 of the 4.5 (recvfrom plus the epoll_ctl arming for it); the
+  rest is waiting for it (+0.63 epoll_wait) and a cross-thread handoff (+1.85 futex).
+  **Hypothesis for the futex term, checkable in the SOURCE rather than by measurement:** futex
+  operations come in pairs, so +1.85 is close to one synchronisation event per connection; the
+  classification path arms a deadline (`App::detect_protocol` carries a `Deadline`, `deadline.replace`
+  around `read_prefix`), and if the timer queue is a thread on a condition variable, scheduling one
+  timer costs a wake and a wait -- exactly two futex, once per connection. **If it holds the
+  decomposition closes with nothing left over**, and it sharpens the paper in the direction paper 3
+  already argues: the READ is intrinsic to classifying, while the loop round and the timer are the
+  framework's IMPLEMENTATION of classification and another design could avoid both. The same
+  distinction appearing independently in two papers is worth a sentence in each. If it does not hold,
+  the futex term stays unattributed and the paper says so.
+  **The declaration is doing its work:** drift 3.7-4.7% on all 28 runs, so every one would have been
+  refused under a gate, while the counts have a per-run sd of 0.055-0.087 against differences of
+  1.0000 and 4.5121 -- two orders of magnitude of headroom, and the latency figures stay unquoted.
 - **Overnight queue for the laptop, in order, stop when it empties.** (1) **The spaced-TLS probe:** one
   cell, transport TLS at 10 000, io_uring, 7 repetitions with a deliberate ~30 s gap between runs,
   about six minutes. It could recover the whole TLS half of paper 3's cross-arm table, currently
