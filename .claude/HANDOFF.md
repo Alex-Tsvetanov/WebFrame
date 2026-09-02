@@ -118,6 +118,25 @@ been scheduled yet.
   (four-cell mechanism comparison, both arms unprivileged), F (the io_uring timeout
   experiment, one line at `uring_context.cpp:492`, before/after with the idle-gap latency cost
   measured) are running in that order.
+- **`churn-net` finished on the desktop: 400 runs, 356 accepted, 44 refused (11.0%), 13:39 to
+  16:22 EEST, at b4a01e8c7.** Per rate: 50/s and 150/s clean (0 of 100 each, median pacing 59 and
+  51 us); 400/s 3 refused (median 48 us, max 665); 800/s 41 refused (median 387 us), one of them a
+  total failure delivering 0.0% with 128 socket errors. The design stopped itself on two
+  pre-declared rules (pooled refusals over 10%, and any refusal at 400/s).
+  **Rulings.** (1) The pooled 11% is not a meaningful number: it mixes three clean rates with one
+  known-bad one. The stop rule should be per rate, not pooled, and that is a defect in the rule,
+  recorded in chapter V. (2) 800/s is beyond this arrangement's reach and is reported as a measured
+  ceiling, not as a server result; the earlier ladder's 468 us at that rate had already said so.
+  (3) **The three refusals at 400/s are all in the TLS arm and none in cleartext**, so they are not
+  obviously instrument-side: refusal there may be correlated with the arm being measured, which is
+  the one case where discarding refused runs biases a comparison. 3 of ~50 against 0 of ~50 is
+  suggestive, not established (Fisher exact about 0.24). The cell is kept, with n=97 accepted, and
+  every TLS-versus-cleartext statement at 400/s carries the asymmetry in its text. It is not used
+  for a headline claim. (4) **The refused runs are NOT re-run.** Re-running only the runs that
+  failed is sampling on the outcome. (5) The network arm is published at 50, 150 and 400/s.
+  The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
+  a rebuild is a campaign boundary and the later designs would then need their own directory and
+  fingerprint, as the schema split was handled.
 - **Status at 17:30 (all three local workflows landed):**
   - Chapter VI rewritten against the real campaign (baf85cec5, 1f5fd1740: 118 sentences; the
     two-campaign/seven-repetition story was the deleted campaign's and is gone); the check's three
@@ -718,6 +737,23 @@ findings in the laptop's own words, unredacted as you authorised.
    and `h1-deep` on epoll (and io_uring once permitted); perf syscall counter (the
    "mechanism" both papers 2 and 3 rest on).
 6. Then paper 4's UDP-seam reconciliation on a scratch branch (design work, Linux).
+
+## Who is the coordinator right now
+
+**`phd-webframe-93`, running on `claude-opus-5`.** This line is the tie-breaker: if two sessions
+ever claim coordination, the machines follow whichever name this file names on `origin/phase0-foundation`,
+not whichever session messaged them last. A session that takes over must change this line and push
+before giving any ruling, and must tell both machines to re-read it.
+
+What happened on 2 September, so it is not repeated. The successor task fired around 16:30 EEST
+on a stale heartbeat, concluded this session had died on its usage limit, announced itself to the
+Windows machine as `phd-webframe-04`, and asked for reports. The conclusion was wrong: this session
+was rate-limited on Fable 5.1, not dead, and Alex moved it to Opus, so it kept its whole context.
+The Windows machine noticed the contradiction itself, refused to act on rulings from either session
+until it was settled, and was right to. `phd-webframe-04` has been told to stand down.
+
+**Standing rule for the machines: never act on a design ruling while two sessions are claiming
+coordination. Report to both, act for neither, and say so, exactly as the Windows machine did.**
 
 ## Succession, automated (set up 02:30 EEST)
 
