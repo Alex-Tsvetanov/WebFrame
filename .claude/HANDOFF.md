@@ -792,6 +792,57 @@ been scheduled yet.
   risk is one of them waking mid-run rather than loading the machine now. **The honest version, for
   the method: the quiet-host precondition cannot be fully satisfied while an agent drives the
   campaign.** It applies to every measurement this project has taken.
+- **THE SYSCALL COUNTS EXIST AFTER ALL: the REJECTED records carry them, so 14 runs per arm, not one.**
+  No new campaign was needed. The mechanism campaign had refused 27 of 28 runs on frequency drift,
+  because `--count-syscalls` attaches and detaches perf between runs, the machine idles in the gap, the
+  clock falls, and the run starts cold and ramps through the measured window: a systematic RISE, end
+  clock ~190 MHz above start, median ~4.7%. **The instrument's own inter-run timing creates the
+  condition the gate refuses** -- the third face of the two-sample estimator problem and the second
+  campaign to motivate mid-run sampling.
+  **RULED: a clock gate does not bear on a count.** Syscalls per request is a ratio of two counts over
+  one window; at a fixed offered rate the requests are set by the rate and duration, not the clock, and
+  the syscalls scale with the requests. The drift rule protects TIMING claims. So the design runs with
+  drift RECORDED not gated, and the price is stated and not optional: **its latency figures are not
+  reportable and no latency claim may come from it.** Same principle that demoted pacing: a gate must
+  be checked against what it protects.
+  **The ruling is then confirmed empirically, which is better than the reasoning:** epoll at 10 000
+  gives **5.160 under 4.8% drift against 5.090 measured un-gated, 1.4% apart**, with a run-to-run sd of
+  0.030 -- a count more stable than the clock by an order of magnitude. The laptop's test for whether
+  this was rationalisation is the right one and worth keeping: the argument predated the failure and it
+  came with a cost attached.
+  **Caveat accepted, and it belongs in the text as a clause:** two of the three terms are EXACTLY
+  frequency-independent (submits, one per operation; the timeout term, workers ÷ timeout ÷ rate); the
+  completion-driven wait term is not, since how many completions a wait harvests depends on loop speed
+  against arrivals. Small, and it moves in the direction that would be caught.
+
+  | arm | rate | n | sysc/req | sd | enter/req | close/req |
+  |---|---|---|---|---|---|---|
+  | io_uring | 400 | 7 | 22.587 | 0.128 | 14.580 | 1.007 |
+  | io_uring | 10000 | 7 | 3.251 | 0.251 | 3.205 | 0.000 |
+  | epoll | 400 | 7 | 21.258 | 0.088 | 0.000 | 1.007 |
+  | epoll | 10000 | 7 | 5.160 | 0.030 | 0.000 | 0.000 |
+
+  **`close` is 1.007 per request on both arms under churn and 0.000 under keep-alive**, exactly as the
+  coordinator's code reading predicted: a plain `::close`, counted by name, one per connection.
+- **THE STOP CONDITION FIRED ON ONE ARM, and the candidate is a regression in our own wake fix.**
+  epoll agrees with its pre-registered 5.090 (+1.4%); **io_uring's 3.251 against 2.876 is +13%, well
+  outside its sd of 0.251**, so the laptop stopped rather than reconciled, as pre-registered. Drift is
+  excluded as the cause by the argument above and by epoll's agreement. **The candidate: the two
+  numbers are at DIFFERENT COMMITS** -- 2.876 at `a389023ba`, 3.251 at `a4519ada2`, and the eventfd
+  wake landed between them. The single-shot `POLL_ADD` is re-armed after every wake and each re-arm is
+  a submit, hence an enter. The gap is +0.329 against a timeout term of 0.376: same order, so a
+  quantitative hypothesis rather than a hand-wave. **If it holds it is a real regression in the wake
+  fix**, invisible to the delivery test, which measures one post in isolation.
+  **Coordinator's code check narrows it: the re-arm IS conditional.** `poll_and_resume` sets `woken`
+  only on a `kWakeMarker` completion and re-arms only `if (woken)`, after the drain and under the lock,
+  so there is no spurious re-arm per loop iteration. The cost is one submit per ACTUAL wake, which
+  makes the hypothesis an arithmetic claim: +0.329 per request at 10 000/s means ~3300 genuine wakes a
+  second, and something must be posting at that rate during a keep-alive run.
+  **AND IT IS TESTABLE FOR FREE, NO REBUILD: `wake()` is a plain 8-byte `::write` to the eventfd, and
+  a write is a syscall counted by name. The server's responses go out through the ring, so the `write`
+  count in those records IS the wake count.** About 0.33 per request confirms the hypothesis to three
+  significant figures; about zero means nothing is waking those workers and the rebuild would have
+  chased the wrong thing. Read the column first; rebuild only if it confirms.
 - **THE CHURN RESULT COMPLETES THE DEMULTIPLEXING CLAIM, and the negative beside it is what makes it
   a claim.** Cleartext, both arms, detect on minus off at p50, every cell resolving:
 
