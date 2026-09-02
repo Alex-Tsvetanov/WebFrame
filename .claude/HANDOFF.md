@@ -163,6 +163,38 @@ been scheduled yet.
   The desktop stays at b4a01e8c7 and does NOT rebuild onto the shared socket policy mid-campaign;
   a rebuild is a campaign boundary and the later designs would then need their own directory and
   fingerprint, as the schema split was handled.
+- **The wake defect is fixed and measured, on `linux/review-fixes` (tip 79e0015d8).** A single-shot
+  POLL_ADD stands on the eventfd, `wake()` is a plain 8-byte write taking no lock and no submission
+  queue entry, the counter is cleared with an ordinary read in the drain and re-armed under `sq_mutex`
+  after it. Median delivery of a posted callback on an idle two-worker context: **epoll 50138 us to
+  41-55 us, io_uring 962 us to 9 us**, all 21 posts delivering on every run, which is what proves the
+  re-arm rather than merely suggesting it. The failing NOP intermediate was pushed first (758d8864d)
+  so that measurement survives in history.
+- **The NOP prescription was inert and the reason generalises:** any wake that reaches the ring
+  through a submission queue entry must take the lock the parked worker holds, so it can never arrive
+  before the timeout it is trying to pre-empt (measured: 962 us median against a 1 ms timeout).
+- **Correction to the coordinator's own claim, from the laptop's reading of the manual page and
+  liburing 2.15.** The implied submit in `io_uring_wait_cqe_timeout` is on OLD kernels, those WITHOUT
+  `IORING_FEAT_EXT_ARG`. With the feature there is no implied submit, so the wait is not a producer,
+  and holding `sq_mutex` across it protects nothing while blocking every other submitter. The
+  coordinator had this backwards and told the laptop to verify rather than trust it, which is the only
+  reason it did not become a latent bug. **`linux/uring-wait-lock-ext-arg` therefore joins the merge
+  path:** feature-gated, old behaviour intact where the flag is absent, 186/186 on three runs. It also
+  makes an untimed wait safe, since with the lock held across a blocking wait a foreign submitter
+  blocks on the mutex and cannot submit the thing that would end the wait, which is a deadlock on an
+  idle ring rather than a slow path.
+- **The memlock failure has TWO mechanisms and needs both remedies; this revises the earlier ruling.**
+  Asynchronous release, 7-14 ms after a process exits, makes consecutive tests overlap in accounting
+  though never in time, and only the bounded retry helps (retry without lock passes 5 of 5 at -j1).
+  Simultaneous demand, where two retrying tests each hold what they have taken while waiting for the
+  rest, starves both, and only `RESOURCE_LOCK` helps (retry without lock failed 3 of 5 at -j16). Both
+  together: 186 of 186 over five runs. It looked settled twice because the suite then had one fewer
+  io_uring context. Neither remedy may be deleted without reproducing the other's failure.
+- **Order corrected for the laptop.** The remaining review findings (HIGH 2, HIGH 3, seven mediums,
+  three lows) come BEFORE the blocking-wait experiment, because the experiment is paper 3's third data
+  point and therefore data, and the standing rule is that data traces to a mainline commit rather than
+  to a branch tip. So: finish the findings, push, coordinator merges the stack, then the blocking-wait
+  experiment AND the cross-arm re-runs both run on the merged HEAD.
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
