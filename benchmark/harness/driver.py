@@ -253,7 +253,15 @@ def run_one(
                 f"cell asks for io_backend={asked} but the server started on {actually}"
             )
 
+        # Counting brackets the generator exactly, so the window is its lifetime rather
+        # than a fixed sleep that overhangs it. Both calls are no-ops unless the run
+        # asked to be counted.
+        if hasattr(server, "start_syscall_count"):
+            server.start_syscall_count()
         result = generator.run(cell, duration_s)
+        if hasattr(server, "stop_syscall_count"):
+            record.syscall_counts = server.stop_syscall_count()
+            record.syscall_counter = getattr(server, "syscall_counter", None)
         record.requests_total = result.requests_total
         record.requests_total_whole_run = result.requests_total_whole_run
         record.requests_non_2xx = result.requests_non_2xx

@@ -296,6 +296,68 @@ def refuse_held_port(port: int, launch_prefix: list[str] | None = None) -> None:
         ) from exc
 
 
+# The tracepoints the syscall counter asks for.
+#
+# raw_syscalls:sys_enter first and always: it is the total, and it is the one the
+# non-zero assertion is made against. The rest are the named breakdown.
+#
+# clock_gettime and epoll_ctl are in the list because a probe without them left 61% of
+# an epoll server's syscalls unattributed, and strace -c showed those two accounting for
+# most of it at about two of each per request. A named set that misses the majority of
+# the total is a list that looks like a breakdown and is not one.
+SYSCALL_TRACEPOINTS = (
+    "raw_syscalls:sys_enter",
+    "syscalls:sys_enter_epoll_wait",
+    "syscalls:sys_enter_epoll_pwait",
+    "syscalls:sys_enter_epoll_ctl",
+    "syscalls:sys_enter_io_uring_enter",
+    "syscalls:sys_enter_accept4",
+    "syscalls:sys_enter_recvfrom",
+    "syscalls:sys_enter_read",
+    "syscalls:sys_enter_sendto",
+    "syscalls:sys_enter_write",
+    "syscalls:sys_enter_close",
+    "syscalls:sys_enter_clock_gettime",
+)
+
+TOTAL_TRACEPOINT = "raw_syscalls:sys_enter"
+
+
+def perf_privilege() -> str | None:
+    """How perf can read tracepoints here: "unprivileged", "root", or None for not at all.
+
+    Asked rather than assumed, and recorded with the counts, because the answer is a
+    property of the host that changes what the number means. On this laptop
+    perf_event_paranoid is 1 and an unprivileged perf still cannot open a tracepoint:
+    the block is the permissions on /sys/kernel/tracing, not the paranoid level, so
+    lowering paranoid further would not help and a run counted here was counted as root.
+    """
+    probe = ["perf", "stat", "-e", TOTAL_TRACEPOINT, "-x,", "true"]
+    if subprocess.run(probe, capture_output=True).returncode == 0:
+        return "unprivileged"
+    if subprocess.run(["sudo", "-n", *probe], capture_output=True).returncode == 0:
+        return "root"
+    return None
+
+
+def parse_perf_counts(text: str) -> dict[str, int]:
+    """perf stat -x, output to a mapping. Unparsed and <not counted> lines are dropped.
+
+    Dropping them is safe only because the caller asserts the total is present and
+    non-zero afterwards; on its own this would turn a failed attach into an empty dict
+    that reads like a quiet server.
+    """
+    counts: dict[str, int] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split(",")
+        if len(fields) >= 3 and fields[0].isdigit():
+            counts[fields[2]] = int(fields[0])
+    return counts
+
+
 @dataclass
 class CorouteServer:
     """One benchmark_server process, started fresh and stopped for certain.
@@ -321,6 +383,14 @@ class CorouteServer:
     # would differ from it in scheduling class as well as in backend, which is the one
     # confound this comparison cannot carry. Both arms run the same way.
     launch_prefix: list[str] = field(default_factory=list)
+    # Opt in only. See RunRecord.syscall_counts for why this is never on during a
+    # timed comparison.
+    count_syscalls: bool = False
+    syscall_counter: str | None = None
+    _perf: subprocess.Popen | None = None
+    _perf_out: Path | None = None
+    _perf_pidfile: Path | None = None
+    _perf_privilege: str | None = None
     # Where the rig's self-signed certificate lives. Only consulted when the cell asks
     # for TLS, so a cleartext campaign runs on a machine that has none.
     cert_file: Path | None = None
@@ -533,6 +603,102 @@ class CorouteServer:
                 children = []
             frontier.extend(int(c) for c in children)
         return None
+
+    def start_syscall_count(self) -> None:
+        """Attaches perf to the server for the generator's run, and only for it.
+
+        Called by the driver immediately before generator.run and stopped immediately
+        after, so the window is the generator's lifetime rather than a fixed sleep that
+        overhangs it. The feasibility probe used `-- sleep 13` against a 10 second run
+        and folded three seconds of idle server into every count.
+
+        That window includes the generator's warmup, which is why the counts are
+        normalised by requests_total_whole_run and not by requests_total.
+        """
+        if not self.count_syscalls or self._proc is None:
+            return
+        pid = self.server_pid()
+        if pid is None:
+            raise RunFailed("cannot count syscalls: the server process could not be found")
+
+        privilege = perf_privilege()
+        if privilege is None:
+            raise RunFailed(
+                "cannot count syscalls: perf cannot read tracepoints here, as root or "
+                "otherwise. Check the permissions on /sys/kernel/tracing."
+            )
+
+        out = Path(tempfile.mkstemp(prefix="perf-", suffix=".csv")[1])
+        pidfile = Path(tempfile.mkstemp(prefix="perf-", suffix=".pid")[1])
+        perf = ["perf", "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
+                "-p", str(pid), "-x,", "-o", str(out)]
+        if privilege == "root":
+            # perf's own pid is written by the shell before it execs, because Popen would
+            # otherwise hold sudo and a signal sent there never reaches perf. perf writes
+            # its counts on SIGINT, so stopping the right process is the whole game.
+            argv = ["sudo", "-n", "sh", "-c",
+                    f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
+        else:
+            argv = ["sh", "-c", f'echo $$ > {pidfile}; exec ' + " ".join(perf)]
+
+        self._perf = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        self._perf_privilege = privilege
+        self._perf_out = out
+        self._perf_pidfile = pidfile
+        self.syscall_counter = (
+            f"perf stat -e {len(SYSCALL_TRACEPOINTS)} tracepoints, -p server, "
+            f"privilege={privilege}"
+        )
+        # perf needs a moment to open the events; starting the load before it has
+        # attached would leave the first requests uncounted.
+        time.sleep(0.3)
+
+    def stop_syscall_count(self) -> dict[str, int]:
+        """Stops perf, parses its counts, and refuses a count that cannot be true.
+
+        The assertion is the point. Both ways this went wrong during the feasibility
+        probe produced a confident zero rather than an error: perf attached to the sudo
+        wrapper reported `<not counted>`, and a pid resolved by matching a truncated
+        /proc/PID/comm was never found at all. A run whose server issued no syscalls
+        while serving tens of thousands of requests did not happen, so it is refused
+        here rather than averaged into a table later.
+        """
+        if self._perf is None:
+            return {}
+        try:
+            pid_text = self._perf_pidfile.read_text().strip() if self._perf_pidfile else ""
+            if pid_text:
+                # SIGINT, not SIGTERM: perf writes its counts on interrupt and discards
+                # them on terminate.
+                killer = ["kill", "-INT", pid_text]
+                if self._perf_privilege == "root":
+                    killer = ["sudo", "-n", *killer]
+                subprocess.run(killer, capture_output=True)
+            try:
+                self._perf.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._perf.kill()
+                self._perf.wait(timeout=5)
+
+            text = self._perf_out.read_text() if self._perf_out else ""
+            counts = parse_perf_counts(text)
+            total = counts.get(TOTAL_TRACEPOINT, 0)
+            if total <= 0:
+                raise RunFailed(
+                    f"syscall counting produced {TOTAL_TRACEPOINT}={total}, which cannot "
+                    f"be true of a server that served this run. perf attached to the "
+                    f"wrong process or could not open the events; the counts are not "
+                    f"usable and the run is refused rather than recorded as quiet."
+                )
+            return counts
+        finally:
+            for path in (self._perf_out, self._perf_pidfile):
+                if path is not None:
+                    path.unlink(missing_ok=True)
+            self._perf = None
+            self._perf_out = None
+            self._perf_pidfile = None
+            self._perf_privilege = None
 
     def _startup_failure(self) -> str:
         """Why the server is already gone, in the words it used.

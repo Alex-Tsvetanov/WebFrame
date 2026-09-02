@@ -599,6 +599,14 @@ def main(argv: list[str] | None = None) -> int:
     # The server's counterpart. Without it the generator sits in a namespace and the
     # server sits on the host, which is not the arrangement the methodology names and
     # would only work at all because the veth address is locally owned.
+    # Opt-in, and deliberately awkward to combine with a real campaign: a per-syscall
+    # tracepoint costs time roughly in proportion to the syscall rate, which is exactly
+    # the quantity a comparison is comparing, so a counted run is not a timed run.
+    ap.add_argument("--count-syscalls", action="store_true",
+                    help="count the server's syscalls with perf for each run. Changes "
+                         "what is measured, so the timing from a counted run is not "
+                         "comparable with an uncounted one; for the mechanism question, "
+                         "not for a latency campaign")
     ap.add_argument("--server-command", default=None,
                     help="command prefix the server is launched through, e.g. "
                          "'sudo -n ip netns exec srv'; pairs with --generator-command")
@@ -692,6 +700,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
+    # In the manifest, not only in the per-run records, because a counted campaign and
+    # an uncounted one are different measurements of the same cells and the difference
+    # has to be visible before anyone opens the numbers.
+    env["syscall_counting"] = bool(args.count_syscalls)
     env["transport_path"] = {
         "host": args.host,
         "loopback": loopback,
@@ -773,7 +785,8 @@ def main(argv: list[str] | None = None) -> int:
         return CorouteServer(binary=server_bin, cell=cell, port=args.port,
                              affinity_mask=SERVER_AFFINITY,
                              cert_file=args.cert, key_file=args.key,
-                             launch_prefix=server_prefix)
+                             launch_prefix=server_prefix,
+                             count_syscalls=args.count_syscalls)
 
     done = {"n": 0}
 

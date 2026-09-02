@@ -51,7 +51,17 @@ from typing import Any, Iterator
 # pooled. The generator defines both fields, so a record's version says what the driver
 # was, and requests_total_whole_run being null says the generator was older. Version 4
 # also carries the governor per run; earlier files have it in the manifest only.
-SCHEMA_VERSION = 4
+#
+# 5 added the syscall counter: syscall_counts, the per-tracepoint totals over the
+# generator's whole lifetime, and syscall_counter, a string naming the instrument and
+# the privilege it ran with. Absent rather than empty at version 4 and below, which is
+# the distinction that matters: an empty dict there would say a run was counted and
+# found nothing, and a run that was never counted is not the same as a server that
+# issued no syscalls. The counts are normalised by requests_total_whole_run, not by
+# requests_total, because the counter spans the generator's warmup as well as its
+# measured window and dividing a whole-lifetime count by a measured-window count would
+# inflate syscalls per request by roughly (warmup + duration) / duration.
+SCHEMA_VERSION = 5
 
 
 @dataclass
@@ -208,6 +218,14 @@ class RunRecord:
     thermal_speed_limit_start: int | None = None
     thermal_speed_limit_end: int | None = None
     counter_deltas: dict[str, int] = field(default_factory=dict)
+
+    # Syscalls the server issued while the generator was running, per tracepoint, and
+    # what measured them. Empty and None on a run that did not ask for counting, which
+    # is every run of a timed comparison: a per-syscall tracepoint costs time roughly in
+    # proportion to the syscall rate, which is the quantity being compared, so counting
+    # during a comparison would change the thing it is comparing.
+    syscall_counts: dict[str, int] = field(default_factory=dict)
+    syscall_counter: str | None = None
     accepted: bool = True
     rejection_reasons: list[str] = field(default_factory=list)
 
