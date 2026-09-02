@@ -342,6 +342,31 @@ been scheduled yet.
   evidence about either of them separately.** The io_uring conclusion is unaffected and the
   reason is worth keeping: its two cells differ 25-fold in rate while the enter rate differs
   1.04-fold, and no shape difference makes a per-request cost fall 25-fold.
+- **(Repaired 2 Sep ~13:00: stock kernel 7.2.2 with `tsc=nowatchdog`, clocksource tsc, 20.7 ns and zero syscalls per read verified.) The Linux host's kernel had disqualified its TSC, so every clock read there was a syscall.**
+  `current_clocksource` is `hpet`, and `tsc` is not even in the available list: the kernel
+  marked it unstable at boot on a watchdog timeout, which on some AMD parts is a known false
+  positive. Consequence measured on that host: `clock_gettime(CLOCK_MONOTONIC)` costs 1931 ns
+  and one syscall per call, against 5 ns and none for the coarse clock, roughly a hundredfold.
+  At about 1.7 clock reads per request that is ~3.3 microseconds per request of overhead
+  belonging to the firmware rather than the code, and it lands in every latency figure and
+  every syscall count: the epoll keep-alive figure is 7.09 syscalls per request there and
+  about 5.09 on a TSC host. Now recorded as `tuning.clocksource` and **fingerprinted**
+  (`5a8359d97`), so two hosts differing only in it cannot pool. Deliberately NOT a refusal:
+  refusing would leave the project with no Linux timing data at all, and the honest
+  arrangement is to record it, prevent the merge, and state the limitation. **For Alex:
+  `tsc=nowatchdog` as a boot parameter is the remedy; a host reporting hpet is a host to fix,
+  not a number to adjust.**
+- **The drift rule stays two-sided and unchanged. Decided, with evidence.** A warmup ladder
+  (5, 30, 60 s, offered rate met in all six runs) showed the io_uring keep-alive residual
+  plateaus at 4.7, 3.8, 3.7 percent, with start and end reproducible to about 20 MHz. Twelve
+  times the warmup buys one point and stops, so it is not ramp from idle, which sixty seconds
+  would have absorbed. It is systematic, workload-specific and repeatable, which is exactly
+  what a one-sided rule would stop reporting; and a rise inside the measured window still
+  means early requests ran on a slower clock than late ones, so the distribution is assembled
+  across a moving clock either way. The churn cell oscillates (2.8, 0.4, 6.1) rather than
+  converging, so **its one accepted record at 30 s warmup is a coin landing well and is
+  discarded, not used.** Consequence accepted deliberately: **the io_uring arm produces no
+  admissible timing record on that host until the cause is understood.**
 - **A half-specified off-host arrangement runs silently as an on-host one.**
   `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
   alone is ignored without a word, while `--host` is read unconditionally. The opposite
