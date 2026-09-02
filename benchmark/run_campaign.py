@@ -628,6 +628,36 @@ def design_mechanism() -> list[Cell]:
     ]
 
 
+def design_uring_worker_probe() -> list[Cell]:
+    """One keep-alive cell with a single worker, to explain a bimodal kernel-entry count.
+
+    io_uring's entries per request at 10 000 with four workers takes one of exactly two
+    values, 2.804 or 3.205, to three decimals, with nothing between them. The gap is
+    0.4006 and four workers at a thousand timer wakeups a second over ten thousand
+    requests is 0.400: one whole timer term, present or absent. The submits cannot vary,
+    being one per operation, and the timer term cannot vary, being fixed by the workers
+    and the timeout. So either some workers time out at their full rate while others
+    never do, or a wait harvests a varying number of completions.
+
+    A single worker discriminates them. Connections are handed to rings at connect time
+    by SO_REUSEPORT and the distribution holds for the whole run, so with four rings a
+    run can land with every worker busy enough never to time out, or with some light
+    enough to time out constantly -- which is a mechanism that produces exactly two
+    stable regimes. With one ring there is no distribution to be uneven.
+
+    If the count is single-valued here, uneven distribution is the cause. If it is still
+    bimodal, it is not, and completion batching is the better reading.
+
+    Counted, and the admissibility declaration of design_demux_counted applies unchanged:
+    the outputs are counts, drift is recorded rather than gated, and the latency figures
+    are not reportable. Everything except the worker count matches the keep-alive cell of
+    that design, so the four-worker comparison is the data already taken tonight rather
+    than a new arm.
+    """
+    return [Cell.of(system_name(), **{**_base(max_requests_per_connection=0), "workers": 1},
+                    protocol_detection=False, offered_rate=MECHANISM_KEEPALIVE_RATE)]
+
+
 def design_tls_thermal_probe() -> list[Cell]:
     """One TLS cell, to find out whether spacing runs rescues TLS on a laptop.
 
@@ -784,6 +814,8 @@ DESIGNS = {
     "demux-counted": design_demux_counted,
     # One TLS cell, for the thermal question rather than a server question.
     "tls-thermal-probe": design_tls_thermal_probe,
+    # One cell with a single ring, to explain io_uring's bimodal entry count.
+    "uring-worker-probe": design_uring_worker_probe,
 }
 
 
