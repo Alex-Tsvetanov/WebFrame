@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:15 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:35 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -46,7 +46,12 @@ repositories, never here.
 
 ## Repository state
 
-`phase0-foundation` = `a9c964cf6`, pushed. **The runtime-backend work is merged** (`--io-backend`,
+`phase0-foundation` = `904778889`, pushed. **Both branches are merged and deleted; no branch is
+in flight.** The harness's 21 Linux-readiness gaps are closed (off-host generator launcher for a
+netns pair, port preflight, governor gate, `git_dirty` unknown refused, UDP drop counter under its
+real name, server-death diagnosis, dispatch clock readings, whole-run response count, schema v4),
+and `--io-backend` now exists on `run_campaign` and `run_routing_e2e`, so a campaign can select the
+arm; without it a `linux-epoll` build died at every server start. **The runtime-backend work is merged** (`--io-backend`,
 virtual listener/datagram creation, banner cross-check, `linux-epoll`/`linux-dual` presets),
 verified on Linux, macOS and Windows/MinGW before merging, and its branch is deleted. Also:
 the generator's MSVC `NOMINMAX` fix, the Linux memory peak in `route_bench.cpp`, campaign runbook
@@ -56,33 +61,6 @@ laptop's `linux/route-bench-memory`, branch deleted).
 
 Branches in flight:
 
-- `origin/harness/linux-readiness` at `9ee8de784`, pushed (23 commits on `fef3a212e`, written
-  by a local workflow, worktree `.../848236b3-ca09-48d3-bad5-f698c7808b0e/scratchpad/wt-harness`).
-  Implements the 21 verified harness gaps: `--generator-command`/`--generator-location`
-  launcher (netns), generator output under a harness-owned dir, loopback detection by
-  launcher, transport_path compared on campaign open, port preflight bind before every
-  server start, `UdpRcvbufErrors` key, governor gate (run-level, unknown refused on Linux),
-  clock reading on run_routing, power-supply scope filter, sibling topology recorded and the
-  two masks checked, whole-run response counter in loadgen (schema v4), systemd-detect-virt
-  exit 1 handled, `git_dirty` None refused, server death before listening reported with
-  stderr, `--build` required, presets and README rows. Selfcheck 211 (was 162). Reviewed by
-  three lenses; the one HIGH and five MEDIUMs were fixed in the last six commits. Fifteen
-  LOW findings remain, listed in
-  `.../848236b3-ca09-48d3-bad5-f698c7808b0e/tasks/wel4atrqm.output` (`low_findings_for_coordinator`);
-  fold the cheap ones (run_routing `git_commit[:12]` guard, vacuous port selfcheck, temp-dir
-  leak, census held-port traceback, README `...` elisions now that `--build` is required,
-  duplicated port probe in the two integration tests) during the merge.
-  **In progress: a local workflow (run `wf_6d282512-b0b`, task `w52ynxdbi`; an earlier attempt
-  died on a usage limit and its partial merge was aborted) is merging the runtime-backend work
-  INTO this branch in its worktree, resolving conflicts, folding the cheap lows, verifying on
-  macOS and pushing. Since `phase0-foundation` now contains that work too, the eventual merge
-  of this branch is an ordinary three-way that reuses those resolutions.** Original note: both touch `adapters.py`, `driver.py`, `environment.py`,
-  `run_campaign.py`, `descriptor_census.py`, `tests/integration/*.py`; expect conflicts and
-  resolve by hand (or with a workflow: merge, resolve, fold lows, selfchecks, build loadgen
-  on macOS, macOS loopback smoke). NOTE for the desktop: after this merge the WSL
-  generator must be rebuilt from the same commit as the server (bytes_read window and
-  `responses_total` changed); tonight's campaign runs on `aee6cea19` deliberately, with the
-  harness the earlier Windows records were produced by, so its records are schema v3.
 - Excluded from both branches, still to do on the laptop (root is now available via passwordless sudo): perf-based syscalls-per-request counter (audit items B2-B4: `perf stat
   -e raw_syscalls:sys_enter -p <pid>` around a non-timed "mechanism" run, opt-in flag,
   schema field), netns pair creation and a real off-loopback Linux run, the QUIC UDP-seam
@@ -217,8 +195,7 @@ been scheduled yet.
 ## Next steps, in order
 
 1. (done: merged as `a9c964cf6`, branch deleted)
-2. Merge `harness/linux-readiness` onto the new HEAD, resolve conflicts, fold the cheap lows,
-   selfchecks, macOS build + loopback smoke, push, delete branch.
+2. (done: merged as `904778889`, branch deleted; macOS 227 selfchecks, 178/178, census, smoke)
 3. Desktop reports per design → ingest into paper-socket-demux, regenerate chapter VI,
    check the red `[?key]` markers shrink, commit thesis data snapshots (`doc/thesis/data`
    CSVs are meant to be committed; `generated/` is not).
