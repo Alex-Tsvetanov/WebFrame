@@ -1305,6 +1305,13 @@ class LoadgenGenerator:
             # Absent on Windows and from a generator built before it reported one, which
             # is why this is None rather than a number the driver could compare blindly.
             euid=int(euid) if (euid := data.get("euid")) is not None else None,
+            # Empty string and absent both become None: a generator that could not
+            # identify the interface and one built before the field existed are the same
+            # thing to the driver, which is "not established" either way.
+            local_interface=(data.get("local_interface") or None),
+            local_interface_speed_mbit=(data.get("local_interface_speed_mbit") or None),
+            local_interface_duplex=(data.get("local_interface_duplex") or None),
+            local_interface_mtu=(data.get("local_interface_mtu") or None),
             argv=list(argv),
         )
         return result

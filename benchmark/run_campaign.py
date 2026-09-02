@@ -794,6 +794,14 @@ def main(argv: list[str] | None = None) -> int:
                          "giving the reason; recorded with every run. Needed only where "
                          "the asymmetry is the point, e.g. a hardened kernel that gives "
                          "io_uring to CAP_SYS_ADMIN only, so the server must be root")
+    # Not the interface to use -- nothing here chooses a route -- but the interface the
+    # run is required to have gone over. A run that went somewhere else is refused.
+    ap.add_argument("--expect-interface", default=None, metavar="IFACE",
+                    help="require every run's load to have gone over this interface, "
+                         "e.g. enp2s0; the generator reports what the kernel actually "
+                         "chose, and a run over anything else is refused. Use it wherever "
+                         "the host has more than one interface on the subnet, where only "
+                         "a route metric decides which carries the traffic")
     args = ap.parse_args(argv)
 
     # Refused here rather than one cell at a time. perf exists only on Linux and only
@@ -1117,6 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
         duration_s=args.duration,
         on_record=report,
         probes=probes,
+        expect_interface=args.expect_interface,
     )
 
     summary = driver.summarise(records)

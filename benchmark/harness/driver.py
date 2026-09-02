@@ -76,6 +76,18 @@ class GeneratorResult:
     # because on macOS they differ and the difference is not visible in any other field.
     affinity_requested: str | None = None
     affinity_applied: bool | None = None
+    # Which interface the kernel actually sent the load over, and what that link is,
+    # read from the generator's own socket with getsockname rather than from whatever was
+    # configured. Empty off Linux and from a generator built before it reported one.
+    #
+    # It exists because the arrangement is asserted by a route metric and nothing else:
+    # a machine with Ethernet and WiFi on one subnet decides which carries a run by a
+    # number DHCP can change, and a run that moved to WiFi would still look plausible.
+    # Names and link properties only; never an address or a MAC.
+    local_interface: str | None = None
+    local_interface_speed_mbit: str | None = None
+    local_interface_duplex: str | None = None
+    local_interface_mtu: str | None = None
     # Who ran the load. None from Windows, which has no such id, and from a generator
     # built before it reported one; neither is a failure on its own.
     euid: int | None = None
@@ -184,6 +196,7 @@ def run_one(
     readiness_timeout_s: float = 30.0,
     now: Callable[[], float] = time.time,
     probes: HostProbes = LIVE_PROBES,
+    expect_interface: str | None = None,
 ) -> schema.RunRecord:
     """Performs one run and returns its record, accepted or not.
 
@@ -338,6 +351,33 @@ def run_one(
                 )
         record.generator_euid = result.euid
 
+        # The wire the run actually used, recorded before it is judged so a refused
+        # record still says which medium it was refused for.
+        record.local_interface = result.local_interface
+        record.local_interface_speed_mbit = result.local_interface_speed_mbit
+        record.local_interface_duplex = result.local_interface_duplex
+        record.local_interface_mtu = result.local_interface_mtu
+
+        # Refused rather than annotated, for the reason unknown is refused everywhere
+        # else: a run over a medium we did not intend is worse than one over a medium we
+        # cannot name, because it looks exactly like a good run. Only checked when an
+        # expectation was stated, and only where the generator can answer at all, so
+        # macOS and Windows are unaffected the way they are by server_euid.
+        if expect_interface:
+            if result.local_interface is None:
+                raise RunFailed(
+                    f"this run was required to go over {expect_interface}, but the "
+                    "generator did not report an interface, so which wire carried it "
+                    "cannot be established"
+                )
+            if result.local_interface != expect_interface:
+                raise RunFailed(
+                    f"the load went over {result.local_interface}, not the expected "
+                    f"{expect_interface}. On a host with more than one interface on a "
+                    "subnet only a route metric decides this, and a run over a different "
+                    "medium is not comparable with the rest of the campaign"
+                )
+
         # The other half of the pair, and the reason it is checked rather than merely
         # recorded: root is exempt from RLIMIT_MEMLOCK, and io_uring charges its ring
         # memory against a per-user budget under that limit. A server that came up as
@@ -478,6 +518,7 @@ def run_campaign(
     duration_s: float,
     on_record: Callable[[schema.RunRecord], None] | None = None,
     probes: HostProbes = LIVE_PROBES,
+    expect_interface: str | None = None,
 ) -> list[schema.RunRecord]:
     """Walks the schedule, writing each record as it completes.
 
@@ -494,6 +535,7 @@ def run_campaign(
             campaign_fingerprint=campaign_fingerprint,
             duration_s=duration_s,
             probes=probes,
+            expect_interface=expect_interface,
         )
         # allow_incomplete because a run that failed before it could be described still
         # has to leave a trace. A missing record is indistinguishable from a run that

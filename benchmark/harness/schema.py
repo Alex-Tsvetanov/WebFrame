@@ -83,7 +83,20 @@ from typing import Any, Iterator
 # server is the exception rather than the rule. From this version the driver refuses a run
 # whose two euids differ unless the cell declares the asymmetry, so an accidental root
 # server is a failed run rather than a quietly faster one.
-SCHEMA_VERSION = 7
+# 8 added local_interface and the link's speed, duplex and MTU, read from the generator's
+# own socket with getsockname after the connection is established. The arrangement was
+# asserted by a route metric and nothing else: the Linux rig has Ethernet and WiFi up on
+# the same subnet, so which one carries a run is decided by a number DHCP can change at a
+# lease renewal, and a run that silently moved to WiFi would still produce a plausible
+# figure with nothing in the record to say the medium had changed. server_location
+# recorded a label, which is an intention rather than an event.
+#
+# Recorded per run rather than per campaign because the failure it guards against is a
+# medium changing partway through, which a campaign-level field cannot express. A run
+# whose interface is not the expected one is refused rather than annotated: a medium we
+# did not intend is worse than one we do not know. Names and link properties only, never
+# addresses or MACs, and absent rather than refused off Linux.
+SCHEMA_VERSION = 8
 
 
 @dataclass
@@ -255,6 +268,14 @@ class RunRecord:
     # ordinary case. A string is the operator's stated reason, recorded verbatim so the
     # file says why rather than merely that it was allowed.
     privilege_asymmetry: str | None = None
+    # The wire the run actually went over, read from the generator's socket rather than
+    # from configuration. Per run rather than per campaign on purpose: the failure this
+    # guards against is a medium changing underneath a campaign, which a campaign-level
+    # record could not express. None off Linux and from an older generator.
+    local_interface: str | None = None
+    local_interface_speed_mbit: str | None = None
+    local_interface_duplex: str | None = None
+    local_interface_mtu: str | None = None
     # A laptop can change its power and thermal regime mid-campaign in a way the desktop
     # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
     # and caps clocks, which makes the number uncitable for the same reason a virtualised
