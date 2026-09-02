@@ -96,6 +96,7 @@ using poll_count_t = ULONG;
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <ifaddrs.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sched.h>
@@ -315,6 +316,119 @@ namespace
 		Read,
 		Write
 	};
+
+	// Which interface the kernel actually sent the load over, and what that interface is.
+	//
+	// The arrangement is asserted by a route metric and nothing else: this machine has
+	// Ethernet and WiFi up on the same subnet, so which one carries a run is decided by a
+	// number that DHCP can change at a lease renewal. A run that silently moved to WiFi
+	// would still produce a plausible figure, and nothing in the record would say the
+	// medium had changed underneath it.
+	//
+	// So this is read rather than configured. getsockname on an established connection is
+	// the address the kernel chose as a source, which is ground truth about the path;
+	// a configured label records only what somebody meant to happen. Same reason
+	// affinity_applied and euid exist beside their requested counterparts.
+	//
+	// The name and the link's properties, never the address or the MAC. The address is
+	// used here to find the interface and is then discarded: these records reach a
+	// repository, and an interface name identifies a wire while an address identifies a
+	// machine on somebody's network.
+	struct PathInfo
+	{
+		std::atomic<bool> described{false};
+		std::string interface;   // e.g. "enp2s0", or "lo" for a loopback run
+		std::string speed_mbit;  // as the driver reports it; empty where it has no notion
+		std::string duplex;
+		std::string mtu;
+	};
+
+	// Reads /sys/class/net/<iface>/<name>, trimmed. Empty when the file is absent or
+	// unreadable, which is the ordinary case for several of these on virtual interfaces:
+	// a veth has no speed and a loopback has no duplex, and neither is an error.
+	std::string read_net_attr(const std::string& iface, const char* name)
+	{
+#if defined(__linux__)
+		std::ifstream in("/sys/class/net/" + iface + "/" + name);
+		std::string value;
+		if (!in || !std::getline(in, value))
+		{
+			return {};
+		}
+		while (!value.empty() && (value.back() == '\n' || value.back() == '\r'))
+		{
+			value.pop_back();
+		}
+		// The driver reports -1 for a link with no negotiated speed, which is not a
+		// number worth recording as though it were one.
+		if (value == "-1")
+		{
+			return {};
+		}
+		return value;
+#else
+		(void)iface;
+		(void)name;
+		return {};
+#endif
+	}
+
+	// Fills `path` from an established socket, once per run.
+	//
+	// Linux only, and silent elsewhere rather than an error: macOS and Windows have no
+	// /sys and the field is simply absent there, the same way euid is. A failure to
+	// identify the interface is also silent here, because this function does not know
+	// whether that matters; the harness decides, and it can tell an empty field from a
+	// wrong one.
+	void describe_path(PathInfo& path, socket_t s)
+	{
+#if defined(__linux__)
+		bool expected = false;
+		if (!path.described.compare_exchange_strong(expected, true))
+		{
+			return;
+		}
+
+		sockaddr_in local{};
+		socklen_t len = sizeof(local);
+		if (::getsockname(s, reinterpret_cast<sockaddr*>(&local), &len) != 0)
+		{
+			return;
+		}
+
+		// Match the source address the kernel chose against the machine's interfaces to
+		// get a name. The address itself goes no further than this function.
+		ifaddrs* ifa = nullptr;
+		if (::getifaddrs(&ifa) != 0)
+		{
+			return;
+		}
+		for (ifaddrs* it = ifa; it != nullptr; it = it->ifa_next)
+		{
+			if (it->ifa_addr == nullptr || it->ifa_addr->sa_family != AF_INET)
+			{
+				continue;
+			}
+			const auto* addr = reinterpret_cast<const sockaddr_in*>(it->ifa_addr);
+			if (addr->sin_addr.s_addr == local.sin_addr.s_addr && it->ifa_name != nullptr)
+			{
+				path.interface = it->ifa_name;
+				break;
+			}
+		}
+		::freeifaddrs(ifa);
+
+		if (!path.interface.empty())
+		{
+			path.speed_mbit = read_net_attr(path.interface, "speed");
+			path.duplex = read_net_attr(path.interface, "duplex");
+			path.mtu = read_net_attr(path.interface, "mtu");
+		}
+#else
+		(void)path;
+		(void)s;
+#endif
+	}
 
 	struct TlsClient
 	{
@@ -842,7 +956,8 @@ namespace
 	// larger than the differences being measured.
 	void worker(const Options& opt, const sockaddr_in& addr, const std::vector<std::string>& requests,
 	            std::size_t first_index, std::size_t count, double rate_per_thread, Clock::time_point start,
-	            Clock::time_point warmup_end, Clock::time_point stop, TlsClient& tls, ThreadResult& out)
+	            Clock::time_point warmup_end, Clock::time_point stop, TlsClient& tls,
+	            PathInfo& path, ThreadResult& out)
 	{
 		std::vector<Conn> conns(count);
 		std::vector<poll_fd> pfds(count);
@@ -851,9 +966,12 @@ namespace
 		// same rule as the latency samples: the connections made before the warmup ended
 		// paid for a cold allocator and, on the TLS arm, for the first use of every
 		// cipher implementation OpenSSL had not yet touched.
-		auto note_established = [&out, warmup_end](const Conn& c)
+		auto note_established = [&out, warmup_end, &path](const Conn& c)
 		{
 			++out.established;
+			// Once per run, from a socket the kernel has actually connected, so the
+			// source address is the one it chose rather than one we asked for.
+			describe_path(path, c.fd);
 			if (c.opened < warmup_end)
 			{
 				return;
@@ -1476,6 +1594,9 @@ int main(int argc, char** argv)
 	std::vector<std::thread> pool;
 	pool.reserve(opt.threads);
 
+	// Shared across threads and filled once, by whichever connection establishes first.
+	PathInfo path;
+
 	const std::size_t per_thread = opt.connections / opt.threads;
 	std::size_t remainder = opt.connections % opt.threads;
 	const double rate_per_thread = opt.rate > 0.0 ? opt.rate / static_cast<double>(opt.threads) : 0.0;
@@ -1486,7 +1607,8 @@ int main(int argc, char** argv)
 		const std::size_t mine = per_thread + (remainder > 0 ? 1 : 0);
 		if (remainder > 0) --remainder;
 		pool.emplace_back(worker, std::cref(opt), std::cref(addr), std::cref(requests), next_start, mine,
-		                  rate_per_thread, start, warmup_end, stop, std::ref(tls), std::ref(results[t]));
+		                  rate_per_thread, start, warmup_end, stop, std::ref(tls), std::ref(path),
+		                  std::ref(results[t]));
 		next_start += mine;
 	}
 	// Sampled across the measured window only. The first version sampled before the
@@ -1627,6 +1749,14 @@ int main(int argc, char** argv)
 	// that reads exactly like a correct run. Absent on Windows, which has no such id.
 	field_u("euid", static_cast<unsigned long long>(geteuid()));
 #endif
+	// The path the kernel chose, not the one that was configured. Empty off Linux and on
+	// a run where the interface could not be identified; the harness distinguishes an
+	// empty field from a wrong one and decides what to do about it. Never an address or
+	// a MAC: the name identifies a wire, an address identifies a machine.
+	field_s("local_interface", path.interface);
+	field_s("local_interface_speed_mbit", path.speed_mbit);
+	field_s("local_interface_duplex", path.duplex);
+	field_s("local_interface_mtu", path.mtu);
 	field_f("offered_rate", opt.rate, 3);
 	field_f("duration_s", wall, 6);
 	field_u("completed", completed);

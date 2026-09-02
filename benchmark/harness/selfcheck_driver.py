@@ -355,6 +355,50 @@ def run(check: Callable[[str, bool], None]) -> None:
     )
     check("an undeclared run records no reason", record.privilege_asymmetry is None)
 
+    # --- which wire the run went over, schema 8 -----------------------------
+    #
+    # The failure this guards against is a host with two interfaces on one subnet, where
+    # only a route metric decides which carries the load. A run that moved to the other
+    # one looks exactly like a good run.
+    def gen_on(iface: str | None) -> FakeGenerator:
+        base = FakeGenerator().result
+        return FakeGenerator(result=dataclasses.replace(base, euid=1000, local_interface=iface))
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=gen_on("enp2s0"),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+        expect_interface="enp2s0",
+    )
+    check("a run over the expected interface is accepted", record.accepted)
+    check("and the record says which wire carried it", record.local_interface == "enp2s0")
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=gen_on("wlan0"),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+        expect_interface="enp2s0",
+    )
+    check("a run over a different interface is refused",
+          not record.accepted and any("wlan0" in r for r in record.rejection_reasons))
+    check("and the refused record still names the wire it used",
+          record.local_interface == "wlan0")
+
+    # Unknown is refused too, for the same reason it is everywhere else.
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=gen_on(None),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+        expect_interface="enp2s0",
+    )
+    check("a run whose interface is unknown is refused when one was required",
+          not record.accepted)
+
+    # No expectation stated is the ordinary case, including every platform whose
+    # generator cannot answer.
+    record = _run_one(
+        _scheduled(), server_factory=prefixed_as(1000), generator=gen_on(None),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("with no expectation stated an unknown interface is ordinary", record.accepted)
+
     # An adapter that cannot answer has not said the server was unprivileged, it has
     # said nothing, and under a prefix that is refused for the same reason a silent
     # generator is.
