@@ -199,8 +199,33 @@ been scheduled yet.
   POLICY is the whole difference. **But it must be measured as an equivalence claim, not asserted:**
   the two numbers came from different binaries and 5.5% apart is on the wrong side of our own 5%
   reportability floor, so as it stands it says "might differ reportably, cannot tell". Laptop is
-  re-measuring both arms adjacent, one session, n=25, with the difference's interval and a stated
-  resolution, exactly as X1 was done.
+  **RE-FRAMED as a DECOMPOSITION rather than an equivalence, which is a stronger claim from the same
+  hour.** An equivalence asks a reviewer to accept a null at 5.5% against a 5% threshold, and its best
+  outcome is "we could not distinguish them". The decomposition uses three points instead: io_uring at
+  1 us is 33, io_uring blocking is 469, epoll is 495. The gap being explained is 462 us; changing only
+  the wait within io_uring moves 436 of it; the residual 26 us is what the MECHANISM accounts for.
+  **The sentence becomes: of the 462 us gap between a readiness backend and a completion backend at
+  low load, the wait policy accounts for 436 and the mechanism for 26.** Positive and quantitative,
+  the near-threshold number becomes the answer rather than an embarrassment, and it satisfies the
+  project's own rule that a decomposition needs one more point than components. **Run: three arms,
+  n=25 each at 100/s, all interleaved in rotation so drift cannot land preferentially on one arm, ALL
+  IN ONE SESSION (the rule that caught the 4.176 ratio: a decomposition may not subtract points from
+  different runs).** About 90 minutes. If the resolution is too wide to say anything about the 26 us
+  residual, report the resolution and not a verdict; a paired analysis over adjacent triples is the
+  fallback and is not to be written up front.
+- **Under load the three wait policies are indistinguishable, and the 36-against-30 must not be read
+  as a cost.** Five loaded repetitions per arm at 10 000/s: per-run medians 26.6, 26.4 and 28.0 us,
+  run-to-run sd about 2. blocking against 1 ms is +1.60 us (+6.1%) with interval [-1.20, +4.20], so it
+  clears the 5% floor on the point estimate and fails the interval: NOT reportable. The single-run
+  36 was one draw from a distribution with sd 2. Expected, since at 10 000/s completions arrive far
+  faster than any of the three timeouts, so the wait never engages. Caveat: these used
+  `--warmup 3 --duration 20` against the single runs' `--warmup 0 --duration 30`, so absolute medians
+  are 26-28 rather than 30-36; the two tables are internally valid and must not be read against each
+  other.
+- **Method rule both sides earned today: a number in a table gets used regardless of the sentence
+  beside it.** The laptop printed the parking row it had said it did not stand behind, and the
+  coordinator reasoned from it within minutes. A row that is not stood behind does not go in the
+  table.
 - **The recommendation is a TRADE, not a verdict, and the coordinator had to revise itself.** On the
   six-second parking samples (which the laptop had already said it did not stand behind) blocking
   appeared to buy no extra parking, and the coordinator pushed for a sharp verdict. The thirty-second
