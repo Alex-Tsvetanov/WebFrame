@@ -237,10 +237,24 @@ class RunRecord:
     # or a zero is refused: the whole arrangement rests on the generator not being root.
     generator_euid: int | None = None
     # Who ran the server, read from /proc rather than inferred from the launch prefix.
-    # None on Windows and on a run whose adapter predates the field. Compared against
-    # generator_euid above: the two must match unless the cell declares otherwise, since
-    # a root server is exempt from limits an unprivileged one is held to.
+    # Compared against generator_euid above: the two must match unless the cell declares
+    # otherwise, since a root server is exempt from limits an unprivileged one is held to.
+    #
+    # None means the platform has no such notion -- off Linux, or an adapter predating
+    # this field -- and nothing else. On Linux a /proc read that fails refuses the run
+    # rather than recording None, because "the server's privilege could not be
+    # established" and "this platform does not have uids" must not arrive here as the
+    # same value. Under a launch prefix None is refused outright: see driver.py.
     server_euid: int | None = None
+    # Why the two euids above are allowed to differ, when they do. A validity field
+    # rather than a factor: it explains a run, it does not vary within a design, and
+    # putting it in factors would make every declared cell a different design point from
+    # its undeclared twin and break missing_factors.
+    #
+    # None means no asymmetry was declared, which for a run whose euids match is the
+    # ordinary case. A string is the operator's stated reason, recorded verbatim so the
+    # file says why rather than merely that it was allowed.
+    privilege_asymmetry: str | None = None
     # A laptop can change its power and thermal regime mid-campaign in a way the desktop
     # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
     # and caps clocks, which makes the number uncitable for the same reason a virtualised

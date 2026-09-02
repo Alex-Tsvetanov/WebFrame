@@ -107,14 +107,17 @@ namespace coroute::testing
 	/// itself is wrong, and both are defects that a skip would hide behind a green run
 	/// for as long as the hardened-kernel skip is also expected.
 	///
-	/// ENOMEM is the exception, and it is why this retries rather than failing at once.
-	/// On this path it does not mean the machine is out of memory; it almost always
-	/// means the previous test's rings have not been handed back yet. See
-	/// kMemlockSettleMs. Note that io_backend_probe() above creates and destroys a ring
-	/// of its own, so its residue is part of what is being waited out here.
+	/// ENOMEM is the exception. On this path it rarely means the machine is out of
+	/// memory; it usually means the previous test's rings have not been handed back yet,
+	/// so it is waited out rather than failed at once. That applies to the probe as well
+	/// as to the construction: io_backend_probe() creates and destroys a ring of its own,
+	/// and on a starved budget it is as likely to be the thing that fails first.
 	///
-	/// The wait is bounded and the last error is rethrown, so a real, persistent failure
-	/// still fails; it just fails 250 ms later.
+	/// The retry does not inspect the failure, because it cannot. Construction reports
+	/// failure as a runtime_error carrying a message and no errno, so this retries any
+	/// ring-init failure for kMemlockSettleMs. What keeps that honest is the bound: the
+	/// last error is rethrown when the budget runs out, so a persistent failure is still
+	/// loud and still carries its own message. It just arrives 250 ms later.
 	inline std::unique_ptr<net::IoContext> context_or_skip(std::size_t threads, net::IoBackend backend)
 	{
 		const int err = net::io_backend_probe(backend);
@@ -135,7 +138,13 @@ namespace coroute::testing
 			{
 				SKIP(reason);
 			}
-			FAIL(reason);
+			// ENOMEM here is the memlock budget, not a broken host, so it falls through
+			// to the retry below rather than failing on the spot. Failing here made the
+			// probe the one place the wait could not help.
+			if (err != ENOMEM)
+			{
+				FAIL(reason);
+			}
 		}
 		for (int waited = 0;; waited += kMemlockStepMs)
 		{

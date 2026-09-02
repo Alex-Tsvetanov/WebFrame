@@ -109,8 +109,32 @@ def is_backend_refusal(text):
     to exercise an arm this build does not contain has not been skipped by the machine,
     it has been mis-registered by the build system. Treating it as a skip would make the
     suite green on a build that silently tests one backend twice.
+
+    Narrowed to the two errnos that mean the host will never allow this backend to this
+    user. The refusal line used to be matched on its prose alone, which made every
+    reason the probe could fail read as a skip: a memlock budget momentarily exhausted by
+    another test looked exactly like a hardened kernel, and turned green. The server now
+    prints the errno's name in brackets, which is stable where strerror text is not.
     """
-    return "--io-backend" in text and "is not available on this host" in text
+    if "--io-backend" not in text or "is not available on this host" not in text:
+        return False
+    return "[EPERM]" in text or "[EACCES]" in text
+
+
+def is_probe_memlock(text):
+    """Whether the probe failed because the user's io_uring ring budget was spoken for.
+
+    Not a skip and not a failure but a wait: io_uring ring memory is charged against a
+    per-user RLIMIT_MEMLOCK budget and released asynchronously, so this clears on its own
+    within milliseconds. Distinguished from the skip cases above because a host that will
+    never run this backend and a host that is briefly out of budget need opposite
+    responses, and until the errno name was printed they were the same string.
+    """
+    return (
+        "--io-backend" in text
+        and "is not available on this host" in text
+        and "[ENOMEM]" in text
+    )
 
 
 # The per-user io_uring memlock budget, and why a launch is retried.
@@ -148,9 +172,16 @@ def start(server, port, extra, wait=15.0):
         early = _wait_or_exit(proc, port, wait, extra)
         if early is None:
             return proc
-        if is_memlock_exhaustion(early) and time.time() < give_up:
+        if (is_memlock_exhaustion(early) or is_probe_memlock(early)) and time.time() < give_up:
             proc.kill()
             proc.wait(timeout=5)
+            # Closed explicitly: the retry replaces `proc`, and without this the pipe of
+            # every abandoned attempt stays open until garbage collection gets to it. A
+            # bounded retry leaks a bounded number of descriptors, which is why nothing
+            # broke, but the suite has a separate descriptor-exhaustion failure mode and
+            # this is not worth contributing to it.
+            if proc.stdout is not None:
+                proc.stdout.close()
             time.sleep(0.05)
             continue
         if is_backend_refusal(early):
