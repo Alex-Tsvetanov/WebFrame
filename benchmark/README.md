@@ -63,7 +63,7 @@ would be admissible, and the gate would refuse it only after the hours were spen
 ## Ladders: re-run them whenever the binary or the host changed
 
 The offered rates hard-coded in `run_campaign.py` (`TLS_OFFERED_RATES`,
-`CHURN_OFFERED_RATES`, `CHURN_NET_OFFERED_RATES`) were measured on `alex-pc` at an
+`CHURN_OFFERED_RATES`, `CHURN_NET_OFFERED_RATES`) were measured on the desktop at an
 earlier commit. They are this host's numbers and nobody else's, and a rebuilt binary can
 move them. The three ladders cost about eight minutes together and turn a guess into a
 measurement:
