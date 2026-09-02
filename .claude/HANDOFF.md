@@ -95,6 +95,21 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **First campaign design complete: `churn`, 400 runs, 394 accepted, 6 rejected (1.5%),**
+  2 h 45 m on the desktop at `4645e5e03`. Rejections, all individually explicable and none
+  showing the host degrading: three single socket errors in otherwise healthy runs (pacing 94,
+  90, 62 us), one frequency-drift refusal at 5.3% doing exactly its job, and two pacing
+  overruns both at the lowest offered rate. **The 150-rate fear did not materialise**, 99 of
+  100 accepted with the single failure a socket error rather than an admissibility one, so the
+  ladder gap mattered less than expected; worth a sentence in the results.
+- **The pacing gate's sensitivity varies with the offered rate, and the lowest rate is the
+  most fragile cell rather than the safest.** At 25 establishments a second over a twenty
+  second window there are about 500 samples, so the p99 of pacing lag is the fifth worst of
+  500 and one scheduling hiccup can be it; at 150 there are 3000 samples, the p99 is the
+  thirtieth worst, and the same hiccup cannot reach it. That inverts the intuition a ladder
+  encourages. It is a property of the design rather than the host, everything needed to check
+  it is already in the stored per-run pacing figures, and it belongs with the results.
+
 - **The Linux host's kernel disqualified its TSC, so every clock read there is a syscall.**
   `current_clocksource` is `hpet`, and `tsc` is not even in the available list: the kernel
   marked it unstable at boot on a watchdog timeout, which on some AMD parts is a known false
