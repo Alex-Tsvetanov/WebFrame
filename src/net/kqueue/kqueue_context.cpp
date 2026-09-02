@@ -100,6 +100,14 @@ namespace coroute::net
 	class KqueueContext : public IoContext
 	{
 		int kq_ = -1;
+
+		// Ident of the EVFILT_USER knote wake() triggers. A knote is keyed on (ident,
+		// filter), and an EVFILT_USER ident is not a descriptor, so a small constant here
+		// cannot collide with the (fd, EVFILT_READ) knotes registered elsewhere. Checked
+		// rather than assumed: kqueue(2) on macOS documents neither this filter nor
+		// NOTE_TRIGGER, so the claim rests on <sys/event.h> and on a probe that armed a
+		// read on descriptor 1 alongside this and saw both survive.
+		static constexpr uintptr_t WAKE_IDENT = 1;
 		std::vector<std::thread> workers_;
 		std::atomic<bool> stopped_{false};
 		size_t thread_count_;
@@ -129,6 +137,18 @@ namespace coroute::net
 			if (kq_ < 0)
 			{
 				throw std::runtime_error("kqueue() failed");
+			}
+
+			// EV_CLEAR because the trigger is a state transition, not a state: without it
+			// the knote stays triggered once fired and every later kevent() returns
+			// immediately, which turns the wait into a spin. udata stays null, which is
+			// how process_events() tells this apart from a real operation.
+			struct kevent ev;
+			EV_SET(&ev, WAKE_IDENT, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, nullptr);
+			if (kevent(kq_, &ev, 1, nullptr, 0, nullptr) < 0)
+			{
+				close(kq_);
+				throw std::runtime_error("kevent() failed to register the wake event");
 			}
 		}
 
@@ -225,7 +245,14 @@ namespace coroute::net
 			process_callbacks();
 		}
 
-		void stop() override { stopped_ = true; }
+		void stop() override
+		{
+			stopped_ = true;
+			// So shutdown does not wait out a worker's current kevent(). This releases one
+			// worker; that one passes the trigger on as it leaves worker_thread(), which is
+			// what gets the rest out without their own timeout.
+			wake();
+		}
 
 		bool stopped() const noexcept override { return stopped_; }
 
@@ -244,8 +271,22 @@ namespace coroute::net
 
 		void post(std::function<void()> callback) override
 		{
-			std::lock_guard lock(callback_mutex_);
-			callbacks_.push(std::move(callback));
+			{
+				std::lock_guard lock(callback_mutex_);
+				callbacks_.push(std::move(callback));
+			}
+
+			// The queue alone is invisible to a worker parked in kevent(), which has no
+			// reason to look at it until that call ends on its own schedule: measured at
+			// 98ms of delivery latency on an idle context before this line existed. It is
+			// not only callbacks that were late. TimerQueue posts through here, so every
+			// idle timeout and handshake deadline on this platform was late by the same
+			// amount.
+			//
+			// The lock is released first on purpose. A woken worker's first act is to take
+			// this mutex, so waking it while still holding it only buys a contended
+			// acquire.
+			wake();
 		}
 
 		void schedule(std::chrono::milliseconds delay, std::function<void()> callback) override
@@ -260,6 +301,23 @@ namespace coroute::net
 		// thread for the whole context, started only if something is ever scheduled.
 		TimerQueue timers_{[this](std::function<void()> cb) { post(std::move(cb)); }};
 
+		/// Ends one worker's kevent() early.
+		///
+		/// Submitted directly rather than through submit_or_batch(). A batch is drained
+		/// only by the thread that filled it, and the thread posting work is generally not
+		/// one, so a deferred trigger would sit in a buffer nobody reads. Calling kevent()
+		/// on the same descriptor from another thread is what makes that safe here, and is
+		/// the whole reason this backend needs no lock on the wake path.
+		///
+		/// Failures are ignored: the only one reachable is a closed descriptor during
+		/// teardown, where the timeout in process_events() is a sufficient backstop.
+		void wake() noexcept
+		{
+			struct kevent ev;
+			EV_SET(&ev, WAKE_IDENT, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
+			kevent(kq_, &ev, 1, nullptr, 0, nullptr);
+		}
+
 		void worker_thread()
 		{
 			in_event_loop_ = true;
@@ -268,11 +326,22 @@ namespace coroute::net
 				process_events();
 				process_callbacks();
 			}
+
+			// Pass the trigger on, so the workers leave in a chain instead of each waiting
+			// out its own kevent(). Best-effort: two exiting at once coalesce into one
+			// delivery and whoever misses out falls back on the timeout, which is what
+			// every worker but one used to do. Destroying a four-worker context took 47ms
+			// for no reason other than that.
+			wake();
 		}
 
 		void process_events()
 		{
 			struct kevent events[64];
+
+			// Bounded rather than indefinite, so a missed wake costs 100ms instead of
+			// parking a worker forever. It is the backstop and not the mechanism: it used
+			// to be the only thing that noticed posted work at all. See post().
 			struct timespec ts = {0, 100000000};  // 100ms
 
 			// Submit pending changes and wait for events in a single syscall (Overlap)
@@ -290,6 +359,9 @@ namespace coroute::net
 				int fd = static_cast<int>(ev.ident);
 				KqueueOperation* op = static_cast<KqueueOperation*>(ev.udata);
 
+				// The wake event is the only registration carrying null udata, and needs
+				// nothing done to it: EV_CLEAR reset it as it was retrieved, and its
+				// arrival was the whole point. process_callbacks() runs next.
 				if (!op) continue;
 
 				if (ev.filter == EVFILT_READ)
@@ -363,12 +435,31 @@ namespace coroute::net
 		void process_callbacks()
 		{
 			std::function<void()> callback;
+			bool more = false;
 			{
 				std::lock_guard lock(callback_mutex_);
 				if (callbacks_.empty()) return;
 				callback = std::move(callbacks_.front());
 				callbacks_.pop();
+				more = !callbacks_.empty();
 			}
+
+			// One pop per pass, and EVFILT_USER aggregates: several posts arriving inside
+			// the few microseconds before a worker retrieves the knote produce one delivery
+			// between them. Without this the queue keeps the leftovers and nothing is left
+			// to trigger on, so the second callback of a burst waited out the full timeout
+			// -- ten posted at once finished 907ms after the last was queued. The invariant
+			// is that a non-empty queue always has a wake owed to it, and the pop above is
+			// where it was being broken.
+			//
+			// Re-triggering rather than draining the queue here on purpose: kevent() still
+			// runs between callbacks, so a flood of them cannot defer the I/O this worker
+			// also owes. The bounded drain in the io_uring backend would not have sufficed
+			// on its own either -- the callback past its bound needs this same re-arm.
+			//
+			// Outside the lock, as in post(): the worker this releases wants that mutex.
+			if (more) wake();
+
 			if (callback)
 			{
 				callback();
