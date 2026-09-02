@@ -184,6 +184,56 @@ been scheduled yet.
   have caught it because nothing measured delivery latency on an idle loop. The finding is not that
   the code had a bug; it is that a class of defect was invisible until someone measured the mechanism
   rather than the outcome.
+- **THE FREE CHECK ANSWERED: THE SERVER STALLED. The pacing gate is a server-stall detector.**
+  Desktop compared the three refused TLS runs at 400/s against the 47 accepted ones of the same cell:
+
+  | field | accepted median | accepted max | the three refused |
+  |---|---|---|---|
+  | latency p50 (ms) | 0.339 | 0.375 | 0.377, 0.444, 0.449 |
+  | latency p99 (ms) | 0.947 | 1.038 | 2.933, 2.828, 4.699 |
+  | connect p99 (ms) | 1.932 | 8.722 | 10.237, 10.215, 10.408 |
+
+  All three sit at or above the maximum median of every accepted run, with a p99 three to five times
+  the worst accepted and an establishment excursion of about 8 ms, while establishing all 9264
+  connections with zero handshake failures and ordinary CPU. The server did not fail; it went slow,
+  in a bounded way, in exactly the runs the gate refused. **So the discarded runs ARE the measurement**
+  and the coordinator's precautionary condition is now demonstrated. The TLS arm's accepted set at
+  400/s is biased fast by construction; a TLS-minus-cleartext difference there is a lower bound and
+  we can now say why in terms of the server's own latency rather than the gate. The second mode has a
+  mechanism: in about 6% of TLS establishment runs at that rate the server's p99 rises three to
+  fivefold. **Why the server does it is unanswerable from these records; it goes to the laptop, which
+  can attach a profiler. Not the desktop's to chase mid-campaign.**
+  **For the methodology chapter: an open-loop generator's pacing gate is a detector of SERVER stalls,
+  not merely a check on the generator.** It was built against coordinated omission and has caught a
+  server-side event nothing else in the harness watches for.
+- **THE SYSTEMIC QUESTION THIS OPENS, and the check that settles it.** If pacing refusals correlate
+  with the server being slow, that is a property of pacing refusals, not of rate 400 -- and we discard
+  them everywhere. h1-deep refused 4 at 40 000 and above, transport 1 at 5000, churn 2 at 25/s,
+  churn-net 44. Every one was removed on the assumption of instrument noise. If they were server
+  stalls, **every accepted set we hold is biased fast at the tail and every p99 and p999 in the thesis
+  is optimistic by an unknown amount.** Desktop asked to run the same comparison across every pacing
+  refusal in every filed design, as one table, saying for each whether its distribution sits inside or
+  outside the accepted spread of its own cell. Costs no machine time. Mostly inside means the discard
+  is harmless and we will have shown it rather than assumed it; mostly outside means the thesis needs
+  a statement that pre-declared refusal is not neutral, that it preferentially removes the runs where
+  the server behaved worst, and that reported tails are optimistic. Either answer is publishable.
+- **Routing e2e ran, and `main` lost its first nine runs to a firewall warm-up race.** 90 runs, 81
+  accepted; the nine refusals are "delivered 0.0% of the offered rate" with socket errors, at the low
+  rates 1000 and 4000, and they are **positions 1 through 9 consecutively**, followed by 81 consecutive
+  successes. `build\windows-routing` had been rebuilt at a path with no firewall rule; Windows created
+  the Allow pair when the binary first listened, and the runs before it existed were blocked. Ruled:
+  **re-run the whole design (about 42 min), keep the original file as the evidence.** Re-running is
+  right here and wrong at rate 400, and the distinction is the point: there the refusals were caused
+  by the system under test, so re-running would be sampling on the outcome; here an external gate
+  stopped nine runs from happening at all, and nine cells that never ran are not a measurement. Whole
+  design rather than the nine, so balance across rates is restored by construction and all ninety
+  share one machine state. Inside the programme Alex approved, so no new authorisation needed.
+  **Systemic, and it goes in the runbook:** any campaign whose binary is rebuilt at a path the firewall
+  has not seen loses its first runs, silently, from whichever cells the scheduler ordered first.
+  Precondition: start the server once, make one request, stop it, then begin timing. Control that
+  confirms it is not the host: churn-net's single zero-delivery run is at position 292 of 400, not
+  early, so it is not the same cause and remains a rate past the ceiling.
+  Other blocks clean: bracket 60/60, bracket-low 30/30, large 14/15 (one CPU-frequency drift).
 - **THE BLOCKING-WAIT EXPERIMENT, and the finding that carries paper 3.** Three binaries from
   `a389023ba` differing only in the wait, 300 000 completions per loaded cell.
 
