@@ -672,19 +672,36 @@ been scheduled yet.
   under-report at 23 us medians. Cancels in a difference between arms (the cross-arm gap is
   unaffected); does NOT cancel in an absolute quotation. Goes into the thesis method and every
   measurement README.
-- **FILING THE LAPTOP'S RECORDS.** The laptop has admin on all four private paper repositories but
-  pushes nothing: Alex pushes measurement branches himself (his direct answer to the desktop), and one
-  convention across both machines beats the convenience. Layout, in `paper-io-portability` on
-  `measure/laptop-2026-09-02`, directory `measurements/2026-09-02-laptop/`: `crossarm/` (driver-run,
-  with env.json, commit `a4519ada2`, TLS half marked unusable), `blocking-wait/`, `decomposition/`,
-  `loaded-reps/` (raw loadgen, commit `a389023ba`; READMEs state NO environment capture of any kind,
-  binary by branch and flags, wall-clock window from preserved mtimes, the rotation-9 anomaly),
-  `idle-ladder/` (unit-test binary), `wake/` (before/after delivery numbers, transcribed from reports
-  if raw outputs were not kept, commits named). The laptop's `.env.json` confirms why private:
-  node name, a private address and the invoking username are in it. `benchmark/results/` is
-  gitignored in the public repo (line 27), checked rather than trusted. The /tmp results are being
-  copied to durable storage NOW with mtimes preserved, since /tmp is tmpfs and a reboot has already
-  cost a script tonight.
+- **THE LAPTOP'S RECORDS ARE FILED AND COMMITTED LOCALLY: `paper-io-portability`, branch
+  `measure/laptop-2026-09-02`, commit `512f248`, pushed nowhere, tree clean.** Six sets under
+  `measurements/2026-09-02-laptop/`: `crossarm/` (the only one with provenance), `blocking-wait/`,
+  `decomposition/`, `loaded-reps/`, `idle-ladder/`, `wake/`, each with a README plus a top-level one.
+  **The five non-driver sets state plainly: no environment capture, no fingerprint, no dirty-tree
+  check, no clock samples, no virtualisation check, no euid or interface attestation, and NO VALIDITY
+  GATES AT ALL -- no run was ever accepted or refused.** The truncation note is in each. **The defects
+  are filed beside the data** rather than left to be rediscovered as suspicions: the withdrawn
+  6-second parking samples and what superseded them; the retained, unexplained rotation-9 run with the
+  commit timestamp that refuted its contamination story; the inadmissible `1us.r100.awake` cell and why
+  the 1 us arm is its own awake control; and for `wake/`, that the epoll before-number came from a
+  different instrument, with the re-measurement whose single dataset contains both figures. READMEs
+  carry no machine identity; the records themselves carry hostname, address and username in every
+  `env.json`, which the commit message names as the reason the repository is private. `wake/`'s
+  delivery numbers are TRANSCRIBED from session reports (Catch2 output not kept) and say so with the
+  commits named; they are NOT to be re-run to turn a transcription into a file.
+- **Paper 2's syscall design is committed and running: `cdd4bb612` on `linux/paper2-demux-counted`, off
+  `a4519ada2`**, four cells (two connection shapes x classification on/off), one run per arm, epoll
+  first, 310 self-checks passing. **The admissibility declaration was committed BEFORE the design
+  ran**, reasoning, exemption and price in one place, because an exemption written afterwards is an
+  excuse.
+- **Overnight queue for the laptop, in order, stop when it empties.** (1) **The spaced-TLS probe:** one
+  cell, transport TLS at 10 000, io_uring, 7 repetitions with a deliberate ~30 s gap between runs,
+  about six minutes. It could recover the whole TLS half of paper 3's cross-arm table, currently
+  cleartext-only because 64 of 140 TLS runs were refused on thermal drift. Report drift per run and how
+  many would pass; if they do, the campaign is designed around it as a declared arrangement change.
+  (2) The **one-worker discriminator** for the enter-count bimodality: minutes, changes nothing held.
+  (3) Only if both land with room, the **callback-work sweep** in two arms, idle and cores-awake, the
+  only measurement that would let paper 3 say whether the idle cost is a C-state exit or a frequency
+  ramp. Nothing after that: idle is the right state for the machine when Alex wakes.
 - **Attribution prediction on the record before the mechanism arms land:** 5.090 (epoll) against
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
