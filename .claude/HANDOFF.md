@@ -138,7 +138,24 @@ been scheduled yet.
   97 accepted 400/s runs, beside those three. A materially lower accepted median puts the second
   mode in the generator (the campaign's case 2) and the cell is citable with a stated limitation; a
   similar median leaves the mode unexplained and the TLS-versus-cleartext comparison at 400/s is
-  then conditioned on not having hit it. Do not decide the headline question before that number. 3 of ~50 against 0 of ~50 is
+  **The desktop ran it and the obvious mechanism fails.** Generator CPU share: TLS accepted median
+  0.9506 (n=47), cleartext accepted median 0.9524 (n=50), the three refused 0.8806, 0.9466, 0.9478.
+  Two of the three fell 2 ms behind while holding an ordinary share, so descheduling explains at most
+  one. The bimodality and the arm asymmetry are established; the cause is not, and that is how it is
+  written. Arm split at 400/s: TLS 50 cells, 3 refused (6.0%), accepted pacing 45/49/555 min-median-max;
+  cleartext 50 cells, 0 refused, 34/41.5/665.
+  **RULED.** Within an arm the 97 accepted cells are citable, with the per-arm refusal rate in the
+  table or its caption. Across arms the difference at 400/s is reported as a LOWER BOUND with the
+  direction named, because the three runs the TLS arm lost are its slowest and cleartext lost none;
+  not a headline number. The second mode is itself a result and is described, not smoothed. No
+  re-laddering, no re-running of refused runs. The pooled 10% stop rule becomes per-rate; 800/s is a
+  measured ceiling of the arrangement, not a property of the server.
+  **Free check outstanding, asked of the desktop:** the three refused runs still carry their own
+  server-side latency records. Ordinary-looking records put the slip on the generator or OS side and
+  make the discard harmless; a matching ~2 ms excursion means the generator fell behind because the
+  server stalled, and the discarded runs are the measurement. No machine time.
+  Both rules are now written into chapter V as new subsections (asymmetric refusals name the
+  direction of the bound; the refusal threshold applies per offered rate, not pooled). 3 of ~50 against 0 of ~50 is
   suggestive, not established (Fisher exact about 0.24). The cell is kept, with n=97 accepted, and
   every TLS-versus-cleartext statement at 400/s carries the asymmetry in its text. It is not used
   for a headline claim. (4) **The refused runs are NOT re-run.** Re-running only the runs that
