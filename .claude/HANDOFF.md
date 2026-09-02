@@ -704,9 +704,28 @@ been scheduled yet.
   boundary rather than a gradient (the loop gain crosses one abruptly); and the boundary sitting where
   the duty cycle reaches unity, about 1/9.3 ms ~ 107/s, just above the highest rate at which a slow run
   has ever been seen and just above the lowest at which none has.
+  **THE UNITY VERSION IS REFUTED BY DATA ALREADY HELD, before the new runs landed.** The desktop
+  pointed out that the churn design measured 99 accepted cleartext runs at exactly 100/s (and 198
+  across 100 and 150 with both arms) and found ZERO slow ones. A duty cycle of 0.93 leaves the machine
+  idle 7% of every period, so the loop should still close and the mechanism predicts a small non-zero
+  proportion at 100. Observed zero, ninety-nine times.
+  **REPLACED by the desktop's option 2, which is better and has independent quantitative support: the
+  controlling variable is the ABSOLUTE idle interval, not the duty fraction.** Slack is the period
+  minus the slow mode's 9.3 ms: 10.7 ms at 50/s, 2.5 at 85, 0.7 at 100. Set that against the laptop's
+  idle ladder, measured on Linux earlier the same night for a different purpose: 9 us at a 1 ms gap,
+  26 at 2 ms, 63 at 5 ms, flat to 50 ms. So 10.7 ms is past saturation (full park), 2.5 ms is about a
+  quarter of the cost, and 0.7 ms is essentially no park. **The absolute-interval story fits a curve
+  measured independently on another machine; the duty-cycle story was fitted to the boundary it was
+  explaining.** It also gives sharpness without needing a loop gain to cross exactly one, and an
+  absolute wake threshold is the kind of thing an operating system has.
+  **Refined prediction: if parking needs roughly 1-2 ms of slack to matter, the boundary is where the
+  period is about 10.3-11.3 ms, a rate of about 88 to 97.**
   **Judgement rule fixed in advance:** high and flat at 50/60/70, lower at 85, zero at 100 supports it,
-  and the follow-up is then rates 95 (predicted small but non-zero) and 120 or 150 (predicted zero),
-  ten minutes, turning a located boundary into a predicted one. A smooth fall across all five refutes
+  and the follow-up is then rates **90 and 95**, 15 repetitions each,
+  as a SECOND committed design `churn-proportion-fine` on the same branch, run only if the five come
+  out as predicted, ten minutes -- turning a bracketed boundary into a located one. **150 needs no
+  re-measuring**: 99 runs there already say zero and confirming a zero would buy nothing. Inside what
+  Alex approved for overnight, but he is to be told it happened and why. A smooth fall across all five refutes
   it and leaves a slope with no mechanism. A fall between 60 and 70 means neither party has it.
   The extra rates are NOT to be run before the five are in.
 - **The quiet-host gate fired for the first time on a genuinely disturbed host** and then passed: first
