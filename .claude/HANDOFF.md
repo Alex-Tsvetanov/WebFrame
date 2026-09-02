@@ -172,6 +172,13 @@ been scheduled yet.
   difference being the Linux-only checks) but is DELIBERATELY NOT PUSHED until the kqueue fix lands,
   because mainline must not carry a failing test.** Merged tip is `0894c13b7`, one past the
   `e6c507b9f` the laptop reported.
+  **CORRECTION, from the laptop:** that merge was TWO COMMITS SHORT. `0894c13b7` is behind
+  `e6c507b9f`, not past it; the coordinator read a push range backwards and then explained away the
+  contradicting evidence (301 self-checks rather than 304) with a platform-gating story instead of
+  checking it. The laptop's checks all use `FakeServer` and are platform-independent, so 301 was
+  exactly the pre-change count and was the tell. Re-merged: worktree HEAD `fdb517207`, **304 checks**,
+  build clean, and test 42 is now the ONLY failure, awaiting the kqueue fix. Lesson worth keeping:
+  a number that contradicts the story is evidence, not noise to be explained.
   **For paper 3:** a portable test written for one backend found the same defect on three operating
   systems, and every one of those backends passed a suite that looked complete. The suite could not
   have caught it because nothing measured delivery latency on an idle loop. The finding is not that
@@ -223,8 +230,12 @@ been scheduled yet.
   point and therefore data, and the standing rule is that data traces to a mainline commit rather than
   to a branch tip. So: finish the findings, push, coordinator merges the stack, then the blocking-wait
   experiment AND the cross-arm re-runs both run on the merged HEAD.
-- **PRIVACY DEFECT FOUND: `coord/inbox` is on the PUBLIC repository and carries the laptop's
-  hostname** in ten filenames and twelve body lines (`gh repo view` confirms
+- **`coord/inbox` is on the PUBLIC repository and carries the laptop's hostname.** NOT an
+  oversight, and the coordinator first framed it wrongly to Alex as one: when the laptop first wrote
+  to that branch it spelled out that the repository is public and that the reports would expose the
+  hostname, addresses, MAC addresses, SSID and the machine's hardening profile, and asked Alex
+  directly; he chose "Full text, unredacted". He is therefore revisiting his own informed decision,
+  not repairing an accident. The tightened rule stands regardless. Extent:** in ten filenames and twelve body lines (`gh repo view` confirms
   `Alex-Tsvetanov/WebFrame` is `isPrivate: false`). No IP or MAC has leaked yet, but the laptop was
   about to write link facts containing two addresses and three MACs into an inbox file. It has been
   told: nothing identifying a machine goes on that repository, ever, and network identity comes to the
@@ -232,6 +243,41 @@ been scheduled yet.
   what `env.json` and `measurements/` are for. The existing hostname history needs a rewrite and a
   force push, which is Alex's call and has been put to him; a backup ref `backup/coord-inbox-pre-redaction`
   holds the current tip locally either way.
+- **Link findings so far, from the laptop.** Topology settled: the desktop resolves by ARP as a
+  direct neighbour on the same segment, so same switch and no layer-3 hop. **The desktop does not
+  answer ICMP** (Windows Firewall default on Private and Public profiles), so the ping baseline as
+  specified cannot be taken. **RULED: no firewall rule is to be changed on either machine.** The
+  baseline becomes a TCP handshake round trip to a listening socket bound to the physical interface,
+  which is better anyway: a SYN and SYN-ACK exercise the stack path a connection uses, which ICMP does
+  not, and it answers the kernel-versus-userspace objection. It waits for the desktop's campaign to
+  end, because it needs that listening socket, and it is the two-host arm's own first step.
+  **The C-state effect survives into network measurement and is large.** 300 pings to the router
+  (same wire, same switch, one hop): median 722 microseconds plain against 502 with the laptop's own
+  cores held awake, on a measurement where the remote end and the wire are identical and only the
+  receiving core's idle state changed. The minimum barely moved (385 to 339), so the floor is the wire
+  and the wake-up sits on top of it. Same order as the morning's 495 against 74. **For paper 3:** a
+  two-host latency comparison that does not control for the receiving core's idle state measures the
+  idle governor as well as the network, and the error is hundreds of microseconds. Caveat kept: a
+  router answers ICMP on a low-priority path, so 300 microseconds of spread is an upper bound on the
+  segment, not an estimate of it.
+- **A STATISTICAL CORRECTION the coordinator made to the laptop, which the papers depend on.** The
+  laptop concluded that a per-packet spread near 300 microseconds means the path cannot resolve the
+  60 to 85 microsecond demux difference. That does not follow. We do not compare packets; we compare
+  per-run medians, and the standard error of a median falls as the square root of the sample count, so
+  at about 100 000 requests a run a 300 microsecond per-packet spread gives a per-run median stable to
+  roughly one microsecond IF the noise is independent. What enters the bootstrap is the RUN-TO-RUN
+  spread of those medians. The quantity that settles it is therefore the one the harness already
+  reports, the half-width of the difference interval as a share of the classification-off median
+  (2.47 to 5.63 percent on loopback), measured over the wire. Two caveats that could still vindicate
+  the laptop, and both are empirical: network noise is bursty and autocorrelated, and if the
+  correlation time approaches a run's length the effective sample count collapses toward the number of
+  runs; and any variation correlated with the ARM rather than added independently biases the
+  comparison at any sample size. Do not write "loopback was the right medium" until the run-to-run
+  number exists.
+- **ORDER RULED: the `getsockname` interface recording lands BEFORE the blocking-wait experiment and
+  before the cross-arm re-runs.** Not urgency but schema stability: it changes the environment record,
+  and records from before and after cannot be pooled, so everything measured from the merged mainline
+  onward must share one schema.
 - **NEW CAPABILITY (Alex, 18:45): the two machines share an Ethernet segment, so a genuine two-host
   benchmark is possible** -- server on one machine, generator on the other, across a real interface
   with a driver, interrupts and queueing. This is the first arrangement that can answer the loopback
