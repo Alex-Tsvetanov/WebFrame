@@ -847,6 +847,43 @@ def live_capture_check() -> None:
         print("     so it is correctly refused as a source of performance records")
 
 
+def ladder_coverage_checks() -> None:
+    """A ladder that does not test the rates it validates is not a ladder.
+
+    The campaign's offered rates are chosen from a ladder run on the host, and the rule
+    that lets a campaign start is that every rate in the table was accepted in its ladder.
+    That rule is unsatisfiable for a rate the ladder never visits, and the gap does not
+    announce itself: the campaign simply offers a rate nobody measured. It happened, at
+    the one rate whose tested neighbours paced at 83 microseconds and at 3012.
+
+    The second half is the same rule from the other side. One design, one shape, one
+    ceiling: a rate that is nothing for a reused connection can be several times what
+    establishment sustains, and a design that offers one rate to both shapes fails half
+    its cells on every host for ever.
+    """
+    from benchmark import run_campaign as rc
+
+    print("\n== a ladder visits the rates it exists to validate ==")
+    for design, table in (
+        ("churn-ladder", set(rc.CHURN_OFFERED_RATES) | set(rc.CHURN_NET_OFFERED_RATES)),
+        ("tls-ladder", set(rc.TLS_OFFERED_RATES)),
+    ):
+        rates = {cell.as_dict()["offered_rate"] for cell in rc.DESIGNS[design]()}
+        check(f"{design} visits every rate it validates", table <= rates)
+
+    ceiling = max(set(rc.CHURN_OFFERED_RATES) | set(rc.CHURN_NET_OFFERED_RATES))
+    for design in ("tls-smoke", "churn", "churn-net", "transport", "h1-deep"):
+        offered = {
+            cell.as_dict()["offered_rate"]
+            for cell in rc.DESIGNS[design]()
+            if int(cell.as_dict().get("max_requests_per_connection", 0)) == 1
+        }
+        check(
+            f"{design} offers establishment no rate above what a ladder admitted",
+            not offered or max(offered) <= ceiling,
+        )
+
+
 def main() -> int:
     from benchmark.harness import selfcheck_driver, selfcheck_results
 
@@ -859,6 +896,7 @@ def main() -> int:
     counter_checks()
     schema_checks()
     ordering_checks()
+    ladder_coverage_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
     darwin_parser_checks()
