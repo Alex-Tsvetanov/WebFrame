@@ -128,30 +128,25 @@ been scheduled yet.
   completion model pays a per-second price, and part of what that price buys is a slower
   package. Per-core clocks sampled through each arm, rather than the package figure at the
   ends, will settle it.
-- **Nine `clock_gettime` per established connection was a normalisation artifact too**, the
-  same shape as the io_uring one but mixed rather than pure. Two-point fits from two
-  independent backends agree at ~1.70 per request plus a fixed ~2900/s floor, which they must,
-  since the clock code is shared and neither backend has its own. So 82% of the churn figure
-  is a fixed rate divided by a low request rate. The floor is most likely the timer thread's
-  wait loop (`timer_queue.hpp:107`), worth fixing on this host where each read costs 1.9 us.
-  A third rate is queued to test linearity, since a two-point fit has no residual.
-
-- **Two ladders could not validate what the campaign offers** (fixed, `2bbc55353`). The churn
-  ladder stepped 100 to 200 while its table asks for 150, so the rate most in need of checking
-  was the one never visited, and it cannot be interpolated: 100 paced at 83 microseconds and
-  200 at 3012. And `tls-smoke` offered 1000 to both shapes, which is nothing for a reused
-  connection and about seven times the establishment boundary, so its two churn cells were
-  refused on every host and always would have been; read without the shape in view that looks
-  like a machine pacing at 57 microseconds in one run and eight seconds behind in the next at
-  the same rate, a fault nobody can find because it is not there. Both ladders are now built
-  from the tables they validate and a selfcheck fails if either property is reverted.
-- **The desktop's WSL arm is blocked by Windows Firewall**, not by the harness: two auto-created
-  inbound block rules for the freshly rebuilt `benchmark_server.exe`, which is why every
-  loopback design works and only the off-host arm sees 0.0% delivered. Several matching rules
-  still name the repository's old path, so they have accumulated since the move. **Alex's
-  call in the morning**, one rule scoped to the WSL subnet or delete the two blocks; no
-  session touches a firewall. Until then the desktop runs loopback designs only.
-
+- **Nine `clock_gettime` per established connection is real per-connection work.** Stated,
+  retracted, and reinstated in one night, and the third version is the measured one. A rate
+  ladder at three points on a fixed shape (2000, 5000, 10000 requests a second, epoll, all
+  accepted) gives 2.005, 2.004, 2.002 clock reads per request: flat across a fivefold change,
+  with a least-squares floor of 10 a second, which is zero to within measurement. A fixed
+  reader of the size the earlier fit claimed would have made the per-request figure fall from
+  about 3.5 to 2.3 across that ladder, so there is no such reader and `timer_queue.hpp:107` is
+  not the explanation. **So about 9.3 reads per established connection against 2.00 per
+  request on an established one means roughly 7.3 genuine reads per connection**, and the
+  deadline machinery arming and disarming more than once per connection is back to being the
+  live hypothesis. Keep-alive is measured; churn is still inferred from a single rate and
+  wants its own ladder.
+  The retraction that failed was a two-point fit in which rate and shape moved together, so it
+  could not separate them, and two backends agreeing on it corroborated only that both mixed
+  the same two shapes the same way. **A decomposition that separates two effects needs at
+  least one more point than it has unknowns, and a fit whose variables moved together is not
+  evidence about either of them separately.** The io_uring conclusion is unaffected and the
+  reason is worth keeping: its two cells differ 25-fold in rate while the enter rate differs
+  1.04-fold, and no shape difference makes a per-request cost fall 25-fold.
 - **A half-specified off-host arrangement runs silently as an on-host one.**
   `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
   alone is ignored without a word, while `--host` is read unconditionally. The opposite
