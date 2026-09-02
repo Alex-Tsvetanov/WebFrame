@@ -650,6 +650,35 @@ been scheduled yet.
   evening were ordinary ones self-review does catch, and the independence-of-position instruction.
   Nothing further -- continuing to polish a paragraph about over-elaboration would be its own
   demonstration.**
+- **THE MICROSECOND TRUNCATION IS AT CAPTURE, NOT AT REPORT, so it is a measurement change.**
+  `loadgen.cpp:1278-1281` casts `at - c.issued` with `duration_cast<microseconds>` and stores
+  `uint32_t` (:182); `connect_us` (:199, :981) and `pacing_us` (:190, :1229) are the same. The JSON
+  emits `latency_us` directly (:1789); the three-decimal millisecond is the harness's downstream
+  conversion, and a fourth decimal would print zeros. **Schema-9 candidate 3, correctly classified:
+  the sample resolution in loadgen**, which alters every latency the generator has ever produced in
+  its last digit and changes the histogram, so it is pre-declared and validated, never slipped in.
+  **Consequence for every absolute number quoted so far:** truncation is TOWARD ZERO, so every
+  latency, connect and pacing figure is low by up to 1 us and by 0.5 us on average -- a systematic 2%
+  under-report at 23 us medians. Cancels in a difference between arms (the cross-arm gap is
+  unaffected); does NOT cancel in an absolute quotation. Goes into the thesis method and every
+  measurement README.
+- **FILING THE LAPTOP'S RECORDS.** The laptop has admin on all four private paper repositories but
+  pushes nothing: Alex pushes measurement branches himself (his direct answer to the desktop), and one
+  convention across both machines beats the convenience. Layout, in `paper-io-portability` on
+  `measure/laptop-2026-09-02`, directory `measurements/2026-09-02-laptop/`: `crossarm/` (driver-run,
+  with env.json, commit `a4519ada2`, TLS half marked unusable), `blocking-wait/`, `decomposition/`,
+  `loaded-reps/` (raw loadgen, commit `a389023ba`; READMEs state NO environment capture of any kind,
+  binary by branch and flags, wall-clock window from preserved mtimes, the rotation-9 anomaly),
+  `idle-ladder/` (unit-test binary), `wake/` (before/after delivery numbers, transcribed from reports
+  if raw outputs were not kept, commits named). The laptop's `.env.json` confirms why private:
+  node name, a private address and the invoking username are in it. `benchmark/results/` is
+  gitignored in the public repo (line 27), checked rather than trusted. The /tmp results are being
+  copied to durable storage NOW with mtimes preserved, since /tmp is tmpfs and a reboot has already
+  cost a script tonight.
+- **Attribution prediction on the record before the mechanism arms land:** 5.090 (epoll) against
+  2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
+  of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
+  counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
 - **CLEARTEXT TRANSPORT RESULT, both arms, 140/140, seven repetitions, ten cells, on `a4519ada2`.**
   (1) **Demultiplexing costs nothing measurable on either backend under keep-alive.** Detect on minus
   off at p50 is 0 or ±1 us against medians of 23-39 us; every epoll interval INCLUDES zero (so nothing
