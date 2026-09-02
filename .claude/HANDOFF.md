@@ -405,10 +405,23 @@ been scheduled yet.
    nothing by its own policy, so this is the one step nobody else can take.
 
 1. **The Windows firewall is blocking the off-host arm.** Two auto-created inbound block
-   rules for the freshly built `benchmark_server.exe`, which is why every loopback design ran
-   tonight and `churn-net` delivered 0.0%. Several matching rules still name the repository's
-   old path, so they have accumulated since the move. One rule scoped to the WSL subnet, or
-   deleting the two blocks, unblocks it. No session touches a firewall, so this waits for you.
+   rules for the freshly built server binary, which is why every loopback design ran and
+   `churn-net` delivered 0.0%. Several matching rules still name the repository's old path, so
+   they have accumulated since the move. One rule scoped to the WSL subnet, or deleting the two
+   blocks, unblocks it. No session touches a firewall, so this waits for you.
+   **When it is cleared, the next run is the ladder, not the design.** The network ladder
+   accepted zero of eight runs, every one for delivering 0.0% of its offered rate with 64
+   socket errors, so it measured nothing and **validated nothing**: the four network rates are
+   exactly as untested as before it ran. Its zeros are evidence about a firewall, not about
+   rates. The loopback rates that did pass, 25 to 100 establishments a second, say nothing
+   about the off-host arrangement, whose whole purpose is to reach rates loopback cannot and
+   which the design's own docstring says is not comparable for magnitude. So: clear the
+   firewall, **pull first** (the ladder on this HEAD is built from the tables it validates, so
+   it now covers all four network rates where the version that ran covered three), rebuild,
+   re-run `churn-ladder-net`, and only then `churn-net` at n=25. Running the design on
+   unvalidated rates would spend eight hours being refused one run at a time, or worse produce
+   a table whose rates were never shown admissible.
+
 2. **The Linux laptop's TSC was disqualified at boot**, so its clock source is HPET and every
    `clock_gettime` costs 1931 ns and a syscall instead of about 20 ns in userspace. That
    inflates every syscall count and every latency that host produces, by roughly 3.3
