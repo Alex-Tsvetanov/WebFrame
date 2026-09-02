@@ -462,6 +462,7 @@ class CorouteServer:
     _perf_out: Path | None = None
     _perf_pidfile: Path | None = None
     _perf_privilege: str | None = None
+    _perf_workdir: Path | None = None
     # Where the rig's self-signed certificate lives. Only consulted when the cell asks
     # for TLS, so a cleartext campaign runs on a machine that has none.
     cert_file: Path | None = None
@@ -699,8 +700,20 @@ class CorouteServer:
                 "otherwise. Check the permissions on /sys/kernel/tracing."
             )
 
-        out = Path(tempfile.mkstemp(prefix="perf-", suffix=".csv")[1])
-        pidfile = Path(tempfile.mkstemp(prefix="perf-", suffix=".pid")[1])
+        # A private directory, and the files inside it created by perf rather than here.
+        #
+        # mkstemp would create them as this user, and on a hardened kernel root then
+        # cannot write to them: fs.protected_regular is 1, which forbids writing an
+        # existing file owned by someone else in a sticky, world-writable directory, and
+        # /tmp is exactly that. perf failed with "failed to create output file:
+        # Permission denied", wrote nothing, and the run came back with a zero total
+        # that looked like a quiet server rather than a blocked write.
+        #
+        # mkdtemp's directory is 0700 and neither sticky nor world-writable, so the rule
+        # does not apply inside it and root can create what it needs.
+        workdir = Path(tempfile.mkdtemp(prefix="coroute-perf-"))
+        out = workdir / "counts.csv"
+        pidfile = workdir / "perf.pid"
         binary, wrapped = perf_binary()
         perf = [binary, "stat", "-e", ",".join(SYSCALL_TRACEPOINTS),
                 "-p", str(pid), "-x,", "-o", str(out)]
@@ -719,6 +732,7 @@ class CorouteServer:
         self._perf_privilege = privilege
         self._perf_out = out
         self._perf_pidfile = pidfile
+        self._perf_workdir = workdir
         self.syscall_counter = (
             f"perf stat -e {len(SYSCALL_TRACEPOINTS)} tracepoints, -p server, "
             f"privilege={privilege}"
@@ -777,13 +791,16 @@ class CorouteServer:
                 )
             return counts
         finally:
-            for path in (self._perf_out, self._perf_pidfile):
-                if path is not None:
-                    path.unlink(missing_ok=True)
+            # Written by root, so removed the same way; a plain unlink cannot delete
+            # what it cannot write, for the same protected_regular reason.
+            if self._perf_workdir is not None:
+                subprocess.run(["sudo", "-n", "rm", "-rf", str(self._perf_workdir)],
+                               capture_output=True)
             self._perf = None
             self._perf_out = None
             self._perf_pidfile = None
             self._perf_privilege = None
+            self._perf_workdir = None
 
     def _startup_failure(self) -> str:
         """Why the server is already gone, in the words it used.
