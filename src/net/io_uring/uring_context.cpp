@@ -643,6 +643,18 @@ namespace coroute::net
 			// Every actual submission stays under the lock either way. This changes only
 			// the wait.
 			//
+			// What is still true on a kernel without the feature bit, which is the case
+			// the code below no longer makes obvious: there the wait really is a
+			// submission-queue producer, the lock really is required, and an off-worker
+			// submitter really does stall behind it for up to the timeout. That last
+			// point stops being a latency defect and becomes a deadlock if the timeout is
+			// ever removed: with an untimed wait the lock is held until something
+			// completes, a foreign submitter blocks on the mutex, and so it cannot submit
+			// the very thing that would complete and release it. An untimed wait is
+			// therefore unsafe for off-worker submission on a pre-5.11 kernel, and the
+			// branch that removes the timeout must either require this feature or keep
+			// submission on the worker thread.
+			//
 			// Either way the lock is not held below: completions are resumed inline, and
 			// a resumed coroutine's next act is usually to submit again, so holding it
 			// across that would deadlock the worker against itself. The completion queue
