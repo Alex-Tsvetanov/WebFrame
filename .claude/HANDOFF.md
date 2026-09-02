@@ -184,6 +184,61 @@ been scheduled yet.
   have caught it because nothing measured delivery latency on an idle loop. The finding is not that
   the code had a bug; it is that a class of defect was invisible until someone measured the mechanism
   rather than the outcome.
+- **THE BLOCKING-WAIT EXPERIMENT, and the finding that carries paper 3.** Three binaries from
+  `a389023ba` differing only in the wait, 300 000 completions per loaded cell.
+
+  | wait | enter/req | p50 at 100/s, cores idle | p50 awake | parked cores | pkg MHz |
+  |---|---|---|---|---|---|
+  | 1 us | 46.6 | 33 us | (arm is its own control) | 6.73 | 2661 |
+  | 1 ms | 2.88 | 33 us | 52 us | 8.90 | 2107 |
+  | blocking | 2.50 | 469 us | 56 us | 10.92 | 1921 |
+
+  **THE UNIFICATION: io_uring made to wait is 469 us; epoll is 495.** One binary, one machine, only
+  the wait policy changed. This turns the morning's between-mechanism correlation into a
+  within-mechanism controlled comparison: at low load the MECHANISM does not matter and the WAIT
+  POLICY is the whole difference. **But it must be measured as an equivalence claim, not asserted:**
+  the two numbers came from different binaries and 5.5% apart is on the wrong side of our own 5%
+  reportability floor, so as it stands it says "might differ reportably, cannot tell". Laptop is
+  re-measuring both arms adjacent, one session, n=25, with the difference's interval and a stated
+  resolution, exactly as X1 was done.
+- **The recommendation is a TRADE, not a verdict, and the coordinator had to revise itself.** On the
+  six-second parking samples (which the laptop had already said it did not stand behind) blocking
+  appeared to buy no extra parking, and the coordinator pushed for a sharp verdict. The thirty-second
+  samples show parking is monotonic, 6.73 to 8.90 to 10.92 cores, so blocking buys about two cores'
+  worth for its 470 us. Neither six-second row may be quoted; both moved, in both directions. So: 1 ms
+  takes 94% of the syscall reduction at no measurable latency cost either way; blocking adds 13% more
+  entries saved and two cores of parking and pays 470 us at low load whenever the machine may idle.
+  A latency-sensitive service takes the millisecond, a mostly-idle background one might rationally
+  take blocking. Give both numbers.
+- **OPEN AND PROBABLY A RESULT: the idle cost depends on the idle INTERVAL, and our numbers disagree
+  by 12x because of it.** Delivery of posted work from idle costs 46 us against 11 awake, a difference
+  of 35, at a 2 ms cadence. A request at 100/s from idle costs 469 against 56, a difference of 413, at
+  a 10 ms cadence. Same machine, same arm, same governor. If parking depth grows with idle time then
+  neither figure is "the cost of idling" without its interval attached. Laptop asked to sweep the gap
+  (1, 2, 5, 10, 20, 50 ms) and plot the cost against it. If it climbs and plateaus, the governor's
+  ladder is measured directly, and the mediator's three appearances so far (470 us at 10 ms, 220 us in
+  the network baseline, 35 us at 2 ms) become ONE CURVE sampled at three points rather than three
+  separate observations.
+- **The epoll before-number is settled and the instrument question is closed.** epoll pre-fix measured
+  with the CURRENT test: p50 97956 us against kqueue's 98486, so the platforms are identical and there
+  is no per-machine cadence difference. Better, one dataset holds both figures: the run's MINIMUM is
+  50325/50088/49939, the random-phase first post, which is the old single-post instrument's 50138; the
+  median is the phase-locked rest. One defect, two phases, one table. Method note worth keeping: the
+  laptop used a build flag removing only the `wake()` call rather than building the old commit,
+  because the 21-post test does not exist there and building it would have restored the old
+  instrument too. io_uring's 962 is confirmed from the current test, so every before-number now comes
+  from one instrument.
+- **The blocking arm's delivery distribution is unimodal**, p10 42, p50 46, p75 48, max 96, against
+  awake at 11 with the same tightness: the core reaches ONE idle depth consistently and exiting costs
+  a consistent ~35 us. Not bimodal, so a single number is right. Qualified by the interval finding
+  above: one depth AT A 2 ms CADENCE.
+- **The awake control is not universally applicable and the missing cell is a tautology.** The 1 us
+  arm never lets its cores sleep, so for it "idle" and "awake" are the same condition by construction;
+  adding spinners does not create the condition, it oversubscribes the machine until the generator
+  cannot pace, and that cell was refused by the pacing gate at p99 2239 us. The 1 ms and blocking arms
+  passed the same gate at 75 and 77 us, which is what proves the refusal was about the spinning server
+  rather than the spinners. Also confirmed: `generator_cpu_fraction` near 0.99 in every open-loop run
+  including those with no spinners is how an open loop paces, NOT a saturation signal.
 - **ALL THREE WAKES ARE FIXED AND MAINLINE IS GREEN EVERYWHERE.** macOS: 179 of 179 including the
   laptop's test 42, 310 self-checks. Delivery of a posted callback on an idle context, one table for
   the whole finding:
