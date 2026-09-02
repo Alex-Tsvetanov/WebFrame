@@ -859,6 +859,42 @@ def live_capture_check() -> None:
         print("     so it is correctly refused as a source of performance records")
 
 
+def clocksource_checks() -> None:
+    """Which kernel clock served the run, because it decides what reading one costs.
+
+    With the TSC the vDSO answers clock_gettime in userspace. With HPET it cannot, so
+    every call is a syscall plus an MMIO read: 1931 ns against 5 ns on the host where
+    this was found, and one syscall per call where a TSC host makes none. That lands in
+    every latency figure and every syscall count, and until this key existed two hosts
+    differing only in it would pool into one campaign without a word.
+    """
+    from benchmark.harness import environment as env_mod
+
+    print("\n== the kernel clock is part of the machine, and is fingerprinted ==")
+    check("clocksource is fingerprinted", "tuning.clocksource" in env_mod._FINGERPRINTED)
+
+    base = {
+        "machine": {"node": "h", "arch": "x86_64"},
+        "kernel": {"release": "6.1"},
+        "cpu": {"model": "m", "physical_cores": 8, "logical_cores": 16,
+                "governor": "performance"},
+        "memory": {"total_bytes": 1},
+        "tuning": {"transparent_hugepages": None, "swappiness": None,
+                   "clocksource": "tsc"},
+        "toolchain": {"compiler": "g++"},
+        "build": {"type": "Release", "io_backend": "epoll", "git_commit": "abc"},
+        "deps": {},
+    }
+    other = json.loads(json.dumps(base))
+    other["tuning"]["clocksource"] = "hpet"
+    check("two hosts differing only in the clock are different campaigns",
+          env_mod.fingerprint(base) != env_mod.fingerprint(other))
+
+    same = json.loads(json.dumps(base))
+    check("and one that matches is the same campaign",
+          env_mod.fingerprint(base) == env_mod.fingerprint(same))
+
+
 def clock_probe_checks() -> None:
     """The clock reading must move when the machine is throttled and not when it idles.
 
@@ -1010,6 +1046,7 @@ def main() -> int:
     ordering_checks()
     ladder_coverage_checks()
     clock_probe_checks()
+    clocksource_checks()
     staleness_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
