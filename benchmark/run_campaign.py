@@ -57,7 +57,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmark import netns
-from benchmark.adapters import CorouteServer, LoadgenGenerator
+from benchmark.adapters import CorouteServer, LoadgenGenerator, perf_privilege
 from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
 
@@ -716,6 +716,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="command prefix the server is launched through, e.g. "
                          "'sudo -n ip netns exec srv'; pairs with --generator-command")
     args = ap.parse_args(argv)
+
+    # Refused here rather than one cell at a time. perf exists only on Linux and only
+    # where linux-tools is installed, and without this the first check happened inside
+    # the first run: start_syscall_count called a probe that raised FileNotFoundError,
+    # which the driver recorded per cell as an errno that on Windows does not even name
+    # perf. Every other preflight in this file exists for the same reason the
+    # certificate one gives -- an hour of machine time spent to discover a missing file
+    # is an hour nobody gets back.
+    if args.count_syscalls:
+        if platform.system() != "Linux":
+            print(f"--count-syscalls counts perf tracepoints, which exist only on Linux; "
+                  f"this is {platform.system()}", file=sys.stderr)
+            return 2
+        if perf_privilege() is None:
+            print("--count-syscalls: perf cannot read tracepoints here, as root or "
+                  "otherwise. Install linux-tools and check the permissions on "
+                  "/sys/kernel/tracing.", file=sys.stderr)
+            return 2
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
     gen_bin = args.build / "benchmark" / "loadgen.exe"

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -242,6 +243,22 @@ def perf_counts_checks() -> None:
           zeroed.get("syscalls:sys_enter_io_uring_enter") == 0
           and not [n for n in SYSCALL_TRACEPOINTS if n not in zeroed])
 
+
+
+def perf_privilege_checks() -> None:
+    print("\n== a perf that is not installed is answered, not raised ==")
+
+    from benchmark.adapters import perf_privilege
+
+    # The probe's docstring promises None when perf cannot read tracepoints at all, and
+    # start_syscall_count's refusal is written against that. It used to run
+    # subprocess.run(["perf", ...]) unguarded when shutil.which found nothing, so on
+    # every host without perf it raised instead -- and the refusal that names perf and
+    # /sys/kernel/tracing could not fire on any of them.
+    if shutil.which("perf") is None:
+        check("a host with no perf answers None", perf_privilege() is None)
+    else:
+        check("a host with perf answers what granted it", perf_privilege() is not None)
 
 
 def listener_checks() -> None:
@@ -1144,6 +1161,7 @@ def main() -> int:
     transport_checks()
     netem_checks()
     perf_counts_checks()
+    perf_privilege_checks()
     listener_checks()
     port_checks()
     topology_checks()

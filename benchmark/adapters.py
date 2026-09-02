@@ -407,23 +407,41 @@ def perf_privilege() -> str | None:
     directly still fails with "can't access trace events".
     """
     perf_path = shutil.which("perf")
+    if perf_path is None:
+        # None, which is what the docstring promises and what the callers are written
+        # against. This used to fall through to subprocess.run(["perf", ...]) and raise
+        # FileNotFoundError instead -- on every Windows and macOS host and every Linux
+        # host without linux-tools -- so the crafted refusal below could not fire where
+        # it was most needed, and every cell of a counted campaign died one at a time
+        # with an errno that on Windows does not even name perf.
+        return None
     probe = ["perf", "stat", "-e", TOTAL_TRACEPOINT, "-x,", "true"]
 
-    if subprocess.run(probe, capture_output=True).returncode == 0:
+    def ran(argv: list[str]) -> subprocess.CompletedProcess | None:
+        """The probe's result, or None when the tool it needs is not installed."""
+        try:
+            return subprocess.run(argv, capture_output=True, text=True)
+        except OSError:
+            return None
+
+    unprivileged = ran(probe)
+    if unprivileged is not None and unprivileged.returncode == 0:
         if _is_sudo_wrapper(perf_path):
             return f"root via PATH wrapper ({perf_path})"
         caps = ""
-        if perf_path:
-            got = subprocess.run(["getcap", perf_path], capture_output=True, text=True)
-            if got.returncode == 0 and "=" in got.stdout:
-                caps = got.stdout.rsplit("=", 1)[0].split()[-1]
+        # getcap is in libcap2-bin, which a host with a perfectly usable perf need not
+        # have; its absence says nothing about the privilege and must not end the probe.
+        got = ran(["getcap", perf_path])
+        if got is not None and got.returncode == 0 and "=" in got.stdout:
+            caps = got.stdout.rsplit("=", 1)[0].split()[-1]
         if os.access("/sys/kernel/tracing/events", os.R_OK):
             return "unprivileged, tracefs readable"
         if caps:
             return f"unprivileged, perf has file capabilities ({caps})"
         return "unprivileged"
 
-    if subprocess.run(["sudo", "-n", *probe], capture_output=True).returncode == 0:
+    elevated = ran(["sudo", "-n", *probe])
+    if elevated is not None and elevated.returncode == 0:
         return "root"
     return None
 
