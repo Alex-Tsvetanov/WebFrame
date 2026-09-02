@@ -329,6 +329,27 @@ been scheduled yet.
   the number of runs, and any variation correlated with the arm. Neither is settled by a ping
   statistic. **Nobody writes a sentence about which medium was right for the demux claim until the
   run-to-run spread of per-run medians exists for the wire.**
+- **PAPER 2 HAS ITS WORD STEP: `6d1ebfc94` on `draft/v1`, pushed.** `build_docx.py`,
+  `template.docx`, `Tsvetanov-socket-demux.docx`, plus a CMake `docx` target and a README section.
+  **It is a real converter, which the template it was modelled on is not.** The finished sibling's
+  script reads only `template.docx`: every sentence, table cell, citation number and reference entry
+  is a Python string literal typed in by hand, so "reuse the mechanism" there would have meant
+  transcribing this paper's prose into Python. Ours reads `main.tex`, `sections/*.tex`, the CSVs the
+  tables typeset, `main.aux` for cite numbers and `\ref` values, and `main.bbl`, all at run time.
+  Contents: 10 first-level and 16 second-level headings, 5 tables, 18 references, 1 equation, and
+  **247 distinct numbers each checked back to a source**; the 190 data cells of tables II to V were
+  re-derived independently from the CSVs by reimplementing the pgfplotstable formatting, with zero
+  mismatches, and corroborated against `pdftotext main.pdf`. Opened independently with `textutil`
+  rather than by python-docx re-reading its own output. Scanned part by part for machine identity:
+  clean.
+  Documented deviations, written into the README rather than hidden: the `\thanks` footnote becomes
+  affiliation lines because python-docx writes no footnotes; `\paragraph`'s automatic a)/b) letters
+  are lost; tables sit where the source puts them rather than floating; `\href` keeps its text and
+  drops the target.
+  Notable fix during review: the affiliation block had been hand-transcribed with a one-way `assert`,
+  so new `\thanks` content vanished silently and `python -O` removed the guard entirely; it is now
+  fully derived by regular expression with `sys.exit` on a shape change. Run it with
+  `cmake --build build --target docx` after the `paper` target, or `python3 build_docx.py`.
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
