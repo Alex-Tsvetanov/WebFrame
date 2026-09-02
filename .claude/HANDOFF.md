@@ -179,9 +179,19 @@ been scheduled yet.
   the cause of the 500 µs (the spinner control settles that) but it violates "vary only the
   mechanism". Laptop is inventorying all four backends (accepted and listening options) on
   `linux/socket-opts-shared` and finding the single call site for a shared helper; the policy
-  direction is the coordinator's ruling, pending. Affected: the transport design's epoll cells
-  re-run after the fix; io_uring-only results (X1, wait-timeout before/after, syscall counts)
-  stand.
+  direction RULED: io_uring's set (NODELAY, QUICKACK where present, SO_SNDBUF 256 KB) becomes
+  the shared policy for every backend, so io_uring's within-arm history stays continuous; the
+  methodology must say that an explicit SO_SNDBUF disables send-buffer autotuning and that
+  QUICKACK is a transient hint. **Re-measurement: no single arm is re-run.** Every cross-arm
+  design re-runs in full, both arms, one binary, on the merged phase0-foundation HEAD after the
+  three laptop branches plus `linux/socket-opts-shared` land: the transport design (both
+  `transport.csv` and `churn_transport.csv` are confounded and PROVISIONAL, and so is any
+  chapter VI text wici08xnv writes against them) and the cross-arm syscall comparison (under
+  churn io_uring's two extra setsockopt per accepted connection sit inside its numbers; the
+  "tracks work vs tracks time" finding is re-stated after the re-run). Within-arm results (demux
+  on/off CSVs, X1, the wait-timeout before/after, epoll's own per-request syscall list) stand.
+  Windows has no within-platform cross-arm comparison, so the desktop's running campaign stands;
+  IOCP joins the shared helper and the desktop rebuilds only between campaigns.
 - **The epoll ~1 ms latency structure predates the coarse clock and is not ours.** The laptop
   bisected 560532e3d (parent) against 30ad04716 (coarse clock, touches only idle_timeout.hpp) on
   the same epoll netns cell with the generator held fixed: p50 495/462 µs before, 496/490 after,
