@@ -137,10 +137,27 @@ been scheduled yet.
   completion model as implemented pays a per-second price, and part of what that price buys is
   a slower package. State the limitation that the magnitude is hardware-specific, since a part
   with no boost headroom would show none of it.
-  Live hypothesis for the cause, unchanged and now well evidenced: about 58 000
-  `io_uring_enter` per worker per second while as few as 400 requests a second arrive is a
-  loop that is almost entirely empty, which suggests a short-timeout spin rather than a
-  blocking wait.
+- **The cause is one line, found by reading and not yet changed.**
+  `src/net/io_uring/uring_context.cpp:492` sets `ts.tv_nsec = 1000`, a one-microsecond
+  timeout, and `:473` runs `poll_and_resume` / `process_callbacks` in an unconditional loop
+  with nothing blocking it, so every iteration issues an `io_uring_enter` with
+  `IORING_ENTER_GETEVENTS` and a deadline that has usually already passed. Four workers at
+  about 58 000 iterations a second is the measured 230 000. The rate is set by how long an
+  enter takes on the host, not by the workload, which is exactly the time-proportional
+  signature. The comment at `:489` names the trade deliberately ("balance between latency and
+  CPU usage"), so this is a design choice to re-price, not a bug. Incidental correction: the
+  comment at `:145` describes a kernel without `IORING_FEAT_EXT_ARG`; this one has it
+  (features 0x3ffff read from a live ring), so no timeout SQE is consumed here.
+  **Complete chain, all measured:** 1 us timeout to about 230 000 enters a second, to a
+  syscalls-per-request figure that measures the poll loop rather than the work, to a package
+  clock held about 145 MHz lower at zero load, to every latency comparison between the
+  backends carrying that as part of io_uring's cost. That chain is the spine of the
+  I/O-portability paper's first sub-study.
+  **Authorised next, on its own branch off the merged HEAD:** raise the timeout to about 1 ms,
+  one line, and measure before and after identically, including the cost the comment names,
+  which is added latency on the first request after an idle gap. A blocking wait when nothing
+  is in flight is the better design and should be attempted only after the one-line version
+  has shown the size of the effect.
 - **Nine `clock_gettime` per established connection is real per-connection work.** Stated,
   retracted, and reinstated in one night, and the third version is the measured one. A rate
   ladder at three points on a fixed shape (2000, 5000, 10000 requests a second, epoll, all
