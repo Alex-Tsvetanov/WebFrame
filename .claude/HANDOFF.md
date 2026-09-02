@@ -22,7 +22,7 @@ pre-declared validity gates, unknown is not clean; no paper drafts ahead of data
 | Session name | Host | What it is for | State |
 | --- | --- | --- | --- |
 | `Windows machine` | the desktop: Ryzen 5 3600, Windows 11, WSL2 Ubuntu-24.04 hosts the generator (its user is not the Windows user; read `$HOME` from the distribution); repo path and addresses are in the local memory note `benchmark-machines` | IOCP measurements, the campaign nights | released for tonight; running steps 0-6 below |
-| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch on a hardened kernel, repo `~/GitHub/PhD-WebFrame`, presets `linux-dual` (validated) and `linux-epoll`; since late 2 Sep it has perf, strace, ninja, git-lfs, passwordless sudo and a wired link | Linux code work and, once the harness branch lands, netns runs and the perf syscall counter; io_uring runs only as root on this kernel (restricted, not off); governor still powersave | brief 3 (preset check + perf feasibility probe) running |
+| `ArchLinux` | the laptop: Ryzen 7 5800H, Arch, **since 2 Sep ~13:00 on the stock kernel 7.2.2 with `tsc=nowatchdog`**, so clocksource tsc, io_uring unprivileged, perf_event_paranoid 2, governor performance (set by hand, not persistent); perf, strace, bpftrace, passwordless sudo, wired link; repo `~/GitHub/PhD-WebFrame` | Linux measurements proper, for the first time: the daemon survived the reboot under the same name | brief 5 running: clock gate, ff, mechanism run unprivileged, then the io_uring timeout experiment |
 | `Dispatch background conversation` | unknown | never answered a probe | ignore |
 
 Both hosts are Alex's daily machines. No timed run without a window Alex names.
@@ -422,7 +422,7 @@ been scheduled yet.
    unvalidated rates would spend eight hours being refused one run at a time, or worse produce
    a table whose rates were never shown admissible.
 
-2. **The Linux laptop's TSC was disqualified at boot**, so its clock source is HPET and every
+2. (DONE 2 Sep ~13:00: stock kernel, `tsc=nowatchdog`, clocksource tsc verified) **The Linux laptop's TSC was disqualified at boot**, so its clock source is HPET and every
    `clock_gettime` costs 1931 ns and a syscall instead of about 20 ns in userspace. That
    inflates every syscall count and every latency that host produces, by roughly 3.3
    microseconds a request. `tsc=nowatchdog` on the kernel command line is the usual remedy for
@@ -449,7 +449,7 @@ been scheduled yet.
    genuinely skewing TSC produces wrong timing rather than an obvious failure. Evidence that
    this is the known false positive: the watchdog objected to 494302697 against 496024343 ns,
    0.35%, on a single reading immediately after a remote-CPU read timeout.
-3. **May a campaign set the governor to `performance` for its duration and restore it after?**
+3. (Alex set it to `performance` by hand after the reboot; not persistent, and whether a campaign may set it itself is still his call) **May a campaign set the governor to `performance` for its duration and restore it after?**
    The laptop is already there; this is about making it explicit and repeatable rather than
    incidental.
 4. (now item 0, above; done first) The desktop pushes nothing, by its own policy and your
