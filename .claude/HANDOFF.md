@@ -777,6 +777,42 @@ been scheduled yet.
   classifying path produces its own replaying wrapper, so the remedy composes two wrappers and the
   order decides which layer sees the replayed bytes and which the idle clock. The paper names the
   remedy and must not imply it has been tried.
+- **THE io_uring ARM CONFIRMS THE DEADLINE TERM IS BACKEND-INDEPENDENT: futex +1.7902 against epoll's
+  +1.8476, within 3%, on two backends sharing no I/O code.** `TimerQueue` is backend-independent, so
+  if the term is the deadline's notify plus the timer thread's re-wait it was FORCED to match; if it
+  had been anything else there was no reason for it to. **A prediction that could have failed and did
+  not, from a direction the source reading could not reach**, and neither number was fitted to the
+  other.
+
+  | | epoll | io_uring | what it is |
+  |---|---|---|---|
+  | the classifying read | +2.0000 | +0.8726 | intrinsic; 1 recvfrom + 1 epoll_ctl against 1 submission |
+  | the extra loop round | +0.6273 | (inside the enter term) | |
+  | the deadline | +1.8476 | +1.7902 | backend-independent, TimerQueue |
+  | **total** | **+4.5121** | **+2.7693** | |
+
+  **The shared term is identical and the whole arm difference is in how each backend expresses "read
+  one octet and wait for it".** That is a better cross-arm statement than the transport latency gap and
+  should lead where it currently does: the gap says io_uring is faster, this says what it is faster at.
+- **THE io_uring KEEP-ALIVE CELL FAILED EXACTLY AS PRE-REGISTERED, AND VISIBLY, WHICH IS THE BEST
+  METHODOLOGICAL MATERIAL OF THE NIGHT.** Per-run enters: detect-on 2.804 x5 then 3.204, 3.205;
+  detect-off 2.804 then 3.204 x6. Five of seven in the low mode against six of seven in the high one,
+  giving an apparent demux cost of **-0.4990** with an interval of [-0.5625, +0.0008]. **Eight
+  ten-thousandths from being reported as a resolved NEGATIVE cost for a feature that cannot save
+  syscalls.** Not an effect: bimodality sampling unevenly between two cells.
+  **For the paper as a WORKED EXAMPLE, not a footnote: an instrument whose background varies by a
+  whole timer term cannot measure an effect smaller than that term, and it does not fail silently --
+  it produces a confident number with the wrong sign.** Papers rarely show their instrument failing,
+  and showing it is what makes putting epoll first read as method rather than preference.
+  **NEW METHOD RULE, from the third instance tonight: a difference is quoted only when the PER-RUN
+  distribution of each arm has been looked at, not only the interval.** An interval across a bimodal
+  sample describes neither mode, and the summary statistics are exactly where it hides -- the sd looks
+  like noise, the interval looks narrow, and only the raw sequence shows the split. The Windows
+  establishment modes, the io_uring enter count and this are one failure three times, and the per-run
+  list made each obvious at a glance.
+  **The two keep-alive nulls must NOT be printed as the same kind of number:** epoll's includes zero at
+  +/-0.06 and is the amortisation RESULT; io_uring's includes zero as an INSTRUMENT LIMIT and says
+  nothing.
 - **THE DEMULTIPLEXER'S COST COMES IN THREE KINDS AND ONLY ONE IS A NUMBER. This is what the paper is
   actually about.** (1) The SYSCALL cost, measured: 4.5 per connection, of which 1 is intrinsic.
   (2) The STRUCTURAL cost: a window created and then covered by a second mechanism. (3) The
