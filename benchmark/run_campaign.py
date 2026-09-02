@@ -183,13 +183,25 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
     address, because a virtual switch or a veth end changes address between sessions of
     the same arrangement. A file from before the section existed records nothing and is
     refused, since nothing establishes what it holds.
+
+    Every key of the section except the address, rather than a list kept here. The list
+    was ("loopback", "generator_location") and the section had grown two keys past it:
+    server_location, which is the whole difference between a namespaced server and a
+    host one, and the netem profile, which is the whole difference between an impaired
+    path and a clean one. Both were written to the manifest and compared by nothing, so
+    the two arrangements appended to one file and the manifest named whichever ran
+    first. A list that has to be extended by hand every time the section grows is a gate
+    that is wrong by default; the union of both sides is right by default, and it also
+    refuses a manifest that carries a key this run does not.
     """
     stored = campaign.environment.get(section) or {}
     current = env[section]
-    for key in ("loopback", "generator_location"):
-        if stored.get(key) != current[key]:
+    for key in sorted(set(stored) | set(current)):
+        if key == "host":
+            continue
+        if stored.get(key) != current.get(key):
             return (f"{campaign.path} records {key}={stored.get(key)!r} and this run is "
-                    f"{key}={current[key]!r}; the two arrangements are not comparable. "
+                    f"{key}={current.get(key)!r}; the two arrangements are not comparable. "
                     f"Use a different --results.")
     return None
 
@@ -817,6 +829,17 @@ def main(argv: list[str] | None = None) -> int:
     mismatch = transport_mismatch(campaign, env, "transport_path")
     if mismatch:
         print(mismatch, file=sys.stderr)
+        return 2
+    # Top level rather than inside transport_path, so compared here rather than by the
+    # loop above. bool() of the stored value on purpose: a manifest written before this
+    # key existed came from a harness that could not count, which is a known false and
+    # not an unknown, so an uncounted run may still join it and a counted one may not.
+    if bool(campaign.environment.get("syscall_counting")) != env["syscall_counting"]:
+        print(f"{campaign.path} records syscall_counting="
+              f"{bool(campaign.environment.get('syscall_counting'))!r} and this run is "
+              f"{env['syscall_counting']!r}; a counted campaign and an uncounted one are "
+              f"different measurements of the same cells. Use a different --results.",
+              file=sys.stderr)
         return 2
 
     cells = DESIGNS[args.design]()

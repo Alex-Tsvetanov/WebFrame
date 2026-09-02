@@ -151,10 +151,12 @@ def transport_checks() -> None:
     # The fingerprint leaves the transport path out on purpose, so a loopback campaign
     # and a network-path one hash identically and the append is accepted. This is the
     # check that stands in for the fingerprint there.
-    def env_with(loopback: bool, location: str, host: str = "10.0.0.1") -> dict:
+    def env_with(loopback: bool, location: str, host: str = "10.0.0.1",
+                 server_location: str = "host") -> dict:
         env = sample_env()
         env["transport_path"] = {"host": host, "loopback": loopback,
-                                 "generator_location": location}
+                                 "generator_location": location,
+                                 "server_location": server_location}
         return env
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -165,9 +167,25 @@ def transport_checks() -> None:
         reopened = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen", "10.0.0.2"))
         check("the address may change between sessions of one arrangement",
               transport_mismatch(reopened, env_with(False, "netns:gen", "10.0.0.2"), "transport_path") is None)
-        message = transport_mismatch(reopened, env_with(True, "host"), "transport_path")
+        # Only loopback moves, so the refusal has exactly one key it can name and the
+        # check is about that key rather than about whichever sorts first.
+        message = transport_mismatch(reopened, env_with(True, "netns:gen"), "transport_path")
         check("a loopback run cannot join a network-path campaign", message is not None)
         check("and the refusal names the key", "loopback" in message)
+        # The server's own placement, which the key list used not to reach: the generator
+        # is in a namespace either way, so loopback and generator_location are identical
+        # and only server_location tells the two arrangements apart.
+        message = transport_mismatch(
+            reopened, env_with(False, "netns:gen", server_location="sudo -n ip netns exec srv"),
+            "transport_path")
+        check("a namespaced server cannot join a host-server campaign", message is not None)
+        check("and the refusal names the key", "server_location" in message)
+        # A key the manifest carries and this run does not is refused too, which is what
+        # the union comparison buys over a hand-kept list.
+        current = env_with(False, "netns:gen")
+        current["transport_path"].pop("server_location")
+        check("a key the manifest has and the run lacks is refused",
+              transport_mismatch(reopened, current, "transport_path") is not None)
         # A manifest from before the section existed says nothing about its arrangement.
         older = env_mod.Campaign.open_or_create(Path(tmp) / "old.env.json", sample_env())
         check("a manifest without the section is refused, not assumed",

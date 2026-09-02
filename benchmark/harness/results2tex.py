@@ -106,10 +106,14 @@ def cell_key(record: schema.RunRecord, key_factors: Sequence[str]) -> str:
 
 # Factors that could plausibly separate two runs. Checked when a key is claimed twice,
 # so the error can name the culprit instead of saying only that something differs.
+# syscall_counter is here for the same reason as the rest: it is None on an uncounted
+# run and a stable string on a counted one, so a group holding both is named rather than
+# averaged. A tracepoint per syscall costs time in proportion to the syscall rate, which
+# is the quantity being compared, so the two are not repetitions of one cell.
 _CANDIDATE_FACTORS = (
     "system", "protocol", "tls", "io_backend", "protocol_detection", "workers",
     "connections", "streams_per_connection", "payload_bytes", "backlog",
-    "offered_rate", "netem_profile",
+    "offered_rate", "netem_profile", "syscall_counter",
 )
 
 
