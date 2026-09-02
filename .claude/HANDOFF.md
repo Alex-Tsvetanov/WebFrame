@@ -118,11 +118,17 @@ been scheduled yet.
   `06_results.tex` against the regenerated keys and CSVs, rewrites contradictions, commits and
   pushes `06_results.tex` only. One false sentence is already known (the worst pacing "about half
   the limit" is now 979 809 us from a refused run).
-- **Local workflow `wzb6k7g16`: figure overlap audit**, read-only, renders all 15 figure pages
-  and reports collisions with proposed source fixes. **Its fix phase is not started**: apply the
-  confirmed fixes to `doc/thesis/figures/*.tex` only after `wici08xnv` has finished, since both
-  would run latexmk in the same build directory. Alex's standing rule (memory
-  `tikz-visual-check`): every diagram page is rendered and looked at, and overlaps are fixed.
+- **Figure overlap audit done (`wzb6k7g16`): 7 of 15 figures clean, 8 flagged**, every
+  overlap confirmed by a second reader looking at a 220 dpi render. Common root cause in three
+  of them: the global `note` style in `preamble.tex` gives every small label a filled dashed
+  frame with 6 pt padding, so labels placed beside lines sit on top of them; the fix is a
+  local style override inside those figures, not a preamble change. **Local workflow
+  `w201pdtr6` is applying the confirmed fixes** in an isolated worktree on branch
+  `thesis/figure-overlaps` with its own build directory (so it cannot collide with the chapter
+  VI rebuild), re-rendering and re-inspecting each figure, and pushing the branch. Merge it
+  into `phase0-foundation` after `wici08xnv` has pushed, then rebuild and look at all 15 pages
+  once more. Alex's standing rule (memory `tikz-visual-check`): every diagram page is rendered
+  and looked at, and overlaps are fixed; this applies to the papers too.
 - **Alex's stated deliverable:** ready papers in all four paper repositories, following the
   Compile-time-Protobuf `paper/` template (IEEEtran conference, sections as files, bibliography,
   a Word step for submission). Paper 2 drafting now; paper 3 drafts when the laptop's E and F
