@@ -1204,6 +1204,16 @@ been scheduled yet.
   so new `\thanks` content vanished silently and `python -O` removed the guard entirely; it is now
   fully derived by regular expression with `sys.exit` on a shape change. Run it with
   `cmake --build build --target docx` after the `paper` target, or `python3 build_docx.py`.
+- **In flight at ~23:15 EEST, four local workflows, all pushing to branches and none merging:**
+  `wxjoo14e7` demotes the pacing gate to a covariate (harness on `harness/pacing-covariate`, thesis V/VI,
+  paper 2 on draft/v1, a `2026-09-02-desktop-reevaluated/` directory in paper-socket-demux);
+  `whvsozaom` writes and red-teams the pre-declared two-host design to `design/two-host-run.md` on
+  `design/two-host-run`; `w8kjgh2nb` drafts paper 3's non-results sections on paper-io-portability
+  draft/v1 with a numberless results skeleton; `wgycq84f1` does the same for paper 1 on
+  paper-dfa-routing draft/v1. Each ends with a commit hash in its notification; the coordinator reviews
+  before any merge. The laptop is on churn then mechanism then the fourth design; the desktop is idle
+  and Alex's until he says otherwise; Alex's pushes of the desktop's three branches and, later, the
+  laptop's `measure/laptop-2026-09-02` are the only things the filings wait on.
 - **In flight at 18:20 EEST.** Two local workflows: `wja27ah8t` writes and verifies the Word
   (DOCX) step for paper 2, modelled on Compile-time-Protobuf's but driven from this paper's own
   sources (the sibling's script carries the other paper's text and must not be copied);
