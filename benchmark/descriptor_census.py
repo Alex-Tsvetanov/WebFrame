@@ -422,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     # which binary produced it. Every campaign entry point in this harness records that;
     # this one is a measurement too.
     env = environment.capture(repo=REPO, build_type="Release",
+                              build_dir=args.build,
                               io_backend=environment.resolve_io_backend(args.build))
 
     # A dual build makes no choice at configure time, so build.io_backend is "dual" and

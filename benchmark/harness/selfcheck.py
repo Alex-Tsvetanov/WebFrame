@@ -884,6 +884,77 @@ def ladder_coverage_checks() -> None:
         )
 
 
+def staleness_checks() -> None:
+    """A binary that does not contain the source its record will claim.
+
+    Both halves are here because each caught a real case on one machine in one night: a
+    tree that could not rebuild at all, whose binaries were three days behind, and a tree
+    reconfigured and never rebuilt, whose cache and executable described different source.
+    The fallback path is exercised too, since a machine without ninja is the one where the
+    coarse comparison decides.
+    """
+    from benchmark.harness import environment as env_mod
+
+    print("\n== a binary is not the commit the tree is checked out at ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = root / "repo"
+        (repo / "src").mkdir(parents=True)
+        source = repo / "src" / "app.cpp"
+        source.write_text("int main() { return 0; }\n")
+
+        build = root / "build"
+        build.mkdir()
+        cache = build / "CMakeCache.txt"
+        cache.write_text("COROUTE_IO_BACKEND:STRING=epoll\n")
+        exe = build / "server"
+        exe.write_text("binary")
+
+        # No build.ninja, so this exercises the file-comparison fallback throughout.
+        os.utime(source, (1_000, 1_000))
+        os.utime(cache, (1_000, 1_000))
+        os.utime(exe, (2_000, 2_000))
+        check("a binary newer than its source and its cache passes",
+              env_mod.build_staleness(build, repo, (exe,)) == [])
+
+        os.utime(source, (3_000, 3_000))
+        problems = env_mod.build_staleness(build, repo, (exe,))
+        check("a binary older than a compiled source is refused",
+              len(problems) == 1 and "older than" in problems[0])
+
+        os.utime(source, (1_000, 1_000))
+        os.utime(cache, (3_000, 3_000))
+        problems = env_mod.build_staleness(build, repo, (exe,))
+        check("a tree reconfigured and not rebuilt is refused",
+              len(problems) == 1 and "CMakeCache" in problems[0])
+
+        check("an executable that does not exist is not a staleness problem",
+              env_mod.build_staleness(build, repo, (build / "absent",)) == [])
+
+        empty = root / "empty"
+        (empty).mkdir()
+        os.utime(cache, (1_000, 1_000))
+        problems = env_mod.build_staleness(build, empty, (exe,))
+        check("a tree with no compiled source at all refuses rather than passes",
+              len(problems) == 1 and problems[0].startswith("unchecked"))
+
+    # The matcher commit is a dependency version and is read from the build tree, because
+    # it is fetched by commit at configure time and pkg-config never sees it.
+    with tempfile.TemporaryDirectory() as tmp:
+        build = Path(tmp)
+        (build / "CMakeCache.txt").write_text(
+            "COROUTE_IO_BACKEND:STRING=dual\n"
+            "COROUTE_URL_MATCHER_TAG:STRING=d16f30a81158d620e5a5514087b175a2251e4fa3\n"
+        )
+        check("the matcher commit is read from the build tree",
+              env_mod.cache_value(build, "COROUTE_URL_MATCHER_TAG")
+              == "d16f30a81158d620e5a5514087b175a2251e4fa3")
+        check("a key the cache does not carry reads as absent",
+              env_mod.cache_value(build, "COROUTE_NOT_A_KEY") is None)
+        check("a build tree that cannot be read reads as absent",
+              env_mod.cache_value(Path(tmp) / "nope", "COROUTE_URL_MATCHER_TAG") is None)
+
+
 def main() -> int:
     from benchmark.harness import selfcheck_driver, selfcheck_results
 
@@ -897,6 +968,7 @@ def main() -> int:
     schema_checks()
     ordering_checks()
     ladder_coverage_checks()
+    staleness_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
     darwin_parser_checks()
