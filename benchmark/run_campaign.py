@@ -47,13 +47,17 @@ per second with two generator threads on this host.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import platform
 import shlex
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
-from benchmark.adapters import CorouteServer, LoadgenGenerator
+from benchmark import netns
+from benchmark.adapters import CorouteServer, LoadgenGenerator, perf_privilege
 from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
 
@@ -183,13 +187,25 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
     address, because a virtual switch or a veth end changes address between sessions of
     the same arrangement. A file from before the section existed records nothing and is
     refused, since nothing establishes what it holds.
+
+    Every key of the section except the address, rather than a list kept here. The list
+    was ("loopback", "generator_location") and the section had grown two keys past it:
+    server_location, which is the whole difference between a namespaced server and a
+    host one, and the netem profile, which is the whole difference between an impaired
+    path and a clean one. Both were written to the manifest and compared by nothing, so
+    the two arrangements appended to one file and the manifest named whichever ran
+    first. A list that has to be extended by hand every time the section grows is a gate
+    that is wrong by default; the union of both sides is right by default, and it also
+    refuses a manifest that carries a key this run does not.
     """
     stored = campaign.environment.get(section) or {}
     current = env[section]
-    for key in ("loopback", "generator_location"):
-        if stored.get(key) != current[key]:
+    for key in sorted(set(stored) | set(current)):
+        if key == "host":
+            continue
+        if stored.get(key) != current.get(key):
             return (f"{campaign.path} records {key}={stored.get(key)!r} and this run is "
-                    f"{key}={current[key]!r}; the two arrangements are not comparable. "
+                    f"{key}={current.get(key)!r}; the two arrangements are not comparable. "
                     f"Use a different --results.")
     return None
 
@@ -199,6 +215,28 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
 # threaded through eight design functions: they are all nullary and called by name out
 # of DESIGNS, and the alternative is eight signatures changed to carry one constant.
 _ARM: str | None = None
+
+# The impairment the path carries, read off the kernel in main and read back by the
+# designs, for the same reason and by the same mechanism as _ARM above.
+#
+# None until main has looked. The designs used to write netem_profile="none" as a
+# literal, which was true only while nothing could apply netem; netns.py can now install
+# a 100 ms round trip and the record would still have said none.
+_NETEM: str | None = None
+
+
+def _netem() -> str:
+    """The impairment this run's path actually carries.
+
+    "none" is the answer for every arrangement that has no launch prefix, and it is a
+    fact about that arrangement rather than a default: netem reaches the rig only through
+    netns.py, which needs the namespace pair the prefix enters. That is also what keeps
+    macOS and Windows byte-identical to what they recorded before.
+
+    The fallback matches _io_backend's, for a caller that imports a design without going
+    through main.
+    """
+    return _NETEM or "none"
 
 
 def _io_backend() -> str:
@@ -240,7 +278,7 @@ def design_windows_h1() -> list[Cell]:
         payload_bytes=0,
         backlog=1024,
         streams_per_connection=1,
-        netem_profile="none",
+        netem_profile=_netem(),
     )
 
     # H1: the cost of classifying after accept, both arms from one binary at identical
@@ -290,7 +328,7 @@ def design_windows_h1_deep() -> list[Cell]:
     """
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
-        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
+        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=detect, offered_rate=rate)
@@ -306,7 +344,7 @@ def _base(**over) -> dict:
         **dict(
             protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
             connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
-            netem_profile="none", max_requests_per_connection=0,
+            netem_profile=_netem(), max_requests_per_connection=0,
         ),
         **over,
     }
@@ -518,7 +556,7 @@ def design_ladder() -> list[Cell]:
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
         connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
-        netem_profile="none",
+        netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=True, offered_rate=rate)
@@ -530,7 +568,7 @@ def design_smoke() -> list[Cell]:
     """Two cells, for checking the machinery without spending an hour on it."""
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
-        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
+        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=True, offered_rate=10_000),
@@ -543,6 +581,53 @@ def design_smoke() -> list[Cell]:
 # reproducing that campaign will find those names in the commit messages; nothing about
 # either design is Windows-specific, and the cells they build carry whichever system
 # name and I/O backend the host implies.
+# The rates the mechanism design offers, one per connection shape.
+#
+# Two rates rather than one, because the two shapes have very different ceilings over a
+# network path and the comparison being made is between backends within a shape, not
+# between shapes. Holding a single rate across both would have meant running keep-alive
+# far below what it can do, or running churn above what it can do, and the second is
+# what makes a ratio describe the limiting rather than the backend.
+#
+# Sized from what this rig has actually delivered. Keep-alive over the namespace pair
+# achieved a full 10000 with the offered rate met exactly, so 10000 stands. Churn is the
+# one that surprised: the feasibility probe reached about 10500 establishments a second
+# over LOOPBACK, but over the pair a first attempt at 2000 delivered 84.6% and ran three
+# seconds behind its own schedule, because establishment over a veth pays a driver and a
+# softirq that loopback does not. The project's own network churn table runs 50 to 800
+# for the same reason. 400 is half of that table's top rate and well inside what was
+# just demonstrated to fail at 2000.
+MECHANISM_KEEPALIVE_RATE = 10_000
+MECHANISM_CHURN_RATE = 400
+
+
+def design_mechanism() -> list[Cell]:
+    """Syscalls per request, one connection shape against the other, one arm per run.
+
+    The two cells differ in whether the server closes after a single request, and in the
+    offered rate that shape can sustain. Everything else is held; the backend is chosen
+    per invocation with --io-backend, so the four cells of the comparison are this design
+    run twice.
+
+    Cleartext and classification on, deliberately. The other designs cross TLS and
+    detection because those are their questions; here they would be two more factors
+    moving underneath the one being measured, and a TLS record layer in particular adds
+    syscalls of its own that belong to neither backend.
+
+    The rates differ between the two cells, so the two shapes are not comparable with
+    each other for anything rate-dependent. Syscalls per request is a ratio and is the
+    quantity this design exists for; throughput and latency from these cells are not.
+
+    Meant to be run with --count-syscalls, which is why it is small: counting changes
+    what a run measures, so a counted campaign buys nothing by being large.
+    """
+    return [
+        Cell.of(system_name(), **_base(max_requests_per_connection=limit),
+                protocol_detection=True, offered_rate=rate)
+        for limit, rate in ((0, MECHANISM_KEEPALIVE_RATE), (1, MECHANISM_CHURN_RATE))
+    ]
+
+
 DESIGNS = {
     "h1": design_windows_h1,
     "h1-deep": design_windows_h1_deep,
@@ -560,6 +645,7 @@ DESIGNS = {
     "tls-ladder": design_tls_ladder,
     "churn-ladder": design_churn_ladder,
     "tls-smoke": design_tls_smoke,
+    "mechanism": design_mechanism,
 }
 
 
@@ -615,7 +701,39 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--generator-location", default=None,
                     help="where that prefix puts the generator, as a label recorded with "
                          "the campaign, e.g. netns:gen")
+    # The server's counterpart. Without it the generator sits in a namespace and the
+    # server sits on the host, which is not the arrangement the methodology names and
+    # would only work at all because the veth address is locally owned.
+    # Opt-in, and deliberately awkward to combine with a real campaign: a per-syscall
+    # tracepoint costs time roughly in proportion to the syscall rate, which is exactly
+    # the quantity a comparison is comparing, so a counted run is not a timed run.
+    ap.add_argument("--count-syscalls", action="store_true",
+                    help="count the server's syscalls with perf for each run. Changes "
+                         "what is measured, so the timing from a counted run is not "
+                         "comparable with an uncounted one; for the mechanism question, "
+                         "not for a latency campaign")
+    ap.add_argument("--server-command", default=None,
+                    help="command prefix the server is launched through, e.g. "
+                         "'sudo -n ip netns exec srv'; pairs with --generator-command")
     args = ap.parse_args(argv)
+
+    # Refused here rather than one cell at a time. perf exists only on Linux and only
+    # where linux-tools is installed, and without this the first check happened inside
+    # the first run: start_syscall_count called a probe that raised FileNotFoundError,
+    # which the driver recorded per cell as an errno that on Windows does not even name
+    # perf. Every other preflight in this file exists for the same reason the
+    # certificate one gives -- an hour of machine time spent to discover a missing file
+    # is an hour nobody gets back.
+    if args.count_syscalls:
+        if platform.system() != "Linux":
+            print(f"--count-syscalls counts perf tracepoints, which exist only on Linux; "
+                  f"this is {platform.system()}", file=sys.stderr)
+            return 2
+        if perf_privilege() is None:
+            print("--count-syscalls: perf cannot read tracepoints here, as root or "
+                  "otherwise. Install linux-tools and check the permissions on "
+                  "/sys/kernel/tracing.", file=sys.stderr)
+            return 2
 
     server_bin = args.build / "examples" / "Samples" / "benchmark_server" / "benchmark_server.exe"
     gen_bin = args.build / "benchmark" / "loadgen.exe"
@@ -673,6 +791,19 @@ def main(argv: list[str] | None = None) -> int:
             gen_command = shlex.split(args.generator_command) + [str(gen_bin)]
             location = args.generator_location
 
+    server_prefix: list[str] = []
+    if args.server_command:
+        if args.wsl_distro:
+            print("--wsl-distro drives the generator only; --server-command is for the "
+                  "Linux namespace arrangement", file=sys.stderr)
+            return 2
+        if not args.generator_command:
+            # A server in a namespace and a generator on the host is not the two-ended
+            # arrangement either; it is a one-ended one with an extra hop.
+            print("--server-command goes with --generator-command", file=sys.stderr)
+            return 2
+        server_prefix = shlex.split(args.server_command)
+
     # Derived from the launcher, not from the address alone. A generator on this host
     # reaches any locally owned address, a veth end included, through the loopback
     # interface; the address test only decides the case where the generator is elsewhere.
@@ -685,6 +816,65 @@ def main(argv: list[str] | None = None) -> int:
               f"that address is not this host. Pass the address the server answers on "
               f"as the generator sees it.", file=sys.stderr)
         return 2
+
+    # What the path carries, asked of the kernel rather than declared on the command
+    # line. A flag would be a second thing that can be stale; the qdisc is the thing
+    # itself. Both ends, because netns.py installs netem per direction and a read of one
+    # end describes half the path -- an impairment that survived on one side of a failed
+    # `up` would otherwise be recorded as symmetric.
+    global _NETEM
+    _NETEM = "none"
+    if server_prefix:
+        ends: list[str] = []
+        for prefix, iface in ((server_prefix, netns.SERVER_IF),
+                              (shlex.split(args.generator_command), netns.GENERATOR_IF)):
+            seen = netns.read_qdisc(prefix, iface)
+            if seen is None:
+                print(f"cannot read the qdisc on {iface} through "
+                      f"{' '.join(prefix)}; the impairment the run would be measured "
+                      f"under is unknown, and an unknown path is not a clean one. "
+                      f"Check the pair with: python3 -m benchmark.netns status",
+                      file=sys.stderr)
+                return 2
+            ends.append(seen)
+        if ends[0] != ends[1]:
+            print(f"the two ends of the pair carry different impairments: "
+                  f"{netns.SERVER_IF} has {ends[0]!r} and {netns.GENERATOR_IF} has "
+                  f"{ends[1]!r}. netem is applied per direction, so this path is "
+                  f"asymmetric and no single netem_profile describes it. "
+                  f"Run 'netns down' and 'netns up' again.", file=sys.stderr)
+            return 2
+        _NETEM = ends[0]
+
+    # The drop counters live in the namespace the packets crossed.
+    #
+    # /proc/net/snmp and /proc/net/netstat are per network namespace, and the harness
+    # process is not in the one the run uses. Read from here they carry none of the run's
+    # traffic, so TcpExtListenOverflows and UdpRcvbufErrors are 0 on every namespaced run
+    # and check_run's gate for "the kernel dropped work before the server saw it" passes
+    # for exactly the arrangement this branch exists to enable. Read through the server's
+    # prefix instead; a read that fails puts a word the gate refuses in the record rather
+    # than a zero.
+    probes = driver.LIVE_PROBES
+    if server_prefix:
+        def _namespace_counters() -> dict[str, Any]:
+            def cat(path: str) -> str | None:
+                got = subprocess.run([*server_prefix, "cat", path],
+                                     capture_output=True, text=True)
+                return got.stdout if got.returncode == 0 else None
+            snmp, netstat = cat("/proc/net/snmp"), cat("/proc/net/netstat")
+            if snmp is None or netstat is None:
+                return {name: "unchecked" for name in validity.ZERO_DELTA_COUNTERS}
+            return validity.read_counters(snmp=snmp, netstat=netstat)
+
+        probes = dataclasses.replace(driver.LIVE_PROBES, counters=_namespace_counters)
+        # Asked once here rather than discovered per run, for the same reason the
+        # certificate is: every run would be refused for it anyway.
+        if any(isinstance(v, str) for v in _namespace_counters().values()):
+            print(f"cannot read /proc/net/snmp through {' '.join(server_prefix)}; the "
+                  f"drop counters for the run's own namespace are unreadable and every "
+                  f"run would be refused for it", file=sys.stderr)
+            return 2
 
     # Both of these read the build's CMakeCache and both refuse rather than guess, so an
     # unconfigured --build or an arm the tree does not contain ends here in its own
@@ -704,10 +894,22 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     # Part of the record because two campaigns that differ only in this are not
     # comparable, and nothing else in the environment would say so.
+    # In the manifest, not only in the per-run records, because a counted campaign and
+    # an uncounted one are different measurements of the same cells and the difference
+    # has to be visible before anyone opens the numbers.
+    env["syscall_counting"] = bool(args.count_syscalls)
     env["transport_path"] = {
         "host": args.host,
         "loopback": loopback,
         "generator_location": location,
+        # Recorded for the same reason generator_location is: a campaign whose server
+        # was in a namespace and one whose server was on the host are not the same
+        # measurement, and nothing else in the record would say which this was.
+        "server_location": args.server_command or "host",
+        # Read off the kernel above. In the manifest as well as in every record, so the
+        # comparison above refuses an impaired campaign appending to a clean one before
+        # the numbers are pooled rather than after.
+        "netem_profile": _netem(),
     }
     # What every run would be refused for anyway, asked once before the hours are spent.
     # The governor is asked again per run by the driver; here it stops the night before
@@ -734,6 +936,17 @@ def main(argv: list[str] | None = None) -> int:
     mismatch = transport_mismatch(campaign, env, "transport_path")
     if mismatch:
         print(mismatch, file=sys.stderr)
+        return 2
+    # Top level rather than inside transport_path, so compared here rather than by the
+    # loop above. bool() of the stored value on purpose: a manifest written before this
+    # key existed came from a harness that could not count, which is a known false and
+    # not an unknown, so an uncounted run may still join it and a counted one may not.
+    if bool(campaign.environment.get("syscall_counting")) != env["syscall_counting"]:
+        print(f"{campaign.path} records syscall_counting="
+              f"{bool(campaign.environment.get('syscall_counting'))!r} and this run is "
+              f"{env['syscall_counting']!r}; a counted campaign and an uncounted one are "
+              f"different measurements of the same cells. Use a different --results.",
+              file=sys.stderr)
         return 2
 
     cells = DESIGNS[args.design]()
@@ -780,7 +993,9 @@ def main(argv: list[str] | None = None) -> int:
     def server_factory(cell: Cell) -> CorouteServer:
         return CorouteServer(binary=server_bin, cell=cell, port=args.port,
                              affinity_mask=SERVER_AFFINITY,
-                             cert_file=args.cert, key_file=args.key)
+                             cert_file=args.cert, key_file=args.key,
+                             launch_prefix=server_prefix,
+                             count_syscalls=args.count_syscalls)
 
     done = {"n": 0}
 
@@ -810,6 +1025,7 @@ def main(argv: list[str] | None = None) -> int:
         campaign_fingerprint=campaign.fingerprint,
         duration_s=args.duration,
         on_record=report,
+        probes=probes,
     )
 
     summary = driver.summarise(records)

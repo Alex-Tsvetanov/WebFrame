@@ -179,7 +179,17 @@ def check_run(record: dict[str, Any]) -> Verdict:
     counters = record.get("counter_deltas") or {}
     for name in ZERO_DELTA_COUNTERS:
         value = counters.get(name)
-        if value:
+        # A string is a probe that could not answer, the way the clock gate above reads
+        # one. It has to be refused rather than compared: these counters are per network
+        # namespace, so a run whose server was behind `ip netns exec` and whose counters
+        # could not be read there has no evidence either way about drops, and zero is
+        # what "no evidence" would otherwise look like.
+        if isinstance(value, str):
+            verdict.reasons.append(
+                f"{name} could not be read ({value}); a counter nobody read does not "
+                f"establish that the kernel dropped nothing"
+            )
+        elif value:
             verdict.reasons.append(
                 f"{name} increased by {value} during the run; "
                 "the kernel dropped work before the server saw it"
@@ -296,17 +306,25 @@ def read_counters(snmp: str | None = None, netstat: str | None = None) -> dict[s
     return out
 
 
-def counter_deltas(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+def counter_deltas(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Change in the watched counters across a run.
 
     Only the watched ones. The rest are recorded elsewhere; carrying every counter into
     the validity check would invite reading meaning into whichever one happened to move.
     """
-    return {
-        name: after.get(name, 0) - before.get(name, 0)
-        for name in ZERO_DELTA_COUNTERS
-        if name in before or name in after
-    }
+    out: dict[str, int | str] = {}
+    for name in ZERO_DELTA_COUNTERS:
+        if name not in before and name not in after:
+            continue
+        start, end = before.get(name, 0), after.get(name, 0)
+        # A reader that could not answer puts its word here instead of a number, and it
+        # survives the subtraction rather than being coerced into one. check_run refuses
+        # it; arithmetic on it would invent a delta.
+        if isinstance(start, str) or isinstance(end, str):
+            out[name] = end if isinstance(end, str) else start
+        else:
+            out[name] = end - start
+    return out
 
 
 def _read(path: str) -> str | None:

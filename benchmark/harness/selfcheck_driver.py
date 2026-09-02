@@ -39,6 +39,7 @@ class FakeServer:
     # What a real adapter raises when the child died before listening.
     died: str | None = None
     argv_value: list[str] = field(default_factory=lambda: ["fake-server"])
+    syscall_counter: str | None = None
 
     @property
     def argv(self) -> list[str]:
@@ -59,6 +60,20 @@ class FakeServer:
             raise OSError("could not stop")
         return driver.ResourceUsage(cpu_seconds=12.5, memory_peak_bytes=1 << 26,
                                     quic={"received": 100, "forwarded_in": 3})
+
+    # Present but silent unless this fake was asked to count, which is how the real
+    # adapter behaves: both calls return immediately on a server with count_syscalls off,
+    # so an uncounted run is byte-identical to one from before the counter existed.
+    def start_syscall_count(self) -> None:
+        if self.syscall_counter:
+            self.log.append("count-start")
+
+    def stop_syscall_count(self) -> dict[str, int]:
+        # Idempotent, as the real one is: it returns nothing once perf is already gone.
+        if not self.syscall_counter:
+            return {}
+        self.log.append("count-stop")
+        return {"raw_syscalls:sys_enter": 5} if self.log.count("count-stop") == 1 else {}
 
 
 @dataclass
@@ -211,6 +226,76 @@ def run(check: Callable[[str, bool], None]) -> None:
     joined = " ".join(record.rejection_reasons)
     check("the original failure is reported first", joined.index("exploded") < joined.index("stop"))
     check("and the stop failure is reported too", "could not stop" in joined)
+
+    # --- the syscall counter is stopped even when the run is not --------------
+    #
+    # perf is started before the generator and, on the success path, stopped after it.
+    # Everything the generator can raise used to skip that, leaving perf uninterrupted
+    # with its counts discarded, its piped stderr unread and its root-written workdir on
+    # disk: one per failed counted run.
+    log = []
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=log, syscall_counter="perf"),
+        generator=FakeGenerator(raises=True), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("a generator that raised still stops the counter", "count-stop" in log)
+    check("before the server it is attached to",
+          log.index("count-stop") < log.index("stop"))
+    check("and the record says the run was counted", record.syscall_counter == "perf")
+    check("while carrying no counts from it", record.syscall_counts == {})
+
+    log = []
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=log, syscall_counter="perf"),
+        generator=FakeGenerator(), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("a run that succeeded counts inside the generator's lifetime",
+          log.index("count-start") < log.index("count-stop") < log.index("stop"))
+    check("and keeps the counts the first stop returned",
+          record.syscall_counts == {"raw_syscalls:sys_enter": 5})
+
+    # --- a namespaced run proves the generator was not root -------------------
+    #
+    # The asymmetry the namespace rig rests on -- root server, unprivileged generator --
+    # was asserted in a comment and measured nowhere. Both prefixes are free-form strings
+    # and an operator who omits the runuser gets a root generator whose record reads like
+    # a correct run.
+    def prefixed(cell: ordering.Cell) -> FakeServer:
+        server = FakeServer(cell=cell, log=[])
+        server.launch_prefix = ["sudo", "-n", "ip", "netns", "exec", "srv"]
+        return server
+
+    def with_euid(value: int | None) -> FakeGenerator:
+        return FakeGenerator(result=dataclasses.replace(FakeGenerator().result, euid=value))
+
+    for euid, label in ((None, "that did not say who it was"),
+                        (0, "that ran as root")):
+        record = _run_one(
+            _scheduled(), server_factory=prefixed, generator=with_euid(euid),
+            environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+        )
+        check(f"a namespaced run with a generator {label} is refused",
+              not record.accepted and any("generator" in r for r in record.rejection_reasons))
+
+    record = _run_one(
+        _scheduled(), server_factory=prefixed, generator=with_euid(1000),
+        environment=_env(), campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("one that dropped back to a user is accepted", record.accepted)
+    check("and the record says which user", record.generator_euid == 1000)
+
+    # Without a prefix there is no asymmetry to keep, so a generator that reports nothing
+    # is ordinary: that is every macOS and Windows run.
+    record = _run_one(
+        _scheduled(), server_factory=lambda cell: FakeServer(cell=cell, log=[]),
+        generator=with_euid(None), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("an unprefixed run needs no uid at all", record.accepted)
 
     # --- guards decide -------------------------------------------------------
     record = _run_one(

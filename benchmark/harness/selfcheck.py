@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -151,10 +152,12 @@ def transport_checks() -> None:
     # The fingerprint leaves the transport path out on purpose, so a loopback campaign
     # and a network-path one hash identically and the append is accepted. This is the
     # check that stands in for the fingerprint there.
-    def env_with(loopback: bool, location: str, host: str = "10.0.0.1") -> dict:
+    def env_with(loopback: bool, location: str, host: str = "10.0.0.1",
+                 server_location: str = "host") -> dict:
         env = sample_env()
         env["transport_path"] = {"host": host, "loopback": loopback,
-                                 "generator_location": location}
+                                 "generator_location": location,
+                                 "server_location": server_location}
         return env
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -165,13 +168,142 @@ def transport_checks() -> None:
         reopened = env_mod.Campaign.open_or_create(path, env_with(False, "netns:gen", "10.0.0.2"))
         check("the address may change between sessions of one arrangement",
               transport_mismatch(reopened, env_with(False, "netns:gen", "10.0.0.2"), "transport_path") is None)
-        message = transport_mismatch(reopened, env_with(True, "host"), "transport_path")
+        # Only loopback moves, so the refusal has exactly one key it can name and the
+        # check is about that key rather than about whichever sorts first.
+        message = transport_mismatch(reopened, env_with(True, "netns:gen"), "transport_path")
         check("a loopback run cannot join a network-path campaign", message is not None)
         check("and the refusal names the key", "loopback" in message)
+        # The server's own placement, which the key list used not to reach: the generator
+        # is in a namespace either way, so loopback and generator_location are identical
+        # and only server_location tells the two arrangements apart.
+        message = transport_mismatch(
+            reopened, env_with(False, "netns:gen", server_location="sudo -n ip netns exec srv"),
+            "transport_path")
+        check("a namespaced server cannot join a host-server campaign", message is not None)
+        check("and the refusal names the key", "server_location" in message)
+        # A key the manifest carries and this run does not is refused too, which is what
+        # the union comparison buys over a hand-kept list.
+        current = env_with(False, "netns:gen")
+        current["transport_path"].pop("server_location")
+        check("a key the manifest has and the run lacks is refused",
+              transport_mismatch(reopened, current, "transport_path") is not None)
         # A manifest from before the section existed says nothing about its arrangement.
         older = env_mod.Campaign.open_or_create(Path(tmp) / "old.env.json", sample_env())
         check("a manifest without the section is refused, not assumed",
               transport_mismatch(older, env_with(False, "netns:gen"), "transport_path") is not None)
+
+
+def netem_checks() -> None:
+    print("\n== the impairment on the path is read, not declared ==")
+
+    from benchmark import netns
+
+    # What `tc qdisc show dev veth-srv` prints for a pair built by netns.py, handle and
+    # refcnt included, since those are what vary between sessions of one arrangement.
+    wan50 = ("qdisc netem 8001: root refcnt 2 limit 100000 delay 25ms\n")
+    check("a netem qdisc is named by what it carries",
+          netns.observed_profile(wan50) == "netem root limit 100000 delay 25ms")
+    check("the handle and refcnt are dropped, so one arrangement reads the same twice",
+          netns.observed_profile(wan50)
+          == netns.observed_profile("qdisc netem 8003: root refcnt 5 limit 100000 delay 25ms"))
+    check("two profiles do not read alike",
+          netns.observed_profile(wan50)
+          != netns.observed_profile("qdisc netem 8001: root refcnt 2 limit 100000 delay 50ms"))
+    check("a veth with no netem is none",
+          netns.observed_profile("qdisc noqueue 0: root refcnt 2") == "none")
+    check("and so is one with some other qdisc",
+          netns.observed_profile("qdisc fq_codel 0: root refcnt 2 limit 10240p") == "none")
+
+
+def perf_counts_checks() -> None:
+    print("\n== a syscall breakdown that lost part of itself is refused ==")
+
+    from benchmark.adapters import SYSCALL_TRACEPOINTS, parse_perf_counts
+
+    def csv(rows: dict[str, str]) -> str:
+        return "".join(f"{v},,{k},1000000,100.00\n" for k, v in rows.items())
+
+    full = parse_perf_counts(csv({name: "1000" for name in SYSCALL_TRACEPOINTS}))
+    check("every requested tracepoint is parsed", len(full) == len(SYSCALL_TRACEPOINTS))
+    # perf marks a single evsel unsupported and carries on with the rest, so this is what
+    # a partial attach looks like: a plausible total and a breakdown missing a member.
+    rows = {name: "1000" for name in SYSCALL_TRACEPOINTS}
+    rows["syscalls:sys_enter_epoll_wait"] = "<not supported>"
+    partial = parse_perf_counts(csv(rows))
+    check("an unsupported tracepoint is dropped rather than stored",
+          "syscalls:sys_enter_epoll_wait" not in partial)
+    check("so absence is what the assertion has to look for",
+          [n for n in SYSCALL_TRACEPOINTS if n not in partial]
+          == ["syscalls:sys_enter_epoll_wait"])
+    # A tracepoint that legitimately fired zero times is a key with the value 0, which is
+    # what makes absence mean "never opened" rather than "counted nothing".
+    zeroed = parse_perf_counts(csv({**{n: "1000" for n in SYSCALL_TRACEPOINTS},
+                                    "syscalls:sys_enter_io_uring_enter": "0"}))
+    check("a tracepoint that counted zero is still present",
+          zeroed.get("syscalls:sys_enter_io_uring_enter") == 0
+          and not [n for n in SYSCALL_TRACEPOINTS if n not in zeroed])
+
+
+
+def readiness_probe_checks() -> None:
+    print("\n== the namespaced readiness probe tells refused from broken ==")
+
+    import subprocess as sp
+
+    # The script the prefixed branch actually runs, not a copy of it. 3 is "nothing is
+    # listening yet"; anything else means the probe itself could not run, and the loop
+    # must say so rather than spinning to the readiness deadline.
+    from benchmark.adapters import READINESS_PROBE as probe
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        check("a live listener answers zero",
+              sp.run([sys.executable, "-c", probe, str(port)]).returncode == 0)
+    check("a refused connection answers three, not one",
+          sp.run([sys.executable, "-c", probe, str(port)]).returncode == 3)
+    # sudo, `ip netns exec` and a failed exec all exit 1, which is why 1 must not mean
+    # "keep waiting".
+    check("and a probe that could not run at all answers something else",
+          sp.run([sys.executable, "-c", "import sys; sys.exit(1)"]).returncode == 1)
+
+
+def perf_privilege_checks() -> None:
+    print("\n== a perf that is not installed is answered, not raised ==")
+
+    from benchmark.adapters import perf_privilege
+
+    # The probe's docstring promises None when perf cannot read tracepoints at all, and
+    # start_syscall_count's refusal is written against that. It used to run
+    # subprocess.run(["perf", ...]) unguarded when shutil.which found nothing, so on
+    # every host without perf it raised instead -- and the refusal that names perf and
+    # /sys/kernel/tracing could not fire on any of them.
+    if shutil.which("perf") is None:
+        check("a host with no perf answers None", perf_privilege() is None)
+    else:
+        check("a host with perf answers what granted it", perf_privilege() is not None)
+
+
+def listener_checks() -> None:
+    print("\n== the server behind a prefix is found by what it listens on ==")
+
+    from benchmark.adapters import ss_listening_pids
+
+    # `ss -ltnpH`, two listeners on 18080 through SO_REUSEPORT and one on another port.
+    text = (
+        'LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:* users:(("benchmark_serv",pid=4211,fd=7))\n'
+        'LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:* users:(("benchmark_serv",pid=4212,fd=7))\n'
+        'LISTEN 0 4096 127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=900,fd=5))\n'
+    )
+    check("every holder of the port is reported, not just the first",
+          ss_listening_pids(text, 18080) == [4211, 4212])
+    check("a listener on another port is not one of them",
+          ss_listening_pids(text, 5432) == [900])
+    check("a port nothing holds reports nothing", ss_listening_pids(text, 9999) == [])
+    # An unprivileged ss prints the address but no users:(...) clause. Reporting nothing
+    # is right there: the caller refuses rather than killing a pid it guessed.
+    check("a row with no pid attached yields none",
+          ss_listening_pids("LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:*\n", 18080) == [])
 
 
 def port_checks() -> None:
@@ -416,6 +548,66 @@ def validity_checks() -> None:
           len(validity.check_run(multi).reasons) == 3)
 
 
+def netns_pair_checks() -> None:
+    print("\n== a half-built namespace pair does not report itself up ==")
+
+    import subprocess as sp
+
+    from benchmark import netns
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, check=True):
+        calls.append(list(args))
+        # The step that leaves the pair fully routable and silently unimpaired, which is
+        # the failure nothing else could see: addresses, links and lo are all done by
+        # then, so every run succeeds and the record claims a profile the path lacks.
+        if check and args[:4] == ["ip", "netns", "exec", netns.SERVER_NS] and "add" in args:
+            raise sp.CalledProcessError(2, args, stderr="RTNETLINK answers: No such file")
+        return sp.CompletedProcess(args, 0, stdout="", stderr="")
+
+    original_run, original_exists = netns._run, netns.namespace_exists
+    try:
+        netns._run = fake_run
+        netns.namespace_exists = lambda name: False
+        try:
+            netns.up("10.77.0.0/30", "wan50", 100000)
+            raised = False
+        except sp.CalledProcessError:
+            raised = True
+        check("a failure part way through is not swallowed", raised)
+        tail = calls[-3:]
+        check("both namespaces are removed",
+              [c for c in tail if c[:3] == ["ip", "netns", "del"]]
+              == [["ip", "netns", "del", netns.SERVER_NS],
+                  ["ip", "netns", "del", netns.GENERATOR_NS]])
+        # `down` deletes namespaces only, so an end created and never moved survives it
+        # and makes every later `ip link add` fail with "File exists".
+        check("and so is the veth left in the default namespace",
+              tail[-1] == ["ip", "link", "del", netns.SERVER_IF])
+    finally:
+        netns._run, netns.namespace_exists = original_run, original_exists
+
+    # An existing pair is reused only when it is the pair being asked for. tc's dump is
+    # compared as a set of tokens, since iproute2 chooses its own order.
+    wan50 = netns.expected_tokens(netns.PROFILES["wan50"], 100000)
+    check("a freshly applied profile reads back as itself",
+          set(netns.observed_profile(
+              "qdisc netem 8001: root refcnt 2 limit 100000 delay 25ms").split()) == wan50)
+    check("a pair built with another profile does not",
+          set(netns.observed_profile(
+              "qdisc netem 8001: root refcnt 2 limit 100000 delay 50ms").split()) != wan50)
+    check("nor does one with no qdisc at all",
+          set(netns.observed_profile("qdisc noqueue 0: root refcnt 2").split()) != wan50)
+    check("and none expects exactly no netem",
+          netns.expected_tokens(netns.PROFILES["none"], 100000) == {"none"})
+    # tc does not echo `distribution normal` back, so a profile that asks for one must
+    # not be refused for the tokens tc declined to print.
+    check("a distribution table is not expected back",
+          netns.expected_tokens(netns.PROFILES["jitter"], 100000)
+          == {"netem", "root", "limit", "100000", "delay", "25ms", "5ms"})
+
+
 def counter_checks() -> None:
     print("\n== counters are parsed by name, not by column ==")
 
@@ -451,6 +643,18 @@ def counter_checks() -> None:
     # something to point at and the criteria stop meaning anything.
     check("only the watched counters are returned",
           set(deltas) <= set(validity.ZERO_DELTA_COUNTERS))
+
+    # What a namespaced run records when /proc/net could not be read where the packets
+    # actually crossed. These counters are per network namespace and the harness process
+    # is not in the run's, so a host-side read carries none of the run's traffic and
+    # would file every namespaced run as having dropped nothing.
+    unread = validity.counter_deltas({}, {"TcpExtListenOverflows": "unchecked"})
+    check("a reading that failed survives the subtraction",
+          unread["TcpExtListenOverflows"] == "unchecked")
+    reasons = validity.check_run(
+        {"counter_deltas": unread, "power_source": env_mod._NO_BATTERY}).reasons
+    check("an unread counter is refused, not read as zero",
+          any("TcpExtListenOverflows" in r for r in reasons))
 
 
 def schema_checks() -> None:
@@ -1038,6 +1242,12 @@ def main() -> int:
     fingerprint_checks()
     campaign_checks()
     transport_checks()
+    netem_checks()
+    netns_pair_checks()
+    perf_counts_checks()
+    readiness_probe_checks()
+    perf_privilege_checks()
+    listener_checks()
     port_checks()
     topology_checks()
     validity_checks()

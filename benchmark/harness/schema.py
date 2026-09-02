@@ -51,7 +51,23 @@ from typing import Any, Iterator
 # pooled. The generator defines both fields, so a record's version says what the driver
 # was, and requests_total_whole_run being null says the generator was older. Version 4
 # also carries the governor per run; earlier files have it in the manifest only.
-SCHEMA_VERSION = 4
+#
+# 5 added the syscall counter: syscall_counts, the per-tracepoint totals over the
+# generator's whole lifetime, and syscall_counter, a string naming the instrument and
+# the privilege it ran with. Absent rather than empty at version 4 and below, which is
+# the distinction that matters: an empty dict there would say a run was counted and
+# found nothing, and a run that was never counted is not the same as a server that
+# issued no syscalls. The counts are normalised by requests_total_whole_run, not by
+# requests_total, because the counter spans the generator's warmup as well as its
+# measured window and dividing a whole-lifetime count by a measured-window count would
+# inflate syscalls per request by roughly (warmup + duration) / duration.
+#
+# 6 added generator_euid, which says who ran the load rather than who was asked to. A
+# file at version 5 or below cannot answer it: the namespace arrangement asserts that the
+# generator drops back to the invoking user while the server stays root, and until this
+# version nothing measured either half, so a run there whose prefix silently failed to
+# drop is indistinguishable in a version 5 record from one that dropped correctly.
+SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -200,6 +216,10 @@ class RunRecord:
     # pinned one rather than assumed to be either.
     affinity_requested: str | None = None
     affinity_applied: bool | None = None
+    # Who ran the load, as the generator reports it. None on Windows, which has no such
+    # id, and on a run whose generator predates the field. Under a launch prefix a None
+    # or a zero is refused: the whole arrangement rests on the generator not being root.
+    generator_euid: int | None = None
     # A laptop can change its power and thermal regime mid-campaign in a way the desktop
     # could not. On Apple Silicon, discharging biases scheduling toward efficiency cores
     # and caps clocks, which makes the number uncitable for the same reason a virtualised
@@ -208,6 +228,14 @@ class RunRecord:
     thermal_speed_limit_start: int | None = None
     thermal_speed_limit_end: int | None = None
     counter_deltas: dict[str, int] = field(default_factory=dict)
+
+    # Syscalls the server issued while the generator was running, per tracepoint, and
+    # what measured them. Empty and None on a run that did not ask for counting, which
+    # is every run of a timed comparison: a per-syscall tracepoint costs time roughly in
+    # proportion to the syscall rate, which is the quantity being compared, so counting
+    # during a comparison would change the thing it is comparing.
+    syscall_counts: dict[str, int] = field(default_factory=dict)
+    syscall_counter: str | None = None
     accepted: bool = True
     rejection_reasons: list[str] = field(default_factory=list)
 

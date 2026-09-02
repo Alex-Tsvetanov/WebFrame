@@ -1618,6 +1618,15 @@ int main(int argc, char** argv)
 	field_u("usable_cores", usable_cores);
 	field_s("affinity_mask", mask_hex);
 	field_s("affinity_applied", affinity_applied ? "true" : "false", false);
+#if !defined(_WIN32)
+	// Which user actually ran the load, for the same reason affinity_applied exists:
+	// asking and getting are two different things. The namespace arrangement launches
+	// the generator through a prefix that is supposed to drop back to the invoking user
+	// while the server stays root, and that prefix is a free-form string nothing
+	// inspects. An operator who omits the runuser gets a root generator and a record
+	// that reads exactly like a correct run. Absent on Windows, which has no such id.
+	field_u("euid", static_cast<unsigned long long>(geteuid()));
+#endif
 	field_f("offered_rate", opt.rate, 3);
 	field_f("duration_s", wall, 6);
 	field_u("completed", completed);
