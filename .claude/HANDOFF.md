@@ -114,6 +114,18 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **A half-specified off-host arrangement runs silently as an on-host one.**
+  `run_campaign.py` reads `--wsl-loadgen` only inside `if args.wsl_distro:`, so passing it
+  alone is ignored without a word, while `--host` is read unconditionally. The opposite
+  direction errors out. So a generator flag that was meant to move the load off the host is
+  dropped, the host-side generator runs against a foreign gateway address, and the result is a
+  plausible number rather than a refusal. **The harness branch's `--generator-command` /
+  `--generator-location` pair must refuse the half-specified case in both directions.** Found
+  when a coordinator instruction wrongly added those flags to the loopback smoke gate and the
+  desktop read the code instead of obeying: the quiet-host gate measures whether the host can
+  pace a generator, so it is loopback by design, and only `churn-net` and `churn-ladder-net`
+  take the off-host flags.
+
 - **The harness records no binary provenance.** `_FINGERPRINTED` carries `build.git_commit`,
   `build.type`, `build.io_backend`, `toolchain.compiler` and four dependency versions, and
   nothing about the executable: no hash, no mtime, no size. `git_commit` describes the source
