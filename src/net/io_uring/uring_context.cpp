@@ -487,10 +487,39 @@ namespace coroute::net
 			auto* worker_ring = rings_[ring_index].get();
 			io_uring_cqe* cqe;
 
-			// Use short timeout - balance between latency and CPU usage
+			// How long to sleep when there is nothing to do. Not a latency knob: a
+			// completion wakes this wait immediately whatever the value is, which is why
+			// raising it a thousandfold below left the median alone.
+			//
+			// It was 1us, and at that value the loop spent its life waking up. Measured
+			// on the Linux rig at 10 000 requests a second, four workers, both arms
+			// unprivileged: 420 598 io_uring_enter a second, 44.864 per request. That
+			// number is set by the timeout, not by the workload, which is what made
+			// syscalls per request meaningless as a normaliser for this backend: it
+			// counted how long the run was, not how much work it did.
+			//
+			// At 1ms the same cell issues 25 548 a second, 2.725 per request. Of that,
+			// four workers times a thousand wakeups a second is 4 000, so the rest is
+			// proportional to the work, and the backend can be compared on syscalls per
+			// request again. It now costs fewer of them than epoll does on the same cell,
+			// 2.725 against 5.090, where before it appeared to cost nine times more.
+			//
+			// The cost, measured rather than assumed, is in the tail at low rates. At 100
+			// requests a second over four connections, gaps far longer than the timeout,
+			// p999 rose from 123us to 506us: about half the timeout, which is where a
+			// request that arrives just after a wait begins would land. p50, p90 and p99
+			// moved by a few microseconds and not consistently in either direction, and
+			// at 500 a second p999 improved.
+			//
+			// What this does not buy is the idle CPU. With nothing connected at all, the
+			// 1us build left 4.45 of 16 cores parked below 1.5GHz and the 1ms build 4.83,
+			// against 9.50 for epoll. A thousand wakeups a second per worker is still
+			// enough to keep a core out of the deep states, so the power and thermal cost
+			// of the completion model survives this change almost intact. Only the
+			// syscall count went away.
 			__kernel_timespec ts;
 			ts.tv_sec = 0;
-			ts.tv_nsec = 1000;  // 1µs timeout for low latency
+			ts.tv_nsec = 1000000;  // 1ms
 
 			// The wait needs the submission lock because it takes an SQE for its timeout,
 			// but it must not still hold it below: completions are resumed inline, and a
