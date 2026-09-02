@@ -523,6 +523,43 @@ been scheduled yet.
   confirms it is not the host: churn-net's single zero-delivery run is at position 292 of 400, not
   early, so it is not the same cause and remains a rate past the ceiling.
   Other blocks clean: bracket 60/60, bracket-low 30/30, large 14/15 (one CPU-frequency drift).
+- **Routing e2e `main` re-run: 90 of 90 accepted, 0 refused, and the firewall diagnosis is now a
+  control rather than a story.** Before: 81 of 90, the nine refusals at positions 1-9 consecutively.
+  After: 90 of 90, first ten all accepted, balance restored to 45 runs at each of rates 1000 and 4000
+  against 41 and 40 in the contaminated file. Same commit `b4a01e8c7`, same binaries, host, generator
+  and gateway; the ONLY variable changed is that the Allow rules for the rebuilt binary now exist.
+  The contaminated original is preserved at `routing-e2e/main-firewall-contaminated/` with a README
+  saying it is not for citation, why the nine are cells that never ran, and why re-running was correct
+  here and would not have been at rate 400 -- that README is the clearest statement of the distinction
+  anywhere and should stay where it is rather than being folded into a paper.
+  **Runbook precondition, validated rather than recommended:** start the server, make one request from
+  the host AND one from inside the distribution across the interface, confirm 200 from both, stop it,
+  then begin timing. Both requests, not only the loopback one, because it was the off-host path that
+  was blocked and a loopback request would have proved nothing about the rule that mattered.
+- **PROVENANCE TRAP the h1 sweep is about to spring, flagged before the data exists.** Chapter VI and
+  the abstract correctly say the sweep over worker count, payload size and accept backlog was NOT
+  executed in the campaign of 2 September, and three red markers are deliberate for that reason. The
+  sweep now running is at `b4a01e8c7` with `build/windows-tls`; the campaign those chapters describe
+  is at `4645e5e03`. **Different commit, different build, therefore a different fingerprint and a
+  SEPARATE POPULATION.** The correct revision is not "the sweep was run after all" but that it exists
+  as its own campaign at its own commit, whose cells may NOT be pooled with h1-deep, transport or
+  churn nor presented alongside them as one campaign -- the merge refusal would refuse it and would be
+  right. The red markers vanishing will make it look like a gap was closed rather than a second
+  measurement taken. Own directory, own README naming commit and build; the coordinator handles the
+  chapter.
+- **THE TWO-READER FINDING, sharpened, and it belongs in the methodology chapter because this
+  project's results now depend on it having happened.** The desktop observed that both errors caught
+  tonight were invisible to their author and obvious to the other on first reading, and that the blind
+  spot travels with the argument rather than with the person. The sharper version: **not one of
+  tonight's errors was a calculation mistake.** The circular ratio was arithmetically correct; the
+  contaminated-run story was mechanistically plausible; the batching hypothesis was a sensible reading
+  of an interface. Every one was a FRAMING error sitting on top of correct work. That explains the
+  asymmetry rather than naming it: checking your own work re-runs the reasoning that produced it, so
+  it verifies the arithmetic and reproduces the frame, while a second reader runs different reasoning
+  over the same claim and tests the frame, which is the only part that was ever wrong. **So: self-
+  review catches arithmetic, independent review catches framing, and in this work every error found
+  was of the second kind.** State the count honestly -- four instances in one evening -- so it is not
+  read as a law; the mechanism is what makes it credible, not the sample.
 - **CROSS-ARM RE-RUNS ARE RUNNING on `a4519ada2`, through the driver, about six hours.** Preflight
   passed on both arms (smoke 2/2 each) and confirms schema 8 live end to end: `server_euid` 1000 and
   `generator_euid` 1000 attested, `local_interface` recorded as `veth-gen` from the socket with speed
