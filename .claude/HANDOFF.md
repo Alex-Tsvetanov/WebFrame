@@ -398,12 +398,54 @@ been scheduled yet.
   cleartext establishment arm, because a thread blocked in connect is not issuing anyone's slots, so
   the load genuinely was not offered as a steady process even if all of it eventually arrives.
   Achieved share should catch that, which argues FOR the split, but the two cases must not be merged.
-- **UNEXAMINED, in the desktop's own filed records: establishment time is 35x higher at low rates.**
-  churn connect p50 is 9.3 ms at 25/s cleartext and 0.26 ms at 100/s, same shape on the TLS arm.
-  Slower with less work is not contention; it is what an idle machine looks like, and it would be the
-  **fourth appearance of the idle mediator, on the one platform that has not yet shown it** (Windows,
-  IOCP). Not asserted: TIME_WAIT pressure and accept-backlog behaviour are alternatives. Worth one
-  look when the queue is clear.
+- **SOLVED: the 35x establishment jump at low rates is the GENERATOR'S OWN POLL TIMEOUT, not the
+  server.** Characterised before explained: min is ~0.17 ms and max ~11.7 ms at EVERY rate, so both
+  paths always exist and only the FRACTION taking the slow one changes; it is a bimodal step between
+  rates 50 and 100, not a gradient. Alternatives named before looking and disposed of by evidence:
+  TIME_WAIT predicts the wrong sign (more churn at higher rates, yet 150 is best); accept backlog and
+  power state are ruled out by the off-host control, which holds the Windows server constant and
+  changes only the generator's operating system -- rate 50 is 9.317 ms on loopback against 0.308 ms
+  off-host, thirty times, with generator CPU 0.49 against 0.51 so not saturation.
+  **The mechanism, from the source:** `loadgen.cpp` ~1008-1035 spins when the next due slot is under
+  `kSpinBelowUs` = 20 ms away and otherwise sleeps in poll for 1 ms, which Windows quantises to the
+  ~10 ms system tick. In an establishment design the period is one over the rate: 25 -> 40 ms and
+  50 -> 20 ms both sleep (`20000 < 20000` is false, so the design's second-lowest rate sits on the
+  wrong side by a rounding); 100 -> 10 ms and 150 -> 6.7 ms both spin. **The boundary in the code is
+  exactly the step in the data.** `connect_us` runs to the poll-observed completion, so a sleeping
+  generator timestamps the handshake when it wakes. The file's own comment three lines above says this
+  for PACING and names the establishment design as the reason the threshold exists; nobody noticed the
+  same sleep also inflates `connect_us`.
+  **PAPER 2 IS NOT DAMAGED, IT IS IMPROVED** (checked, not assumed). Every establishment claim rests on
+  rates 100 and 150: the reportable 0.085 ms classification cost at 100, the 1.227 ms handshake
+  denominator at 100 and 150, the cleartext intervals at 100 and 150. Rates 25 and 50 appear in ONE
+  paragraph, which already says the jump is present in every arm and that **"the record does not
+  explain it"**. That sentence now becomes the explanation with the threshold arithmetic beside it: a
+  loose end becomes a characterised instrument effect, and the paper's honesty is what earned it.
+  **THE DECISIVE TEST NEEDS NO CODE CHANGE, and the coordinator declined the desktop's rebuild in its
+  favour.** The rebuild (raise `kSpinBelowUs` past 40 ms, re-run rate 25) changes the instrument, the
+  fingerprint, and confounds rebuild with threshold unless a control rate is added. Instead: **run
+  churn at rates 50 and 51, adjacent, one session, on the existing binary.** Period 20000 vs 19608, so
+  50 sleeps and 51 spins; two percent more offered load should give roughly thirty-five times less
+  reported establishment time (~9.3 ms against a few hundred microseconds). Same commit, same
+  fingerprint, poolable, minutes. AUTHORISED. The rebuild is held in reserve as a second confirmation
+  only if the step appears.
+  **One gap in the mechanism to close from the code:** a poll with a 1 ms timeout should return as soon
+  as a socket in its set becomes writable, so a completing handshake ought to wake it in 0.17 ms. That
+  the cost is the full tick suggests the connecting socket is NOT in the poll set of the iteration that
+  created it and is registered only on the next pass, which begins when the sleep ends. Read the order
+  of operations around connect and poll: it decides whether the wording is "the sleep delays
+  observation" or "the connect misses its own poll", and only one is true.
+  **This is a methodology-chapter finding about the instrument**, and it generalises: any establishment
+  design whose period reaches 20 ms is affected on Windows.
+- **The h1 sweep's single refusal is a genuine OUT-OF-SAMPLE test of `1b756e905`** and comes out
+  OUTSIDE: latency p99 41.977 ms against a cell maximum of 0.108 ms over six accepted peers, rank above
+  all six, not a weak bound, in a design and at a commit fixed after the rule was written. Worth more
+  than the seven retrospective rows, because nothing about it could have been fitted. Sweep: 133 runs,
+  132 accepted, 20:39 to 21:32.
+- **Four local branches on the desktop, none pushed** (it cannot): `measure/desktop-2026-09-02`
+  71baff233, `-net` 9b3ba079a, `-routing` 7d95147f8 (906 files), `-sweeps` 01ccffb06. Both new
+  directories carry READMEs; the sweeps one states the red-marker point -- a second campaign at a
+  different commit whose cells may not be pooled. **Alex pushes these to the private paper repos.**
 - **Dispatch block clean: 6 designs, 292 runs, 292 accepted, 0 failed** (main 90, scaling 60, depth 45,
   static 45, large-cheap 50, large-dfa 2), 19:27 to 19:58.
 - **THE GATE MAY BE ENDOGENOUS, WHICH IS WORSE THAN BIAS, AND IT MAY BE REFUSING THE HONEST RUNS.**
