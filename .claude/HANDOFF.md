@@ -859,97 +859,45 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
-- **A MECHANISM FOR THE PER-RUN BISTABILITY, pre-registered before the proportion data exists.** The
-  desktop predicted the fall sits between 85 and 100/s, from arithmetic rather than mechanism: the
-  slow mode costs ~9.3 ms of establishment and the offered period is 20.0, 16.7, 14.3, 11.8, 10.0 ms
-  at 50, 60, 70, 85, 100, so only at the top does the period approach the slow mode's own cost.
-  **The coordinator added one step, which turns it into a feedback loop and explains what neither
-  party could explain.** Read it as a duty cycle: in the slow mode the machine works 9.3 ms of every
-  period, i.e. 0.47, 0.56, 0.65, 0.79, 0.93 of the time at those rates. At 50/s the machine is idle
-  for more than half of every period, so it parks, so the next connection pays the wake, so **the run
-  stays slow**. At 100/s it is busy 93% of every period, never parks, and **the slow mode cannot
-  sustain itself**. The slow mode is self-sustaining at low rates and self-extinguishing at high ones.
-  **This predicts all three unexplained observations:** per-run BISTABILITY (a run falls into whichever
-  attractor its first connections put it in and stays there -- no threshold explains that); a SHARP
-  boundary rather than a gradient (the loop gain crosses one abruptly); and the boundary sitting where
-  the duty cycle reaches unity, about 1/9.3 ms ~ 107/s, just above the highest rate at which a slow run
-  has ever been seen and just above the lowest at which none has.
-  **THE UNITY VERSION IS REFUTED BY DATA ALREADY HELD, before the new runs landed.** The desktop
-  pointed out that the churn design measured 99 accepted cleartext runs at exactly 100/s (and 198
-  across 100 and 150 with both arms) and found ZERO slow ones. A duty cycle of 0.93 leaves the machine
-  idle 7% of every period, so the loop should still close and the mechanism predicts a small non-zero
-  proportion at 100. Observed zero, ninety-nine times.
-  **REPLACED by the desktop's option 2, which is better and has independent quantitative support: the
-  controlling variable is the ABSOLUTE idle interval, not the duty fraction.** Slack is the period
-  minus the slow mode's 9.3 ms: 10.7 ms at 50/s, 2.5 at 85, 0.7 at 100. Set that against the laptop's
-  idle ladder, measured on Linux earlier the same night for a different purpose: 9 us at a 1 ms gap,
-  26 at 2 ms, 63 at 5 ms, flat to 50 ms. So 10.7 ms is past saturation (full park), 2.5 ms is about a
-  quarter of the cost, and 0.7 ms is essentially no park. **The absolute-interval story fits a curve
-  measured independently on another machine; the duty-cycle story was fitted to the boundary it was
-  explaining.** It also gives sharpness without needing a loop gain to cross exactly one, and an
-  absolute wake threshold is the kind of thing an operating system has.
-  **CAVEAT, from the desktop, and it is the same species of borrowing caught twice already: THE
-  AMPLITUDES DIFFER BY 150x.** The Linux ladder saturates at 62-65 MICROSECONDS; the Windows slow mode
-  costs 9.3 MILLISECONDS. So the ladder's SHAPE may transfer (depth grows with interval and saturates)
-  and that shape is what the argument needs, but its SCALE demonstrably does not -- and "saturation by
-  about 5 ms" is a property of the scale. Predicting the Windows boundary from the Linux saturation
-  point assumes the time axis carries over while the vertical axis provably does not.
-  **So: the refined prediction of 88 to 97 per second is CONDITIONAL on that unstated assumption, and
-  the honest interval is wider. The desktop's 85 to 100 rests on desktop data alone and is the one to
-  defend.** A boundary landing at 92 would be consistent with the Linux curve without confirming it,
-  since 92 is also the middle of the interval already held.
-  **THE INCREMENT BETWEEN THE MODES IS ADDITIVE AND CONSTANT (desktop, from filed numbers):** about
-  8.3-8.9 ms at both rates and in both arms, with TLS about a millisecond slower than cleartext in
-  BOTH modes. So the slow mode adds a fixed quantity; it does not multiply and does not scale with
-  handshake work. That narrows the desktop's own position to a threshold on OCCURRENCE rather than on
-  depth, which is closer to the tick reading than to what it argued an hour earlier. Neither 8.5 nor
-  9.3 ms is an obvious Windows constant (default clock interval 15.625 ms, raised 1 ms).
-  **But it does not yet discriminate:** both compared rates sit far past any plausible saturation
-  (slack ~30 ms at 25/s, ~11 at 50), where a saturating DEPTH model predicts equal increments too.
-  **The discriminating cells are near the boundary, where slack is 2.5 ms at 85, 1.8 at 90, 1.2 at 95.
-  So report the INCREMENT as well as the proportion at those rates: a fixed event keeps its size and
-  only becomes rarer; a depth shrinks as available idle shrinks.** That discriminator is already
-  inside the runs in progress and costs nothing.
-  **A COORDINATOR ARGUMENT THAT THE FAST MODE HAS MORE IDLE THAN THE SLOW ONE IS WITHDRAWN: it was
-  wrong on the arithmetic AND conditioned on the outcome.** The numbers: fast at 100/s has 9.52-9.80 ms
-  idle per period; slow at 50/s has 10.41-10.82; slow at 25/s has 30.29-31.33. So the fast mode does
-  NOT have more idle than a slow run at any rate. **And the comparison was inadmissible anyway: the
-  idle in a slow run is REDUCED BY the slow event, so it used a quantity the outcome causes to predict
-  that outcome.** A parking story is about the idle BEFORE the event.
-  **The admissible quantity is the COUNTERFACTUAL idle, period minus the fast-mode cost (~0.5 ms):**
-  39.5 ms at 25/s (slow seen), 19.5 at 50 (slow seen), 13.8 at 70, 11.3 at 85, 9.5 at 100 (zero slow
-  in 99), 6.2 at 150 (zero slow in 99). It falls monotonically and **any threshold between 9.5 and
-  19.5 ms accounts for every observation held**, so the parking family is not refuted -- it is left
-  with a wide, unremarkable window. The amplitude objection stands alone and is still the only real
-  argument against parking, and it is the weaker kind: a scale that does not match is a puzzle, not a
-  contradiction.
-  **THIRD CONDITIONING-ON-THE-OUTCOME ERROR OF THE EVENING, two of them the coordinator's** (the
-  circular ratio; this), the other the desktop's sample of framing errors selected for being framing
-  errors. Both of the coordinator's came dressed as arithmetic on filed data, which is the form that
-  reads as rigour. **General check for the methodology chapter, beside the gate rule: before comparing
-  any quantity across two groups, ask whether membership of the group changes the quantity.** The gate
-  version -- a validity rule on something the treatment moves -- is the same failure at the level of
-  admission rather than of analysis.
-  What survives: the correlation with rate, real and unexplained, and the fixed-increment fact.
-  The counterfactual idle at the five designed rates (19.5, 16.2, 13.8, 11.3, 9.5 ms) samples that
-  interval evenly, which is a better property than the design was built for.
-  **AND THE AMPLITUDE MAY ARGUE AGAINST PARKING ALTOGETHER, which cuts against both framings.** 9.3 ms
-  is not a plausible idle-exit cost -- those are microseconds to tens of microseconds, which is what
-  the laptop measured. 9.3 ms is the order of a TIMER TICK or a scheduling quantum. The slow mode's
-  range across cells is 8.67 to 10.66 ms, straddling ten, against a fast mode of 0.3 to 2.4. That
-  looks less like a deeper park than like ONE EXTRA TICK -- and a tick is either missed or not, which
-  would explain the bistability more directly than a feedback loop or a depth threshold, there being
-  nothing continuous to cross. Not proposed as a mechanism (no candidate timer; one timer story was
-  already killed from the source tonight), but a reason to hold the parking framing loosely rather
-  than treat the mechanism as settled with only the boundary open.
-  **Judgement rule fixed in advance:** high and flat at 50/60/70, lower at 85, zero at 100 supports it,
-  and the follow-up is then rates **90 and 95**, 15 repetitions each,
-  as a SECOND committed design `churn-proportion-fine` on the same branch, run only if the five come
-  out as predicted, ten minutes -- turning a bracketed boundary into a located one. **150 needs no
-  re-measuring**: 99 runs there already say zero and confirming a zero would buy nothing. Inside what
-  Alex approved for overnight, but he is to be told it happened and why. A smooth fall across all five refutes
-  it and leaves a slope with no mechanism. A fall between 60 and 70 means neither party has it.
-  The extra rates are NOT to be run before the five are in.
+- **THE ESTABLISHMENT ANOMALY IS CHARACTERISED AND CLOSED FOR THE NIGHT; the mechanism is unknown and
+  every account either party proposed has been withdrawn against evidence.** Seven rates, 105 runs,
+  plus the earlier 196.
+
+  | rate | slow % | increment | fast-mode gap | period |
+  |---|---|---|---|---|
+  | 50 | 71.4 | 8.57 ms | 19.7 ms | 20.00 ms |
+  | 60 | 92.9 | 9.15 | 16.4 | 16.67 |
+  | 70 | 85.7 | 8.80 | 13.9 | 14.29 |
+  | 85 | 93.3 | 8.91 | 11.46 | 11.76 |
+  | 90 | 93.3 | 9.26 | 10.81 | 11.11 |
+  | 95 | 93.3 | 9.19 | 10.23 | 10.53 |
+  | 100 | 6.7 | 9.33 | 9.70 | 10.00 |
+
+  **What is established:** per-run bimodal with NOTHING ever between the modes in 301 runs; a fixed
+  increment of about nine milliseconds INDEPENDENT of available slack across a twentyfold range (the
+  hardest case is rate 95, where a slow run has ~900 us of slack and the increment is still 9.19); high
+  and flat from 50 to 95 then a collapse between 95 and 100, five per cent of rate taking the
+  probability from 93.3% to 6.7%; and not zero above the step (1 in 114 pooled), so a steep gradient
+  rather than a wall. **The fixed-increment result rests on a discriminator declared before any of the
+  data existed and is the best-supported statement about the phenomenon.**
+  **The coordinator's prediction FAILED** -- 90 mostly slow and 95 mostly fast was predicted; both came
+  out at 93.3% -- but into a pre-declared branch, which is why the failure was worth anything: it
+  localised the step better than a hit would have.
+  **TWO CAUTIONS, both from the coordinator and both belonging in the README.** (1) **The ten
+  milliseconds is partly the rate grid.** The period bracket's lower end is exactly 10.00 ms because
+  rate 100 was in the design, not because anything observed says ten; a grid including 105 would have
+  bracketed [9.52, 10.53] and nobody would have remarked on a round number. The step between 95 and 100
+  is measured; the ten is a coincidence of the grid until something independent puts it there. Same
+  failure class as the withdrawn `connections/rate`: a design constant wearing a finding's clothes.
+  (2) **The bracketing interval is SYSTEM-WIDE, not per connection.** With 64 slots at 100/s any single
+  slot is reused about every 640 ms, nowhere near ten. So whatever has a threshold here sees the
+  machine's whole establishment rate, not one socket's history -- which rules out a large family of
+  per-connection and per-socket explanations for free and tells whoever attaches a tracer to point it
+  at something global, per-processor or per-listener.
+  **Stopped deliberately**: the step is bracketed to five per cent, more rates cannot say what the
+  event IS, and the characterisation is handed on rather than pursued. Committed on
+  `measure/desktop-2026-09-03-proportion-fine`.
+
 - **The quiet-host gate fired for the first time on a genuinely disturbed host** and then passed: first
   smoke attempt refused at a pacing p99 of 5 392 636 us (5.4 seconds) with the CPU-clock reading
   'unchecked', while Alex was closing tray applications mid-run; second attempt 2 of 2 accepted at
