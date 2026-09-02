@@ -16,6 +16,7 @@ import ctypes
 import json
 import os
 import platform as _platform
+import re
 import shutil
 import signal
 import socket
@@ -243,6 +244,22 @@ def describe_signal(number: int) -> str:
         return signal.strsignal(number) or f"signal {number}"
     except ValueError:
         return f"signal {number}"
+
+
+def ss_listening_pids(text: str, port: int) -> list[int]:
+    """The pids `ss -ltnpH` reports listening on one port.
+
+    Every one of them, not the first. Both Linux backends set SO_REUSEPORT, so several
+    processes can hold the same listener and a caller stopping only one leaves the rest
+    holding the port.
+    """
+    pids: list[int] = []
+    for line in text.splitlines():
+        fields = line.split()
+        # Same field as refuse_held_port reads: the local address, port last.
+        if len(fields) >= 4 and fields[3].rsplit(":", 1)[-1] == str(port):
+            pids.extend(int(found) for found in re.findall(r"pid=(\d+)", line))
+    return pids
 
 
 def refuse_held_port(port: int, launch_prefix: list[str] | None = None) -> None:
@@ -674,7 +691,25 @@ class CorouteServer:
             except OSError:
                 children = []
             frontier.extend(int(c) for c in children)
-        return None
+
+        # The walk saw nothing, which is not the same as there being nothing. It swallows
+        # OSError on both files it reads, and task/PID/children does not exist without
+        # CONFIG_PROC_CHILDREN and is unreadable under hidepid -- neither is transient, so
+        # a host with either would answer None on every run. ss inside the namespace is
+        # the second opinion, and it is the mechanism refuse_held_port already trusts for
+        # the same question one stack lower.
+        found = self._listening_pids()
+        return found[0] if found else None
+
+    def _listening_pids(self) -> list[int]:
+        """Every pid holding this server's port inside the launch namespace."""
+        if not self.launch_prefix:
+            return []
+        probe = subprocess.run([*self.launch_prefix, "ss", "-ltnpH"],
+                               capture_output=True, text=True)
+        if probe.returncode != 0:
+            return []
+        return ss_listening_pids(probe.stdout, self.port)
 
     def start_syscall_count(self) -> None:
         """Attaches perf to the server for the generator's run, and only for it.
@@ -833,23 +868,46 @@ class CorouteServer:
         if self._proc is None:
             return ResourceUsage()
 
+        pid = self.server_pid()
+        if self.launch_prefix and pid is None:
+            # Neither the /proc walk nor ss could name the server, and both fallbacks
+            # that used to stand in for it are wrong in the same direction. `or
+            # self._proc.pid` charged sudo's few milliseconds to server_cpu_seconds and
+            # its VmHWM to the memory peak -- a plausible small number, not a null, that
+            # no validity rule looks at and results2tex typesets. And terminate() on that
+            # handle signals sudo, which does not pass anything on to a process it
+            # launched through `ip netns exec`, so the server outlives the run holding
+            # the port. The handle is killed so nothing is left waiting here, and the run
+            # is refused: it cannot be stopped for certain and its cost is not its own.
+            self._proc.kill()
+            try:
+                self._proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            self._proc = None
+            raise RunFailed(
+                f"the server behind {' '.join(self.launch_prefix)} could not be located, "
+                f"in /proc or as a listener on port {self.port}. It cannot be stopped for "
+                f"certain and its resource cost would be the launcher's, so the run is "
+                f"refused rather than recorded with someone else's numbers."
+            )
+
         # Read the cost while the process still exists. After it exits the handle
         # reports nothing and the run would silently carry no server-side numbers.
-        cpu, peak = _process_cost(self.server_pid() or self._proc.pid)
+        cpu, peak = _process_cost(pid)
 
         # With a prefix, terminate() reaches sudo, which does not pass the signal on to
         # a process it launched through ip netns exec. The server would outlive the run,
         # hold the port, and be found by the next run's held-port gate if it is lucky or
         # split the next run's connections through SO_REUSEPORT if it is not.
-        pid = self.server_pid()
-        if self.launch_prefix and pid is not None:
+        if self.launch_prefix:
             subprocess.run(["sudo", "-n", "kill", str(pid)], capture_output=True)
         else:
             self._proc.terminate()
         try:
             self._proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            if self.launch_prefix and pid is not None:
+            if self.launch_prefix:
                 subprocess.run(["sudo", "-n", "kill", "-9", str(pid)], capture_output=True)
             self._proc.kill()
             self._proc.wait(timeout=10)

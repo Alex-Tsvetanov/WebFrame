@@ -214,6 +214,28 @@ def netem_checks() -> None:
           netns.observed_profile("qdisc fq_codel 0: root refcnt 2 limit 10240p") == "none")
 
 
+def listener_checks() -> None:
+    print("\n== the server behind a prefix is found by what it listens on ==")
+
+    from benchmark.adapters import ss_listening_pids
+
+    # `ss -ltnpH`, two listeners on 18080 through SO_REUSEPORT and one on another port.
+    text = (
+        'LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:* users:(("benchmark_serv",pid=4211,fd=7))\n'
+        'LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:* users:(("benchmark_serv",pid=4212,fd=7))\n'
+        'LISTEN 0 4096 127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=900,fd=5))\n'
+    )
+    check("every holder of the port is reported, not just the first",
+          ss_listening_pids(text, 18080) == [4211, 4212])
+    check("a listener on another port is not one of them",
+          ss_listening_pids(text, 5432) == [900])
+    check("a port nothing holds reports nothing", ss_listening_pids(text, 9999) == [])
+    # An unprivileged ss prints the address but no users:(...) clause. Reporting nothing
+    # is right there: the caller refuses rather than killing a pid it guessed.
+    check("a row with no pid attached yields none",
+          ss_listening_pids("LISTEN 0 1024 0.0.0.0:18080 0.0.0.0:*\n", 18080) == [])
+
+
 def port_checks() -> None:
     print("\n== a held port is refused before a server is started on it ==")
 
@@ -1091,6 +1113,7 @@ def main() -> int:
     campaign_checks()
     transport_checks()
     netem_checks()
+    listener_checks()
     port_checks()
     topology_checks()
     validity_checks()
