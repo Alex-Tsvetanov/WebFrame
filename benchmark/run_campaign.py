@@ -53,6 +53,7 @@ import shlex
 import sys
 from pathlib import Path
 
+from benchmark import netns
 from benchmark.adapters import CorouteServer, LoadgenGenerator
 from benchmark.harness import driver, environment, schema, validity
 from benchmark.harness.ordering import Cell, plan
@@ -212,6 +213,28 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
 # of DESIGNS, and the alternative is eight signatures changed to carry one constant.
 _ARM: str | None = None
 
+# The impairment the path carries, read off the kernel in main and read back by the
+# designs, for the same reason and by the same mechanism as _ARM above.
+#
+# None until main has looked. The designs used to write netem_profile="none" as a
+# literal, which was true only while nothing could apply netem; netns.py can now install
+# a 100 ms round trip and the record would still have said none.
+_NETEM: str | None = None
+
+
+def _netem() -> str:
+    """The impairment this run's path actually carries.
+
+    "none" is the answer for every arrangement that has no launch prefix, and it is a
+    fact about that arrangement rather than a default: netem reaches the rig only through
+    netns.py, which needs the namespace pair the prefix enters. That is also what keeps
+    macOS and Windows byte-identical to what they recorded before.
+
+    The fallback matches _io_backend's, for a caller that imports a design without going
+    through main.
+    """
+    return _NETEM or "none"
+
 
 def _io_backend() -> str:
     """The backend the cells of this run name.
@@ -252,7 +275,7 @@ def design_windows_h1() -> list[Cell]:
         payload_bytes=0,
         backlog=1024,
         streams_per_connection=1,
-        netem_profile="none",
+        netem_profile=_netem(),
     )
 
     # H1: the cost of classifying after accept, both arms from one binary at identical
@@ -302,7 +325,7 @@ def design_windows_h1_deep() -> list[Cell]:
     """
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
-        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
+        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=detect, offered_rate=rate)
@@ -318,7 +341,7 @@ def _base(**over) -> dict:
         **dict(
             protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
             connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
-            netem_profile="none", max_requests_per_connection=0,
+            netem_profile=_netem(), max_requests_per_connection=0,
         ),
         **over,
     }
@@ -530,7 +553,7 @@ def design_ladder() -> list[Cell]:
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4,
         connections=64, payload_bytes=0, backlog=1024, streams_per_connection=1,
-        netem_profile="none",
+        netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=True, offered_rate=rate)
@@ -542,7 +565,7 @@ def design_smoke() -> list[Cell]:
     """Two cells, for checking the machinery without spending an hour on it."""
     base = dict(
         protocol="http1.1", tls=False, io_backend=_io_backend(), workers=4, connections=64,
-        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile="none",
+        payload_bytes=0, backlog=1024, streams_per_connection=1, netem_profile=_netem(),
     )
     return [
         Cell.of(system_name(), **base, protocol_detection=True, offered_rate=10_000),
@@ -773,6 +796,35 @@ def main(argv: list[str] | None = None) -> int:
               f"as the generator sees it.", file=sys.stderr)
         return 2
 
+    # What the path carries, asked of the kernel rather than declared on the command
+    # line. A flag would be a second thing that can be stale; the qdisc is the thing
+    # itself. Both ends, because netns.py installs netem per direction and a read of one
+    # end describes half the path -- an impairment that survived on one side of a failed
+    # `up` would otherwise be recorded as symmetric.
+    global _NETEM
+    _NETEM = "none"
+    if server_prefix:
+        ends: list[str] = []
+        for prefix, iface in ((server_prefix, netns.SERVER_IF),
+                              (shlex.split(args.generator_command), netns.GENERATOR_IF)):
+            seen = netns.read_qdisc(prefix, iface)
+            if seen is None:
+                print(f"cannot read the qdisc on {iface} through "
+                      f"{' '.join(prefix)}; the impairment the run would be measured "
+                      f"under is unknown, and an unknown path is not a clean one. "
+                      f"Check the pair with: python3 -m benchmark.netns status",
+                      file=sys.stderr)
+                return 2
+            ends.append(seen)
+        if ends[0] != ends[1]:
+            print(f"the two ends of the pair carry different impairments: "
+                  f"{netns.SERVER_IF} has {ends[0]!r} and {netns.GENERATOR_IF} has "
+                  f"{ends[1]!r}. netem is applied per direction, so this path is "
+                  f"asymmetric and no single netem_profile describes it. "
+                  f"Run 'netns down' and 'netns up' again.", file=sys.stderr)
+            return 2
+        _NETEM = ends[0]
+
     # Both of these read the build's CMakeCache and both refuse rather than guess, so an
     # unconfigured --build or an arm the tree does not contain ends here in its own
     # words instead of in a traceback.
@@ -803,6 +855,10 @@ def main(argv: list[str] | None = None) -> int:
         # was in a namespace and one whose server was on the host are not the same
         # measurement, and nothing else in the record would say which this was.
         "server_location": args.server_command or "host",
+        # Read off the kernel above. In the manifest as well as in every record, so the
+        # comparison above refuses an impaired campaign appending to a clean one before
+        # the numbers are pooled rather than after.
+        "netem_profile": _netem(),
     }
     # What every run would be refused for anyway, asked once before the hours are spent.
     # The governor is asked again per run by the driver; here it stops the night before

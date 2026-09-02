@@ -69,6 +69,62 @@ PROFILES: dict[str, list[str] | None] = {
 }
 
 
+def observed_profile(text: str) -> str:
+    """The impairment a `tc qdisc show dev X` output describes, normalised.
+
+    What is installed, never what was asked for. A campaign records netem_profile as a
+    factor and results2tex groups tables on it, so the string has to come from the kernel
+    or it is an assertion nobody checked: every design used to hardcode "none", which
+    meant a campaign run behind `netns up --profile wan100` produced records positively
+    claiming an unimpaired path across a 100 ms round trip, and a wan100 file and a clean
+    one pooled as repetitions of one cell.
+
+    Named by its arguments rather than by a PROFILES key on purpose. The mapping back to
+    a name is a guess about how iproute2 renders what it was given -- it does not echo
+    `distribution normal`, for one -- and a guess that fails silently is what this whole
+    field exists to avoid. The arguments are what the path actually carries.
+
+    Normalised because the handle number and refcnt vary between sessions of one
+    arrangement, and transport_mismatch compares this string across a campaign.
+
+    No netem qdisc is "none", which is the truth about a veth that carries none: netns.py
+    installs no qdisc at all for that profile, because netem with no impairment still
+    enqueues, dequeues and accounts.
+    """
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 2 or fields[0] != "qdisc" or fields[1] != "netem":
+            continue
+        kept: list[str] = []
+        skip = False
+        for token in fields[1:]:
+            if skip:
+                skip = False
+                continue
+            if token == "refcnt":
+                skip = True
+                continue
+            if token.endswith(":"):
+                continue
+            kept.append(token)
+        return " ".join(kept)
+    return "none"
+
+
+def read_qdisc(prefix: list[str], iface: str) -> str | None:
+    """The impairment on one end of the pair, or None when it cannot be read.
+
+    None rather than "none": a tc that could not run says nothing about the queue, and a
+    campaign that files an unreadable path as a clean one is the falsy default this
+    project refuses everywhere else.
+    """
+    probe = subprocess.run([*prefix, "tc", "qdisc", "show", "dev", iface],
+                           capture_output=True, text=True)
+    if probe.returncode != 0 or not probe.stdout.strip():
+        return None
+    return observed_profile(probe.stdout)
+
+
 def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
     """Runs a privileged command, non-interactively.
 

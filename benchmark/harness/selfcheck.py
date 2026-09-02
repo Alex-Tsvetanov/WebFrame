@@ -192,6 +192,28 @@ def transport_checks() -> None:
               transport_mismatch(older, env_with(False, "netns:gen"), "transport_path") is not None)
 
 
+def netem_checks() -> None:
+    print("\n== the impairment on the path is read, not declared ==")
+
+    from benchmark import netns
+
+    # What `tc qdisc show dev veth-srv` prints for a pair built by netns.py, handle and
+    # refcnt included, since those are what vary between sessions of one arrangement.
+    wan50 = ("qdisc netem 8001: root refcnt 2 limit 100000 delay 25ms\n")
+    check("a netem qdisc is named by what it carries",
+          netns.observed_profile(wan50) == "netem root limit 100000 delay 25ms")
+    check("the handle and refcnt are dropped, so one arrangement reads the same twice",
+          netns.observed_profile(wan50)
+          == netns.observed_profile("qdisc netem 8003: root refcnt 5 limit 100000 delay 25ms"))
+    check("two profiles do not read alike",
+          netns.observed_profile(wan50)
+          != netns.observed_profile("qdisc netem 8001: root refcnt 2 limit 100000 delay 50ms"))
+    check("a veth with no netem is none",
+          netns.observed_profile("qdisc noqueue 0: root refcnt 2") == "none")
+    check("and so is one with some other qdisc",
+          netns.observed_profile("qdisc fq_codel 0: root refcnt 2 limit 10240p") == "none")
+
+
 def port_checks() -> None:
     print("\n== a held port is refused before a server is started on it ==")
 
@@ -1056,6 +1078,7 @@ def main() -> int:
     fingerprint_checks()
     campaign_checks()
     transport_checks()
+    netem_checks()
     port_checks()
     topology_checks()
     validity_checks()
