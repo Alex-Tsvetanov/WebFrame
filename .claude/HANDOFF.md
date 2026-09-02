@@ -292,6 +292,46 @@ been scheduled yet.
   how many components must leave idle on the path, so an end-to-end figure cannot be built by
   multiplying a single-wake cost. The three appearances are then not one curve: 62 us is one wake at
   10 ms, 413 us is a whole request path at 10 ms, 220 us is a kernel-to-kernel path at 200 ms.
+- **THE GATE MAY BE ENDOGENOUS, WHICH IS WORSE THAN BIAS, AND IT MAY BE REFUSING THE HONEST RUNS.**
+  Raised by the desktop, sharper than the coordinator's "partly a server-health signal", and adopted:
+  if pacing lateness is partly determined by the server, then a THRESHOLD on pacing is selection on a
+  function of the dependent variable. Tail bias says the numbers are optimistic by an unbounded
+  amount; endogenous admission says the admission rule is not independent of the outcome, which is the
+  assumption under every percentile reported, and it applies to EVERY accepted run rather than to the
+  ones near the threshold. It holds or fails whether or not the seven come out outside, because it is
+  a property of the instrument.
+  **THREE COUPLING ROUTES, and the laptop's threshold covers only the first.** Its condition (pool
+  binds when time-after-send x rate > connections) is a real contribution and explains why the low-rate
+  cells are clean, but it would exempt the rate-400 refusals we are already certain about: at 400/s
+  over our pool it binds only above tens of ms, and those runs sat around ten. A discriminator that
+  exempts the one established case is incomplete, not right.
+  (1) A connection held by an outstanding response. The laptop's route, threshold models it exactly.
+  (2) `loadgen.cpp:1061` skips a connection that is not `ready`, one clause earlier, which its own
+  comment says covers a handshake still in flight, so a due slot never carries a handshake's latency.
+  In an ESTABLISHMENT design every request needs a fresh handshake, so a server slow to handshake
+  withholds connections by a different door -- and time-after-send does not contain the handshake, so
+  the threshold is blind to this route in exactly the designs where establishment is the measurement.
+  (3) Pacing is `now() - c.issued` taken at SEND COMPLETION, not at the decision to send. A server slow
+  to read fills the socket, the send does not complete, and lateness accrues while the pool sits idle.
+  At rate 400 the pool is about 1% utilised, so route 1 cannot have been live and route 3 does not
+  care. Coordinator inferred route 3 from where the measurement is taken and has NOT traced the send
+  path; both machines asked to check all three from the source and to report disagreement rather than
+  resolve it.
+  **AND THE EVIDENCE THAT WE MAY BE DISCARDING THE WRONG RUNS is already in the file.** The comment at
+  the warmup boundary (loadgen.cpp:1042-1052) records a TLS run refused for 14 ms of pacing lag at p99
+  **while the server delivered 99.7% of the offered rate**. Ask what a pacing-refused run's latencies
+  are: measured from the due instant, so the lateness is already inside them. That is the accounting
+  coordinated omission gets wrong and ours gets right. A run with large pacing lateness is not one
+  whose numbers are invalid, it is one whose numbers are CONSERVATIVE, where the method did the most
+  work it ever does. We may have been refusing the honest runs and keeping the easy ones, which is the
+  opposite of what the methodology chapter says the gate does.
+  **CANDIDATE REMEDY, not ruled, not for tonight, and it changes what is admissible across every
+  campaign we hold:** the gate currently conflates two questions. Could the generator offer the load it
+  claimed? That is achieved share, measured directly, much closer to exogenous. Was the generator
+  late? That is pacing, partly downstream of the server. The first is what the gate was built for; the
+  second is a diagnostic promoted into an admission rule. So: admission rests on achieved share and
+  the error and status rules, pacing becomes a recorded COVARIATE reported with every cell rather than
+  a threshold. Needs both machines' source readings to agree first, and it is a thesis decision.
 - **A MECHANISM FOR THE STALL FINDING, and a PREDICTION put on the record before the desktop's check
   runs.** The two machines found halves of one thing without noticing. The generator hands new
   requests only to connections not already awaiting a response (`loadgen.cpp:1061`), and that flag
