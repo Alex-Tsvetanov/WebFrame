@@ -141,7 +141,9 @@ been scheduled yet.
     venue running head, Alex's read.
   - **Alex (17:40): PDFs must be committed, not gitignored**, in the paper repos (and thesis). DONE: `main.pdf` versioned in the three
     scaffolded paper repos (draft/v1) and `doc/thesis/main.pdf` (latexmkrc copies it after every
-    build). `paper-quic-cid-routing` has no scaffold yet, so no PDF.
+    build). `paper-quic-cid-routing` scaffolded too (3a1c9c1 on draft/v1, PDF committed; 16 bib
+    entries; sections hold TODO notes only, nothing measured). All four paper repos now carry a
+    built `main.pdf` on `draft/v1`.
 - **Local workflow `waafab14v`: paper 2 draft** in `paper-socket-demux` on branch `draft/v1`,
   scaffolded from the Compile-time-Protobuf IEEEtran template, eight sections drafted from the
   filed evidence with every number traced to a file, assembled, reviewed by three lenses,
