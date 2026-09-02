@@ -221,12 +221,32 @@ _NO_BATTERY = "mains (desktop, no power source to change)"
 
 
 def _cpu_mhz_linux(cpuinfo: str | None = None) -> float | None:
-    """Mean current clock across cores, from /proc/cpuinfo."""
+    """Clock of the cores that were doing something, from /proc/cpuinfo.
+
+    The mean across every core is the obvious statistic and it is the wrong one. A core
+    with nothing to do parks at a few hundred megahertz, so on a lightly loaded machine
+    the mean mostly reports how many cores happened to be asleep at the instant it was
+    read, and it moves by tens of percent between two reads while every busy core holds
+    its clock. Measured on a sixteen-core laptop: the drift rule refused runs at 26
+    percent when the offered load was low, and the same rule on the same host reported 2
+    to 4 percent once the load rose, which is the wrong direction for thermal throttling
+    and the right one for an average dominated by idle cores.
+
+    So the reading is the fastest core rather than the average one. Throttling on these
+    parts is a package-wide limit, so a machine that has been told to slow down slows the
+    fastest core too, while a machine that merely has nothing to do does not. It needs no
+    knowledge of the affinity mask, it does not move when cores park, and it fails in the
+    direction that matters: it can miss a throttle that spares one core, and it cannot
+    invent one that never happened. A gate that refuses healthy runs is a gate somebody
+    switches off, and this one had refused every run this host produced.
+    """
     text = cpuinfo if cpuinfo is not None else _read("/proc/cpuinfo")
     if not text:
         return None
-    values = [float(m) for m in re.findall(r"^cpu MHz\s*:\s*([\d.]+)$", text, re.MULTILINE)]
-    return sum(values) / len(values) if values else None
+    values = [
+        float(m) for m in re.findall(r"^cpu MHz\s*:\s*([\d.]+)$", text, re.MULTILINE)
+    ]
+    return max(values) if values else None
 
 
 def _cpu_mhz_windows(perf: str | None = None) -> float | None:

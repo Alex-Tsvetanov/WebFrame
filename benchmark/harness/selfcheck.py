@@ -816,8 +816,8 @@ def power_checks() -> None:
     # Both clock gates were dead on Windows: the drift check read /proc/cpuinfo and the
     # thermal check read pmset, so the platform that produced every measurement in this
     # project had no clock-stability check of any kind, on an rdtsc microbenchmark.
-    check("linux clock is the mean across cores",
-          env_mod._cpu_mhz_linux("cpu MHz\t: 3600.5\ncpu MHz\t: 3599.5\n") == 3600.0)
+    check("linux clock is the fastest core, not the average one",
+          env_mod._cpu_mhz_linux("cpu MHz\t: 3600.5\ncpu MHz\t: 400.0\n") == 3600.5)
     check("windows clock is base times performance percentage",
           env_mod._cpu_mhz_windows("3950|99") == 3950 * 0.99)
     # Get-Counter returns a localised decimal and this project's own Windows host
@@ -857,6 +857,35 @@ def live_capture_check() -> None:
     print(f"     this machine reports virtualisation: {virt!r}")
     if virt:
         print("     so it is correctly refused as a source of performance records")
+
+
+def clock_probe_checks() -> None:
+    """The clock reading must move when the machine is throttled and not when it idles.
+
+    The average across cores fails that: a parked core sits at a few hundred megahertz, so
+    on a lightly loaded machine the mean reports how many cores were asleep at the instant
+    it was read. The drift rule then refused every run one host produced, at 26 percent
+    when the offered load was low and 2 to 4 percent when it rose, which is the wrong
+    direction for thermal throttling and the right one for an average full of idle cores.
+    """
+    from benchmark.harness import environment as env_mod
+
+    print("\n== the clock reading follows the package, not the idle cores ==")
+
+    def cpuinfo(*mhz: float) -> str:
+        return "".join(f"processor\t: {i}\ncpu MHz\t\t: {v}\n"
+                       for i, v in enumerate(mhz))
+
+    loaded = env_mod._cpu_mhz_linux(cpuinfo(*[4000.0] * 16))
+    parked = env_mod._cpu_mhz_linux(cpuinfo(*([400.0] * 12 + [4000.0] * 4)))
+    throttled = env_mod._cpu_mhz_linux(cpuinfo(*[2500.0] * 16))
+
+    check("a machine with cores asleep reads the same as a busy one", parked == loaded)
+    check("a throttled package reads lower", throttled is not None and throttled < loaded)
+    check("and by enough for the rule to see it",
+          abs(throttled - loaded) / loaded > 0.02)
+    check("a /proc/cpuinfo with no clock lines is unchecked, not clean",
+          str(env_mod.cpu_mhz("Linux", "processor\t: 0\n")).startswith("unchecked"))
 
 
 def ladder_coverage_checks() -> None:
@@ -980,6 +1009,7 @@ def main() -> int:
     schema_checks()
     ordering_checks()
     ladder_coverage_checks()
+    clock_probe_checks()
     staleness_checks()
     selfcheck_driver.run(check)
     selfcheck_results.run(check)
