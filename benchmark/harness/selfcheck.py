@@ -716,8 +716,20 @@ def virtualisation_checks() -> None:
     check("darwin: 0 is metal", env_mod._virtualisation_darwin("0") is None)
     check("linux prefers systemd-detect-virt", env_mod._virtualisation_linux("docker") == "docker")
     check("linux: none is metal", env_mod._virtualisation_linux("none") is None)
-    check("linux without systemd falls back to DMI",
-          env_mod._virtualisation_linux(None, "QEMU Standard PC") == "qemu")
+    # None is the function's "go and ask" sentinel, not "there is nothing to ask", so
+    # this case has to make the probe genuinely absent. Passing None asserted nothing on
+    # a host that has systemd-detect-virt: the call answered `none`, returned before the
+    # fallback the case is about, and the check failed on every Linux machine while
+    # passing on this one.
+    _real_run = env_mod._run
+    env_mod._run = lambda cmd, **kw: None
+    try:
+        check("linux without systemd falls back to DMI",
+              env_mod._virtualisation_linux(identity="QEMU Standard PC") == "qemu")
+        check("linux with neither systemd nor DMI is unchecked, not clean",
+              str(env_mod._virtualisation_linux(identity="  ")).startswith("unchecked"))
+    finally:
+        env_mod._run = _real_run
     # systemd-detect-virt says `none` with exit 1, so the bare-metal answer used to be
     # read as no answer and the verdict came from the SMBIOS heuristic instead.
     if sys.platform != "win32":

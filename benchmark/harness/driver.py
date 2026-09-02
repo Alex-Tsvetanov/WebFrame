@@ -27,6 +27,7 @@ The rules it enforces, each of which the previous harness broke:
 from __future__ import annotations
 
 import time
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
@@ -224,7 +225,6 @@ def run_one(
     )
 
     counters_before = probes.counters()
-    record.cpu_mhz_start = probes.cpu_mhz()
     record.power_source = probes.power_source()
     record.thermal_speed_limit_start = probes.speed_limit()
 
@@ -253,7 +253,35 @@ def run_one(
                 f"cell asks for io_backend={asked} but the server started on {actually}"
             )
 
+        # The clock the drift rule compares against is sampled inside the measured
+        # window, not before the server exists.
+        #
+        # The rule asks whether the clock held during the run, because a machine that
+        # throttles midway produces a slowdown belonging to the room rather than to the
+        # code. Sampled before the load starts it asked something else entirely: an idle
+        # machine against a loaded one, which is ramp-up, and ramp-up is what warmup is
+        # for. On a host whose governor scales, every run was refused for drifts of 3 to
+        # 10 percent while achieving its offered rate with no errors, and more warmup
+        # made it worse, because the settling the warmup bought was counted against the
+        # gate rather than excluded by it.
+        #
+        # The rule is unchanged and so is its threshold. What moved is where the first
+        # sample is taken, so that the quantity compared is the one the rule names.
+        warmup_s = float(getattr(generator, "warmup_s", 0.0) or 0.0)
+        warm_clock: dict[str, Any] = {}
+
+        def _sample_when_warm() -> None:
+            time.sleep(warmup_s)
+            warm_clock["mhz"] = probes.cpu_mhz()
+
+        sampler = threading.Thread(target=_sample_when_warm, daemon=True)
+        sampler.start()
+
         result = generator.run(cell, duration_s)
+        # A run that ended before its own warmup elapsed has no in-window sample and no
+        # business being compared; it will be refused for delivering nothing anyway.
+        sampler.join(timeout=1.0)
+        record.cpu_mhz_start = warm_clock.get("mhz")
         record.requests_total = result.requests_total
         record.requests_total_whole_run = result.requests_total_whole_run
         record.requests_non_2xx = result.requests_non_2xx
