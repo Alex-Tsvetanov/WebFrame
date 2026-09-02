@@ -213,7 +213,10 @@ laptop idle: no editor, no browser, no agent session doing work.
 
 ```
 nohup nice -n 19 sh -c 'while :; do printf "%s " "$(date +%s)"; grep "cpu MHz" /proc/cpuinfo | sort -t: -k2 -rn | head -1; sleep 5; done' > <clocklog> 2>/dev/null &
+echo $! > <clocklog>.pid
 ```
+
+It is stopped after the last block with `kill $(cat <clocklog>.pid)`.
 
 **Desktop.**
 
@@ -242,8 +245,7 @@ and none is changed.
 ```
 
 Both print 200; the server is stopped; then, and only then, anything is timed. Refuse otherwise.
-No firewall rule is changed on either machine: the desktop's server rules are already on the
-profile its wired adapter uses.
+No firewall rule is changed on either machine.
 
 ### 2.6 What the record carries about the other host
 
@@ -335,8 +337,8 @@ run over the wire, the 8 192 cell is capped at 10 000.
 ### 3.3 Repetitions
 
 **n = 25 per cell**, the number the X1 resolution analysis found necessary on loopback
-(`benchmark/README.md`) and the number the filed churn and transport campaigns used, so that "at
-the same n" in section 1 is literal.
+(`benchmark/README.md`). The filed loopback campaigns ran more; "at the same n" in section 1 is
+made literal by recomputing their r from their first n accepted repetitions.
 
 The power calculation, from the desktop's filed loopback transport records (fifty accepted runs
 per cell, so a real estimate of run-to-run spread): at n = 7 the half-width of the difference
@@ -350,7 +352,8 @@ with a margin of √(25/7) = 1.9 on the spread, and it says nothing if the wire'
 loopback's, which is the unknown this run measures.
 
 **The clock rule.** n is chosen from the clock before the smoke run and never afterwards: 25 if
-ten hours remain in the window, otherwise 7 for every block, and the results README says which.
+eleven hours remain in the window, otherwise 7 for every block except block 8, which is 7 in
+either case, and the results README says which.
 No block runs at a third count, and no block's n is changed after a number from it has been read.
 If a 7-repetition block is later extended, the extension is a second file with a second seed
 (`--seed 20260903`; `ordering.plan` seeds each pass from `seed:repetition`, so the same seed would
@@ -370,9 +373,14 @@ One run is 26 seconds: 20 measured, 3 warmup, 3 turnover, plus ssh session setup
 | 4 | `churn-ladder` (25 to 800) | 11 | 1 | 11 | 5 min | the establishment ceiling |
 | 5 | `churn`, cores idle | 16 | 25 | 400 | 2.9 h | the establishment half of the rule |
 | 6 | `transport`, cores idle | 20 | 25 | 500 | 3.6 h | both halves of the rule |
-| 7 | `churn`, cores awake | 16 | 25 | 400 | 2.9 h | the idle-state control (4.3) |
-| | **total at n = 25** | | | **1 337** | **9.7 h** | |
-| | total at n = 7 | | | 401 | 2.9 h | |
+| 7 | `churn`, cores awake | 16 | 25 | 400 | 2.9 h | the idle-state control (4.3), establishment |
+| 8 | `transport`, cores awake | 20 | 7 | 140 | 1.0 h | the idle-state control (4.3), request latency |
+| | **total at n = 25** | | | **1 477** | **10.7 h** | |
+| | total at n = 7 | | | 541 | 3.9 h | |
+
+Block 8 runs at n = 7 whatever the clock rule chose, because it tests a predicted shift and not
+the 5 percent resolution: on the loopback prior of 3.3, seven repetitions bound a shift to within
+1.2 to 4.7 percent of the cell median, which is enough to judge prediction 4.
 
 `<options>` in every command below is:
 
@@ -408,13 +416,14 @@ python -m benchmark.run_campaign --design transport    --repetitions <n> --resul
 Then the spinners of 4.3 are started, two minutes pass, and:
 
 ```
-python -m benchmark.run_campaign --design churn        --repetitions <n> --results <dir>/churn-awake.jsonl <options>
+python -m benchmark.run_campaign --design churn        --repetitions <n> --results <dir>/churn-awake.jsonl     <options>
+python -m benchmark.run_campaign --design transport    --repetitions 7   --results <dir>/transport-awake.jsonl <options>
 ```
 
 Then the spinners are stopped by recorded PID. **Stop only at a block boundary**: a finished
-block is citable, half of one is not. If the window closes before block 7, block 7 is the
-pre-declared next window and runs unchanged. The clock sampler on the laptop is stopped after the
-last block, and `<clocklog>` is copied into `<dir>`.
+block is citable, half of one is not. If the window closes before block 7 or 8, the blocks not
+run are the pre-declared next window and run unchanged. The clock sampler on the laptop is
+stopped after the last block, and `<clocklog>` is copied into `<dir>`.
 
 ## 4. Gates
 
@@ -495,10 +504,14 @@ before the drift gate's first sample; drift refusals in the awake block are coun
 re-run. The awake condition is carried by no record field, so the two churn files are never
 concatenated, and the results README names the condition of each.
 
-`transport` is not taken awake. At 5 000 a second and above the per-worker gap is under a
-millisecond, where the measured wake cost is about 9 microseconds (the idle ladder: 1 ms gives 9,
-2 ms 26, 5 ms and beyond 63); section 8 predicts the size and the prediction is falsifiable in
-direction B or a later window.
+`transport` is taken awake too, as block 8, at seven repetitions. At 5 000 a second and above
+the per-worker gap is under a millisecond, where the measured wake cost is about 9 microseconds
+(the idle ladder: 1 ms gives 9, 2 ms 26, 5 ms and beyond 63), so the predicted shift is small and
+the block exists to bound it, not to resolve the demultiplexing difference; the awake transport
+file is never the file the rule of section 1 is applied to. The harness has no keep-alive cell
+below 5 000 a second, so the 100-requests-a-second condition at which the 495-against-74
+microsecond mediator was measured has no cell in this run; 5 000 a second is the nearest
+keep-alive test of it.
 
 ### 4.4 The generator host's clock
 
@@ -566,7 +579,7 @@ Release on the desktop and the laptop's build directory and generator path; the 
 `.env.json`; the interface fields as recorded, `local_interface`, speed, duplex and MTU; the
 power plan and the adapter's advanced properties; the qdisc; whether the wireless interface was
 taken down; the n chosen and from what clock; any table cut and why; the rejection count and every
-reason per file; and, for each churn file, whether cores were allowed to idle.
+reason per file; and, for each churn and transport file, whether cores were allowed to idle.
 
 Into the framework repository, which is public, go this design, the harness change of 2.3 and its
 documentation, all with placeholders. No hostname, address, MAC, network name or router detail,
@@ -592,13 +605,18 @@ Stated so the outcome is judged rather than explained.
    to thirty-seven runs in about fifty). The state lives in the server host, not in a loopback
    generator sharing its cores. If instead no slow mode appears over the wire, the state was the
    loopback arrangement's, which is the more useful outcome for paper 2 and is written as such.
-4. **The idle mediator shows in establishment unless cores are held awake.** In the awake file
-   the classification-off establishment median is lower than in the idle file by 100 to 500
-   microseconds at every rate from 25 to 150; the demultiplexing difference itself is unchanged
-   within its interval, the idle cost being added to both arms. Request latency at 5 000 a second
-   would move by under 30 microseconds under the same control; it is not taken awake here.
-5. **The awake control costs the generator nothing.** Pacing p50 and p99 in the awake churn file
-   lie within the idle file's range.
+4. **The idle mediator shows in low-load latency at the server end unless cores are held
+   awake, and by an amount that falls with the rate.** Establishment, judged by blocks 5 and 7:
+   in the awake file the classification-off establishment median is lower than in the idle file
+   by 100 to 500 microseconds at every rate from 25 to 150; the demultiplexing difference itself
+   is unchanged within its interval, the idle cost being added to both arms. Request latency,
+   judged by blocks 6 and 8: at 5 000 a second the awake-minus-idle shift in the
+   classification-off median is under 30 microseconds; at 35 000 a second it is indistinguishable
+   from zero within block 8's own interval. No keep-alive cell below 5 000 a second exists in the
+   harness, so the hundreds-of-microseconds form of the mediator is predicted for establishment
+   only.
+5. **The awake control costs the generator nothing.** Pacing p50 and p99 in the awake churn and
+   transport files lie within the idle files' range.
 6. **Request latency resolves in every cleartext cell.** TLS at 25 000 and 35 000 may not: the
    loopback cell at 25 000 TLS was the one that failed at n = 7, and over the wire the TLS
    generator's clock is the unknown of 4.4.
