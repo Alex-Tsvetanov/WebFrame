@@ -1,6 +1,6 @@
 # Coordinator handoff
 
-Written 2026-09-02 by the coordinating session (Fable); last refreshed 03:55 EEST. A new session takes over
+Written 2026-09-02 by the coordinating session (Fable); last refreshed 04:55 EEST. A new session takes over
 by reading this file first, then the memory notes `benchmark-machines`, `coordinator-role`
 and `handoff-before-limit`, then `ListAgents` to find the remote sessions named below.
 Run with ultracode on. Update this file at every milestone; it is the only place the
@@ -46,26 +46,27 @@ repositories, never here.
 
 ## Repository state
 
-`phase0-foundation` = `904778889`, pushed. **Both branches are merged and deleted; no branch is
-in flight.** The harness's 21 Linux-readiness gaps are closed (off-host generator launcher for a
-netns pair, port preflight, governor gate, `git_dirty` unknown refused, UDP drop counter under its
-real name, server-death diagnosis, dispatch clock readings, whole-run response count, schema v4),
-and `--io-backend` now exists on `run_campaign` and `run_routing_e2e`, so a campaign can select the
-arm; without it a `linux-epoll` build died at every server start. **The runtime-backend work is merged** (`--io-backend`,
-virtual listener/datagram creation, banner cross-check, `linux-epoll`/`linux-dual` presets),
-verified on Linux, macOS and Windows/MinGW before merging, and its branch is deleted. Also:
-the generator's MSVC `NOMINMAX` fix, the Linux memory peak in `route_bench.cpp`, campaign runbook
-(`benchmark/README.md`), thesis gate table (chapter V) and a build that survives missing
-`data/` (chapter VI guards), Linux memory peak in `route_bench.cpp` (merged from the
-laptop's `linux/route-bench-memory`, branch deleted).
+`phase0-foundation` = `8d5b2d6d4`, pushed. **No branch is in flight; everything is merged and
+every branch deleted.** Tonight added, in order: the runtime backend selection (`--io-backend`,
+verified on Linux, macOS and Windows/MinGW before merging); the harness's 21 Linux-readiness
+gaps; a build-staleness preflight and the matcher commit in the environment; two ladder designs
+rebuilt from the tables they validate; the clock sampled inside the measured window and read
+from the fastest core; the kernel clock source recorded and fingerprinted; and a network
+namespace pair, a perf syscall counter and the eleven gate defects that came with them.
+Verified at the merge: 294 selfchecks, 178/178 tests, the census, and a loopback smoke campaign
+whose records carry schema 6.
 
-Branches in flight:
+Still to do, needing a Linux host and now unblocked by the merge:
 
-- Excluded from both branches, still to do on the laptop (root is now available via passwordless sudo): perf-based syscalls-per-request counter (audit items B2-B4: `perf stat
-  -e raw_syscalls:sys_enter -p <pid>` around a non-timed "mechanism" run, opt-in flag,
-  schema field), netns pair creation and a real off-loopback Linux run, the QUIC UDP-seam
-  reconciliation between `feature/http3-quic` and HEAD (paper 4, cheapest next step per
-  its BLOCKERS).
+- **The io_uring timeout experiment**, authorised: raise `uring_context.cpp:492` from 1 us to
+  about 1 ms on its own branch off this HEAD, measure before and after identically, and measure
+  the cost the comment at `:489` names (added latency on the first request after an idle gap)
+  as well as the saving. A blocking wait when nothing is in flight is the better design and is
+  for after the one-line version has shown the size of the effect.
+- A churn rate ladder to confirm the ~8.7 clock reads per established connection, and the
+  deadline machinery as the suspect for them.
+- The QUIC UDP-seam reconciliation between `feature/http3-quic` and HEAD (paper 4, the cheapest
+  next step per its BLOCKERS).
 
 ## Desktop sequence sent 02:20 (message id 5461cf03)
 
