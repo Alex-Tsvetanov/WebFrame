@@ -6,7 +6,6 @@
 
 #include <liburing.h>
 #include <sys/socket.h>
-#include <sys/eventfd.h>
 #include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <linux/udp.h>  // UDP_SEGMENT; netinet/udp.h clashes with it over struct udphdr
@@ -133,7 +132,7 @@ namespace coroute::net
 	struct WorkerRing
 	{
 		io_uring ring;
-		int eventfd = -1;
+		bool ext_arg = false;
 		int listen_fd = -1;  // SO_REUSEPORT listener for this ring
 		std::atomic<bool> initialized{false};
 
@@ -169,10 +168,6 @@ namespace coroute::net
 			}
 			if (initialized)
 			{
-				if (eventfd >= 0)
-				{
-					::close(eventfd);
-				}
 				io_uring_queue_exit(&ring);
 			}
 		}
@@ -192,12 +187,11 @@ namespace coroute::net
 				return false;
 			}
 
-			eventfd = ::eventfd(0, EFD_NONBLOCK);
-			if (eventfd < 0)
-			{
-				io_uring_queue_exit(&ring);
-				return false;
-			}
+			// Whether the kernel can take the wait's timeout as an argument to
+			// io_uring_enter rather than as a timeout operation occupying an SQE. It
+			// decides whether waiting is a submission-queue producer, and so whether the
+			// wait has to hold sq_mutex. Since 5.11.
+			ext_arg = (params.features & IORING_FEAT_EXT_ARG) != 0;
 
 			initialized = true;
 			return true;
@@ -235,13 +229,49 @@ namespace coroute::net
 			return true;
 		}
 
+		/// Ends this ring's current wait, so posted work is not left until the timeout.
+		///
+		/// This used to write to an eventfd. Nothing ever read that eventfd or registered
+		/// it with the ring, so the write went into a counter no one observed and the
+		/// wait ran to its full timeout regardless: post(), run_on_worker() handoffs,
+		/// TimerQueue callbacks and stop() on an idle ring were all delayed by up to the
+		/// wait timeout. That was survivable at 1us and is not at 1ms.
+		///
+		/// A no-op submission is what makes it real. The completion it produces is
+		/// indistinguishable to the kernel from any other, so io_uring_wait_cqe_timeout
+		/// returns at once; the drain skips it because its user_data is null, which the
+		/// `if (op)` there already handles.
+		///
+		/// Deliberately not io_uring_register_eventfd, which points the other way: it
+		/// asks the ring to signal an eventfd when completions arrive, and would have
+		/// left this function just as dead while looking like a fix.
 		void wake()
 		{
-			if (eventfd >= 0)
+			// The same lock the submit path takes, for the same reason: the submission
+			// queue is single-producer and this is called from other threads.
+			std::lock_guard lock(sq_mutex);
+
+			io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+			if (sqe == nullptr)
 			{
-				uint64_t val = 1;
-				::write(eventfd, &val, sizeof(val));
+				// Queue full of prepared-but-unsubmitted entries. Submitting clears it,
+				// and if that alone woke the worker there is nothing left to do here.
+				if (io_uring_submit(&ring) < 0)
+				{
+					return;
+				}
+				sqe = io_uring_get_sqe(&ring);
+				if (sqe == nullptr)
+				{
+					return;
+				}
 			}
+
+			io_uring_prep_nop(sqe);
+			// Null user_data marks it as carrying no operation, which is what the
+			// completion drain tests before dereferencing.
+			io_uring_sqe_set_data(sqe, nullptr);
+			io_uring_submit(&ring);
 		}
 	};
 
@@ -488,9 +518,19 @@ namespace coroute::net
 			auto* worker_ring = rings_[ring_index].get();
 			io_uring_cqe* cqe;
 
-			// How long to sleep when there is nothing to do. Not a latency knob: a
-			// completion wakes this wait immediately whatever the value is, which is why
-			// raising it a thousandfold below left the median alone.
+			// How long to sleep when there is nothing to do.
+			//
+			// Two things end this wait early, and it is worth being exact about which,
+			// because an earlier version of this comment was not. A completion wakes it
+			// immediately whatever the timeout is, so for connections already in flight
+			// the value is not a latency knob, which is why raising it a thousandfold
+			// below left the median alone. Work posted from another thread, though,
+			// arrives through wake(), and until wake() was fixed it did not end this
+			// wait at all: it wrote to an eventfd nothing read, so a post(), a
+			// run_on_worker() handoff, a TimerQueue callback or a stop() on an idle ring
+			// waited out the whole timeout. That was tolerable at 1us and would not have
+			// been at 1ms. wake() now submits a no-op whose completion ends the wait, so
+			// the claim above is true of posted work too.
 			//
 			// It was 1us, and at that value the loop spent its life waking up. Measured
 			// on the Linux rig at 10 000 requests a second, four workers, both arms
@@ -522,15 +562,34 @@ namespace coroute::net
 			ts.tv_sec = 0;
 			ts.tv_nsec = 1000000;  // 1ms
 
-			// The wait needs the submission lock because it takes an SQE for its timeout,
-			// but it must not still hold it below: completions are resumed inline, and a
-			// resumed coroutine's next act is usually to submit again. Holding the lock
-			// across that would deadlock the worker against itself.
+			// Whether this wait holds the submission lock depends on whether it is a
+			// submission-queue producer, and that is a property of the kernel.
 			//
-			// The completion queue needs no lock. It has exactly one consumer, this
-			// worker, which is what makes releasing here safe rather than merely
-			// convenient.
+			// Without IORING_FEAT_EXT_ARG the timeout is a real operation occupying an
+			// SQE, so the wait produces into the queue and must hold sq_mutex like any
+			// other producer. With it, the timeout rides along as an argument to
+			// io_uring_enter, nothing is submitted, and the lock buys nothing.
+			//
+			// Taking it anyway is not free, and not merely a wasted acquire: this wait
+			// blocks for up to the timeout, so holding the lock across it blocks every
+			// other producer for that whole period. wake() is one of those producers.
+			// The result was that wake()'s no-op could not be submitted until the wait it
+			// was trying to interrupt had already ended by itself, which made wake()
+			// exactly as ineffective as the eventfd it replaced -- measured at a median
+			// delivery of 962us against a 1ms timeout, where the fix is supposed to
+			// deliver in tens of microseconds. The unit test for posted work is what
+			// caught it; the change alone looked correct.
+			//
+			// Either way the lock is not held below: completions are resumed inline, and
+			// a resumed coroutine's next act is usually to submit again, so holding it
+			// across that would deadlock the worker against itself. The completion queue
+			// needs no lock regardless, having exactly one consumer, this worker.
 			int ret = 0;
+			if (worker_ring->ext_arg)
+			{
+				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
+			}
+			else
 			{
 				std::lock_guard lock(worker_ring->sq_mutex);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
@@ -589,7 +648,10 @@ namespace coroute::net
 				std::lock_guard lock(ring->callback_mutex);
 				ring->callbacks.push(std::move(callback));
 			}
-			// Woken because the worker may be parked in a wait with nothing else due.
+			// Woken because the worker may be parked in a wait with nothing else due,
+			// and a queued callback is not something the ring would otherwise notice.
+			// wake() submits a no-op for exactly this; see it for why an eventfd did not
+			// work here.
 			ring->wake();
 		}
 
