@@ -5,3 +5,16 @@ reports/** linguist-documentation
 reports/** linguist-generated
 reports/** linguist-vendored
 fuzz/corpus/** binary
+
+# Measurement records keep the bytes the harness wrote them with.
+#
+# `* text=auto` above normalises line endings on the way in and restores the
+# platform's on the way out, which is right for source and wrong for evidence: a
+# record committed on Windows comes back with different bytes than it went in with,
+# so a hash taken from the file and a hash taken from the blob disagree and nobody
+# can tell which one a paper cited. It happened, on a campaign's four notes files,
+# and only the fixed-width JSONL escaped because it had no bare newlines to convert.
+#
+# Provenance is by hash here, so the bytes are the artefact and must not be touched.
+benchmark/results/** -text
+
