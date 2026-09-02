@@ -362,9 +362,12 @@ def _base(**over) -> dict:
 # rises to 322 to 499 at 40k, 50k and 55k, and reaches 85 ms at 60k. Isolated 2.5 and
 # 5.2 ms readings at 30k and 45k sit between neighbours in the tens to hundreds of
 # microseconds at higher rates, so those are the host stalling rather than a ceiling;
-# 60k is the ceiling. Under the rules as they now stand all twelve are admissible --
-# those three were refusals when the ladder ran, under the 1 ms pacing rule that has
-# since been withdrawn -- and the ladder reads as the knee of a covariate throughout.
+# 60k is the ceiling. Those three were refusals when the ladder ran, under the 1 ms
+# pacing rule that has since been withdrawn; no rule refuses on pacing now, and the
+# surviving open-loop rule passes on all twelve, delivered share 0.9997 or better at
+# every rate. The ladder therefore reads as the knee of a covariate throughout. (Judged
+# whole these records still refuse, on power_source None: they predate the field, which
+# is an environment gate and says nothing about the rate.)
 #
 # The table stops at 35k rather than at 55k. At the time the rates were chosen pacing
 # lag was an admission rule at 1 ms, and the last three rates measured within a factor
