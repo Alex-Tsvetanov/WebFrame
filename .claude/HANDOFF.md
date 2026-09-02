@@ -344,9 +344,30 @@ been scheduled yet.
   quickly a TOTAL server stall would starve the generator in each cell", because a partial slowdown
   never exhausts the pool and a partial slowdown is what was observed. **Keep it as ONE SENTENCE of
   illustration, never a column** -- a number in a table gets used whatever sentence sits beside it.
-  **THE HONEST ESTIMATOR ALREADY EXISTS and is the desktop's own non-circular table.** Accepted-run
+  **THE HONEST ESTIMATOR ALREADY EXISTS and is the desktop's own non-circular table** (which it had
+  computed without recognising it was the answer to its own question). Accepted-run
   latency x rate / connections is the pool's utilisation under normal operation, computed from runs
-  exogenous to any refused run being judged; it ranged 0.3% to 32%. The independence needed is from
+  exogenous to any refused run being judged; it ranged 0.3% to 32% as first computed --
+  **but that used latency p99, and Little's law wants the MEAN, so those were a loose upper bound.**
+  Recomputed by the coordinator with the median, which brackets from below where p99 brackets from
+  above (the mean lies between and nearer the median in a right-skewed distribution):
+
+  | design | rate | n | median p50 | max p99 | util(p50) | util(p99) |
+  |---|---|---|---|---|---|---|
+  | h1-deep | 70000 | 48 | 0.066 ms | 0.293 ms | 0.072 | 0.320 |
+  | h1-deep | 55000 | 49 | 0.070 | 0.288 | 0.060 | 0.248 |
+  | h1-deep | 40000 | 48 | 0.057 | 0.144 | 0.036 | 0.090 |
+  | transport | 5000 | 49 | 0.060 | 0.085 | 0.005 | 0.007 |
+  | churn | 25 | 47 | 0.134 | 6.130 | 0.0001 | 0.0024 |
+
+  **The busiest cell ran the pool at about 7% of capacity, not a third**: fourteen connections free for
+  every one in use. The conclusion strengthens rather than shifts. churn at 25 is one part in ten
+  thousand, so whatever caused its refusals, the pool had essentially all of itself idle.
+  **Label it "utilisation under ACCEPTED operation", never "the cell's utilisation":** it is computed
+  from runs that passed the gate while the hypothesis under test is that the gate removes slow runs.
+  For "was the pool near binding in normal operation" that is the right quantity and arguably the only
+  sensible one, since refused runs are precisely not normal operation. Turned around to characterise
+  the cell including its stalls it would understate, and it inherits the selection being studied. The independence needed is from
   the RUN, not from the cell, and this has it; it also varies between cells at the same rate whenever
   the arms differ, which `connections/rate` cannot. Caveat that keeps it honest: it is not independent
   of the cell's own server behaviour, so it cannot compare a slow server's cell against a fast one's
