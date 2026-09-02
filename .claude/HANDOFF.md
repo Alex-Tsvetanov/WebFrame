@@ -693,6 +693,25 @@ been scheduled yet.
   first, 310 self-checks passing. **The admissibility declaration was committed BEFORE the design
   ran**, reasoning, exemption and price in one place, because an exemption written afterwards is an
   excuse.
+- **PAPER 3 IS DRAFTED: `paper-io-portability` draft/v1, `09bd8ac`, 9 pages, build clean, 0 overfull,
+  page 1 checked visually.** Every section but results, which is a numberless skeleton naming the
+  record each future table comes from. 26 review findings, 25 already incorporated by the drafting
+  commit and re-verified rather than re-applied; the commit closed four residual defects the reviewers
+  could not have seen because they were shell-escape damage in `% src` comments, plus three source
+  ranges unified against `85a4a72e0` (one cited a line about the lock for a claim about the submit;
+  one cited `int ret = 0;`; one started a block one line after its own explanatory comment).
+  **The abstract was a comment block, so the built PDF printed the heading and nothing under it** --
+  the same defect paper 1 had. It now states the arrangement, the three kinds of cost and the limits
+  in words, with no measured number and the figures marked to be written when the records are pushed.
+  Its `\chead` was already empty with a reason, so no venue edit was needed.
+  **Hygiene finding rejected, correctly and for a third reason worth keeping:** `INDEX.md` carries
+  hostnames and private addresses, but it is BYTE-IDENTICAL across the paper repositories, so a
+  one-repo edit desynchronises the pair. Combined with the repos being private and the papers
+  themselves being clean, the resolution is the same as paper 1's: no action, and any change would
+  have to be a coordinated pass over all four.
+- **All four paper repositories now carry a built PDF on `draft/v1`.** Paper 2 complete with a Word
+  version; papers 1 and 3 drafted except results, which wait on the records being pushed; paper 4 a
+  scaffold with noted sections, which is correct since it is future work with no data.
 - **PAPER 1 IS DRAFTED: `paper-dfa-routing` draft/v1, `d60d9d7`, 7 pages, build clean, pages checked
   visually.** Every section but results, which is a numberless skeleton naming the record each future
   table comes from (`measure/desktop-2026-09-02-routing`, committed on the desktop, not yet filed).
