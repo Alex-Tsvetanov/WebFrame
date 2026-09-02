@@ -222,6 +222,44 @@ def port_checks() -> None:
           named("wsl:Ubuntu-24.04") == "coroute-loadgen-wsl")
     check("a namespace generator is not filed as WSL", named("netns:gen") == "coroute-loadgen-netns")
 
+    print("\n== a server that is listening and will not name its backend says so ==")
+
+    # A binary built before the banner carried a backend prints "(multi-accept)" alone,
+    # BANNER_BACKEND never matches it, and the server is ready forever without ever
+    # being startable. wait_until_ready used to return False for that, which the driver
+    # files as "server did not become ready within 30s": the readiness timeout's message
+    # for a server that answered the readiness connection on the first try, and the one
+    # cause the rewritten failure path did not name. No timeout is long enough, so the
+    # operator spends the night raising it.
+    from benchmark.adapters import CorouteServer
+
+    listener = socket.socket()
+    if os.name != "nt":
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    silent_port = listener.getsockname()[1]
+    # _proc is None, so nothing here can be mistaken for a child that exited: this is
+    # the live-and-silent case and not the died-at-startup one.
+    silent = CorouteServer(binary=Path("x"),
+                           cell=ordering.Cell.of("coroute", protocol="http1.1",
+                                                 io_backend="io_uring"),
+                           port=silent_port)
+    silent._output.append(f"Server listening on port {silent_port} (multi-accept)\n")
+    message = ""
+    try:
+        try:
+            silent.wait_until_ready(0.3)
+            raised = False
+        except RunFailed as exc:
+            raised = True
+            message = str(exc)
+    finally:
+        listener.close()
+    check("a listening server with no backend banner is refused", raised)
+    check("the refusal says to rebuild, not to wait longer",
+          "rebuild" in message and "multi-accept" in message)
+
 
 def topology_checks() -> None:
     print("\n== the affinity masks are checked against the sibling layout ==")

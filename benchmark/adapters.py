@@ -411,7 +411,21 @@ class CorouteServer:
             if self.effective_backend is not None:
                 return True
             time.sleep(0.01)
-        return connected and self.effective_backend is not None
+        if connected:
+            # Listening, answering, and silent about its backend. The only other answer
+            # available here is False, which the driver files as "server did not become
+            # ready", and that sends the operator to the readiness timeout when the
+            # cause is a binary from before the banner named a backend: it prints
+            # "(multi-accept)" alone, BANNER_BACKEND never matches, and no timeout is
+            # long enough. The banner it did print is quoted rather than described,
+            # because that is what tells this apart from a genuinely slow start.
+            raise RunFailed(
+                f"server on port {self.port} is listening but printed no backend banner "
+                f"within {timeout_s:.0f}s; a binary older than the banner never will, so "
+                f"rebuild the tree passed to --build. It printed: "
+                f"{''.join(self._output).strip()[:500] or '(nothing)'}"
+            )
+        return False
 
     def _startup_failure(self) -> str:
         """Why the server is already gone, in the words it used.
