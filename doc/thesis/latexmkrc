@@ -3,4 +3,18 @@ $pdf_mode = 1;
 $bibtex_use = 2;
 $out_dir = 'build';
 $clean_ext = 'bbl nav out snm synctex.gz run.xml';
+# main.pdf is versioned beside the source, so the build has to be reproducible. Without
+# this, pdfTeX stamps CreationDate, ModDate and the file identifier with the moment of the
+# build, so two builds of identical source differ in 68 bytes and every rebuild looks like a
+# change. With three branches now carrying the PDF that is a merge conflict for nothing.
+# The date comes from the last commit that touched a thesis SOURCE, not from HEAD and not
+# from the clock: an unrelated commit elsewhere then leaves the PDF byte-identical, while a
+# real edit moves the date once, together with the edit. generated/results.tex is not
+# tracked and so cannot contribute a date; it does not need to, since a measurement change
+# arrives with a data file that is.
+my $epoch = `git log -1 --format=%ct -- Main.tex Abstract.tex preamble.tex lang.tex coroute.bib chapters abstract figures data images 2>/dev/null`;
+chomp $epoch;
+$ENV{SOURCE_DATE_EPOCH} = ($epoch =~ /^\d+$/) ? $epoch : time;
+$ENV{FORCE_SOURCE_DATE} = 1;
+
 $success_cmd = 'cp build/main.pdf main.pdf';
