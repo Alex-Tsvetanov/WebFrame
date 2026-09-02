@@ -302,26 +302,36 @@ been scheduled yet.
   just short of the single worst one (second of 23 and second of 24, within 8% of the maximum). **Not
   one refusal in the informative population sits in the body of its cell.** Where outside, the
   magnitudes are 150x to 6000x the cell maximum, not runs that drifted over a line.
-  **THE COORDINATOR THEN COMPUTED THE LAPTOP'S THRESHOLD OVER THE FILED RECORDS AND IT SORTS THE
-  TABLE EXACTLY.** Ratio = latency p99 x rate / connections (all designs use 64 connections):
-
-  | design | rate | lat p99 (ms) | ratio | pool binds | verdict |
-  |---|---|---|---|---|---|
-  | h1-deep | 55000 | 980.527 | 842.6 | yes | OUTSIDE |
-  | h1-deep | 40000 | 86.160 | 53.9 | yes | OUTSIDE |
-  | h1-deep | 70000 | 13.263 | 14.5 | yes | OUTSIDE |
-  | h1-deep | 70000 | 3.592 | 3.9 | yes | OUTSIDE |
-  | transport | 5000 | 12.751 | **1.0** | boundary | OUTSIDE |
-  | churn | 25 | 5.631 | 0.0 | no | INSIDE |
-  | churn | 25 | 3.784 | 0.0 | no | INSIDE |
-
-  Every binding cell is outside; both non-binding cells are inside; and transport at 5000 lands on the
-  boundary the formula defines, which is the kind of coincidence that means a formula is right.
-  Route-2 strength computed the same way (connect time x rate / threads) gives 0.12 at churn rate 25,
-  the weakest establishment cell in the data. **So the two INSIDE rows are the one cell where BOTH
-  couplings are weakest: the prediction failed exactly where the mechanism predicts the weakest
-  signal, which is better than a prediction that passed everywhere because it has a gradient rather
-  than a direction.**
+  **THE COORDINATOR COMPUTED A RATIO OVER THESE ROWS AND IT WAS CIRCULAR. RETRACTED IN FULL; the
+  table is deleted rather than annotated, per the rule that a number in a table gets used whatever
+  sentence sits beside it.** The ratio was the REFUSED run's own latency p99 x rate / connections,
+  and the verdict OUTSIDE is also a function of the refused run's latency p99. Both columns were
+  monotone in the same variable, so the sort could not fail: it said "runs with high latency have
+  high latency", in two columns. The transport row singled out as "the coincidence that proves the
+  formula" was the tell -- a coincidence that cannot fail to occur is not evidence. The desktop caught
+  it and verified the arithmetic was correct before pointing out that correct arithmetic was the
+  problem.
+  **THE NON-CIRCULAR VERSION SAYS THE OPPOSITE.** Using the ACCEPTED runs' latency (exogenous to the
+  run being judged), no cell has the pool binding under normal operation: the largest is 0.32, a third
+  of the way to the threshold, computed from the WORST accepted run rather than the median, so already
+  generous. **The pool was binding in none of the seven**, and whatever slowed those runs did so with
+  ample idle pool capacity -- consistent with rate 400, where the pool is ~1% utilised and the effect
+  was real anyway.
+  **The desktop's causal reading, adopted: the pool does not bind FIRST.** The server slows for its
+  own reasons, latency rises, and only then does the pool arithmetic become large. Pool starvation is
+  a CONSEQUENCE of the slowdown, not its cause, which is why the circular ratio tracked severity so
+  well: it was measuring how far the consequence had run.
+  **And its explanation of the two INSIDE rows is better** than the coordinator's "weakest coupling",
+  which was itself reasoning from the circular quantity. Exogenously, churn at 25 is not qualitatively
+  different -- every cell has an idle pool. What differs is that its accepted latency is already 4 to
+  6 ms, forty times h1-deep's, so its accepted maximum is a HIGH BAR and a refusal must travel further
+  to clear it. They are inside because the bar is high, and they still rank second of 23 and second of
+  24.
+  **Offered to both machines to be shot down, not adopted: `connections / rate` contains no
+  measurement at all** -- it is how long a total stall must last before the pool empties. 0.91 ms at
+  h1-deep's top rate; 12.8 ms at transport 5000; 2560 ms at churn 25. It predicts NOTHING about which
+  runs were refused and must not be used for that. It states how coupled the gate is to the server in
+  each cell, as a property of the design computable before any run.
 - **ROUTE 3 IS NOT AN INDEPENDENT CAUSE and the two machines were never in conflict; the coordinator
   created the disagreement.** The laptop showed the socket buffer cannot fill (one outstanding request
   per connection, a ~100-byte GET against tens of KB). The desktop confirmed pacing is taken at SEND
