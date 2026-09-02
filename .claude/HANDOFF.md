@@ -740,15 +740,29 @@ been scheduled yet.
   So report the INCREMENT as well as the proportion at those rates: a fixed event keeps its size and
   only becomes rarer; a depth shrinks as available idle shrinks.** That discriminator is already
   inside the runs in progress and costs nothing.
-  **AND A HARDER PROBLEM THAT HURTS THE WHOLE PARKING FAMILY, arithmetic on filed data: THE FAST MODE
-  HAS MORE IDLE THAN THE SLOW MODE, AT EVERY RATE.** In the fast mode at 100/s, establishment costs
-  0.20-0.48 ms against a 10 ms period, so the machine is idle for over 9.5 ms of every period -- more
-  than a slow run has at any measured rate, and far past saturation in either story. If available idle
-  caused the slow mode, every fast run at 100 should tip into it on its first connection; 50 of 50 did
-  not, and 99 of 99 across both arms did not. **Whatever selects the mode, it cannot be how much idle
-  time is available**, which is what both the duty-cycle and the absolute-interval accounts were built
-  on. Stronger than the amplitude objection and it applies to the family rather than to a constant.
+  **A COORDINATOR ARGUMENT THAT THE FAST MODE HAS MORE IDLE THAN THE SLOW ONE IS WITHDRAWN: it was
+  wrong on the arithmetic AND conditioned on the outcome.** The numbers: fast at 100/s has 9.52-9.80 ms
+  idle per period; slow at 50/s has 10.41-10.82; slow at 25/s has 30.29-31.33. So the fast mode does
+  NOT have more idle than a slow run at any rate. **And the comparison was inadmissible anyway: the
+  idle in a slow run is REDUCED BY the slow event, so it used a quantity the outcome causes to predict
+  that outcome.** A parking story is about the idle BEFORE the event.
+  **The admissible quantity is the COUNTERFACTUAL idle, period minus the fast-mode cost (~0.5 ms):**
+  39.5 ms at 25/s (slow seen), 19.5 at 50 (slow seen), 13.8 at 70, 11.3 at 85, 9.5 at 100 (zero slow
+  in 99), 6.2 at 150 (zero slow in 99). It falls monotonically and **any threshold between 9.5 and
+  19.5 ms accounts for every observation held**, so the parking family is not refuted -- it is left
+  with a wide, unremarkable window. The amplitude objection stands alone and is still the only real
+  argument against parking, and it is the weaker kind: a scale that does not match is a puzzle, not a
+  contradiction.
+  **THIRD CONDITIONING-ON-THE-OUTCOME ERROR OF THE EVENING, two of them the coordinator's** (the
+  circular ratio; this), the other the desktop's sample of framing errors selected for being framing
+  errors. Both of the coordinator's came dressed as arithmetic on filed data, which is the form that
+  reads as rigour. **General check for the methodology chapter, beside the gate rule: before comparing
+  any quantity across two groups, ask whether membership of the group changes the quantity.** The gate
+  version -- a validity rule on something the treatment moves -- is the same failure at the level of
+  admission rather than of analysis.
   What survives: the correlation with rate, real and unexplained, and the fixed-increment fact.
+  The counterfactual idle at the five designed rates (19.5, 16.2, 13.8, 11.3, 9.5 ms) samples that
+  interval evenly, which is a better property than the design was built for.
   **AND THE AMPLITUDE MAY ARGUE AGAINST PARKING ALTOGETHER, which cuts against both framings.** 9.3 ms
   is not a plausible idle-exit cost -- those are microseconds to tens of microseconds, which is what
   the laptop measured. 9.3 ms is the order of a TIMER TICK or a scheduling quantum. The slow mode's
