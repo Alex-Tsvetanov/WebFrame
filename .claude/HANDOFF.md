@@ -859,6 +859,34 @@ been scheduled yet.
   2.876 (io_uring) kernel crossings per request at 10 000/s, a difference of 2.2 against a latency gap
   of 7-9 us, so 3-4 us per crossing if the gap is syscall-dominated. If the mechanism arms move the
   counts, the transport and mechanism campaigns disagree about one cell and that is a stop.
+- **THE ENTER-COUNT BIMODALITY IS UNEVEN RING DISTRIBUTION, and the one-worker discriminator settled
+  it exactly: one ring gives 2.502 seven times, spread 0.000**, against four workers' 2.804/3.204 with
+  spread 0.401. The bimodality requires more than one ring, so it is `SO_REUSEPORT` assignment (fixed
+  at connect time, held for the run) and not completion batching.
+  **All three numbers decompose exactly**, with two submits structural, a wait term depending on how
+  many rings the completions spread across, and a timer term of workers x 1000/s ÷ rate:
+
+  | arrangement | submits | waits | timer | total | measured |
+  |---|---|---|---|---|---|
+  | one worker | 2 | 0.402 | 0.100 | 2.502 | 2.502 |
+  | four, low mode | 2 | 0.804 | 0.000 | 2.804 | 2.804 |
+  | four, high mode | 2 | 0.804 | 0.400 | 3.204 | 3.204 |
+
+  The wait term halves when the ring count drops from four to one, which is what spreading the same
+  completions across a quarter as many rings should do -- a second thing the one-worker run measured
+  without being asked. **So the modes differ in the TIMER term alone, and by all of it.**
+  **THE RESIDUAL PUZZLE, stated sharply rather than as "unestablished": the gap is the WHOLE timer
+  term, so the high mode has all four workers timing out at full rate and the low mode none at all.**
+  Uneven distribution explains why a ring would be light, but one light ring among three busy ones
+  should contribute a quarter of the term, not all of it. So the distribution appears to produce a
+  state in which either every ring times out or none does, and why it is all-or-nothing rather than
+  proportional is the open question. **What would settle it: per-ring timeout counts, which the
+  harness does not have and which would be a small addition.**
+- **The laptop has stopped; its queue is empty.** Everything filed on `measure/laptop-2026-09-02`
+  (three commits: `512f248` the records, `42e0dc4` the three rules, `e4e84f2` paper 2's syscall count
+  and two probes), nine directories, four through the driver, every README stating what produced it
+  and what it does not show, the counted ones repeating that their latency figures are not reportable.
+  Framework work on `linux/paper2-demux-counted` (`6c10743ab`). **Pushed nowhere.**
 - **SPACING DOES NOT RESCUE TLS: candidate tested and CLOSED, not left pending.** TLS at 10 000,
   io_uring, 7 repetitions, no-gap arm first as a within-session control: 4 of 7 accepted against 5 of 7
   with a 30 s gap, which at n=7 is one run and not an improvement. **The mechanism is the answer, not
