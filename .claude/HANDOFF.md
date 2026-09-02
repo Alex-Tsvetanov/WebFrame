@@ -129,7 +129,16 @@ been scheduled yet.
   ceiling, not as a server result; the earlier ladder's 468 us at that rate had already said so.
   (3) **The three refusals at 400/s are all in the TLS arm and none in cleartext**, so they are not
   obviously instrument-side: refusal there may be correlated with the arm being measured, which is
-  the one case where discarding refused runs biases a comparison. 3 of ~50 against 0 of ~50 is
+  the one case where discarding refused runs biases a comparison. Sharper, from the successor's reading of
+  the same file and accepted: the accepted runs at 400/s reach 665 us and the three refusals sit at
+  2030, 2110 and 2170, three points within 140 us of each other after a 1365 us gap. **That is a
+  second mode, not the tail of the distribution that produced the 665.** All three delivered the
+  full 9200 whole-run count, so it is a pacing failure and not a delivery failure, and all three
+  carry gen_cpu 0.881 to 0.948. **Open diagnostic, asked of the desktop:** the median gen_cpu of the
+  97 accepted 400/s runs, beside those three. A materially lower accepted median puts the second
+  mode in the generator (the campaign's case 2) and the cell is citable with a stated limitation; a
+  similar median leaves the mode unexplained and the TLS-versus-cleartext comparison at 400/s is
+  then conditioned on not having hit it. Do not decide the headline question before that number. 3 of ~50 against 0 of ~50 is
   suggestive, not established (Fisher exact about 0.24). The cell is kept, with n=97 accepted, and
   every TLS-versus-cleartext statement at 400/s carries the asymmetry in its text. It is not used
   for a headline claim. (4) **The refused runs are NOT re-run.** Re-running only the runs that
@@ -754,6 +763,15 @@ until it was settled, and was right to. `phd-webframe-04` has been told to stand
 
 **Standing rule for the machines: never act on a design ruling while two sessions are claiming
 coordination. Report to both, act for neither, and say so, exactly as the Windows machine did.**
+
+**The ten-minute clause is withdrawn.** Every brief used to tell the machines to send a question
+with the default they would take and act on it after ten minutes. The Windows machine refused it
+three times today and is right: a coordinator's silence is not Alex's approval, and it caught a
+real error that way (a relayed go for a window described as three hours carried a sequence of about
+eight, and it asked Alex directly instead of taking the relay as consent). The clause is removed
+from `~/.claude/scheduled-tasks/coordinator-successor/SKILL.md`, which would otherwise have re-sent
+it on every future run. The replacement: ask, wait, and if the question blocks one step, do other
+authorised work meanwhile and keep the question open. Non-blocking must never mean self-authorising.
 
 ## Succession, automated (set up 02:30 EEST)
 
