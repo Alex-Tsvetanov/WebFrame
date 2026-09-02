@@ -941,6 +941,42 @@ been scheduled yet.
   at 35k is 87 Mbit/s; churn at 800/s is 13 Mbit/s). It WOULD bind for the `h1` design's 8192-byte
   payload cell at 40k, whose ceiling is about 13.8k requests a second; cap that at 10k if it is ever
   run.
+- **THE PACING-TO-COVARIATE CHANGE HAS LANDED ON ITS BRANCHES, NEITHER MERGED.** Framework
+  `harness/pacing-covariate` head `9f46518ab`, six commits, merges clean against the moved mainline;
+  paper 2 `draft/v1` head `fdde7734`. `validity.py` replaces the constant with the reasoning in full
+  and adds an `ADMISSION_RULES` marker; `loadgen.cpp` had been applying the SAME threshold itself
+  (:1877-1883) and now checks achieved share only, so generator and harness agree again. Re-evaluation
+  writes new files beside the originals; `measurements/2026-09-02-desktop/` is byte-identical and its
+  `git status` empty.
+
+  | design | runs | accepted before | after | readmitted | still refused |
+  |---|---|---|---|---|---|
+  | tls-smoke | 4 | 2 | 3 | 1 | delivered 59.3% |
+  | churn-ladder | 8 | 3 | 8 | 5 | -- |
+  | churn-ladder-net | 8 | 0 | 0 | 0 | 8 |
+  | churn | 400 | 394 | 396 | 2 | 3 socket, 1 drift |
+  | transport | 500 | 499 | 500 | 1 | -- |
+  | h1-deep | 250 | 244 | 248 | 4 | 2 drifts |
+
+  Overall 13 refused becomes 6. Thesis builds at 162 pages, 15 red markers unchanged; selfcheck **336**
+  (the handoff's earlier 332 was wrong); paper 2 8 pages, DOCX verify 257 numbers.
+- **A FINDING FROM THAT WORK THAT CORRECTS ME: the harness has NO pooled refusal stop rule and never
+  did.** `run_campaign.py` contains no 10-per-cent rule, no per-rate stop and no abort on refusal
+  count. The rule the desktop stopped `churn-net` on came from its brief, not from the code, and the
+  coordinator then ruled on it as though it were a harness gate. Briefs may carry stop rules, but the
+  thesis must not describe one as implemented.
+- **AND THE GATE CHANGE INVALIDATES THE EXAMPLE IN THE SUBSECTION THE COORDINATOR ADDED TONIGHT**
+  ("Праг за отказ по натоварване, а не общо за проекта", chapter V). Its worked example is `churn-net`:
+  11 per cent pooled, 41 of 44 refusals at rate 800, 0/0/3 of 100 at the lower rates. **Those are
+  verdicts under the OLD rules and 41 of them were PACING refusals**, which no longer refuse anything.
+  `churn-net` is not in the filed directory (it sits on the desktop's unpushed branch), so it has not
+  been re-evaluated and the new counts are not known.
+  **MUST DO when Alex pushes `measure/desktop-2026-09-02-net`:** re-evaluate it, then rewrite that
+  subsection. The methodological point survives -- a pooled threshold mixes rates the arrangement
+  handles with rates beyond it -- and the example probably becomes STRONGER, because under the current
+  rules those runs are largely not refused at all and the arrangement's ceiling shows instead in the
+  reported lateness (387 us median at 800 against 48 at 400). That is the covariate doing exactly what
+  it was demoted to do. **Do not rewrite it on that guess: verify against the re-evaluated file first.**
 - **THE ESTABLISHMENT ANOMALY IS CHARACTERISED AND CLOSED FOR THE NIGHT; the mechanism is unknown and
   every account either party proposed has been withdrawn against evidence.** Seven rates, 105 runs,
   plus the earlier 196.
