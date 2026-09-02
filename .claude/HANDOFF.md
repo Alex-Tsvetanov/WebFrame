@@ -95,6 +95,29 @@ been scheduled yet.
 
 ## Findings that came out of tonight, worth keeping
 
+- **The clock reads are attributed to three sites, none needing nanoseconds.** Call-graph
+  profile of the server process only (the generator is a separate process in the other
+  namespace, so the separation is structural), epoll churn, 8000 connections: `IdleTimeout`'s
+  `now_ns()` 4.00 per connection (41%, inlined at three call sites), the `TimerQueue` run loop
+  at `timer_queue.hpp:107` 3.68 (38%), and `TimerQueue::schedule` at `:55` 2.01 (21%). All
+  three are deadline arithmetic at millisecond-to-second scale against a 30 000 ms timeout.
+  Nothing measurement-grade appears at all, so every read on that path is bookkeeping.
+  **Authorised: change `idle_timeout.hpp:126` `now_ns()` itself**, not just `touch()`, since
+  the expiry check at `:169` reads the same function and both sides of the subtraction must
+  share a clock. Worth 4.00 of 9.69 per connection.
+  **Not authorised yet: the `TimerQueue` pair.** The read at `:107` is not redundant, it is
+  what decides to pop; deleting it would spin on an already-past deadline without popping.
+  Restructuring to pop on `wait_until` reporting a timeout is possible but depends on a number
+  nobody has: how many clock reads `cv_.wait_until` makes internally on this platform. If
+  libstdc++ passes the absolute deadline to `pthread_cond_clockwait` the restructure saves the
+  full 3.68; if it converts to a relative timeout it moves the read and saves nothing. That
+  microbenchmark is queued and decides whether the 59% is reachable.
+- **A ladder separated two explanations a single point could not, for the third time.** The
+  same line was first guessed to be a fixed-rate reader, withdrawn when the keep-alive ladder
+  showed no floor, and is now confirmed as the largest site: the loop is event-driven, so its
+  wakeups scale with timer operations and therefore with connections, giving per-connection
+  cost and no per-second floor. Right line, wrong mechanism, and only the ladder could tell.
+
 - **First campaign design complete: `churn`, 400 runs, 394 accepted, 6 rejected (1.5%),**
   2 h 45 m on the desktop at `4645e5e03`. Rejections, all individually explicable and none
   showing the host degrading: three single socket errors in otherwise healthy runs (pacing 94,
