@@ -39,6 +39,7 @@ class FakeServer:
     # What a real adapter raises when the child died before listening.
     died: str | None = None
     argv_value: list[str] = field(default_factory=lambda: ["fake-server"])
+    syscall_counter: str | None = None
 
     @property
     def argv(self) -> list[str]:
@@ -59,6 +60,20 @@ class FakeServer:
             raise OSError("could not stop")
         return driver.ResourceUsage(cpu_seconds=12.5, memory_peak_bytes=1 << 26,
                                     quic={"received": 100, "forwarded_in": 3})
+
+    # Present but silent unless this fake was asked to count, which is how the real
+    # adapter behaves: both calls return immediately on a server with count_syscalls off,
+    # so an uncounted run is byte-identical to one from before the counter existed.
+    def start_syscall_count(self) -> None:
+        if self.syscall_counter:
+            self.log.append("count-start")
+
+    def stop_syscall_count(self) -> dict[str, int]:
+        # Idempotent, as the real one is: it returns nothing once perf is already gone.
+        if not self.syscall_counter:
+            return {}
+        self.log.append("count-stop")
+        return {"raw_syscalls:sys_enter": 5} if self.log.count("count-stop") == 1 else {}
 
 
 @dataclass
@@ -211,6 +226,37 @@ def run(check: Callable[[str, bool], None]) -> None:
     joined = " ".join(record.rejection_reasons)
     check("the original failure is reported first", joined.index("exploded") < joined.index("stop"))
     check("and the stop failure is reported too", "could not stop" in joined)
+
+    # --- the syscall counter is stopped even when the run is not --------------
+    #
+    # perf is started before the generator and, on the success path, stopped after it.
+    # Everything the generator can raise used to skip that, leaving perf uninterrupted
+    # with its counts discarded, its piped stderr unread and its root-written workdir on
+    # disk: one per failed counted run.
+    log = []
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=log, syscall_counter="perf"),
+        generator=FakeGenerator(raises=True), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("a generator that raised still stops the counter", "count-stop" in log)
+    check("before the server it is attached to",
+          log.index("count-stop") < log.index("stop"))
+    check("and the record says the run was counted", record.syscall_counter == "perf")
+    check("while carrying no counts from it", record.syscall_counts == {})
+
+    log = []
+    record = _run_one(
+        _scheduled(),
+        server_factory=lambda cell: FakeServer(cell=cell, log=log, syscall_counter="perf"),
+        generator=FakeGenerator(), environment=_env(),
+        campaign_fingerprint="fp", duration_s=30.0,
+    )
+    check("a run that succeeded counts inside the generator's lifetime",
+          log.index("count-start") < log.index("count-stop") < log.index("stop"))
+    check("and keeps the counts the first stop returned",
+          record.syscall_counts == {"raw_syscalls:sys_enter": 5})
 
     # --- guards decide -------------------------------------------------------
     record = _run_one(

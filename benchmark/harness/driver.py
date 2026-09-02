@@ -297,7 +297,6 @@ def run_one(
 
         if hasattr(server, "stop_syscall_count"):
             record.syscall_counts = server.stop_syscall_count()
-            record.syscall_counter = getattr(server, "syscall_counter", None)
         record.requests_total = result.requests_total
         record.requests_total_whole_run = result.requests_total_whole_run
         record.requests_non_2xx = result.requests_non_2xx
@@ -323,6 +322,31 @@ def run_one(
         failure = f"{type(exc).__name__}: {exc}"
 
     finally:
+        # Stopped here as well as on the success path above, and before the server is,
+        # because every way generator.run can end other than returning skips that call: a
+        # RunFailed for a missing result file, a TimeoutExpired from its own bound, a
+        # truncated JSON. perf is then never interrupted, so it discards its counts, its
+        # piped stderr is never read, and the workdir it writes into is never removed --
+        # one per failed counted run, for the length of the campaign. Idempotent: a
+        # counter that was already stopped returns nothing and does nothing.
+        #
+        # Ahead of server.stop() because perf is attached to the server's pid, and the
+        # signal that makes it write its counts has to arrive while that pid is alive.
+        if server is not None and hasattr(server, "stop_syscall_count"):
+            try:
+                server.stop_syscall_count()
+            except Exception as exc:  # noqa: BLE001
+                # Appended rather than raised, the same way the stop note below is: on a
+                # run that already failed the generator's own message is the informative
+                # one, and a run that produced no load legitimately counted nothing.
+                note = f"stopping the syscall counter failed: {type(exc).__name__}: {exc}"
+                failure = f"{failure}; {note}" if failure else note
+            finally:
+                # Even when the counts were refused. A run that was counted and whose
+                # counts did not survive is not a run that was never counted, and an
+                # absent syscall_counter is what says the latter.
+                record.syscall_counter = getattr(server, "syscall_counter", None)
+
         # In a finally block because a leaked server holds the port and every later run
         # in the campaign is then refused for a reason unrelated to the code being
         # measured. Refused rather than shared: on Linux the leak would otherwise be
