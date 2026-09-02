@@ -650,6 +650,16 @@ been scheduled yet.
   evening were ordinary ones self-review does catch, and the independence-of-position instruction.
   Nothing further -- continuing to polish a paragraph about over-elaboration would be its own
   demonstration.**
+- **The macOS kqueue wake measurement is FILED: `paper-io-portability`, branch
+  `measure/macos-2026-09-02` (74fbafb), `measurements/2026-09-02-macos/wake/`.** README with the
+  three pre-fix runs (98486/98472/98487 us median, 21/21 delivered, transcribed because the raw
+  ctest output was not kept) and three post-fix raw outputs taken at the merged mainline with the
+  test binary's success reporting on: median 11, 14, 12 us; first 6-7; worst 24, 40, 77. Provenance
+  stated: ctest, not the driver, so no fingerprint or gates; shape-only against Linux. Pushed by the
+  coordinator, which is the arrangement Alex set this morning for the coordinator's own filings.
+  Lesson recorded for anyone capturing Catch2 numbers: the CHECK messages print only with `-s`
+  (success reporting) or on failure, so a passing run captured through ctest's grep gives the pass
+  line and nothing else; the first attempt filed exactly that and was amended.
 - **THE MICROSECOND TRUNCATION IS AT CAPTURE, NOT AT REPORT, so it is a measurement change.**
   `loadgen.cpp:1278-1281` casts `at - c.issued` with `duration_cast<microseconds>` and stores
   `uint32_t` (:182); `connect_us` (:199, :981) and `pacing_us` (:190, :1229) are the same. The JSON
@@ -982,7 +992,7 @@ been scheduled yet.
   |---|---|---|
   | epoll | 50138 us | 34 us (worst 74) |
   | io_uring (1 ms wait) | 962 us | 9 us (worst 39) |
-  | kqueue | 98486 us | 6 to 12 us (worst 32) |
+  | kqueue | 98486 us | 6 to 14 us (worst 24-77) |
   | IOCP | correct already | unchanged |
 
   kqueue's fix is `EVFILT_USER` armed with `EV_ADD | EV_CLEAR` at init and triggered by
