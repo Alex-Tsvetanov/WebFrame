@@ -2449,6 +2449,66 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 13:40, 3 September -- the question closed, and it improved the method chapter
+
+**THE THREE SECONDS-LATE RUNS ARE GOOD MEASUREMENTS. MY FRAMING WAS WRONG AND THAT IS ON THE RECORD.**
+I called it a hole through which bad runs enter. It is not. **Establishment time settles it**: taken
+inside the opening of the connection, before any schedule exists to fall behind, so it carries no
+schedule debt and the selection by lateness cannot have produced it. The three show 16.4, 16.5 and
+2.4 ms against a peer median of 1.4, and 104/103/84 at the tail against 1.9. **The server was slow.**
+These are exactly what v2 exists to stop discarding. The defect was never admission, it was
+PRESENTATION, and those need different fixes.
+*Half my comparison was contaminated and the desktop said which half.* Latency is measured from the
+due instant and so is pacing, so their difference is just a service time (23.5, 26.9, 24.3 ms).
+Selecting on lateness then finding latency elevated is the withdrawn ratio in a new hat. **Never
+report that comparison.** The median was legitimate: two runs were late throughout, one broke between
+the 75th and 90th percentile.
+
+**THE POOL TABLE IS THE REAL FINDING AND IT IS NOW IN THE THESIS.** Pacing in microseconds, per rate,
+under both rule sets:
+| rate | old n/med/p90/max | new n/med/p90/max |
+|---|---|---|
+| 50 | 100 / 59 / 67 / 90 | 100 / 59 / 67 / 90 |
+| 150 | 100 / 51 / 60 / 87 | 100 / 51 / 60 / 87 |
+| 400 | 97 / 48 / 252 / 665 | 100 / 48 / 306 / 2,170 |
+| 800 | 59 / 247 / 401 / 591 | 98 / 387 / **125,734** / 2,579,918 |
+The first two rows identical to the digit (nothing was ever refused there) is what makes the last row
+legible rather than alarming. **At rate 800 the NINETIETH percentile moved from 401 us to 125,734 us**
+-- a tenth of the pool more than 100 ms behind schedule, not a tail of outliers. And the change is
+**per load**, which is the section's own claim, confirmed by a quantity not selected to confirm it.
+
+**THE DENOMINATOR FINDING, which reaches beyond this project.** Achieved share compares delivery
+against what the generator ATTEMPTED, and attempts shrink when it falls behind, so **the measure moves
+its own denominator and reports success**. The three seconds-late runs read 0.9999 against a peer
+median of 0.99991. `requests_total_whole_run` against rate times duration separates them perfectly:
+every peer at every rate sits on EXACTLY the intended count (18,400 to 18,400 at rate 800), the three
+at 0.945/0.953/0.956. **Not adopted as a rule**, for the same reason pacing was dropped: a slow server
+completes fewer requests in fixed wall-clock time, so gating on it reinstates the very bias v2
+removed. What it establishes is that the invisibility was never inherent.
+**`validity.py` corrected (`7bc06ed7c`).** Its comment claimed achieved share "does not depend on how
+the server behaved, which is what makes it usable as an admission rule", and claimed the share covers
+what the pacing rule protected. Both false. **A false justification is worse than none, because it
+stops anyone looking.** The rule stands; the reason given for it did not.
+
+**CHAPTER V SUBSECTION REWRITTEN (`3285cc7c4`), thesis at 166 pages, 0 undefined references or
+citations, table page rendered and visually checked.** It now runs: the old worked example is gone
+because the rule that produced it is gone; the surviving claim is sharper (a per-load decision cannot
+rest on ONE ladder sample that landed near the median of a distribution whose tail reaches seconds);
+the runs are slow-server measurements on the establishment evidence; the latency comparison is named
+and excluded so nobody reaches for it later; the denominator observation is stated as a general
+property.
+
+**OPEN: 20 red data placeholders in the built thesis.** Six (`campaign.sweeps.*`) are DELIBERATE and
+the text says so -- that sweep was never run. Four more are the unmeasured X2/X3 keys. **But
+`campaign.{x1,transport,churn}.readmitted` are real gaps introduced by the branch merged today**: the
+chapter states how many runs each sample regained and the generator has never run since those keys
+were invented. Used in four places including the English annotation. **The laptop has been asked** to
+re-evaluate `h1-deep`, `transport` and `churn` under v2 for those three numbers, plus the same pacing
+pool table per rate, plus establishment checks on any run a reader would doubt -- and warned off the
+circular latency comparison.
+*Note `doc/thesis/generated/results.tex` is UNTRACKED*, so the numbers a build shows depend on which
+machine built it.
+
 ## 13:00, 3 September -- a rule for how we check, and a thesis contradiction fixed
 
 **A WORKING RULE, extracted by the laptop after it made the same mistake twice in one probe.**
