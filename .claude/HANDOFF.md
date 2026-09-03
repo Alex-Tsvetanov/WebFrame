@@ -2449,6 +2449,75 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 13:00, 3 September -- a rule for how we check, and a thesis contradiction fixed
+
+**A WORKING RULE, extracted by the laptop after it made the same mistake twice in one probe.**
+*A negative result from a lookup is only as good as the key.* Before reporting something absent,
+confirm the name is the one the system uses -- ask what owns a file you can already see, or list what
+exists, rather than querying a name you supplied.
+It reported a crypto binding absent under a module name it had invented (`_quictls`; the build asks
+for `_ossl`, present), and reported the QUIC libraries unowned under package names it had assumed
+(`ngtcp2`/`nghttp3`; they are `libngtcp2`/`libnghttp3`). **Both would have been caught by one query
+keyed on evidence instead of on a guess.** The first wrong absence would have AGREED with the other
+machine's finding, which is the most dangerous kind of confirmation. The second cost more by
+propagating: it came with a recommendation, I accepted it as a gate, and it reached the other machine
+and this file before it was corrected. **A wrong absence with a recommendation attached travels
+further than a wrong absence alone.**
+
+**PAPER 4's APPARATUS IS REPRODUCIBLE.** Arch `core`, signature-validated: `libngtcp2` 1.25.0-1 and
+`libnghttp3` 1.18.0-1, installed 1 September as dependencies **of curl**. Nobody installed a QUIC
+toolchain for this project; the capability is what a stock system provides. **But it is not pinned** --
+rolling-release packages, and libnghttp3 has already moved 1.11 to 1.12 to 1.18 on that machine, so a
+campaign spanning an upgrade would silently change its own apparatus. **The library versions go into
+the environment record as a schema addition BEFORE any campaign**, on the same argument as
+`local_interface`: record what was used, not what was assumed.
+
+**MY GENERATOR-CPU PROPOSAL IS DEAD AND THE DESKTOP KILLED IT PROPERLY.** The code's own comment,
+which I had asked it to work from and had not read closely enough myself, says an open loop paces by
+SPINNING, so it sits at full CPU whether or not it is keeping up; judging it by CPU "would refuse
+every valid open loop run and accept none". My exogeneity argument was sound in the abstract and
+irrelevant in fact: **a quantity saturated regardless of the outcome carries no signal either way.**
+The numbers settle it beyond argument. Rate-800 median CPU is 0.9092; the three seconds-late runs are
+0.9087, 0.9091 and 0.8915, so two are within five ten-thousandths of the median and the third is
+BELOW it. The rule would refuse them only by the accident of their rate (93 of 100 at rate 800 exceed
+0.85) and **would take 254 of the 356 accepted runs with them, including all 100 at rate 400** -- the
+cell we spent two days establishing is sound. Within a rate the rule has ZERO discriminating power.
+
+**THE HONEST POSITION, which the thesis will carry:** an open loop that falls seconds behind while
+delivering 99.99 per cent is invisible to every admission rule that does not measure lateness, and the
+only quantity measuring lateness is the one removed for being endogenous. Both facts are true and they
+do not resolve each other. Neither exogenous quantity in the record, CPU or achieved share, measures
+lateness. Whether such a quantity could exist is a question about the GENERATOR'S INSTRUMENTATION,
+not about the validity rules.
+**WHAT DOES CLOSE IT WITHOUT A SIXTH MECHANISM: the obligation we already accepted and half performed.**
+We demoted pacing from gate to covariate. **A covariate recorded and never reported is not a
+covariate, it is a deleted rule with a comment.** Nothing in the thesis shows a reader the pacing
+distribution of the runs it pools, so a reader sees single-digit millisecond percentiles with no way
+to learn that three runs were seconds late. **Wherever admitted runs are pooled, the pacing
+distribution of the pool is reported beside them.** The run stays admitted, as v2 says it should, and
+stays visible, which is all the gate was really buying. Same principle as the branch's own commit
+about the check belonging at the action rather than at the claim.
+*Asked of the desktop, as characterisation and NOT as a candidate rule:* the full latency distribution
+of those three runs against their rate-800 peers. Tail-only movement means a mostly healthy run with a
+stall; elevated medians mean the server was slow throughout and these are exactly what v2 exists to
+stop discarding. Different sentences about the same three runs. It was invited to reject the question
+if selection-by-pacing contaminates the comparison the way the withdrawn ratio was contaminated.
+
+**THESIS: A CONTRADICTION FIXED, and it needed no new measurement to find.** Chapter V rejects
+loopback as the method precisely because it has one address, and adopts the network-namespace pair,
+which it says gives "two client addresses, the only thing that makes QUIC migration testable on one
+machine at all". Chapter III states this correctly: the mechanism exists, the run was NOT CARRIED OUT.
+**But chapter VI, the conclusion and one passage of chapter III justified the gap by calling forced
+migration IMPOSSIBLE on a single address** -- a property of the topology chapter V had already
+rejected. Fixed in all three places: the reason is that the run was not made, not that it cannot be.
+The distinction is not verbal. Impossibility would be a property of the environment and beyond
+anyone's control; not-carried-out is a property of how time was allocated, which is the same reason
+already given for hypothesis X4. Built clean: **164 pages, 0 undefined references, 0 undefined
+citations.**
+*Deliberately NOT yet claimed:* that the HTTP/3 half has expired too. A build now exists on the Linux
+machine, but compiling is not serving, and no handshake, packet or connection has been exercised
+anywhere on any platform. That edit waits for the QUIC workflow's Prove phase.
+
 ## 12:35, 3 September -- both machines reported, and one of them found a hole in a change I recommended
 
 **MERGED AND PUSHED to `phase0-foundation`:** `linux/paper2-demux-counted`, `design/two-host-run`,
