@@ -2449,6 +2449,66 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 16:15, 3 September -- migration works, the test that proved it did not, and X2 has a design
+
+**THE MIGRATION TEST PASSES -- AND PASSES ON THE BROKEN CODE, so as committed it demonstrates
+nothing.** The laptop held it to the standard and found the third green-check-that-does-not-check of
+the day, this time by refusing to accept a pass.
+It wrote an `AF_PACKET` sniffer (tcpdump is not installed and installing it is a system change) and
+ran it inside the server namespace. Client address changed: **yes**, observed on the wire,
+`:44865` at t=0 then `:40117` at t=2.004. Same connection, not a fresh one: **yes**, no long-header
+packet after t=0.005 and `accepted=1`. **Connection identifier changed: NO** -- byte-identical
+either side of the move.
+**That is the whole problem.** The committed test performs SNAT REBINDING, which is invisible to the
+client, so it never switches CID, so the single original map entry still resolves. The fix is about
+ADDITIONAL ADVERTISED CIDs never becoming lookup keys, which only a client-INITIATED migration (RFC
+9000 §9.5, fresh CID plus path validation) reaches.
+**The 2x2 that settles it** -- the laptop built the pre-fix tree (`b68257d40`, parent of `00f6546ce`)
+and held the test constant while varying only the code:
+| code | rebinding test | client-initiated |
+|---|---|---|
+| pre-fix | PASS | **FAIL, 3 Stateless Resets** |
+| post-fix | PASS | PASS |
+On the fixed tree the wire shows exactly what the fix exists for: the client moves and switches to a
+DCID it had only ever been ADVERTISED, with no new Initial, and the request completes. On the pre-fix
+run the client log shows the server advertising NEW_CONNECTION_ID seq 1-5, none ever a lookup key.
+**Authorised:** fold the client-initiated case in as the PRIMARY phase, keep rebinding as a second
+phase named for the path it does cover, and record the control in its own comment. Also fix the leak:
+the trap kills the `ip netns exec` wrapper rather than the grandchild and the app has no SIGTERM
+handler, so every run strands a four-worker server needing SIGKILL. **A harness that leaves servers
+running will eventually measure them.**
+
+**X2 DID NOT EXIST AND THE LAPTOP WAS RIGHT TO REFUSE TO INVENT IT.** Nothing in the tree defines a
+forwarding share; `run_campaign.py` knows only X1. Design now pushed:
+`paper-quic-cid-routing` `draft/v1`, `design/x2-forwarded-share.md` at `5189f35`, committed before any
+number exists.
+**Why the thesis's quotient is an input, not a result.** It is a property of the traffic, not the
+server. For one connection on N workers, after migration the new four-tuple lands on the owning worker
+with probability 1/N and otherwise EVERY subsequent packet is forwarded, since the hash never changes
+again. So `X2 ≈ r · E[f_after] · (N-1)/N`, and every term but `r` -- the share of connections that
+migrate at all -- is measurable here. **Choosing `r` sets the answer.** One connection in a synthetic
+namespace, two counters and a division would give a number arithmetically correct, reproducible and
+about nothing. **A number nobody can falsify because its value was an input is worse than no number.**
+The literature does not supply `r` either: the deployment survey reports that many top services do not
+support migration at all, and no rate.
+**What is measured instead:** (A) **the cost of ONE forwarded packet**, which is what actually decides
+the hypothesis -- kernel routing does not reduce the share, it makes forwarding unnecessary, so it
+buys exactly that cost, and if the cost is under the instrument's resolution then no share of traffic
+justifies the dependency. Paired within one connection either side of a client-initiated move, 25
+reps, reported under the project's rule (interval excludes zero AND ≥5 per cent) with resolution
+stated either way. (B) the conditional share across N ∈ {2,4,8} at three migration points, where the
+model predicts each cell and **a disagreeing cell is the finding**. (C) X2 as a FUNCTION of `r` with
+the measured terms filled in, plus the migration rate at which added work first exceeds resolution.
+Falsification conditions are written into the design so they can fire.
+**The same reasoning is now in the thesis** (`6e59bad77`, chapter III, page 55 rendered and checked --
+formula, Cyrillic subscript and citations all correct). Thesis at **169 pages, 0 undefined references
+or citations**.
+
+**Deviation recorded in advance:** the dependency script pins OpenSSL 3.5.8 and the runs use the
+system 3.6.4. The pin exists because distributions lag; this one does not. The laptop built only
+ngtcp2's examples against the system libraries -- minutes rather than an hour -- on the same reasoning
+that made using curl right.
+
 ## 15:30, 3 September -- paper 4 has a working HTTP/3 server and a migration fix
 
 **HTTP/3 SERVES. END TO END, WITH A CONTROL.** `curl -k --http3-only` returned **HTTP 200 over HTTP/3**
