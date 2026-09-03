@@ -941,6 +941,38 @@ been scheduled yet.
   at 35k is 87 Mbit/s; churn at 800/s is 13 Mbit/s). It WOULD bind for the `h1` design's 8192-byte
   payload cell at 40k, whose ceiling is about 13.8k requests a second; cap that at 10k if it is ever
   run.
+- **ALL SIX MEASUREMENT BRANCHES ARE PUSHED AND VERIFIED** (Alex authorised directly, the desktop
+  having asked him rather than taking the coordinator's relay -- correctly, since it reversed what he
+  had told it himself). Verified with `ls-remote` rather than exit codes: `-net` 9b3ba079a, `-sweeps`
+  01ccffb06, `-proportion` 2f3a25fa7, `-proportion-fine` **243b7cd40** (not 1186f229f: a later README
+  commit added the establishment-window narrowing) to `paper-socket-demux`; `-routing` 7d95147f8,
+  61 MB and 906 files, clean, to `paper-dfa-routing`; `windows/churn-proportion` 2c853dc37 to the
+  public repo. **`git ls-remote --heads origin | grep -c measure/` returns 0**, checked rather than
+  assumed: nothing carrying host identity reached the public repository.
+- **THE "STALE PROCESSES" WERE NOT STALE AND NOTHING WAS KILLED. Alex declined, and he was right.**
+  Listed properly before acting: ten processes in five LIVE stacks, `notebooklm-mcp.exe` spawning
+  python, every parent running, one group five minutes old -- the notebook MCP tooling that is in the
+  desktop's own tool list. Killing them would have broken live sessions, possibly the one issuing the
+  kill. **The original report ("nine stale python interpreters from earlier sessions that did not
+  exit") was a claim made without reading a single command line**, inferred from the processes being
+  python and old.
+  **The coordinator's share is the larger one:** it repeated that sentence to Alex as a "slow leak",
+  put it on his morning list, and then relayed his authorisation back as an instruction to kill.
+  It never asked what the processes were. Had the action not required authorisation it would have
+  happened, and because of the coordinator rather than the desktop.
+- **A FOURTH CLASS OF ERROR, distinct from the three catalogued tonight** (framing on correct work;
+  conditioning on the outcome; a gate correlated with the treatment). **The two-reader mechanism works
+  on LOAD-BEARING claims, where the other party has a reason to look. It does not work on incidental
+  assertions, because nobody has a reason to check something doing no work** -- and such a claim can
+  later become load-bearing without ever having been examined, which is what happened when a
+  peripheral sentence became a to-do item and then an authorised system change.
+  **So the rule cannot live at the point of assertion. It lives at the point of ACTION: before acting
+  on any claim, establish whether it was ever verified, however long it has stood unchallenged. Age is
+  not evidence; a claim nobody has contradicted in six hours has exactly the support it had when made.**
+  **And note what saved it: the action required authorisation, authorisation required asking, asking
+  meant looking properly. The requirement to ask was not friction, it was the only verification step in
+  the chain.** That belongs in the thesis beside the gate rules; the same structure covers every
+  irreversible thing either machine could have done. Added as a fourth rule in the filed measurements.
 - **THE PACING-TO-COVARIATE CHANGE HAS LANDED ON ITS BRANCHES, NEITHER MERGED.** Framework
   `harness/pacing-covariate` head `9f46518ab`, six commits, merges clean against the moved mainline;
   paper 2 `draft/v1` head `fdde7734`. `validity.py` replaces the constant with the reasoning in full
@@ -2307,10 +2339,6 @@ pushes in the morning. No system changes, no firewall, no passwords, no packages
 2. Push the laptop's `measure/laptop-2026-09-02` to `paper-io-portability` once it exists.
 3. Read `paper-socket-demux/main.pdf` (8 pages) and its DOCX. It is the only complete paper.
 4. Venues stay TODO by his decision; nothing waits on that.
-5. Nine stale python interpreter processes on the desktop, four from one batch this morning, idle and
-   holding a few megabytes. Not affecting measurements, but on a host whose precondition is quietness a
-   population of leftovers that grows with every campaign is a slow leak. Killing them is a system
-   change, so neither machine touched them.
 
 **RUNNING OR QUEUED WITHOUT HIM:** the laptop's mechanism arms (with the pre-registered syscall
 attribution and a stop if the counts move), then its queued fourth design, then filing; the desktop's
