@@ -488,6 +488,89 @@ def _pkgconfig_version(name: str) -> str | None:
     return _run(["pkg-config", "--modversion", name])
 
 
+def _server_binary(build_dir: Path | None) -> Path | None:
+    """The benchmark server inside BUILD_DIR, by the name run_campaign launches."""
+    if build_dir is None:
+        return None
+    base = Path(build_dir) / "examples" / "Samples" / "benchmark_server" / "benchmark_server"
+    for candidate in (base.with_suffix(".exe"), base):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _linked_libraries(binary: Path) -> dict[str, Path]:
+    """soname -> the file the loader resolves it to for BINARY, on this host.
+
+    ldd rather than a static read of DT_NEEDED, because the question is which file will
+    be loaded when this binary runs here, and that depends on the search path as much as
+    on the binary. A soname the loader cannot resolve is left out: it names nothing.
+    """
+    out = _run(["ldd", str(binary)])
+    if not out:
+        return {}
+    linked: dict[str, Path] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "=>" and parts[2] != "not":
+            linked[parts[0]] = Path(parts[2])
+    return linked
+
+
+def _pkgconfig_libdir(name: str) -> Path | None:
+    value = _run(["pkg-config", "--variable=libdir", name])
+    return Path(value) if value else None
+
+
+def _quic_deps(build_dir: Path | None) -> dict[str, str]:
+    """The QUIC libraries the server will actually load, or {} when it loads none.
+
+    These were recorded with _pkgconfig_version until version 9, which asks the host's
+    package database rather than the artefact. Three things were wrong with that and only
+    the first is obvious.
+
+    A TCP-only build linked neither library and its records carried both anyway, so every
+    HTTP/1.1 run on this machine claims an ngtcp2 version for a binary with no ngtcp2 in
+    it. That is a field whose value means "this host had the package installed", read by
+    anyone downstream as "the run used this".
+
+    The version was read when the harness ran, not when the server was built, so a
+    campaign spanning a routine upgrade would record the new version against a server
+    built against the old one. That is the failure this field exists to catch, and the
+    field as it stood would have hidden it behind a plausible number.
+
+    And an absent entry could not be told from an unrecorded one. A record with no ngtcp2
+    key meant either "HTTP/3 was off" or "this predates the field", which are opposite
+    claims about whether the run had a QUIC stack. The schema version answers that now:
+    from version 10 a missing key means the binary did not link it.
+
+    So the soname is resolved for the binary that will actually serve, and <name>_lib is
+    the file it resolves to, which is a fact about the artefact and cannot be wrong. The
+    release version is pkg-config's, but only when pkg-config is describing that same
+    file; if the host has moved on from what the binary links, the version is left out
+    and _lib still says exactly what is loaded.
+    """
+    binary = _server_binary(build_dir)
+    if binary is None:
+        return {}
+    linked = _linked_libraries(binary)
+    deps: dict[str, str] = {}
+    for key, stem, module in (
+        ("ngtcp2", "libngtcp2.so", "libngtcp2"),
+        ("nghttp3", "libnghttp3.so", "libnghttp3"),
+    ):
+        path = next((p for soname, p in linked.items() if soname.startswith(stem)), None)
+        if path is None:
+            continue
+        resolved = path.resolve()
+        deps[f"{key}_lib"] = resolved.name
+        libdir = _pkgconfig_libdir(module)
+        version = _pkgconfig_version(module)
+        if version and libdir is not None and libdir.resolve() == resolved.parent:
+            deps[key] = version
+    return deps
+
+
 def _git_commit(repo: Path) -> str | None:
     try:
         out = subprocess.run(
@@ -979,8 +1062,9 @@ def capture(repo: Path | None = None, build_type: str | None = None,
         },
         "deps": {
             "openssl": _pkgconfig_version("openssl"),
-            "ngtcp2": _pkgconfig_version("libngtcp2"),
-            "nghttp3": _pkgconfig_version("libnghttp3"),
+            # ngtcp2 and nghttp3 are not here: they are recorded only when the server
+            # binary actually links them, and from the binary rather than from the host.
+            # See _quic_deps, and the **spread at the end of this dict.
             "liburing": _pkgconfig_version("liburing"),
             # The dependency the routing claim turns on, and the only one not published
             # by pkg-config: it is fetched by commit at configure time, so the build tree
@@ -989,6 +1073,7 @@ def capture(repo: Path | None = None, build_type: str | None = None,
             # default for two hours, three pins earlier, with nothing in its records to
             # say so.
             "url_matcher": cache_value(build_dir, "COROUTE_URL_MATCHER_TAG"),
+            **_quic_deps(build_dir),
         },
         "virtualisation": detect_virtualisation(),
     }

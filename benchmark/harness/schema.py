@@ -111,7 +111,23 @@ from typing import Any, Iterator
 # because the fields it lacks are still lacking; it carries the original verdict as
 # accepted_at_run and rejection_reasons_at_run in the raw JSON, which read() does not
 # load, so the line on disk is the record of what was decided when.
-SCHEMA_VERSION = 9
+#
+# 10 changed what the ngtcp2 and nghttp3 entries of dependency_versions mean, and it is a
+# change of meaning rather than an addition, so the two must not be pooled. Through
+# version 9 both were pkg-config's answer on the host, asked when the harness ran: every
+# record carried them whether or not the server linked any QUIC at all, so the HTTP/1.1
+# campaigns on this machine claim an ngtcp2 version for binaries with no ngtcp2 in them,
+# and a record written either side of a routine package upgrade reports the version
+# installed at analysis time rather than the one the server was built against. From this
+# version they are read from the server binary the run launched: <name>_lib is the file
+# its soname resolves to, and <name> is the release version only when pkg-config is
+# describing that same file. Both are absent when the binary links no QUIC, which is what
+# a missing key now means; at version 9 and below a missing key meant the field did not
+# exist yet, and at those versions "HTTP/3 was off" is not recoverable from this field at
+# all. The libraries arrive here by rolling-release upgrade, and one has already moved
+# through three versions on the measuring host, so a campaign that spans an upgrade would
+# otherwise change its own apparatus without saying so.
+SCHEMA_VERSION = 10
 
 
 @dataclass
