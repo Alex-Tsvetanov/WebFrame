@@ -519,6 +519,7 @@ def run_campaign(
     on_record: Callable[[schema.RunRecord], None] | None = None,
     probes: HostProbes = LIVE_PROBES,
     expect_interface: str | None = None,
+    run_gap_s: float = 0.0,
 ) -> list[schema.RunRecord]:
     """Walks the schedule, writing each record as it completes.
 
@@ -544,6 +545,17 @@ def run_campaign(
         written.append(record)
         if on_record is not None:
             on_record(record)
+        # Deliberately after the record is written, so a campaign interrupted during a
+        # gap has already filed everything it measured.
+        #
+        # The gap is part of the arrangement, not a convenience: on a thermally limited
+        # machine a run can start hot from its predecessor and shed clock through its own
+        # measured window, which the drift rule then refuses. Spacing lets the machine
+        # return to a repeatable state between runs. It changes what the campaign
+        # measures -- a server that never runs back-to-back is not the server a busy host
+        # runs -- so a campaign that uses it says so.
+        if run_gap_s > 0:
+            time.sleep(run_gap_s)
     return written
 
 

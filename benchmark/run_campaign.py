@@ -628,6 +628,106 @@ def design_mechanism() -> list[Cell]:
     ]
 
 
+def design_uring_worker_probe() -> list[Cell]:
+    """One keep-alive cell with a single worker, to explain a bimodal kernel-entry count.
+
+    io_uring's entries per request at 10 000 with four workers takes one of exactly two
+    values, 2.804 or 3.205, to three decimals, with nothing between them. The gap is
+    0.4006 and four workers at a thousand timer wakeups a second over ten thousand
+    requests is 0.400: one whole timer term, present or absent. The submits cannot vary,
+    being one per operation, and the timer term cannot vary, being fixed by the workers
+    and the timeout. So either some workers time out at their full rate while others
+    never do, or a wait harvests a varying number of completions.
+
+    A single worker discriminates them. Connections are handed to rings at connect time
+    by SO_REUSEPORT and the distribution holds for the whole run, so with four rings a
+    run can land with every worker busy enough never to time out, or with some light
+    enough to time out constantly -- which is a mechanism that produces exactly two
+    stable regimes. With one ring there is no distribution to be uneven.
+
+    If the count is single-valued here, uneven distribution is the cause. If it is still
+    bimodal, it is not, and completion batching is the better reading.
+
+    Counted, and the admissibility declaration of design_demux_counted applies unchanged:
+    the outputs are counts, drift is recorded rather than gated, and the latency figures
+    are not reportable. Everything except the worker count matches the keep-alive cell of
+    that design, so the four-worker comparison is the data already taken tonight rather
+    than a new arm.
+    """
+    return [Cell.of(system_name(), **{**_base(max_requests_per_connection=0), "workers": 1},
+                    protocol_detection=False, offered_rate=MECHANISM_KEEPALIVE_RATE)]
+
+
+def design_tls_thermal_probe() -> list[Cell]:
+    """One TLS cell, to find out whether spacing runs rescues TLS on a laptop.
+
+    Not a design that answers a question about the server. It answers a question about
+    the machine: whether a deliberate gap between runs sheds enough heat that a TLS run
+    holds its clock for its own duration.
+
+    It exists because the cross-arm transport campaign lost its entire TLS half to
+    frequency drift -- 76 of 140 runs refused against 0 of 140 cleartext, the refusals
+    directional and the surviving runs therefore the coolest fraction rather than a
+    random sample. Before designing a spaced campaign around that, one cell is measured
+    to see whether spacing works at all.
+
+    Read the drift, not the latency. If most runs pass the gate with a gap where they
+    failed without one, spacing is a route to the TLS half and the arrangement change
+    gets declared and designed properly. If they still fail, the limitation stands and
+    six minutes bought the certainty.
+    """
+    return [Cell.of(system_name(), **_base(tls=True), protocol_detection=True,
+                    offered_rate=10_000)]
+
+
+def design_demux_counted() -> list[Cell]:
+    """What classification costs in kernel crossings, which is paper 2's missing number.
+
+    design_mechanism crosses the backend and holds classification on; this crosses
+    classification and holds everything else. Four cells: the two connection shapes,
+    each with the demultiplexer on and off. The backend is chosen per invocation, so
+    this is run once per arm.
+
+    epoll is the instrument that can answer. Classification reads the first octets
+    rather than peeking, so its cost is one extra read per connection. Under epoll that
+    read is a syscall and appears directly in the count. Under io_uring it is a
+    submission, and although this implementation submits each operation on its own so it
+    cannot be batched away, its enter count also carries a timeout term that varies
+    between runs by a whole timer contribution, which is far larger than the effect. So
+    epoll carries the claim and io_uring is run for the contrast rather than as a check.
+
+    ADMISSIBILITY, DECLARED BEFORE THE RUN.
+
+    The admissible outputs of this design are syscall and kernel-entry counts per
+    request, and nothing else. Frequency drift is RECORDED and reported per run rather
+    than gated, because a count per request is a ratio of two counts over one window:
+    the requests are set by the offered rate and the duration, and the syscalls are set
+    by the work, so neither depends on how fast the processor ran. The drift rule exists
+    to protect timing comparisons, and applying it to a count discards evidence without
+    protecting anything -- which is the same reasoning that demoted the pacing gate.
+
+    One term is not exactly frequency-independent, and it was flagged before it moved:
+    how many completions a wait harvests depends on how fast the loop runs relative to
+    arrivals, so io_uring's completion-driven wait term can vary with timing. It is the
+    small term and it is why epoll carries the claim.
+
+    The price of the exemption, and it is not optional: THE LATENCY FIGURES FROM THIS
+    DESIGN ARE NOT REPORTABLE. They are produced, they are in the records, and they must
+    not be quoted. Any latency claim comes from a gated campaign.
+
+    Counting also changes what a run measures -- perf attaches per run, which lengthens
+    the gap between runs and makes the clock ramp through the measured window -- so the
+    timing from a counted run is not comparable with an uncounted one even setting the
+    rule aside.
+    """
+    return [
+        Cell.of(system_name(), **_base(max_requests_per_connection=limit),
+                protocol_detection=detect, offered_rate=rate)
+        for limit, rate in ((0, MECHANISM_KEEPALIVE_RATE), (1, MECHANISM_CHURN_RATE))
+        for detect in (True, False)
+    ]
+
+
 # Three rates, one connection shape, for testing whether a syscall count is per request
 # or per second.
 #
@@ -709,6 +809,13 @@ DESIGNS = {
     "mechanism": design_mechanism,
     "clock-ladder": design_clock_ladder,
     "churn-ladder-counted": design_churn_ladder_counted,
+    # Paper 2's syscall count. Run once per arm; see the design's docstring for why its
+    # latency figures are not reportable.
+    "demux-counted": design_demux_counted,
+    # One TLS cell, for the thermal question rather than a server question.
+    "tls-thermal-probe": design_tls_thermal_probe,
+    # One cell with a single ring, to explain io_uring's bimodal entry count.
+    "uring-worker-probe": design_uring_worker_probe,
 }
 
 
@@ -802,6 +909,12 @@ def main(argv: list[str] | None = None) -> int:
                          "chose, and a run over anything else is refused. Use it wherever "
                          "the host has more than one interface on the subnet, where only "
                          "a route metric decides which carries the traffic")
+    # An arrangement change, not a convenience. See driver.run_campaign.
+    ap.add_argument("--run-gap", type=float, default=0.0, metavar="SECONDS",
+                    help="idle this long between runs. For a thermally limited machine "
+                         "where a run sheds clock through its own window and is refused "
+                         "for drift; the gap lets the machine return to a repeatable "
+                         "state. Changes what the campaign measures, so say so when used")
     args = ap.parse_args(argv)
 
     # Refused here rather than one cell at a time. perf exists only on Linux and only
@@ -1126,6 +1239,7 @@ def main(argv: list[str] | None = None) -> int:
         on_record=report,
         probes=probes,
         expect_interface=args.expect_interface,
+        run_gap_s=args.run_gap,
     )
 
     summary = driver.summarise(records)
