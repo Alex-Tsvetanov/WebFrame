@@ -148,6 +148,29 @@ else()
 endif()
 
 # ============================================================================
+# Census: the tests this build did not get
+# ============================================================================
+#
+# A feature guard around a whole test file does not make its tests skip. It makes them
+# absent, and Catch2 cannot report what it was never given, so the run passes and the
+# exit status is zero. Eleven HTTP/3 tests had never executed in any configuration and
+# no output had ever said so. This prints the count on every run and fails when a case
+# the sources define is missing with no undefined macro to account for it.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME test_census
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_census.py
+                --binary $<TARGET_FILE:unit_tests>
+                --source-dir ${CMAKE_CURRENT_SOURCE_DIR}
+                # The definitions the library actually carries, rather than the options
+                # that were asked for: a feature can be requested and then switched off
+                # by a missing dependency, and it is the former that reaches the guards.
+                --defines $<TARGET_PROPERTY:coroute,INTERFACE_COMPILE_DEFINITIONS>)
+else()
+    message(STATUS "Python3 not found: skipping the test census")
+endif()
+
+# ============================================================================
 # Integration: protocol demultiplexing over one listening socket
 # ============================================================================
 #
