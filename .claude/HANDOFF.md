@@ -2511,6 +2511,58 @@ Leftover servers: zero, against one per run.
 wrote the design, and its Prove phase would have run on the one machine that produces false positives
 by construction. Papers 1 and 2 workflows remain live.
 
+## 13:33, 3 September -- paper 1 is finished, and macOS was measured
+
+**PAPER 1 (dfa-routing) IS DONE.** `draft/v1` at `94518ba5`, pushed, tree clean. **14 pages, 0
+undefined references, 0 undefined citations, 0 overfull boxes.** Privacy verified: the only matches in
+the extracted PDF text are the CPU model and the OS build, which are apparatus; no path, user,
+hostname, IP or `.local` name anywhere in the .tex, .csv or .bib.
+*The workflow flagged an error in its own abstract and then fixed it:* the paper claimed both levels
+varied shapes, static-against-parameterised and depth, which is true of the dispatch level only. Now
+correctly scoped -- "end to end the factors are route count and offered rate alone".
+**Two of its three expectations were refuted, which is why it is worth publishing.** The automaton's
+cost is NOT independent of route count: it rises 67 per cent from ten routes to ten thousand with
+every decade step reportable, so the inherited bound of one pass whatever the table size does not
+describe this machine. The radix tree does NOT track path depth: 1.6 per cent over effective depths 5
+to 12 at a resolution of 0.79 per cent, which EXCLUDES a five per cent effect rather than failing to
+find one. Only sequential matching behaved as predicted, 7.7/9.7/10.3 per decade. And the price is
+recorded: the automaton's ten-thousand-route table costs 273 ms to build against the tree's 11, and
+30 MiB of private commit against 5.
+
+**macOS `SO_REUSEPORT` IS NOW MEASURED, NOT INFERRED.** The laptop established from Apple's own kernel
+header and FreeBSD's manual that the option means reuse rather than distribution, and that FreeBSD
+added a *separate* `SO_REUSEPORT_LB` because the original does not balance -- then **explicitly
+refused** to state which socket wins, since that rested on a summary reading of `in_pcb.c`, and noted
+it was a cheap experiment for whoever had a macOS host. **I am the macOS host.** Four UDP sockets on
+one port, 200 datagrams each from a DISTINCT source port -- exactly the input a hash-based distributor
+would spread -- and **all 200 reached the socket bound last, the other three received nothing.** macOS
+26.6.2. Filed with probe source and verbatim output at `paper-quic-cid-routing`
+`measurements/2026-09-03-macos-reuseport/` (`bb3247cc`).
+*That refusal is why the measurement exists.* Had the claim been written from a plausible reading it
+would have been correct and unfounded and nobody would ever have run it.
+
+**"MULTI-ACCEPT" NAMES THREE ARRANGEMENTS, AND IT IS A SCALE RATHER THAN A PAIR.** The desktop read it
+out of source with line numbers: one completion port created once, every socket associated to it with
+completion key **0**, and every worker calling `GetQueuedCompletionStatus` on it. So there is no
+per-worker port and no routing by key.
+| backend | what is pinned | mechanism |
+|---|---|---|
+| epoll, io_uring | the CONNECTION, for its whole life | one socket per worker, `SO_REUSEPORT`, kernel four-tuple hash |
+| kqueue | nothing; rebinds per EVENT | one shared socket, several pending accepts |
+| IOCP | nothing; rebinds per COMPLETION | one port, key 0, all workers dequeuing |
+**On IOCP a single connection's read, write and close can be served by three different workers**, and
+a connection's life contains more completions than events -- so the two "unpinned" positions are not
+the same thing.
+**The validity condition this creates reaches the whole thesis, not just QUIC:** a cross-platform
+worker-count sweep compares pinned against **two different kinds** of unpinned, and the difference
+matters most exactly where such a sweep is most interesting, at high worker counts where cache
+locality and cross-thread handoff dominate. **The environment record stores only the phrase**, which
+is identical on all three. Now in chapter V with the table, the granularity distinction, and the macOS
+measurement cited. Thesis at **172 pages, 0 undefined references or citations**.
+
+**Still running:** paper 2's workflow. **Laptop:** building measurement B. **Desktop:** idle, ten
+branches pushed, tree clean.
+
 ## A correction to this file's own timestamps
 
 The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
