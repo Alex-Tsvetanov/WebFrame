@@ -2449,6 +2449,43 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## Status at 12:20, 3 September -- what is running and who is doing what
+
+**PAPER 3 (io-portability) IS FINISHED AND PUSHED.** `draft/v1` at `9abe10567`, 14 pages, 0 errors, 0
+undefined references or citations, 0 overfull boxes. Every table traced to a named data file and a
+named record set (7 tables + 1 figure; the table of provenance now three-valued, since two of the four
+driver sets ran under the count exemption rather than "every gate in force"). All 17 CSVs reproduce
+byte for byte from `tools/records2csv.py`. **Privacy verified**: no hostname, IP, home path or MAC in
+any .tex, in the bibliography, or in the extracted PDF text; PDF Author/Title/Keywords empty. All 14
+pages rendered and inspected, two tables again at higher resolution.
+*Handed back for my decision:* claim J asserts the SO_REUSEPORT mechanism, the record only rules out
+batching. The one-ring probe was rescoped to "a property of the four-ring configuration" and points to
+the open question, rather than deleted. That is the right call and it stands.
+*What the records could not supply, now stated as limitations:* no epoll awake/spinner control
+anywhere; no record for the socket-policy before/after epoll cells; no per-ring -ETIME counts; no raw
+outputs behind six transcribed wake rows; no TLS cross-arm figure (76 of 140 refused on one arm, 0 on
+the other); the wait-policy check exists at 10000 rps only.
+
+**THREE WORKFLOWS RUNNING** (none has a completion record yet): paper 1 results (`wy9pkrjtd`, started
+09:53 -- `paper-dfa-routing` is ahead 5 with a dirty tree, PDF rebuilt 11:11, so it is late-stage);
+paper 2 completion (`wbnq3sgi9`, 12:08); QUIC reconciliation (`wyg5ptcho`, 12:07). **Do not commit in
+those repositories while they run.**
+
+**BOTH MACHINES ARE WORKING, and both tasks are analysis rather than measurement.**
+*Laptop:* the one question that decides paper 4 -- is the QUIC toolchain (pkg-config, ngtcp2, nghttp3,
+OpenSSL 3.5+) present on the only machine that could serve QUIC, and does a fresh tree configure and
+compile with HTTP/3 on. **Probe only, install nothing**; an absence is the answer, not a repair, and
+installing would destroy the evidence. Either outcome is publishable: with the toolchain paper 4 gets
+a single-machine migration measurement, without it paper 4 is a source-and-design paper about a
+feature confined to one backend, which is the thesis's own subject.
+*Desktop:* re-evaluate `measure/desktop-2026-09-02-net` under the new admission rules using the
+harness at `origin/harness/pacing-covariate` (`d83a0b581`) rather than reimplementing them. It was
+asked for the before/after refusal counts by reason, which runs changed verdict with their achieved
+share and pacing figure, and **specifically whether any newly admitted run is one a human would
+doubt** -- that being the strongest objection to the change, which the thesis should meet rather than
+avoid. This unblocks the chapter V subsection on per-load refusal thresholds, whose worked example
+still argues from 41-of-44 pacing refusals that the method no longer produces.
+
 ## Where the four papers stand, 3 September
 
 **None is ready. Three are drafted except results; the data for all three is now pushed and the
