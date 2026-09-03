@@ -17,4 +17,13 @@ chomp $epoch;
 $ENV{SOURCE_DATE_EPOCH} = ($epoch =~ /^\d+$/) ? $epoch : time;
 $ENV{FORCE_SOURCE_DATE} = 1;
 
-$success_cmd = 'cp build/main.pdf main.pdf';
+# The entry point is Main.tex, capital M. Without this, a bare `latexmk` takes every .tex in
+# the directory as its own document and fails on lang.tex and preamble.tex, which are inputs
+# and not documents; the real thesis builds anyway, so the failure looks worse than it is.
+@default_files = ('Main.tex');
+
+# Capital M here too. macOS ignores filename case, so `build/main.pdf` resolves on this
+# machine and nowhere else; on Linux latexmk writes build/Main.pdf and this copy silently
+# fails, leaving the versioned PDF at whatever it was. That is the failure that looks like
+# success, which is the kind this project refuses everywhere else.
+$success_cmd = 'cp build/Main.pdf main.pdf';
