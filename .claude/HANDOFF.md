@@ -2415,14 +2415,29 @@ build there. **IOCP creates no datagram socket and the source says so** (`iocp_c
 `io_context.cpp:268-272` literally returns nullptr). Only `epoll_context.cpp` and `uring_context.cpp`
 contain `SOCK_DGRAM`, `WSARecvFrom` or `recvmmsg`. **No HTTP/3 test has ever run on any platform**:
 no `http3` string anywhere in the CI workflows.
-**A DEFECT WORTH ITS OWN BRANCH: nothing refuses the combination the platform cannot serve.** There is
-no Windows guard on the HTTP/3 option; the build would accept it and the binary would have no UDP
-socket. That violates the project's own refuse-rather-than-default standard and is the class the
-benchmark server's own comment warns of -- a configuration producing "a full set of plausible numbers
-for an experiment that never happened". The server's `--http3` guard covers a missing certificate, not
-a missing socket. **The desktop has been asked to DEMONSTRATE it** (configure with the option on,
-report whether it configures, compiles, starts) so paper 4 states a fact rather than an inference. It
-was told not to fix it.
+**A CLAIM MADE AND THEN REFUTED BY ITS OWN DEMONSTRATION.** The desktop inferred from CMakeLists that
+nothing refuses HTTP/3 on Windows, so the build would accept a configuration it cannot serve and only
+a null factory would stop it at runtime. Asked to demonstrate rather than infer, it found **the
+configure DOES fail**, but for an unrelated reason: it passes the TLS check and the HTTP/2 block and
+dies at `CMakeLists.txt:477`, `find_package(PkgConfig REQUIRED)`, because pkg-config and pkgconf are
+absent from the machine and ngtcp2 and nghttp3 are absent from both vcpkg triplets. **So: claimed, the
+build accepts what it cannot serve; demonstrated, the build stops before reaching that question;
+unknown, what a Windows host WITH the toolchain would do -- nobody has ever been in that
+configuration.** The build-system claim is withdrawn and paper 4 states the unknown as unknown.
+**BUT THE FAILURE IS ITSELF A SECOND PORTABILITY FINDING, and a demonstrated one.** Every other
+dependency resolved on that machine; HTTP/3 alone needs three further pieces the build does not
+vendor. The framework fetches its regular-expression dependency by content and pins it by commit, so
+it has a mechanism for carrying dependencies and HTTP/3 is the one feature that expects them from the
+host. **Its portability is therefore bounded by the host's package management rather than by the
+framework's code** -- separate from the datagram factory and arguably the larger constraint, since
+the factory is one file nobody wrote while the dependency surface is a design choice about where
+dependencies live.
+**So paper 4 has two findings before measuring anything:** one backend never implemented the datagram
+socket, and the feature's dependency chain is the only one in the framework not carried by the build.
+The desktop was asked to FILE the probe (configure output verbatim, cache values, the four dependency
+checks) on `measure/desktop-2026-09-03-h3-probe` in `paper-quic-cid-routing`, since a paper cannot
+cite a message, then delete the failed build tree. It was told to install nothing: the current state
+IS the evidence and adding the toolchain would destroy the finding.
 **Paper 4's finding, costing no measurement at all:** the framework's HTTP/3 support is Linux-only in
 practice rather than by design, because one backend never implemented the datagram factory, and the
 build system does not refuse what it cannot serve. That is a portability finding, which is the thesis's
