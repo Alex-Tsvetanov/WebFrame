@@ -51,11 +51,26 @@ SRC="$(cd "$HERE/../.." && pwd)"
 CERTS="$PREFIX/testcerts"
 EXAMPLES="$PREFIX/src/ngtcp2/build-examples/examples"
 CLIENT=""
-RESULTS_DIR="$SRC/tests/results"
-LOG="$RESULTS_DIR/http3_path_migration.log"
 SKIP=77
 
-mkdir -p "$RESULTS_DIR"
+# The transcript goes to the build directory, not to $SRC/tests/results.
+#
+# It used to go in-tree, which is wrong twice over. Every run overwrote the file
+# unconditionally, so a run that merely *skipped* -- wrong OS, no client, no
+# sudo -- replaced a recorded measurement with five lines saying it did nothing.
+# And the header line prints the build and prefix paths of the machine that
+# produced it, so an in-tree default writes a local username into a public
+# repository on every invocation.
+#
+# Promoting a run to the record is now a deliberate copy, not a side effect.
+[ -n "$BUILD" ] || {
+    echo "usage: ${0##*/} <build-dir> [prefix] [port] [threads]" >&2
+    exit 1
+}
+LOG_DIR="${LOG_DIR:-$BUILD}"
+LOG="$LOG_DIR/http3_path_migration.log"
+
+mkdir -p "$LOG_DIR"
 : > "$LOG"
 exec > >(tee -a "$LOG") 2>&1
 
