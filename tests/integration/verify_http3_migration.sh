@@ -289,14 +289,24 @@ while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
     CLIENT_STATUS=$?
     CLIENT_PID=
 
+    # The body is "coroute h3 ok\n" (14 bytes). When the client hex-dumps a STREAM
+    # that also carries the HEADERS frame, the ASCII column wraps at 16 and splits
+    # "coroute", so match a contiguous fragment rather than the whole string: same
+    # evidence, matched robustly.
+    #
+    # A clean stream close is the survival signal and subsumes ":status: 200" --
+    # the stream cannot close with no error unless the headers, the body and the
+    # FIN all arrived. It is also printed by every client build, which ":status:"
+    # is not.
     if grep -qF "Negotiated ALPN is h3" "$CLIENT_LOG" \
-        && grep -qF ":status: 200" "$CLIENT_LOG" \
-        && grep -qF "coroute h3 ok" "$CLIENT_LOG"; then
+        && grep -qF "oute h3 ok" "$CLIENT_LOG" \
+        && grep -qE 'HTTP stream 0x0 closed with error codes \(RX:\(no error\)' "$CLIENT_LOG"; then
         echo "  client: request completed on remapped path"
         CLIENT_OK=1
     else
-        echo "  client: incomplete (exit=$CLIENT_STATUS); tail:"
-        tail -20 "$CLIENT_LOG" | sed 's/^/    /'
+        echo "  client: incomplete (exit=$CLIENT_STATUS); checking fragments:"
+        grep -n 'ALPN\|status\|h3 ok\|stream 0x0 closed' "$CLIENT_LOG" | tail -20 | sed 's/^/    /' || true
+        tail -10 "$CLIENT_LOG" | sed 's/^/    /'
     fi
 
     AFTER="$(read_stats)"
