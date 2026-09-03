@@ -1386,8 +1386,25 @@ been scheduled yet.
   | **median of medians (QUOTED)** | **449.00 us (95.9%)** | **19.00 us (4.1%)** | **[+14.00, +27.00]** | **1.31%** |
   | mean, outlier removed | 446.12 us (96.4%) | 16.44 us (3.6%) | [+6.74, +23.72] | 1.73% |
 
-  **The mechanism residual excludes zero in all three, so this is NOT a null result: the mechanisms
-  differ by about 4% of the gap.** The coordinator's reframing from equivalence to decomposition was
+  **CORRECTED WHEN PAPER 3'S RESULTS WERE WRITTEN: the mechanism term is NOT REPORTABLE, and the
+  coordinator stated it as established all night.** On the quoted estimator it is 19 us against a
+  496 us epoll median and a 477 us blocking median, i.e. **3.83% and 3.98%, both under the 5% floor**.
+  The interval excludes zero; the size does not clear the bar; our rule needs both. **The honest
+  sentence, now in the paper: something separates the two mechanisms at low load, the campaign
+  resolved it to 1.31% of the baseline, and it did not establish that the difference reaches the size
+  the method declared worth reporting** -- which is stronger than the claim it replaces, because it
+  says how small the thing is. Under the mean over all 25 rotations the same term is 32.32 us, 6.58%,
+  and DOES clear the floor, so the estimator chosen for the anomalous run is also the conservative one
+  here, and the paper says so.
+  **Two smaller corrections from the same check.** The arm medians are **28 / 477 / 496 us** from the
+  decomposition's own records; the 33 / 469 / 495 quoted all night came from three different files and
+  **495 exists nowhere as a summary statistic** (496 minus 28 closes to the 468 gap; 495 minus 33 does
+  not). And the residual after the two terms is zero BY CONSTRUCTION, the terms telescoping, so it is
+  printed to let the arithmetic be checked rather than as a finding.
+  **Also from the inventory: the completion-driven wait term is session-dependent** -- ~0.5 per request
+  in the blocking-wait set, 0.804 in the counted design, 0.402 in the one-worker probe -- so any table
+  putting 2.876 beside 2.804 and 3.204 owes a reconciling sentence. It is the term flagged as not
+  frequency-independent. The coordinator's reframing from equivalence to decomposition was
   right for a reason neither party anticipated -- there was something there to measure, and an
   equivalence claim would have discarded it.
   **Sentence for the paper:** of the 468 us gap between a readiness backend and a completion backend at
