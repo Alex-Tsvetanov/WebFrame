@@ -52,7 +52,7 @@ namespace coroute::http3
 			.local = datagram.local,
 			.ecn = datagram.ecn,
 		};
-		co_await handle_datagram(view);
+		co_await process_datagram(view);
 	}
 
 	expected<void, Error> Http3Endpoint::bind(std::uint16_t port, bool reuse_port)
@@ -104,7 +104,23 @@ namespace coroute::http3
 	Task<void> Http3Endpoint::handle_datagram(const net::Datagram& datagram)
 	{
 		received_.fetch_add(1, std::memory_order_relaxed);
+		co_await process_datagram(datagram);
+	}
 
+	// Split from handle_datagram so that a forwarded datagram is counted once, not twice.
+	//
+	// deliver() incremented forwarded_in and then called handle_datagram, which
+	// incremented received again for a datagram the receiving worker had already counted.
+	// So received was W + f rather than W, and forwarded_in/received reported f/(W+f)
+	// where the quantity wanted is f/W. That is not a rounding error: a connection whose
+	// every post-migration packet is forwarded has a true share near 0.75 and was
+	// reported at 0.43, and 0.43/(1-0.43) = 0.754 recovers it exactly.
+	//
+	// Found by measuring the same share on the wire, outside the server, and only
+	// because of that: the counters are self-consistent, so any check taking both of its
+	// halves from them would have confirmed the model and shipped the understated number.
+	Task<void> Http3Endpoint::process_datagram(const net::Datagram& datagram)
+	{
 		const PacketInfo info = classify_packet(datagram.data);
 		if (info.kind == PacketKind::Malformed)
 		{

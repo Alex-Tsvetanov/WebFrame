@@ -4,6 +4,8 @@
 // port number, one certificate, one set of routes, one thread pool. If serving three
 // protocols needed three of anything visible here, the design would not have worked.
 #include <csignal>
+#include <cstddef>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -59,6 +61,32 @@ int main(int argc, char** argv)
 				// is split across two lines and cannot be grepped in one piece.
 				co_return Response::ok("coroute h3 ok\n");
 			});
+
+	// A body of a size the caller chooses at startup, for measuring the forwarded share.
+	//
+	// The share is forwarded_in/received, and `received` counts datagrams, not requests.
+	// Two hundred requests for a fourteen-byte body is twelve datagrams, because tiny
+	// responses coalesce: the counter is then quantised far more coarsely than the effect
+	// it is meant to resolve, and a connection is "long" in requests while being nothing
+	// on the wire. Request count is the wrong lever for connection length; bytes are.
+	//
+	// Stream credit is the other reason. The initial MAX_STREAMS here is 100, so a client
+	// asked for more simply stops at the limit and, if it exits when its open streams
+	// close, never sends the rest -- silently, with every request it did send succeeding.
+	//
+	// Size comes from the environment rather than the path so the response is identical
+	// for every request in a run, which keeps the packet count a property of the
+	// measurement rather than of which URL happened to be fetched.
+	{
+		const char* env = std::getenv("COROUTE_BULK_BYTES");
+		const auto bytes = env != nullptr ? static_cast<std::size_t>(std::atol(env)) : 65536;
+		auto body = std::make_shared<std::string>(bytes, 'x');
+		app.get("/bulk",
+		        [body](Request&) -> Task<Response>
+		        {
+					co_return Response::ok(*body);
+				});
+	}
 
 #ifdef COROUTE_HAS_HTTP3
 	// The server reporting on its own packet steering. forwarded_in over received is

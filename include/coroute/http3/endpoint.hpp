@@ -117,7 +117,15 @@ namespace coroute::http3
 		void track_additional_cid(Http3Connection* connection, const CidKey& cid);
 
 	private:
+		// Counts the datagram as received, then processes it. Only for datagrams that
+		// arrived on this endpoint's own socket.
 		Task<void> handle_datagram(const net::Datagram& datagram);
+
+		// The processing alone. A forwarded datagram was already counted as received by
+		// the worker that took it off the wire, so counting it again here would inflate
+		// the denominator of forwarded_in/received -- which is the quotient the thesis
+		// names -- by exactly the number of forwarded datagrams.
+		Task<void> process_datagram(const net::Datagram& datagram);
 
 		// Answers a datagram this endpoint has no connection for.
 		Task<void> send_version_negotiation(const net::Datagram& datagram, const PacketInfo& info);
