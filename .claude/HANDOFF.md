@@ -2449,6 +2449,68 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 13:24, 3 September -- the portability claim was wrong, and a check that could not fail
+
+**PAPER 4's CENTRAL PORTABILITY CLAIM WAS FALSE AND BOTH MACHINES HAD FILED IT.** We had been saying
+HTTP/3 is Linux-only because one backend never implemented the datagram factory. **It was
+implemented.** `origin/feature/http3-quic` carries "implement bind_udp() for IOCP, kqueue, and
+io_uring backends" (26 August) and it is real: hand-written `bind_udp` in both `kqueue_context.cpp`
+and `iocp_context.cpp`, `WSARecvFrom` awaiters, dual-stack handling, plus a later commit fixing
+IPv4-mapped peer normalisation in UDP receive.
+**The true statement is sharper.** That branch sits on a February base; mainline separately grew
+`make_datagram_socket`, which the branch has never heard of and which only epoll and io_uring
+implement. **The capability was written for every backend, against an interface that no longer exists,
+and neither line was reconciled.** Not a platform limitation and not an unwritten file: two divergent
+lines and a redesigned interface -- which for a portability paper is the better finding, being about
+maintenance rather than about what an operating system can do.
+**AND I REDISCOVERED IT RATHER THAN DISCOVERED IT.** `paper-quic-cid-routing/BLOCKERS.md`, committed
+1 September, already had it, recorded better than I put it. Both machines have been told to attribute
+it there.
+*Two things that file knows which I had not passed on:*
+- **The seams are incompatible, not merely different.** On the branch `bind_udp` is PURE VIRTUAL;
+  mainline's epoll implements a datagram type the branch never had. So merging forward **breaks epoll
+  at compile time**. The reconciliation is design work whose cost falls on the one backend that
+  currently works -- a far better explanation for the divergence than anyone forgetting.
+- **kqueue deliberately does not use `SO_REUSEPORT`, and that is CORRECT.** macOS has the option but
+  does not load-balance with it; FreeBSD added `SO_REUSEPORT_LB` because the original does not. **A
+  present feature with different semantics is a harder portability problem than an absent one**, since
+  compiler and linker are both satisfied. Sharper than the datagram gap and it is the paper's own
+  thesis. Both machines asked to confirm from source rather than repeat it -- I have now twice passed
+  a reading on as a finding.
+
+**THE LAPTOP FOUND A CIRCULARITY IN MY OWN DESIGN.** Measurement B checks
+`share = f_after · (N-1)/N`. If `f_after` came from the same endpoint counters that produce the share
+then the share IS approximately `f_after`, so the cell would confirm the model **by construction** and
+the disagreement I said would be the finding could never occur. **I wrote a check that could not
+fail.** Fixed: `f_after` now comes off the wire from the `AF_PACKET` sniffer, entirely outside the
+server's counters. Design amended before any run (`80cd89d7`).
+**AND A PILOT KILLED THE OTHER HALF OF THE DESIGN.** A twenty-request connection completes in **3.8
+milliseconds**, while the client's migration control takes a duration whose smallest useful value is
+three orders larger -- the connection finished ~260 times over before migration was due, `f_after` was
+zero, nothing forwarded. *Rejected:* slowing the handler, because an idle QUIC connection is not
+silent -- acknowledgements and keepalives are forwarded too, so stretching it adds packets whose share
+is set by the chosen delay and `f_after` becomes partly a property of the experimenter. *Adopted:*
+long connections (twenty requests quantises the share more coarsely than the effect), a spread of
+short migration durations, and **the landing point read from the wire rather than assumed** -- the
+migration point is observed, not set. The jitter that made short timings unusable is what supplies the
+spread, and the model is then tested as a relation across the range rather than at three cells that
+could not be hit.
+
+**MIGRATION TEST NOW TWO PHASES** (`linux/migration-phases`, `09655c275`): client-initiated primary,
+rebinding second and named for the path it covers, both reported separately so one verdict cannot hide
+the other. Verified against both trees -- pre-fix fails the primary with 3 stateless resets and passes
+rebinding. The rebinding phase needing three attempts (the first two landed back on the owning worker)
+is the one-in-N case behaving as modelled and is kept visible rather than retried silently.
+**The leak is fixed both halves:** cleanup kills by namespace membership via `ip netns pids` (NOT
+`pkill` on the binary name, which would reach a concurrent run's server), and `http3_app.cpp` now
+handles SIGTERM/SIGINT, since nothing answered the signal even when it reached the right process.
+Leftover servers: zero, against one per run.
+
+**THE QUIC WORKFLOW IS STOPPED** (`wyg5ptcho`, killed at 72 min, 5 agents). Its Port work is pushed as
+`quic/cid-routing-reconciled` (`cb403edbb`, 4 commits) and its remaining phases were superseded: I
+wrote the design, and its Prove phase would have run on the one machine that produces false positives
+by construction. Papers 1 and 2 workflows remain live.
+
 ## A correction to this file's own timestamps
 
 The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
