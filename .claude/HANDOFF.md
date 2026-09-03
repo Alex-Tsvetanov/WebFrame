@@ -2609,6 +2609,67 @@ correctly formed and means something other than it appears to.
 design, a working HTTP/3 server, a migration fix, a two-phase test with a control, and the laptop
 building measurement B. Thesis at **172 pages, 0 undefined references or citations**.
 
+## 13:49, 3 September -- measurement B is done, and it found the counter that defines X2 was wrong
+
+**THE DEFECT, AND IT IS THE JUSTIFICATION FOR THE WHOLE DAY'S DISCIPLINE.** `Http3Endpoint::deliver`
+incremented the forwarded count and then called the handler, which counted the same datagram as
+received a SECOND time. So the denominator was `W+f` where the quantity wants `W`, and the reported
+share was `f/(W+f)` instead of `f/W`. **A connection whose every post-migration packet is forwarded has
+a true share near 0.75 and reported 0.43** -- understated by four tenths of itself.
+**Nothing reading only the counters could have seen it.** They are perfectly self-consistent: every
+internal check passes, every ratio reproduces. It surfaced ONLY as a disagreement between the counter
+share (0.43) and the wire-measured `f_after` (0.77). **Had `f_after` come from the counters, as I
+first wrote §B, the two halves would have moved together, the model would have been confirmed to four
+figures, and the understated number would be in the thesis now, defensible against every objection
+formable from inside the record.** The laptop's refusal of that version as vacuous is the only reason
+it is not. `0.43/(1-0.43) = 0.754` recovered the loss exactly, which put the diagnosis before the
+source reading rather than after.
+Fixed on framework `linux/x2-measurement` (`45c14a73e`); record on
+`measure/laptop-2026-09-03-h3-probe` (`834fd78e`). Now in the thesis at `e23c2f209`, with the point
+that **the independence of a check's two halves is the condition under which it can fail at all**, not
+a precaution.
+
+**THE RESULT: 75 of 75 connections agree with the model.** Tested per connection, which is falsifiable
+where an aggregate is not -- a mean can match while individual connections are wrong in cancelling
+directions. Two branches per connection, since the `(N-1)/N` is an expectation ACROSS connections:
+landed off-owner means share equals `f_after`, landed on-owner means zero.
+| workers | conns | off-owner (model) | mean share (model) | agree |
+|---|---|---|---|---|
+| 2 | 25 | 12 = 0.48 (0.50) | 0.2553 (0.2301) | 25 / 0 |
+| 4 | 25 | 20 = 0.80 (0.75) | 0.3878 (0.3454) | 25 / 0 |
+| 8 | 25 | 20 = 0.80 (0.88) | 0.4076 (0.4140) | 25 / 0 |
+Off-owner fractions consistent with sampling, P(X ≤ observed) = 0.500, 0.786, 0.195. **N=8 is the
+loosest and gets lengthened before the paper leans on it, not after.** The pre-named worry that the
+hash might not spread over the addresses the harness can generate has NOT fired.
+
+**THREE APPARATUS FAULTS, each found because a check refused rather than because anything looked
+wrong.** (1) A per-packet JSON capture saw **62 of 118 datagrams** -- and a lossy capture understates
+traffic AFTER a move, which manufactures precisely the disagreement under investigation. **An
+instrument fault that produces the finding you are looking for is the most dangerous kind there is.**
+(2) Segment offload merged QUIC datagrams before the tap: 70 frames over 1400 bytes, twenty of exactly
+2400, which is two 1200-byte datagrams as one. `ethtool` is not installed and installing it is a
+system change, so the ioctl is issued directly inside the test's namespace. (3) **Sixty requests
+returned 404 with a nine-byte body while every stream closed cleanly**, so a success check written on
+stream closure passed on not-founds -- `/bulk?i=1` does not match the route `/bulk`, and the initial
+MAX_STREAMS of 100 silently truncates a longer run. It asserts every status now.
+
+**ONE THING UNEXPLAINED AND LEFT THAT WAY.** The server counts about two datagrams per connection that
+never reach the tap -- at worst 3.1 per cent, **constant per connection rather than proportional to
+traffic**, with offload off, zero reported drops and one caller of the counting entry point. Digging
+stopped because a constant residual cannot produce a proportional error in `f_after`. It is in the
+record as unexplained rather than smoothed away, which is worth more than a claim of a clean capture
+and gives the next person something specific to chase.
+
+**MIGRATION POINT: observed, not set, as designed.** Connections last about 100 ms and a requested
+delay lands 5-10 ms late; delays cycled over 5-90 ms give `f_after` from about 0.1 to 0.9, and the
+model is tested as a relation across that range.
+
+**MEASUREMENT A IS AUTHORISED AND IS THE LAST ONE.** It is timed, so it needs a quiet machine: 25
+repetitions, current admission rules, the reportability condition (interval excludes zero AND at least
+5 per cent), and **the resolution stated whether or not the result is reportable**. The hypothesis
+turns on whether the forwarding hop is detectable at all, so an honest null with a stated bound answers
+the paper's question as well as a positive would.
+
 ## A correction to this file's own timestamps
 
 The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
