@@ -343,7 +343,7 @@ for i in $(seq 1 "$REQUESTS"); do # No query string: "/bulk?i=1" does not match 
     # those requests returned 404 with a nine-byte body while its stream still closed
     # cleanly -- so a clean close is not evidence that anything was served. The status is
     # checked below for the same reason.
-    URIS+=("https://$SERVER_IP:$PORT/bulk"); done
+    URIS+=("https://$SERVER_IP:$PORT${URI_PATH:-/bulk}"); done
 
 : > "$OUT"
 as_root rm -f "$WIRE" 2>/dev/null || true
@@ -367,15 +367,16 @@ while [ "$conn" -lt "$CONNECTIONS" ]; do
     # of 64 KiB, so f_after ranges from nearly all of the traffic to nearly none of it.
     # The observed move lands 5-10 ms later than requested, which is why it is read from
     # the wire rather than assumed: these are requests, not settings.
-    case $((conn % 7)) in
-        0) delay=5ms ;;
-        1) delay=15ms ;;
-        2) delay=30ms ;;
-        3) delay=45ms ;;
-        4) delay=60ms ;;
-        5) delay=75ms ;;
-        6) delay=90ms ;;
-    esac
+    if [ -n "${DELAYS:-}" ]; then
+        # shellcheck disable=SC2086
+        set -- $DELAYS
+        eval "delay=\${$(( (conn - 1) % $# + 1 ))}"
+    else
+        case $((conn % 7)) in
+            0) delay=5ms ;;  1) delay=15ms ;; 2) delay=30ms ;; 3) delay=45ms ;;
+            4) delay=60ms ;; 5) delay=75ms ;; 6) delay=90ms ;;
+        esac
+    fi
 
     before="$(read_stats)"
     b_rx="$(printf '%s\n' "$before" | stat_field received)"
@@ -387,7 +388,7 @@ while [ "$conn" -lt "$CONNECTIONS" ]; do
 
     t_start="$(python3 -c 'import time; print(repr(time.time()))')"
     "${RUN_IN_NS[@]}" "$CLIENT_NS" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
-        timeout 30 "$CLIENT" --delay-stream=0s --change-local-addr="$delay" \
+        timeout 30 "$CLIENT" --delay-stream="${DELAY_STREAM:-0s}" --change-local-addr="$delay" \
         --exit-on-all-streams-close \
         "$SERVER_IP" "$PORT" "${URIS[@]}" > "$BUILD/x2_client_${THREADS}_${conn}.log" 2>&1 || true
     # A connection's last datagrams arrive after its client exits. Read the counters
