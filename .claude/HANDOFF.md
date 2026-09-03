@@ -2449,7 +2449,19 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
-## 16:15, 3 September -- migration works, the test that proved it did not, and X2 has a design
+## A correction to this file's own timestamps
+
+The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
+Those were clock times I wrote without checking a clock; the real times, from the commits that carried
+each entry, are the ones now shown. Nothing else in any entry changes -- the content, the order and the
+findings were all correct, only the labels were invented.
+
+Recording it rather than silently rewriting, for the same reason everything else here is recorded: a
+document several sessions read for ordering should not quietly acquire a different history. It is also
+today's own lesson arriving at the person writing it down -- a plausible number nobody checked is
+worse than a missing one, and I generated six of them in a file about not doing that.
+
+## 13:17, 3 September -- migration works, the test that proved it did not, and X2 has a design
 
 **THE MIGRATION TEST PASSES -- AND PASSES ON THE BROKEN CODE, so as committed it demonstrates
 nothing.** The laptop held it to the standard and found the third green-check-that-does-not-check of
@@ -2509,7 +2521,7 @@ system 3.6.4. The pin exists because distributions lag; this one does not. The l
 ngtcp2's examples against the system libraries -- minutes rather than an hour -- on the same reasoning
 that made using curl right.
 
-## 15:30, 3 September -- paper 4 has a working HTTP/3 server and a migration fix
+## 13:02, 3 September -- paper 4 has a working HTTP/3 server and a migration fix
 
 **HTTP/3 SERVES. END TO END, WITH A CONTROL.** `curl -k --http3-only` returned **HTTP 200 over HTTP/3**
 from a coroute server (scratch cert, scratch port, TLS + HTTP/3, two workers, io_uring); then 20
@@ -2572,7 +2584,7 @@ excluded HTTP/3 work "is conducted in the Linux campaign". It was not, on any pl
 "planned for, and not carried out", with the distinction spelled out -- excluded-by-environment
 depends on nobody, pending depends on us.
 
-## 14:55, 3 September -- HTTP/3 runs, and every green test run was less green than it looked
+## 12:54, 3 September -- HTTP/3 runs, and every green test run was less green than it looked
 
 **h1-deep IS A THIRD SHAPE, and the number the thesis wanted is FOUR** (filed
 `measure/desktop-2026-09-03-h1deep-reeval` @ `2f6ec61d0`, verdicts.csv, 250 rows; now quoted in all
@@ -2639,7 +2651,7 @@ the committed PDF byte-reproducible, yet the PDF's CONTENT depends on a file tha
 repository, so which numbers it shows depends on which machine built it. Reproducible timestamps over
 non-reproducible content. Flagged, not changed: it is a policy call.
 
-## 14:10, 3 September -- which zero is it, and only one machine can run QUIC
+## 12:47, 3 September -- which zero is it, and only one machine can run QUIC
 
 **I MISASSIGNED A CAMPAIGN AND THE LAPTOP CAUGHT IT BY LOOKING.** I read three keys in one thesis
 sentence and sent all three to the laptop without checking which host each belonged to. **`h1-deep` is
@@ -2698,7 +2710,7 @@ compiling is not serving and that gap is where this fails if it fails; (3) the *
 carrying the linked ngtcp2/nghttp3/OpenSSL versions, populated only when HTTP/3 is on. Migration waits
 for the design, and the design waits on whether the endpoint comes up.
 
-## 13:40, 3 September -- the question closed, and it improved the method chapter
+## 12:38, 3 September -- the question closed, and it improved the method chapter
 
 **THE THREE SECONDS-LATE RUNS ARE GOOD MEASUREMENTS. MY FRAMING WAS WRONG AND THAT IS ON THE RECORD.**
 I called it a hole through which bad runs enter. It is not. **Establishment time settles it**: taken
@@ -2758,7 +2770,7 @@ circular latency comparison.
 *Note `doc/thesis/generated/results.tex` is UNTRACKED*, so the numbers a build shows depend on which
 machine built it.
 
-## 13:00, 3 September -- a rule for how we check, and a thesis contradiction fixed
+## 12:30, 3 September -- a rule for how we check, and a thesis contradiction fixed
 
 **A WORKING RULE, extracted by the laptop after it made the same mistake twice in one probe.**
 *A negative result from a lookup is only as good as the key.* Before reporting something absent,
