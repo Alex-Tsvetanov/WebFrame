@@ -2449,6 +2449,73 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 14:55, 3 September -- HTTP/3 runs, and every green test run was less green than it looked
+
+**h1-deep IS A THIRD SHAPE, and the number the thesis wanted is FOUR** (filed
+`measure/desktop-2026-09-03-h1deep-reeval` @ `2f6ec61d0`, verdicts.csv, 250 rows; now quoted in all
+four places with the source cited). Before: 244 accepted / 6 refused (pacing 4, drift 2). After: 248 /
+2, both drift.
+**The three arrangements differ in WHICH PART of the distribution moves, so the remedy differs too.**
+Net campaign: the POOL shifts, p90 401 to 125,734 us. Laptop: FLAT, nothing moves. h1-deep: the median
+does not move at all and p90 moves by units (66 to 67, 77 to 78, 99 to 120) while **only the maximum
+explodes, by three to four orders**. So in h1-deep a reader quoting a median or p90 reads exactly what
+they read before; only a reader quoting a maximum reads a different quantity. Narrower obligation than
+the net campaign's, where the covariate must sit beside the pool because the pool itself moved.
+*And h1-deep and the net campaign are the SAME HOST*, so the effect is a property of design and load
+rather than of machine -- which two hosts alone could never have shown.
+**The desktop refused to substitute a weaker check and that is in the chapter as a limitation.**
+h1-deep is keep-alive: connections open once and are reused, and the generator keeps establishment
+samples only from connections opened after warmup, so that column is empty BY CONSTRUCTION and a
+mid-run stall leaves no trace. The whole-run counter postdates the records. So for three of the four,
+nothing in the record separates slow server from late generator -- a fact about the schema, not about
+the runs.
+**THE FOURTH INVERTS THIS MORNING'S ARGUMENT.** Its generator CPU is 0.8382 against a peer median of
+0.9949 and a peer MINIMUM of 0.9855 across 49 runs -- below every peer. **Saturation destroys the
+signal above and creates one below**: a generator that keeps time by spinning and is found not
+spinning was descheduled. Opposite of the net campaign's three, where establishment was 12x the peer
+median (the server). Recorded as an observation, not a rule -- one run is not a pattern -- but enough
+that no sentence may treat the two campaigns' readmissions as one phenomenon.
+
+**HTTP/3 RUNS. 11 test cases, 3916 assertions, all pass, 9 ms.** First execution of that code path
+anywhere in this project's history. **And the endpoint really binds:** server on a scratch port, TLS
+and HTTP/3 on, io_uring -- two UDP sockets on 0.0.0.0, one per worker under `SO_REUSEPORT`, confirmed
+by inode in both `ss` and `/proc/net/udp`, TCP listeners alongside, SIGTERM shutdown in 1.6 ms. The
+server's own log line is the claim under test; the kernel is the evidence. **That is the standard for
+all of paper 4.** Next: `tests/integration/verify_http3.sh` already exists and drives the endpoint with
+ngtcp2's reference client, so the handshake may need running rather than writing. Authorised.
+
+**THE DEFECT WORTH KEEPING ABOVE ALL OTHERS TODAY.** The HTTP/3 test files wrap their whole bodies in
+`#ifdef COROUTE_HAS_HTTP3`. Without the define **the tests do not skip, they do not exist** -- the file
+compiles to nothing, the suite says no tests ran, and the exit code is zero. Ordinary builds register
+175 cases and the HTTP/3 build 187. **So every green run this project has ever had was green while
+silently containing eleven fewer tests, and nothing in the output said so.** A skip at least prints.
+This is rule 4a arriving in the build system: no tests ran and no tests exist are the same output and
+only one is a pass. Being fixed on its own branch: the suite should refuse, or at minimum ANNOUNCE, a
+build registering fewer cases than the source defines -- printing the count every run, because a check
+that speaks only on failure is one nobody notices has stopped working.
+
+**THE SCHEMA FIELD EXISTED AND WAS WRONG, WHICH IS WORSE THAN MISSING.** `dependency_versions` already
+carried ngtcp2 and nghttp3 under the right names. But it asked the HOST'S PACKAGE DATABASE rather than
+the artefact, so TCP-only transport records carry QUIC versions for a binary linking neither; and it
+was read when the harness ran rather than when the server was BUILT, so **a campaign spanning a
+routine upgrade would have recorded the new version against a server built against the old one -- the
+field meant to catch the apparatus changing would have concealed exactly that behind a plausible
+number.** Fixed on `linux/quic-linked-versions` (`ef65ff6b4`, off phase0-foundation): resolves the
+soname the binary actually loads, keeps the release version only while pkg-config still describes that
+same file, schema 10, 336 selfchecks pass, verified on both builds (HTTP/3 build reports all four
+fields, TCP-only reports none).
+**Consequence for the chapter:** every record at schema 9 or below carries QUIC versions describing
+the MACHINE and not the run, and must not be quoted as apparatus for those campaigns. A missing key
+means different things either side of schema 10, so the two must not be pooled.
+
+**Placeholders 20 to 16 to 14 unique.** Remaining: 5 `campaign.sweeps.*` (deliberate, a sweep never
+run, and the text says so), 2 X2 and 2 X3 keys (declared unmeasured), 3 protocol-detection cells and
+2 `tail.x1.*` -- those last five are the only ones I cannot classify from here.
+**NOTE `doc/thesis/generated/results.tex` IS UNTRACKED.** The latexmkrc goes to real trouble to make
+the committed PDF byte-reproducible, yet the PDF's CONTENT depends on a file that is not in the
+repository, so which numbers it shows depends on which machine built it. Reproducible timestamps over
+non-reproducible content. Flagged, not changed: it is a policy call.
+
 ## 14:10, 3 September -- which zero is it, and only one machine can run QUIC
 
 **I MISASSIGNED A CAMPAIGN AND THE LAPTOP CAUGHT IT BY LOOKING.** I read three keys in one thesis
