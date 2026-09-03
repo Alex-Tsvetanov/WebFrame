@@ -2563,6 +2563,52 @@ measurement cited. Thesis at **172 pages, 0 undefined references or citations**.
 **Still running:** paper 2's workflow. **Laptop:** building measurement B. **Desktop:** idle, ten
 branches pushed, tree clean.
 
+## 13:39, 3 September -- PAPER 2 IS DONE. THREE OF FOUR ARE FINISHED.
+
+**PAPER 2 (socket-demux) IS DONE.** `draft/v1` at `deb98132`, pushed, tree clean. **12 pages, 0
+undefined references, 0 undefined citations, 0 overfull boxes.** Privacy clean: no path, user,
+hostname or address in the extracted text.
+**Its workflow refuted three figures that the brief AND the source README both asserted,** which is
+why it was worth running rather than transcribing:
+- **Drift.** Both said "3.7 to 4.7 per cent on every run" and "all 56 would have been refused". Truth:
+  per-run drift **0.62 to 10.28 per cent**, and **47 of 56 refused, 9 accepted** because their own
+  drift came in under the limit. "3.7 to 4.7" was the range of epoll's four per-cell MEDIANS -- not a
+  per-run range and not a claim about all 56.
+- **Spread.** "0.055 to 0.087" is the POPULATION standard deviation over epoll's four cells only;
+  io_uring's four are 0.151 to 0.236. The statistic, the backend and the ddof all had to be stated.
+- **"NOTHING UNATTRIBUTED" WAS MY CLAIM AND IT IS FALSE.** The 13 tracepoints do not cover
+  `raw_syscalls:sys_enter`. The named terms sum to **+4.4749 of the +4.5121 total**, leaving +0.0372
+  (0.8 per cent) outside them; io_uring +2.6628 of +2.7693, a 3.8 per cent gap. The paper now says
+  "attributes 4.475 of 4.512" and never "nothing unattributed".
+*Also caught:* the pre-declared exemption docstring was committed **ten seconds** before the first run
+and in the SAME commit as the design, so "declared before the run" is true but not pre-registered the
+way the campaign's other gates were. Said precisely rather than glossed.
+
+**I REPEATED THE CAMPAIGN-MISASSIGNMENT ERROR, IN THE THESIS, AFTER BEING WARNED ABOUT IT.** The
+laptop told me this morning that `h1-deep` was not its campaign. I then wrote ITS `transport` and
+`churn` zeros into chapter VI -- but **the chapter's `transport` and `churn` are the OTHER machine's**,
+sharing one fingerprint with `h1-deep`. They readmitted **one and two** runs (pacing 3279 us in
+transport at 5000/s; 1609 and 5115 us in churn at 25/s), so two real figures became zeros, and the
+paragraph defending the zeros argued from headroom belonging to a different host. **Seven readmitted
+across the three projects: 4, 1, 2.** Corrected at `195d71503`; the two-machine comparison now names
+the cross-arm Linux campaign distinctly instead of reusing design names.
+**The contradiction was already on the page, four paragraphs above.** The chapter says its refusals
+have two causes and only two; the laptop's campaign has one; two campaigns whose refusal reasons
+differ in NUMBER cannot be the same campaign. I had it in view and did not look.
+**Now in the chapter as a method point, because it is a naming defect rather than a slip:** projects
+are named by DESIGN, not by host, so the same name exists in both campaigns and a number lifted from a
+file carries no evidence of where it came from. **Who produced a record is part of the quantity, not a
+label on it.** A project name that does not name the machine is not an identifier.
+*That is the fourth door onto the same disease today:* a lookup keyed on a guessed name; a zero that
+cannot distinguish a rule not running from a rule not firing; an absence from a search that could not
+have found the thing; and now a figure from the right file on the wrong host. Every one arrives
+correctly formed and means something other than it appears to.
+
+**THREE OF FOUR PAPERS ARE FINISHED.** 1 (dfa-routing, 14pp), 2 (socket-demux, 12pp), 3
+(io-portability, 14pp) -- all pushed, all building clean, all privacy-checked. **Paper 4** has its
+design, a working HTTP/3 server, a migration fix, a two-phase test with a control, and the laptop
+building measurement B. Thesis at **172 pages, 0 undefined references or citations**.
+
 ## A correction to this file's own timestamps
 
 The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
