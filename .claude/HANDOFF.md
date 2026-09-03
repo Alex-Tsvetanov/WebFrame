@@ -2449,6 +2449,68 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 12:35, 3 September -- both machines reported, and one of them found a hole in a change I recommended
+
+**MERGED AND PUSHED to `phase0-foundation`:** `linux/paper2-demux-counted`, `design/two-host-run`,
+`harness/pacing-covariate`, all three clean, no conflicts. Thesis rebuilt: **163 pages, 0 undefined
+references, 0 undefined citations**, 5 overfull boxes, 72 underfull.
+**Two case bugs fixed in `doc/thesis/latexmkrc` (`9364a6a5e`), both invisible on this Mac.** The entry
+point is `Main.tex`, capital M; without `@default_files` a bare `latexmk` takes every .tex in the
+directory as its own document and fails on `lang.tex` and `preamble.tex`, which are inputs. And
+`$success_cmd` copied `build/main.pdf`, which resolves only because macOS ignores filename case: on
+Linux latexmk writes `build/Main.pdf` and that copy silently fails, leaving the versioned PDF stale.
+A failure that looks like success, which is the kind this project refuses everywhere else.
+
+**PAPER 4 CAN BE MEASURED. The laptop builds HTTP/3.** pkgconf 3.0.6, libngtcp2 1.25.0, libnghttp3
+1.18.0, libngtcp2_crypto_ossl 1.25.0, OpenSSL 3.6.4; configures with HTTP/3 and TLS on, compiles all
+six HTTP/3 units, 224 symbols in the archive, exit 0. Nothing run, nothing installed. Filed on
+`measure/laptop-2026-09-03-h3-probe`.
+**BUT THE PROVENANCE IS BLOCKING AND THE LAPTOP RAISED IT ITSELF:** `pacman -Q` reports ngtcp2 and
+nghttp3 **not installed as packages**, yet libraries, headers and .pc files are all present. A campaign
+cannot rest on an apparatus whose method section would read "the libraries were there and we do not
+know why". The laptop is establishing ownership, prefix, timestamps and any manifest, read-only. The
+design goes out after that answer, not before.
+*Two self-corrections are why this positive result is believable.* It first reported the crypto binding
+absent, then found it had checked a module name it invented (`_quictls`) rather than the one the build
+asks for (`_ossl`, present) -- and that wrong answer would have AGREED with the desktop's finding,
+which is the most dangerous form of confirmation. Then its error grep matched four lines and it read
+them instead of reporting failure; all four were filenames and a type name.
+*A trap now recorded:* `HTTP/3(EXPERIMENTAL): OFF` in the configure output belongs to the VENDORED
+HTTP/2 dependency, not to this project, which prints its own line lower down. The desktop cited that
+banner as independent corroboration; on its machine the two agree so its conclusion stands, but the
+corroboration was luckier than it looked. Both machines have been told.
+
+**THE PACING-GATE REMOVAL HAS A COST, AND THE DESKTOP FOUND IT.** Re-evaluating
+`measure/desktop-2026-09-02-net` with the harness at the branch (filed `ae5d2cd81` on
+`measure/desktop-2026-09-03-net-reeval`, `verdicts.csv`, all 400 rows recheckable):
+before, 356 accepted / 44 refused (pacing 43, share 2, socket errors 1); now **398 accepted / 2
+refused**; 42 runs changed, all refused-to-admitted.
+**Three of them were between 1.5 and 2.6 SECONDS behind schedule** (pacing 2,579,918 / 2,572,818 /
+1,523,460 us; p99 latency 2603 / 2600 / 1548 ms) and now pool with cells whose percentiles are
+single-digit milliseconds. **Why nothing sees them: share asks how many, pacing asked when.** A
+generator 2.5 s late still delivers 99.99 per cent, so share is 0.9999. The latency figures are not
+wrong -- the open loop measures from the due instant, so the lag is honestly inside the number. The run
+simply measured a load nobody intended to offer.
+*The desktop does NOT claim v2 is wrong,* and notes the three rate-400 admissions are direct evidence
+the old gate removed real measurements.
+**THE CHAPTER V SUBSECTION DOES NOT SURVIVE in its present form** -- its arithmetic is 41-of-44
+refusing for pacing and 39 of those 41 are now admitted. **A stronger form survives from the same
+campaign:** the per-load argument was right and the INSTRUMENT was wrong. Rate 800 was validated by the
+ladder sampling it ONCE at 468 us against a 1000 us threshold; at n=25 that rate produced 41 refusals
+and now produces seconds-late runs. So a per-load admissibility decision cannot be made from one ladder
+sample. That argues for characterising each rate's distribution before a campaign, **not** for
+restoring the gate.
+**THE OPEN QUESTION THAT DECIDES THE REWRITE.** `validity.py:140` puts the generator-CPU rule
+(`MAX_GENERATOR_CPU = 0.85`) inside `if not open_loop:` and gives the open loop achieved-share instead.
+The comment says this is deliberate: "Which rule applies depends on the loop, because the two fail
+differently." **Generator CPU passes the test that killed the pacing gate** -- a slow server gives the
+generator LESS work, so its CPU falls; it cannot be caused by the thing under measurement. The desktop
+has been asked for `generator_cpu_fraction` on all 400 runs and those three in particular. If they show
+a saturated generator, the pairing was incomplete and the open loop needs the CPU rule too. If they
+show an idle generator, nothing in the record explains the lateness, which is worse for the method and
+better for the thesis. **No thesis edit until that answer arrives**, because it decides which rule the
+subsection is about.
+
 ## Status at 12:20, 3 September -- what is running and who is doing what
 
 **PAPER 3 (io-portability) IS FINISHED AND PUSHED.** `draft/v1` at `9abe10567`, 14 pages, 0 errors, 0
