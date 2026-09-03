@@ -504,6 +504,7 @@ def run_one(
         reasons.insert(0, failure)
     record.rejection_reasons = reasons
     record.accepted = not reasons
+    record.admission_rules = validity.ADMISSION_RULES
     return record
 
 

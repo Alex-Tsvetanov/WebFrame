@@ -1855,9 +1855,10 @@ int main(int argc, char** argv)
 	//
 	// A closed loop can only be limited by its own CPU, so that is the check. An open
 	// loop paces by spinning and is at full CPU by construction, so CPU says nothing;
-	// what matters is whether it met the schedule it promised. A generator that fell
-	// milliseconds behind its own due times was offering a different load than the one
-	// recorded, and the run is a measurement of the generator.
+	// what matters is whether it delivered the rate it promised. A generator that put
+	// materially fewer requests on the wire than the record claims was offering a
+	// different load, and the run is a measurement of the generator. Its lateness
+	// against its own schedule is printed beside that verdict, not tested by it.
 	const bool open_loop = opt.rate > 0.0;
 	const std::uint32_t pacing_p99 = percentile(pacing, 0.99);
 	const double achieved_share = opt.rate > 0.0 ? rps / opt.rate : 1.0;
@@ -1874,11 +1875,16 @@ int main(int argc, char** argv)
 		             cpu_fraction);
 		return 3;
 	}
-	if (open_loop && (pacing_p99 > 1000 || achieved_share < 0.99))
+	// Achieved share only. Pacing lag used to share this test at 1000 us; it is
+	// reported in the result and no longer refuses, because it is partly the server's:
+	// a connection awaiting a response is not handed a due slot (see the issue loop),
+	// so a slow server turns into lateness on the next slot that is issued. The rule
+	// here has to agree with validity.py, which is where the reasoning lives.
+	if (open_loop && achieved_share < 0.99)
 	{
 		std::fprintf(stderr,
-		             "run is not admissible: pacing_p99=%uus achieved=%.1f%% of offered\n",
-		             pacing_p99, achieved_share * 100.0);
+		             "run is not admissible: achieved=%.1f%% of offered (pacing_p99=%uus)\n",
+		             achieved_share * 100.0, pacing_p99);
 		return 3;
 	}
 	return 0;

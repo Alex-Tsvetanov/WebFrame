@@ -112,9 +112,10 @@ def _rows_for(records: list[schema.RunRecord], vary: str,
             if mem:
                 row[f"mem_mib{tag}"] = round(_interval(mem)[0] / 2 ** 20, 2)
 
-            # The generator's own saturation signal, carried into the table it validates.
-            # Kept next to the numbers it admits rather than in a separate file, because
-            # a validity figure read apart from the measurement is a figure nobody reads.
+            # The generator's pacing lag, a covariate rather than a gate: it does not
+            # admit these runs, but a reader has to see it beside every cell, because a
+            # cell whose lag is in the tens of microseconds and one where it is in the
+            # milliseconds were offered the same rate under different conditions.
             pacing = [r.generator_pacing_p99_us for r in members
                       if r.generator_pacing_p99_us is not None]
             if pacing:

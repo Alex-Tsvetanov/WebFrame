@@ -96,7 +96,22 @@ from typing import Any, Iterator
 # whose interface is not the expected one is refused rather than annotated: a medium we
 # did not intend is worse than one we do not know. Names and link properties only, never
 # addresses or MACs, and absent rather than refused off Linux.
-SCHEMA_VERSION = 8
+#
+# 9 added admission_rules, which says which rule set judged the run. Until this version
+# nothing in a record did: the verdict was whatever validity.py said at git_commit, and
+# that was enough while the rules never changed. They changed here. Pacing lag, the
+# generator's p99 lateness against its own schedule, refused an open-loop run above
+# 1000 us through version 8; from this version it is recorded and reported beside every
+# cell and refuses nothing, because it is partly downstream of the server (validity.py
+# says how) and a threshold on it removes the runs in which the server was slowest.
+# Admission of an open loop rests on the achieved share of the offered rate, with the
+# non-2xx, socket-error and environment rules as before. A record with no
+# admission_rules was judged live under the pacing rule. A file that was re-evaluated
+# offline (benchmark/harness/reevaluate.py) keeps the schema_version its writer gave it,
+# because the fields it lacks are still lacking; it carries the original verdict as
+# accepted_at_run and rejection_reasons_at_run in the raw JSON, which read() does not
+# load, so the line on disk is the record of what was decided when.
+SCHEMA_VERSION = 9
 
 
 @dataclass
@@ -215,8 +230,9 @@ class RunRecord:
     generator_cpu_fraction: float | None = None
     # How far behind its own schedule the generator fell, in microseconds at the
     # 99th percentile, measured from when a request was due to when it reached the
-    # socket. This is the saturation signal for an open loop, where CPU is not: an
-    # open loop paces by spinning and is at full CPU by construction.
+    # socket. A recorded covariate, reported beside every cell; it does not admit or
+    # refuse, because a slow server holds the connections the generator would issue on
+    # and the lateness is then partly the server's. Admission is the achieved share.
     generator_pacing_p99_us: float | None = None
     # Achieved divided by offered. An open loop that could not keep up was offering
     # a different load than the one this record claims.
@@ -294,6 +310,9 @@ class RunRecord:
     syscall_counter: str | None = None
     accepted: bool = True
     rejection_reasons: list[str] = field(default_factory=list)
+    # Which rule set produced the verdict above: validity.ADMISSION_RULES on a live run.
+    # None is a record from before the field existed, judged under the pacing rule.
+    admission_rules: str | None = None
 
     # --- Provenance ---------------------------------------------------------
     # Enough for someone else to rebuild the same thing. The generator's argv is

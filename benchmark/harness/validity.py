@@ -42,14 +42,31 @@ MAX_ERROR_RATE = 0.001  # 0.1%
 # loop run and accept none.
 MAX_GENERATOR_CPU = 0.85  # 85%
 
-# What an open loop is judged by instead: how late the generator was in getting a
-# request onto the socket, relative to when that request was due. A generator that
-# fell milliseconds behind was offering a different load than the record claims, and
-# the resulting latency is partly its own queueing.
-MAX_PACING_LAG_US = 1000.0  # 1 ms at p99
-
-# And whether it delivered the rate it promised at all.
+# What an open loop is judged by instead: whether it delivered the rate it promised.
+# Achieved over offered is measured from the generator's own counters and does not
+# depend on how the server behaved, which is what makes it usable as an admission rule.
 MIN_ACHIEVED_SHARE = 0.99
+
+# Pacing lag, the generator's p99 lateness against its own schedule, used to be the
+# second open-loop rule, at 1000 us. It is recorded in every run and reported beside
+# every cell, and it no longer refuses anything, because it is partly downstream of the
+# server. The generator hands a due slot only to a connection that is not already
+# awaiting a response, so a slow server holds connections, unissued due instants
+# accumulate as debt, and the lateness that lands on the next issued slot is the
+# server's slowness measured from the generator's side; on the cleartext establishment
+# arm a slow-accepting server blocks the worker inside connect. A threshold on it is
+# therefore a filter on a function of the quantity being measured: it preferentially
+# removes the runs in which the server was slowest and biases every reported tail
+# optimistic. The one thing it was built to protect, that the offered load was actually
+# offered, is what the achieved share above measures directly. And a latency counted
+# from the due instant already contains the lateness of its own issue, so a late run is
+# conservative, not invalid.
+#
+# Records judged while the 1000 us rule was in force say so by carrying no
+# admission_rules field; see schema.py, version 9.
+ADMISSION_RULES = (
+    "v2: achieved-share, non-2xx, socket-errors, environment; pacing recorded not gated"
+)
 
 # Sustained clock has to stay close to what the run started at. Thermal throttling
 # midway produces a slowdown that belongs to the room, not to the code.
@@ -129,12 +146,9 @@ def check_run(record: dict[str, Any]) -> Verdict:
                 "the measurement is of the load generator"
             )
     else:
-        lag = record.get("generator_pacing_p99_us")
-        if lag is not None and lag > MAX_PACING_LAG_US:
-            verdict.reasons.append(
-                f"generator was {lag:.0f}us behind its own schedule at p99, above "
-                f"{MAX_PACING_LAG_US:.0f}us; the offered load was not the load recorded"
-            )
+        # generator_pacing_p99_us is read by nobody here. It is a covariate, not a
+        # rule: see the note above ADMISSION_RULES for why a threshold on it would
+        # refuse the runs where the server was slowest.
         share = record.get("generator_achieved_share")
         if share is not None and share < MIN_ACHIEVED_SHARE:
             verdict.reasons.append(

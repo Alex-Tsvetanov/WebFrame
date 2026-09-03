@@ -134,3 +134,38 @@ def run(check: Callable[[str, bool], None]) -> None:
         check("it writes a file", out.exists() and out.stat().st_size > 0)
         check("round-tripping through JSONL preserves the keys",
               "coroute.h1.rps" in aggregates)
+
+    print("\n== a re-evaluated file says how many verdicts it moved ==")
+
+    # The re-evaluation leaves accepted_at_run in the raw line and schema.read() drops
+    # it, so the count has to come from the file itself. A live file has no such field
+    # and counts zero rather than rendering red.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "x.jsonl"
+        lines = [
+            '{"accepted": true, "accepted_at_run": false}',
+            '{"accepted": true, "accepted_at_run": true}',
+            '{"accepted": false, "accepted_at_run": false}',
+            '{"accepted": true}',
+            "not json",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        counted = results2tex.readmitted("x", path)
+        check("a run refused at the time and accepted now is counted once",
+              counted["campaign.x.readmitted"].interval.point == 1.0)
+        live = Path(tmp) / "live.jsonl"
+        live.write_text('{"accepted": true}\n', encoding="utf-8")
+        check("a live file counts zero rather than going red",
+              results2tex.readmitted("live", live)["campaign.live.readmitted"]
+              .interval.point == 0.0)
+
+    tailed = [_run(latency_ms={"p999": 0.2, "max": 0.5}),
+              _run(latency_ms={"p999": 0.3, "max": 0.7}),
+              _run(latency_ms={"p999": 40.0, "max": 60.0}),
+              _run(accepted=False, latency_ms={"p999": 1000.0, "max": 1019.0})]
+    tails = results2tex.tail_modes("x", tailed)
+    check("the upper mode is counted over accepted runs only",
+          tails["tail.x.upper-mode"].interval.point == 1.0)
+    check("the worst p99.9 and the worst single latency are keys",
+          tails["tail.x.p999-max"].interval.point == 40.0
+          and tails["tail.x.max"].interval.point == 60.0)

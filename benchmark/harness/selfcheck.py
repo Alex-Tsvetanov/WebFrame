@@ -547,6 +547,119 @@ def validity_checks() -> None:
     check("every reason is reported, not just the first",
           len(validity.check_run(multi).reasons) == 3)
 
+    # An open loop is admitted on the share of the offered rate it delivered. Pacing lag
+    # is recorded and refuses nothing: a slow server holds the connections the generator
+    # would issue on, so the lag is partly the server's, and a threshold on it drops the
+    # runs in which the server was slowest. The 1000 us rule these guard against was
+    # in force until 2026-09-02.
+    open_loop = dict(good, offered_rate=10_000, generator_pacing_p99_us=5_000.0,
+                     generator_achieved_share=0.999)
+    check("an open loop five milliseconds behind its schedule is accepted",
+          validity.check_run(open_loop).valid)
+    check("and it is not judged by cpu, which an open loop pins by construction",
+          validity.check_run(dict(open_loop, generator_cpu_fraction=0.99)).valid)
+    short = validity.check_run(dict(open_loop, generator_achieved_share=0.98))
+    check("one that delivered 98% of the offered rate is refused",
+          not short.valid and any("of the offered rate" in r for r in short.reasons))
+    late = validity.check_run(dict(open_loop, generator_pacing_p99_us=8_131_140.0,
+                                   generator_achieved_share=0.593))
+    check("no reason ever names the schedule, however late the generator was",
+          not late.valid and not any("behind its own schedule" in r for r in late.reasons))
+    check("the rule set has a name a record can carry",
+          "pacing recorded not gated" in validity.ADMISSION_RULES)
+
+
+def reevaluate_checks() -> None:
+    print("\n== a rule that changed re-judges the records it has, into a new file ==")
+    from benchmark.harness import reevaluate
+
+    pacing = ("generator was 3105us behind its own schedule at p99, above 1000us; "
+              "the offered load was not the load recorded")
+
+    def run(**kw):
+        record = dict(system="coroute", protocol="http1.1", io_backend="io_uring",
+                      workers=6, connections=256, duration_s=20.0, offered_rate=40_000,
+                      schema_version=3, virtualisation=None, git_dirty=False,
+                      requests_total=800_000, requests_non_2xx=0, socket_errors=0,
+                      cpu_mhz_start=4200.0, cpu_mhz_end=4190.0, counter_deltas={},
+                      power_source=env_mod._NO_BATTERY,
+                      generator_pacing_p99_us=48.0, generator_achieved_share=0.9999)
+        record.update(kw)
+        return record
+
+    def judged(record, *written_by_the_driver):
+        # The verdict as the harness of the time wrote it: whatever the surviving rules
+        # say, plus what was planted. Built from check_run rather than typed, so a
+        # reworded drift message cannot turn this fixture into a lie.
+        reasons = list(written_by_the_driver) + validity.check_run(record).reasons
+        return dict(record, rejection_reasons=reasons, accepted=not reasons)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "runs.jsonl"
+        fixture = [
+            judged(run()),
+            judged(run(generator_pacing_p99_us=3105.0), pacing),
+            judged(run(generator_pacing_p99_us=84650.0, cpu_mhz_end=4000.0), pacing),
+            judged(run(cpu_mhz_end=4000.0)),
+            judged(run(), "RunFailed: the generator wrote no result file"),
+        ]
+        src.write_text("".join(json.dumps(r) + "\n" for r in fixture), encoding="utf-8")
+        before = src.read_bytes()
+        check("the fixture starts with one accepted run of five",
+              sum(r["accepted"] for r in fixture) == 1)
+
+        summary = reevaluate.reevaluate(src)
+        out = Path(summary["out"])
+        check("the output is a new file beside the source", out.exists() and out != src
+              and out.parent == src.parent)
+        check("the source is untouched", src.read_bytes() == before)
+        check("the summary counts what moved",
+              (summary["runs"], summary["accepted_before"], summary["accepted_after"],
+               summary["newly_accepted"], summary["newly_refused"]) == (5, 1, 2, 1, 0))
+
+        after = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+        clean, pacing_only, pacing_drift, drift_only, failed = after
+        check("exactly the pacing-only refusal flips",
+              [r["accepted"] for r in after] == [True, True, False, False, False])
+        check("it keeps its original verdict",
+              pacing_only["accepted_at_run"] is False
+              and pacing_only["rejection_reasons_at_run"] == [pacing]
+              and pacing_only["rejection_reasons"] == [])
+        check("pacing plus drift is still refused, for drift, once",
+              len(pacing_drift["rejection_reasons"]) == 1
+              and "drift" in pacing_drift["rejection_reasons"][0])
+        check("drift alone is unchanged",
+              drift_only["rejection_reasons"] == drift_only["rejection_reasons_at_run"])
+        # A reason no rule reading stored fields could have written is the driver's
+        # own, and the tool cannot re-derive it; the original verdict on it stands.
+        check("a failure the driver wrote survives, and is said to",
+              failed["rejection_reasons"] == ["RunFailed: the generator wrote no result file"]
+              and sum(summary["kept"].values()) == 1)
+        check("every record says which rules judged it and where it came from",
+              all(r["admission_rules"] == validity.ADMISSION_RULES
+                  and r["reevaluated_from"] == f"{src.parent.name}/runs.jsonl"
+                  and r["schema_version"] == 3 for r in after))
+        check("the dataclass reads the new file",
+              len(schema.accepted_only(schema.read(out))) == 2)
+        check("the summary reads as a report", "accepted 1 -> 2" in reevaluate.describe(summary))
+
+        raised = None
+        try:
+            reevaluate.reevaluate(src)
+        except FileExistsError:
+            raised = "exists"
+        check("an existing output is never overwritten", raised == "exists")
+        try:
+            reevaluate.reevaluate(out, Path(tmp) / "again")
+        except ValueError as exc:
+            raised = str(exc)
+        check("a re-evaluated file is not re-evaluated again", "accepted_at_run" in raised)
+        # results2tex names campaign.* keys after the stem, so a sibling directory has
+        # to hold the file under its own name for the thesis' keys to find it.
+        elsewhere = reevaluate.reevaluate(src, Path(tmp) / "sibling")
+        check("into another directory the name is kept",
+              Path(elsewhere["out"]) == Path(tmp) / "sibling" / "runs.jsonl")
+
 
 def netns_pair_checks() -> None:
     print("\n== a half-built namespace pair does not report itself up ==")
@@ -724,6 +837,10 @@ def schema_checks() -> None:
                                      "connections": 1, "duration_s": 1.0,
                                      "a_field_from_the_future": 42}) + "\n")
         check("an unknown field does not break reading", len(list(schema.read(path))) == 6)
+        # None, not the current rule set: a record that never said which rules judged
+        # it was judged under the pacing rule, and reading it as current would erase that.
+        check("a record from before admission_rules reads as None",
+              all(r.admission_rules is None for r in schema.read(path)))
 
     # None means closed loop, a number means open loop, and the difference decides
     # whether the latency figures are service time or response time.
@@ -1251,6 +1368,7 @@ def main() -> int:
     port_checks()
     topology_checks()
     validity_checks()
+    reevaluate_checks()
     counter_checks()
     schema_checks()
     ordering_checks()

@@ -353,19 +353,29 @@ def _base(**over) -> dict:
 # Lower than the cleartext ceiling, and by how much is not a guess: run the tls-ladder
 # design on any host before using these. A TLS record layer costs the generator work per
 # request that a cleartext socket does not, so the rate at which it stops keeping to its
-# own schedule is lower, and validity.py refuses runs above it.
+# own schedule is lower. Pacing lag is recorded, not gated, so the ladder locates where
+# the covariate leaves the tens of microseconds rather than an admission boundary.
 #
-# Measured on this host by tls-ladder, 5k to 60k in 5k steps, one run each. The
+# Measured on this host by tls-ladder, 5k to 60k in 5k steps, one run each; raw records
+# are at tag results-archive-2026-09-01, benchmark/results/tls-ladder.jsonl. The
 # generator's pacing lag at p99 stays between 81 and 143 microseconds from 5k to 35k,
-# rises to 322 to 499 at 40k, 50k and 55k, and reaches 85 ms at 60k. The rejections at
-# 30k and 45k sit between accepted neighbours at higher rates, so those are the host
-# stalling rather than a ceiling; 60k is the ceiling.
+# rises to 322 to 499 at 40k, 50k and 55k, and reaches 85 ms at 60k. Isolated 2.5 and
+# 5.2 ms readings at 30k and 45k sit between neighbours in the tens to hundreds of
+# microseconds at higher rates, so those are the host stalling rather than a ceiling;
+# 60k is the ceiling. Those three were refusals when the ladder ran, under the 1 ms
+# pacing rule that has since been withdrawn; no rule refuses on pacing now, and the
+# surviving open-loop rule passes on all twelve, delivered share 0.9997 or better at
+# every rate. The ladder therefore reads as the knee of a covariate throughout. (Judged
+# whole these records still refuse, on power_source None: they predate the field, which
+# is an environment gate and says nothing about the rate.)
 #
-# The table stops at 35k rather than at 55k, which the gate would still admit. The gate
-# is 1 ms and the last three accepted rates measured within a factor of two to three of
-# it, on a host that produced two isolated 2.5 and 5.2 ms stalls during the same twelve
-# runs. A rate that survives one run with that little margin does not survive twenty-five,
-# and a cell that loses runs to the host loses them from one arm as easily as the other.
+# The table stops at 35k rather than at 55k. At the time the rates were chosen pacing
+# lag was an admission rule at 1 ms, and the last three rates measured within a factor
+# of two to three of it, on a host that produced the two stalls above during the same
+# twelve runs. The rule has since become a covariate, but the choice stands on its
+# own: a rate whose lag sits in the hundreds of microseconds for one run
+# sits in the milliseconds for some of twenty-five, and the table is then comparing
+# cells the generator offered under different conditions.
 TLS_OFFERED_RATES = (5_000, 10_000, 15_000, 25_000, 35_000)
 
 # The churn arm offers whole connections rather than requests on existing ones, and each
