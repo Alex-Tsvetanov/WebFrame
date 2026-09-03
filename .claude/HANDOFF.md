@@ -2670,6 +2670,60 @@ repetitions, current admission rules, the reportability condition (interval excl
 turns on whether the forwarding hop is detectable at all, so an honest null with a stated bound answers
 the paper's question as well as a positive would.
 
+## 14:12, 3 September -- ALL FOUR PAPERS ARE WRITTEN
+
+**PAPER 4 IS WRITTEN AND PUSHED.** `draft/v1` at `2e88a320`. **5 pages, 0 errors, 0 undefined
+references or citations, 0 overfull boxes**, privacy clean (no path, user, hostname or address in the
+extracted text), all five pages rendered and checked. The only TODO left is the venue running head,
+which Alex asked to leave. Sections: introduction, background, design, method, results, limitations,
+related work, conclusion.
+
+**MEASUREMENT A WAS WRONG IN A WAY THAT NEARLY REVERSED THE PAPER, AND THE LAPTOP CAUGHT IT AFTER I
+HAD ALREADY WRITTEN THE NUMBER IN.** I asked for a small-request cell to firm up the crossover. It came
+back at **36.87 per cent -- reportable by a wide margin** and would have made the userspace approach
+look expensive. The laptop did not report it; it disbelieved it, because the hop read 83.7 us there
+against 9.4 in bulk, and *a quantity that takes two values nine times apart under two workloads is not
+measuring what its name says*. It varied the burst size:
+| workload | forwarded datagrams | mean interval |
+|---|---|---|
+| 1 request | 6.2 | 18.43 us |
+| 5 requests | 5.3 | 31.14 us |
+| 20 requests | 6.1 | 83.68 us |
+| 60 requests | 7.0 | 185.87 us |
+| 60 x 64 KiB (bulk) | ~47 | **9.45 us** |
+**The forwarded count barely moves while the interval grows by an order of magnitude, and the row with
+by far the MOST forwarded datagrams gives the SMALLEST interval**, because there they are spread over
+97 ms instead of arriving inside one burst. So the interval is handoff-to-pickup **including the owning
+worker's queueing**, and it tracks how densely work arrives rather than how much is forwarded.
+**Kernel steering does not remove queueing** -- a datagram delivered straight to the owning socket
+still waits for that worker -- so almost all of the 36.9 per cent is a cost paid either way. **The
+conclusion is unchanged and the small-request cell SUPPORTS it, which is the opposite of what its
+headline number says.**
+**The general rule, now in the paper's conclusion and the thesis:** *a cost attributed to a mechanism
+must be shown to disappear when the mechanism does.* And the laptop's own: **a one-workload
+measurement of a quantity nobody has varied is a number with an untested name.**
+*What the paper now claims:* the transfer is of order ten microseconds (9.4 bulk, 18.4 single request
+into an idle worker), flat two to eight workers; crossover about 190 us for one forwarded datagram; and
+**the sub-200 us regime is explicitly NOT claimed as measured** -- isolating it needs a second
+timestamp taken when the owner becomes FREE rather than when it dequeues, which is a further
+measurement, not a refinement.
+*My share of it:* I accepted 9.4 us, put it in a paper and wrote a conclusion on it, and I asked for
+the second regime to STRENGTHEN a claim I already believed rather than to test it. **The check worked
+for the wrong reason**, so neither of us should count on it recurring.
+
+**Thesis at 174 pages, 0 undefined references or citations**, corrected in four places for the queueing
+finding.
+
+### THE FOUR PAPERS
+| # | subject | state |
+|---|---|---|
+| 1 | DFA routing | **done**, 14pp |
+| 2 | socket demultiplexing | **done**, 12pp |
+| 3 | I/O portability | **done**, 14pp |
+| 4 | QUIC CID routing | **done**, 5pp |
+All pushed on `draft/v1`, all building with no undefined references and no overfull boxes, all checked
+for machine identity in the extracted PDF text. Venue remains TODO on all four, per Alex.
+
 ## A correction to this file's own timestamps
 
 The headings below from 12:30 onward originally read 13:00, 13:40, 14:10, 14:55, 15:30 and 16:15.
