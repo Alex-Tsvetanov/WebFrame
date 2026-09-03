@@ -43,8 +43,17 @@ MAX_ERROR_RATE = 0.001  # 0.1%
 MAX_GENERATOR_CPU = 0.85  # 85%
 
 # What an open loop is judged by instead: whether it delivered the rate it promised.
-# Achieved over offered is measured from the generator's own counters and does not
-# depend on how the server behaved, which is what makes it usable as an admission rule.
+#
+# A CORRECTION, established 2026-09-03 by re-evaluating the net campaign. This comment
+# used to say the share does not depend on how the server behaved, and that this is what
+# makes it usable as an admission rule. That is not true as stated, and a justification
+# that is false is worse than a rule with no justification, because it stops anyone
+# looking. The share's denominator is what the generator ATTEMPTED, and what it attempts
+# shrinks when it falls behind, so the measure moves its own denominator and reports
+# success. Three runs at rate 800 were between 1.5 and 2.6 SECONDS behind schedule, with
+# establishment times twelve times their peers' median, and their share read 0.9999
+# against a peer median of 0.99991: indistinguishable. The rule may still be the best
+# available; the reason for trusting it was wrong.
 MIN_ACHIEVED_SHARE = 0.99
 
 # Pacing lag, the generator's p99 lateness against its own schedule, used to be the
@@ -57,10 +66,19 @@ MIN_ACHIEVED_SHARE = 0.99
 # arm a slow-accepting server blocks the worker inside connect. A threshold on it is
 # therefore a filter on a function of the quantity being measured: it preferentially
 # removes the runs in which the server was slowest and biases every reported tail
-# optimistic. The one thing it was built to protect, that the offered load was actually
-# offered, is what the achieved share above measures directly. And a latency counted
-# from the due instant already contains the lateness of its own issue, so a late run is
-# conservative, not invalid.
+# optimistic. And a latency counted from the due instant already contains the lateness
+# of its own issue, so a late run is conservative, not invalid.
+#
+# This comment used to claim the achieved share covers what the pacing rule protected,
+# that the offered load was actually offered. It does not; see the correction above. The
+# quantity that DOES see it is requests_total_whole_run against rate times duration: in
+# the net campaign every peer at every rate sat on exactly the intended count, range
+# 18400 to 18400 at rate 800, while the three seconds-late runs sat at 0.945, 0.953 and
+# 0.956 of it. Perfect separation. It is deliberately NOT a rule, for the same reason
+# pacing is not: a slow server completes fewer requests in a fixed wall clock, so
+# refusing on it would again remove preferentially the runs where the server was
+# slowest. What it establishes is that the invisibility is not inherent -- the record
+# already distinguishes these runs and the rules simply do not read that column.
 #
 # Records judged while the 1000 us rule was in force say so by carrying no
 # admission_rules field; see schema.py, version 9.
