@@ -1660,14 +1660,16 @@ been scheduled yet.
   **What would work, and it is NEW SCOPE for Alex:** a short two-host run of the real generator against
   the real server across the physical link, measured with the campaign's own instrument and reported
   as a resolution. Needs both machines, and the laptop is mid-campaign, so it cannot happen tonight.
-  **Link facts settled otherwise.** Desktop: Realtek GbE, 1 Gbps, 192.168.1.3/24, default route via
-  192.168.1.1 on the physical adapter (metric 0), so off-host traffic to the laptop leaves by the wire
-  and not by either Hyper-V switch (172.22.208.1/20 is the WSL path tonight's campaign used;
-  172.22.160.1/20 is the Default Switch; both report a meaningless virtual 10 Gbps). Same layer-2
-  segment, no routed hop. Firewall: the Ethernet profile is Public and the existing benchmark_server
-  Allow rules are Public, so they already cover the physical interface; nothing needs adding and
-  nothing was changed. Laptop is 192.168.1.62 on the wire and .9 on wireless, dual-homed with only a
-  route metric between them, so the interface field must be CHECKED on any two-host run.
+  **Link facts settled otherwise.** Desktop: Realtek GbE, 1 Gbps, wired, with its default route on the
+  physical adapter (metric 0), so off-host traffic to the laptop leaves by the wire and not by either
+  Hyper-V virtual switch (one is the WSL path tonight's campaign used, the other the Default Switch;
+  both report a meaningless virtual 10 Gbps). Same layer-2 segment, no routed hop. Firewall: the
+  existing benchmark_server rules already cover the physical interface; nothing needed adding and
+  nothing was changed. The laptop is dual-homed, wired and wireless, with only a route metric between
+  them, so the interface field must be CHECKED on any two-host run.
+  (Addresses, prefixes and the firewall profile were redacted from this line on 4 September: they are
+  machine identity and this branch is public. See the note at the top of this file -- the history of
+  this branch still carries them, and only Alex can decide whether to rewrite it.)
   **The number that decides the design is the path's own jitter, not its throughput.** Paper 2's
   demultiplexing difference is 60 to 85 microseconds. If the round-trip standard deviation over this
   link is in the hundreds of microseconds, no number of repetitions recovers that difference, and the
