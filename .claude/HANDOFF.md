@@ -2393,6 +2393,47 @@ resumed on Opus after the Fable limit stopped their later agents (pacing-to-cova
 design, papers 1 and 3). **The two-host run does NOT start tonight**: it needs both machines and its
 design is still in red-team.
 
+## Paper 4 (QUIC connection-ID routing): the state, and the design is now cheap
+
+**Alex, 3 September: "you haven't actually migrated the quic work... I need the 4 papers completely
+ready."** Correct, and it had been parked as future work. In progress.
+
+**Code state.** HTTP/3 and QUIC ARE ALREADY ON MAINLINE (`include/coroute/http3/` and `src/http3/`,
+six translation units each: cid, connection, endpoint, headers, packet, stateless).
+`origin/feature/http3-quic` has 10 commits mainline lacks while mainline has 378 it lacks, 32 files
+and ~7378 insertions apart -- the branch is old and may be wholly superseded, which would make the
+reconciliation a deletion. `origin/dev/alex-tsvetanov/quic-path-migration-test-e7a8` has 2 commits
+including `tests/results/http3_path_migration.log`, so a migration test was written and run at some
+point. Workflow `wyg5ptcho` is surveying, porting what is still needed, building, and establishing by
+RUNNING it what the framework can actually do.
+
+**What the desktop established, by reading its own tree (no action taken).**
+`COROUTE_ENABLE_HTTP3` exists (CMakeLists:19, default OFF) and is a FATAL_ERROR without TLS, "QUIC has
+no cleartext mode". Both Windows trees have it OFF and it has never been enabled in a measurement
+build there. **IOCP creates no datagram socket and the source says so** (`iocp_context.cpp:199-201`,
+"Datagrams are left to IoContext's default nullptr: this backend has none yet"; the base at
+`io_context.cpp:268-272` literally returns nullptr). Only `epoll_context.cpp` and `uring_context.cpp`
+contain `SOCK_DGRAM`, `WSARecvFrom` or `recvmmsg`. **No HTTP/3 test has ever run on any platform**:
+no `http3` string anywhere in the CI workflows.
+**A DEFECT WORTH ITS OWN BRANCH: nothing refuses the combination the platform cannot serve.** There is
+no Windows guard on the HTTP/3 option; the build would accept it and the binary would have no UDP
+socket. That violates the project's own refuse-rather-than-default standard and is the class the
+benchmark server's own comment warns of -- a configuration producing "a full set of plausible numbers
+for an experiment that never happened". The server's `--http3` guard covers a missing certificate, not
+a missing socket. **The desktop has been asked to DEMONSTRATE it** (configure with the option on,
+report whether it configures, compiles, starts) so paper 4 states a fact rather than an inference. It
+was told not to fix it.
+**Paper 4's finding, costing no measurement at all:** the framework's HTTP/3 support is Linux-only in
+practice rather than by design, because one backend never implemented the datagram factory, and the
+build system does not refuse what it cannot serve. That is a portability finding, which is the thesis's
+subject.
+
+**THE MEASUREMENT IS NOW A SINGLE-MACHINE DESIGN, which the desktop unblocked in one clause.** The
+thesis records forced migration as impossible for want of a client that changes address. QUIC
+migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair can give a client two
+addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
+The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
+
 ## Where the four papers stand, 3 September
 
 **None is ready. Three are drafted except results; the data for all three is now pushed and the
