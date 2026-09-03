@@ -2449,6 +2449,65 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 14:10, 3 September -- which zero is it, and only one machine can run QUIC
+
+**I MISASSIGNED A CAMPAIGN AND THE LAPTOP CAUGHT IT BY LOOKING.** I read three keys in one thesis
+sentence and sent all three to the laptop without checking which host each belonged to. **`h1-deep` is
+`design_windows_h1_deep`** and exists only on the desktop, which has now been asked for it.
+*The failure mode avoided is worth more than the error:* a tool pointed at a file that does not exist
+reports nothing found, and **a confident zero and a not-run have the same shape in that output**. Had
+it run the tool over "its three campaigns" without looking, a measured zero would have gone into the
+thesis for a campaign that was never on the machine, and nothing downstream could have told the
+difference. Filed by the laptop as **rule 4a**, deliberately as a second form of rule 4 rather than a
+new rule, since both are one disease: a query returning an absence shaped like a fact. It added a
+third variant that will catch someone: **a rule never in force and a rule in force that never fired
+both produce no refusals, and only one is a measurement.** The discipline: say WHICH zero it is before
+writing it -- the rule ran and nothing tripped it, the rule was never applied, or the data was never
+collected.
+
+**TRANSPORT 0, CHURN 0 readmitted, and the zero was tested rather than assumed.** The laptop refuted
+the dangerous reading (gate not live, so refusable runs sit unexamined in the accepted pool) by
+reading the threshold at the commit the records name: clean tree, gate at 1000 us, and the worst
+lateness is 14 us in transport and 55 us in churn -- 71x and 18x of headroom. It also checked that
+this quantity CAN grow on this code path before concluding it did not: `next_due` advances only when a
+connection takes the slot, so backlog lands whole on the next issued slot; it stayed low because the
+pool was never saturated (share 0.9996-1.0000). **A lag that cannot grow looks exactly like a lag that
+did not grow.**
+
+**THE DESKTOP'S 125,734 us IS A PROPERTY OF ONE ARRANGEMENT, NOT OF THE METHOD, and that STRENGTHENS
+the section.** The same generator on the laptop, at seven times the request rate, stays inside 14 us,
+identical under both rule sets at every rate. A reader shown only the large number would conclude the
+instrument is fragile; shown both, they get the actual claim, that a threshold belongs to a load.
+
+**A SECOND INSTANCE OF THE SECTION'S ARGUMENT, FROM A DIFFERENT RULE AND A DIFFERENT HOST.** Every
+refusal in both laptop campaigns is **CPU frequency drift and nothing else**: 76 of 280 transport runs
+(27 per cent) and 99 of 224 churn (44 per cent), with no pacing, share, non-2xx or socket refusals at
+all. On the desktop's net campaign it was the reverse, 43 of 44 by pacing. **The binding admission
+rule is thermal on one machine and pacing on the other, and no project-wide threshold is right for
+both.** In the results chapter at `d869382ee`; placeholders down from 20 to 18, thesis 166 pages,
+still 0 undefined references or citations.
+
+**NAMING DECISION MADE: do not pool the arms.** The laptop's files are arm-split
+(`transport_epoll.jsonl`, `transport_io_uring.jsonl`) and `results2tex` names keys from the file stem,
+so `campaign.transport.*` can never resolve. A combined file would exist only so a key has one name,
+and **the arms are the variable under test, not an accident of storage** -- the pooled figure being
+identical here makes that more dangerous, not less, since nothing downstream would show the seam.
+**Fixed by changing the sentence instead of the data:** how many runs returned is the small fact; that
+none did, with nothing within eighteen times of the threshold, is the finding. Two placeholders gone
+by removing the need for them.
+
+**ONLY THE LAPTOP CAN DO PAPER 4's WORK, and I was slow to see it.** The reconciliation workflow runs
+on macOS, whose backend creates no datagram socket for the same reason Windows does not. **So this
+machine cannot build a QUIC server, run an HTTP/3 test, or demonstrate migration** -- anything it says
+about whether the code WORKS is reasoning about source it cannot execute. Dispatched to the laptop,
+in order: (1) **run the HTTP/3 unit tests** -- the first execution of that code path anywhere in this
+project's history -- reporting what SKIPPED as well as what passed, since a test that silently skips
+when a feature is off is the failure shape of the whole day; (2) only if they pass, start a server
+with HTTP/3 and TLS and establish whether a datagram socket is actually created and bound, because
+compiling is not serving and that gap is where this fails if it fails; (3) the **schema addition**
+carrying the linked ngtcp2/nghttp3/OpenSSL versions, populated only when HTTP/3 is on. Migration waits
+for the design, and the design waits on whether the endpoint comes up.
+
 ## 13:40, 3 September -- the question closed, and it improved the method chapter
 
 **THE THREE SECONDS-LATE RUNS ARE GOOD MEASUREMENTS. MY FRAMING WAS WRONG AND THAT IS ON THE RECORD.**
