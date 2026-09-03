@@ -43,7 +43,7 @@ set -u
 
 BUILD="${1:-}"
 PREFIX="${2:-$HOME/opt/quic}"
-PORT="${3:-14777}"
+PORT="${3:-14888}"
 # Four workers so SO_REUSEPORT has somewhere else to send a remapped 4-tuple.
 THREADS="${4:-4}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,7 +68,7 @@ SKIP=77
     exit 1
 }
 LOG_DIR="${LOG_DIR:-$BUILD}"
-LOG="$LOG_DIR/x2_share.log"
+LOG="$LOG_DIR/x2_cost.log"
 
 mkdir -p "$LOG_DIR"
 : > "$LOG"
@@ -84,7 +84,7 @@ fail() {
     exit 1
 }
 
-echo "== X2 measurement B: conditional forwarded share =="
+echo "== X2 measurement A: the cost of one forwarded packet =="
 echo "build=$BUILD prefix=$PREFIX port=$PORT threads=$THREADS"
 echo "host=$(uname -s) $(uname -r)"
 date -u +"utc=%Y-%m-%dT%H:%M:%SZ"
@@ -253,6 +253,7 @@ command -v g++-14 >/dev/null && CXX_BIN=g++-14
 echo "== starting server in netns $SERVER_NS =="
 "${RUN_IN_NS[@]}" "$SERVER_NS" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
     COROUTE_BULK_BYTES="${BULK_BYTES:-65536}" \
+    COROUTE_H3_MAX_STREAMS_BIDI=1 \
     "$BUILD/http3_app_mig" "$PORT" "$CERTS/key.pem" "$CERTS/cert.pem" "$THREADS" \
     > "$BUILD/http3_mig_server.log" 2>&1 &
 SERVER_PID=$!
@@ -333,17 +334,17 @@ apply_snat() {
 #
 # Nothing here is timed. These are counts.
 
-REQUESTS="${REQUESTS:-60}"   # under the server's initial MAX_STREAMS of 100
+REQUESTS="${REQUESTS:-40}"
 CONNECTIONS="${CONNECTIONS:-25}"
-OUT="${OUT:-$BUILD/x2_share_w${THREADS}.jsonl}"
-WIRE="${WIRE:-/tmp/x2_wire_w${THREADS}.jsonl}"
+OUT="${OUT:-$BUILD/x2_cost_w${THREADS}.jsonl}"
+WIRE="${WIRE:-/tmp/x2_cost_wire_w${THREADS}.jsonl}"
 
 URIS=()
 for i in $(seq 1 "$REQUESTS"); do # No query string: "/bulk?i=1" does not match the route "/bulk", and every one of
     # those requests returned 404 with a nine-byte body while its stream still closed
     # cleanly -- so a clean close is not evidence that anything was served. The status is
     # checked below for the same reason.
-    URIS+=("https://$SERVER_IP:$PORT/bulk"); done
+    URIS+=("https://$SERVER_IP:$PORT/"); done
 
 : > "$OUT"
 as_root rm -f "$WIRE" 2>/dev/null || true
@@ -382,14 +383,12 @@ while [ "$conn" -lt "$CONNECTIONS" ]; do
     b_in="$(printf '%s\n' "$before" | stat_field forwarded_in)"
     b_out="$(printf '%s\n' "$before" | stat_field forwarded_out)"
     b_acc="$(printf '%s\n' "$before" | stat_field accepted)"
-    b_hns="$(printf '%s\n' "$before" | stat_field forward_hop_ns)"
-    b_hn="$(printf '%s\n' "$before" | stat_field forward_hop_count)"
 
     t_start="$(python3 -c 'import time; print(repr(time.time()))')"
     "${RUN_IN_NS[@]}" "$CLIENT_NS" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
         timeout 30 "$CLIENT" --delay-stream=0s --change-local-addr="$delay" \
-        --exit-on-all-streams-close \
-        "$SERVER_IP" "$PORT" "${URIS[@]}" > "$BUILD/x2_client_${THREADS}_${conn}.log" 2>&1 || true
+        --timeout=2s \
+        "$SERVER_IP" "$PORT" "${URIS[@]}" > "$BUILD/x2_cost_client_${THREADS}_${conn}.log" 2>&1 || true
     # A connection's last datagrams arrive after its client exits. Read the counters
     # before they land and they are attributed to the next connection, whose capture
     # window has not opened yet -- which showed up as every connection's wire count being
@@ -405,21 +404,19 @@ while [ "$conn" -lt "$CONNECTIONS" ]; do
     a_in="$(printf '%s\n' "$after" | stat_field forwarded_in)"
     a_out="$(printf '%s\n' "$after" | stat_field forwarded_out)"
     a_acc="$(printf '%s\n' "$after" | stat_field accepted)"
-    a_hns="$(printf '%s\n' "$after" | stat_field forward_hop_ns)"
-    a_hn="$(printf '%s\n' "$after" | stat_field forward_hop_count)"
 
-    closed=$(grep -c 'closed with error codes (RX:(no error)' "$BUILD/x2_client_${THREADS}_${conn}.log" || true)
-    ok200=$(grep -c ':status: 200' "$BUILD/x2_client_${THREADS}_${conn}.log" || true)
+    closed=$(grep -c 'closed with error codes (RX:(no error)' "$BUILD/x2_cost_client_${THREADS}_${conn}.log" || true)
+    ok200=$(grep -c ':status: 200' "$BUILD/x2_cost_client_${THREADS}_${conn}.log" || true)
     if [ "$ok200" -ne "$REQUESTS" ]; then
         echo "  conn $conn: only $ok200/$REQUESTS responses were 200; refusing to record this cell" >&2
-        grep -oE ':status: [0-9]+' "$BUILD/x2_client_${THREADS}_${conn}.log" | sort | uniq -c | sed 's/^/    /' >&2
+        grep -oE ':status: [0-9]+' "$BUILD/x2_cost_client_${THREADS}_${conn}.log" | sort | uniq -c | sed 's/^/    /' >&2
         fail "the server did not serve what was asked for; a clean stream close does not establish that it did"
     fi
 
     printf '{"workers":%d,"conn":%d,"requested_delay":"%s","t_start":%s,"t_end":%s,' \
         "$THREADS" "$conn" "$delay" "$t_start" "$t_end" >> "$OUT"
-    printf '"received":%d,"forwarded_in":%d,"forwarded_out":%d,"accepted":%d,"streams_closed":%d,"status_200":%d,"hop_ns":%d,"hop_count":%d}\n' \
-        "$((a_rx - b_rx))" "$((a_in - b_in))" "$((a_out - b_out))" "$((a_acc - b_acc))" "$closed" "$ok200" "$((a_hns - b_hns))" "$((a_hn - b_hn))" >> "$OUT"
+    printf '"received":%d,"forwarded_in":%d,"forwarded_out":%d,"accepted":%d,"streams_closed":%d,"status_200":%d}\n' \
+        "$((a_rx - b_rx))" "$((a_in - b_in))" "$((a_out - b_out))" "$((a_acc - b_acc))" "$closed" "$ok200" >> "$OUT"
 
     echo "  conn $conn/$CONNECTIONS delay=$delay received=$((a_rx - b_rx)) forwarded_in=$((a_in - b_in)) accepted=$((a_acc - b_acc)) streams=$closed 200s=$ok200"
 done

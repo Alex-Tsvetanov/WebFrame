@@ -39,12 +39,28 @@ namespace coroute::http3
 			.version_negotiations = version_negotiations_.load(std::memory_order_relaxed),
 			.stateless_resets = stateless_resets_.load(std::memory_order_relaxed),
 			.dropped = dropped_.load(std::memory_order_relaxed),
+			.forward_hop_ns = forward_hop_ns_.load(std::memory_order_relaxed),
+			.forward_hop_count = forward_hop_count_.load(std::memory_order_relaxed),
+			.forward_hop_max_ns = forward_hop_max_ns_.load(std::memory_order_relaxed),
 		};
 	}
 
 	Task<void> Http3Endpoint::deliver(OwnedDatagram datagram)
 	{
 		forwarded_in_.fetch_add(1, std::memory_order_relaxed);
+		// A datagram that reached deliver() without a stamp would otherwise be charged
+		// the whole time since the steady clock's epoch.
+		if (datagram.queued.time_since_epoch().count() != 0)
+		{
+			const auto ns = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+			    std::chrono::steady_clock::now() - datagram.queued).count());
+			forward_hop_ns_.fetch_add(ns, std::memory_order_relaxed);
+			forward_hop_count_.fetch_add(1, std::memory_order_relaxed);
+			auto prev = forward_hop_max_ns_.load(std::memory_order_relaxed);
+			while (ns > prev && !forward_hop_max_ns_.compare_exchange_weak(prev, ns, std::memory_order_relaxed))
+			{
+			}
+		}
 
 		const net::Datagram view{
 			.data = {datagram.data.data(), datagram.data.size()},
@@ -173,6 +189,7 @@ namespace coroute::http3
 									.peer = datagram.peer,
 									.local = datagram.local,
 									.ecn = datagram.ecn,
+									.queued = std::chrono::steady_clock::now(),
 								});
 				co_return;
 			}
@@ -425,6 +442,10 @@ namespace coroute::http3
 			total.version_negotiations += one.version_negotiations;
 			total.stateless_resets += one.stateless_resets;
 			total.dropped += one.dropped;
+			total.forward_hop_ns += one.forward_hop_ns;
+			total.forward_hop_count += one.forward_hop_count;
+			// A maximum does not sum.
+			total.forward_hop_max_ns = std::max(total.forward_hop_max_ns, one.forward_hop_max_ns);
 		}
 		return total;
 	}

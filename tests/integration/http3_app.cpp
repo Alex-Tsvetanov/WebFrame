@@ -105,6 +105,9 @@ int main(int argc, char** argv)
 				body += "version_negotiations " + std::to_string(stats.version_negotiations) + "\n";
 				body += "stateless_resets " + std::to_string(stats.stateless_resets) + "\n";
 				body += "dropped " + std::to_string(stats.dropped) + "\n";
+				body += "forward_hop_ns " + std::to_string(stats.forward_hop_ns) + "\n";
+				body += "forward_hop_count " + std::to_string(stats.forward_hop_count) + "\n";
+				body += "forward_hop_max_ns " + std::to_string(stats.forward_hop_max_ns) + "\n";
 				co_return Response::ok(body);
 			});
 #endif

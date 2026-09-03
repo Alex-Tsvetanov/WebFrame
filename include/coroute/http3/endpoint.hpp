@@ -3,6 +3,7 @@
 #ifdef COROUTE_HAS_HTTP3
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -52,6 +53,11 @@ namespace coroute::http3
 		net::Endpoint peer;
 		net::Endpoint local;
 		std::uint8_t ecn = 0;
+		// Stamped when a worker hands the datagram to its owner, read when the owner
+		// picks it up: the userspace hop is the difference. A kernel that steered by
+		// connection ID would not reduce the forwarded share, it would remove this
+		// interval, so this interval is what such a kernel would buy.
+		std::chrono::steady_clock::time_point queued{};
 	};
 
 	// What the endpoint did with what arrived.
@@ -72,6 +78,10 @@ namespace coroute::http3
 		std::uint64_t version_negotiations = 0;
 		std::uint64_t stateless_resets = 0;
 		std::uint64_t dropped = 0;
+		// The userspace forwarding hop: what kernel-side steering would remove.
+		std::uint64_t forward_hop_ns = 0;
+		std::uint64_t forward_hop_count = 0;
+		std::uint64_t forward_hop_max_ns = 0;
 	};
 
 	class Http3Endpoint
@@ -151,6 +161,9 @@ namespace coroute::http3
 		std::atomic<std::uint64_t> version_negotiations_{0};
 		std::atomic<std::uint64_t> stateless_resets_{0};
 		std::atomic<std::uint64_t> dropped_{0};
+		std::atomic<std::uint64_t> forward_hop_ns_{0};
+		std::atomic<std::uint64_t> forward_hop_count_{0};
+		std::atomic<std::uint64_t> forward_hop_max_ns_{0};
 
 		std::unique_ptr<net::DatagramSocket> socket_;
 		std::unordered_map<CidKey, std::shared_ptr<Http3Connection>> connections_;
