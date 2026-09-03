@@ -141,6 +141,30 @@ else
 fi
 
 cleanup() {
+    # $SERVER_PID is the `ip netns exec` wrapper, not the server: sudo forks, so the
+    # process holding the listening sockets is a grandchild and survives the wrapper's
+    # death. Every run used to strand a four-worker server, and seven were found alive
+    # after one afternoon. `ip netns pids` names exactly the processes in this test's own
+    # namespace, so this kills those and nothing else -- pkill on the binary name would
+    # reach a concurrent run's server too.
+    #
+    # TERM first, because the server now installs a handler and shuts down cleanly; KILL
+    # after a bounded wait, because a harness that can be left waiting is a harness that
+    # hangs. Done before the namespace is deleted, while its pids can still be listed.
+    for ns in "${CLEANUP_NS[@]:-}"; do
+        local pids
+        pids="$(as_root ip netns pids "$ns" 2>/dev/null || true)"
+        [ -n "$pids" ] || continue
+        # shellcheck disable=SC2086
+        as_root kill -TERM $pids 2>/dev/null || true
+        for _ in $(seq 1 50); do
+            pids="$(as_root ip netns pids "$ns" 2>/dev/null || true)"
+            [ -n "$pids" ] || break
+            sleep 0.1
+        done
+        # shellcheck disable=SC2086
+        [ -n "$pids" ] && as_root kill -KILL $pids 2>/dev/null || true
+    done
     local srv="${SERVER_PID:-}"
     if [ -n "$srv" ]; then
         kill "$srv" 2>/dev/null || true
@@ -267,78 +291,135 @@ apply_snat() {
 
 # Try several SNAT ports: the kernel hash is not under our control, so one remapping
 # can still land on the owning worker. Each attempt is a fresh connection.
-FORWARDED=0
-CLIENT_OK=0
-ATTEMPT=0
+# Two phases, because two things called "migration" are not the same thing, and only one
+# of them exercises identifier-keyed lookup. Established 3 September by running both
+# against both trees:
+#
+#   code             rebinding phase   client-initiated phase
+#   before the fix   pass              FAIL, three Stateless Resets
+#   after the fix    pass              pass
+#
+# Address rebinding, as a NAT does it, is invisible to the client: it never learns it
+# moved, so it never switches destination connection ID, so the endpoint's original map
+# entry still resolves. It exercises the four-tuple hash miss and the forwarding path and
+# nothing else. Client-initiated migration (RFC 9000 section 9.5) requires a fresh
+# destination CID and path validation, and only it reaches the case where a previously
+# advertised identifier must already be a lookup key.
+#
+# So the client-initiated phase runs first and is the primary one: the defect in which
+# additional advertised CIDs never became lookup keys, and a migrating client was answered
+# with a Stateless Reset that tore down its live connection, is invisible to rebinding
+# alone. A test that performs only rebinding passes on the broken tree. This one does not.
+# Both phases must pass, and they are reported separately, because they cover different
+# paths and a single verdict would hide which one moved.
 MAX_ATTEMPTS=12
-SNAT_PORT=40100
 
-while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
-    ATTEMPT=$((ATTEMPT + 1))
-    SNAT_PORT=$((SNAT_PORT + 17))
+# run_phase <mode> <label>
+#   mode=client   the client migrates itself, with path validation and a fresh CID
+#   mode=rebind   nft SNAT remaps the source port under a client that never notices
+#
+# Sets PHASE_CLIENT_OK and PHASE_FORWARDED. Each attempt is a fresh connection; several
+# are tried because the kernel's four-tuple hash is not under our control and a remapped
+# address can still land on the owning worker, which is the 1/N case rather than a failure.
+run_phase() {
+    local mode="$1" label="$2"
+    local attempt=0 snat_port=40100
+    PHASE_CLIENT_OK=0
+    PHASE_FORWARDED=0
+    PHASE_ATTEMPTS=0
+
     echo
-    echo "== attempt $ATTEMPT/$MAX_ATTEMPTS (SNAT sport $SNAT_PORT) =="
+    echo "######## phase: $label ########"
 
-    BEFORE="$(read_stats)"
-    BEFORE_OUT="$(printf '%s\n' "$BEFORE" | stat_field forwarded_out)"
-    BEFORE_IN="$(printf '%s\n' "$BEFORE" | stat_field forwarded_in)"
+    while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
+        attempt=$((attempt + 1))
+        snat_port=$((snat_port + 17))
+        PHASE_ATTEMPTS=$attempt
+        echo
+        if [ "$mode" = rebind ]; then
+            echo "== $label attempt $attempt/$MAX_ATTEMPTS (SNAT sport $snat_port) =="
+        else
+            echo "== $label attempt $attempt/$MAX_ATTEMPTS (client changes its own address) =="
+        fi
 
-    # Clear prior NAT mappings so the new sport is used cleanly.
-    "${RUN_IN_NS[@]}" "$CLIENT_NS" nft flush chain ip coroute_mig postrouting
+        local before before_out before_in
+        before="$(read_stats)"
+        before_out="$(printf '%s\n' "$before" | stat_field forwarded_out)"
+        before_in="$(printf '%s\n' "$before" | stat_field forwarded_in)"
 
-    CLIENT_LOG="$BUILD/http3_mig_client_${ATTEMPT}.log"
-    # delay-stream=2s: handshake first; SNAT at ~0.8s; request opens on remapped path.
-    "${RUN_IN_NS[@]}" "$CLIENT_NS" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
-        timeout 25 "$CLIENT" \
-        --delay-stream=2s \
-        --exit-on-first-stream-close \
-        "$SERVER_IP" "$PORT" "https://$SERVER_IP:$PORT/" \
-        > "$CLIENT_LOG" 2>&1 &
-    CLIENT_PID=$!
+        # Clear prior NAT mappings either way: in the client phase the chain must be empty
+        # or a rule left by the rebinding phase would move the address for us, and the
+        # phase would silently become the other one.
+        "${RUN_IN_NS[@]}" "$CLIENT_NS" nft flush chain ip coroute_mig postrouting
 
-    # Wait for handshake to progress, then remap.
-    sleep 0.8
-    apply_snat "$SNAT_PORT"
+        local client_log="$BUILD/http3_mig_client_${mode}_${attempt}.log"
+        local -a extra=()
+        if [ "$mode" = client ]; then
+            # The client moves at 1s, the request opens at 2s, so the stream is carried
+            # entirely on the new path and with the new connection ID.
+            extra+=(--change-local-addr=1s)
+        fi
 
-    wait "$CLIENT_PID" || true
-    CLIENT_STATUS=$?
-    CLIENT_PID=
+        "${RUN_IN_NS[@]}" "$CLIENT_NS" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+            timeout 25 "$CLIENT" \
+            --delay-stream=2s \
+            "${extra[@]}" \
+            --exit-on-first-stream-close \
+            "$SERVER_IP" "$PORT" "https://$SERVER_IP:$PORT/" \
+            > "$client_log" 2>&1 &
+        CLIENT_PID=$!
 
-    # The body is "coroute h3 ok\n" (14 bytes). When the client hex-dumps a STREAM
-    # that also carries the HEADERS frame, the ASCII column wraps at 16 and splits
-    # "coroute", so match a contiguous fragment rather than the whole string: same
-    # evidence, matched robustly.
-    #
-    # A clean stream close is the survival signal and subsumes ":status: 200" --
-    # the stream cannot close with no error unless the headers, the body and the
-    # FIN all arrived. It is also printed by every client build, which ":status:"
-    # is not.
-    if grep -qF "Negotiated ALPN is h3" "$CLIENT_LOG" \
-        && grep -qF "oute h3 ok" "$CLIENT_LOG" \
-        && grep -qE 'HTTP stream 0x0 closed with error codes \(RX:\(no error\)' "$CLIENT_LOG"; then
-        echo "  client: request completed on remapped path"
-        CLIENT_OK=1
-    else
-        echo "  client: incomplete (exit=$CLIENT_STATUS); checking fragments:"
-        grep -n 'ALPN\|status\|h3 ok\|stream 0x0 closed' "$CLIENT_LOG" | tail -20 | sed 's/^/    /' || true
-        tail -10 "$CLIENT_LOG" | sed 's/^/    /'
-    fi
+        if [ "$mode" = rebind ]; then
+            # Let the handshake finish, then remap under it.
+            sleep 0.8
+            apply_snat "$snat_port"
+        fi
 
-    AFTER="$(read_stats)"
-    echo "$AFTER" | sed 's/^/  /'
-    AFTER_OUT="$(printf '%s\n' "$AFTER" | stat_field forwarded_out)"
-    AFTER_IN="$(printf '%s\n' "$AFTER" | stat_field forwarded_in)"
+        wait "$CLIENT_PID" || true
+        local client_status=$?
+        CLIENT_PID=
 
-    DELTA_OUT=$((AFTER_OUT - BEFORE_OUT))
-    DELTA_IN=$((AFTER_IN - BEFORE_IN))
-    echo "  delta forwarded_out=$DELTA_OUT forwarded_in=$DELTA_IN"
+        # A clean stream close is the survival signal and subsumes ":status: 200" -- the
+        # stream cannot close with no error unless the headers, the body and the FIN all
+        # arrived. The body match is a contiguous fragment because the client's hex dump
+        # wraps the ASCII column at 16 and splits "coroute".
+        if grep -qF "Negotiated ALPN is h3" "$client_log" \
+            && grep -qF "oute h3 ok" "$client_log" \
+            && grep -qE 'HTTP stream 0x0 closed with error codes \(RX:\(no error\)' "$client_log"; then
+            echo "  client: request completed after the move"
+            PHASE_CLIENT_OK=1
+        else
+            echo "  client: incomplete (exit=$client_status); checking fragments:"
+            grep -n 'ALPN\|status\|h3 ok\|stream 0x0 closed\|stateless' "$client_log" | tail -20 | sed 's/^/    /' || true
+            tail -10 "$client_log" | sed 's/^/    /'
+        fi
 
-    if [ "$DELTA_OUT" -gt 0 ] || [ "$DELTA_IN" -gt 0 ]; then
-        FORWARDED=1
-        echo "  userspace forwarding fired"
-        break
-    fi
-done
+        local after after_out after_in
+        after="$(read_stats)"
+        echo "$after" | sed 's/^/  /'
+        after_out="$(printf '%s\n' "$after" | stat_field forwarded_out)"
+        after_in="$(printf '%s\n' "$after" | stat_field forwarded_in)"
+        echo "  delta forwarded_out=$((after_out - before_out)) forwarded_in=$((after_in - before_in))"
+
+        if [ "$((after_out - before_out))" -gt 0 ] || [ "$((after_in - before_in))" -gt 0 ]; then
+            PHASE_FORWARDED=1
+            echo "  userspace forwarding fired"
+            break
+        fi
+    done
+}
+
+# The primary phase. This is the one that fails on the parent of the fix.
+run_phase client "client-initiated migration (fresh CID, path validation)"
+CLIENT_PHASE_OK=$PHASE_CLIENT_OK
+CLIENT_PHASE_FWD=$PHASE_FORWARDED
+CLIENT_PHASE_ATTEMPTS=$PHASE_ATTEMPTS
+
+# The second phase, named for the path it actually covers.
+run_phase rebind "address rebinding (same CID, four-tuple hash miss only)"
+REBIND_PHASE_OK=$PHASE_CLIENT_OK
+REBIND_PHASE_FWD=$PHASE_FORWARDED
+REBIND_PHASE_ATTEMPTS=$PHASE_ATTEMPTS
 
 echo
 echo "== final quic-stats =="
@@ -348,28 +429,41 @@ FINAL_OUT="$(printf '%s\n' "$FINAL" | stat_field forwarded_out)"
 FINAL_IN="$(printf '%s\n' "$FINAL" | stat_field forwarded_in)"
 FINAL_RX="$(printf '%s\n' "$FINAL" | stat_field received)"
 FINAL_ACC="$(printf '%s\n' "$FINAL" | stat_field accepted)"
+FINAL_SR="$(printf '%s\n' "$FINAL" | stat_field stateless_resets)"
 
 echo
 echo "workers=$THREADS"
-echo "attempts=$ATTEMPT"
-echo "client_ok=$CLIENT_OK"
+echo "client_migration_ok=$CLIENT_PHASE_OK"
+echo "client_migration_forwarded=$CLIENT_PHASE_FWD"
+echo "client_migration_attempts=$CLIENT_PHASE_ATTEMPTS"
+echo "rebinding_ok=$REBIND_PHASE_OK"
+echo "rebinding_forwarded=$REBIND_PHASE_FWD"
+echo "rebinding_attempts=$REBIND_PHASE_ATTEMPTS"
 echo "forwarded_out=$FINAL_OUT"
 echo "forwarded_in=$FINAL_IN"
 echo "received=$FINAL_RX"
 echo "accepted=$FINAL_ACC"
+echo "stateless_resets=$FINAL_SR"
 echo "log=$LOG"
 
-if [ "$CLIENT_OK" -ne 1 ]; then
+# Reported separately: the phases cover different paths, and one verdict would hide which.
+if [ "$CLIENT_PHASE_OK" -ne 1 ]; then
     echo "--- server log ---" >&2
     cat "$BUILD/http3_mig_server.log" >&2
-    fail "connection did not survive migration (no successful remapped request)"
+    fail "client-initiated migration: connection did not survive a fresh destination CID. \
+This is the shape the pre-fix tree failed with; check stateless_resets above."
 fi
-if [ "$FORWARDED" -ne 1 ]; then
+if [ "$REBIND_PHASE_OK" -ne 1 ]; then
     echo "--- server log ---" >&2
     cat "$BUILD/http3_mig_server.log" >&2
-    fail "forwarded_out/forwarded_in never incremented after $ATTEMPT SNAT remaps (forwarding did not fire)"
+    fail "address rebinding: connection did not survive a remapped four-tuple"
+fi
+if [ "$CLIENT_PHASE_FWD" -ne 1 ] && [ "$REBIND_PHASE_FWD" -ne 1 ]; then
+    echo "--- server log ---" >&2
+    cat "$BUILD/http3_mig_server.log" >&2
+    fail "forwarded_out/forwarded_in never incremented in either phase (forwarding did not fire)"
 fi
 
 echo
-echo "HTTP/3 path migration: connection survived and userspace CID forwarding fired."
+echo "HTTP/3 path migration: both phases survived; userspace CID forwarding fired."
 exit 0

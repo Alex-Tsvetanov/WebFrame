@@ -3,6 +3,7 @@
 // This is the claim the whole project rests on, reduced to something runnable: one
 // port number, one certificate, one set of routes, one thread pool. If serving three
 // protocols needed three of anything visible here, the design would not have worked.
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -16,6 +17,27 @@
 #endif
 
 using namespace coroute;
+
+// The harness runs this inside a network namespace it later deletes, and it used to be
+// left running when the namespace went: the test's trap killed the `ip netns exec`
+// wrapper, which is not this process, and nothing here answered SIGTERM. Seven of these
+// were found alive after one afternoon of runs, each holding four worker threads. A
+// benchmark harness that leaves servers running is one that will eventually measure them.
+//
+// The handler does the least that is safe from a signal context: set a flag the run loop
+// can see, through the App the signal cannot be given as an argument.
+namespace
+{
+	App* g_app = nullptr;
+
+	extern "C" void stop_on_signal(int)
+	{
+		if (g_app != nullptr)
+		{
+			g_app->stop();
+		}
+	}
+}
 
 int main(int argc, char** argv)
 {
@@ -65,6 +87,11 @@ int main(int argc, char** argv)
 
 	app.enable_tls(tls);
 	app.enable_http3();
+
+	g_app = &app;
+	std::signal(SIGTERM, stop_on_signal);
+	std::signal(SIGINT, stop_on_signal);
+
 	app.run(static_cast<uint16_t>(std::atoi(argv[1])));
 	return 0;
 }
