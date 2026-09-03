@@ -2449,6 +2449,69 @@ migration is the CLIENT moving, the laptop is dual-homed, and its namespace pair
 addresses on a veth. **So no second host is needed**; the two-machine arrangement becomes optional.
 The desktop cannot be the server (no datagram socket), so it need not be in the arrangement at all.
 
+## 15:30, 3 September -- paper 4 has a working HTTP/3 server and a migration fix
+
+**HTTP/3 SERVES. END TO END, WITH A CONTROL.** `curl -k --http3-only` returned **HTTP 200 over HTTP/3**
+from a coroute server (scratch cert, scratch port, TLS + HTTP/3, two workers, io_uring); then 20
+sequential and 8 concurrent requests, all 200 over h3; server healthy after, both UDP sockets still
+bound, clean shutdown.
+*`--http3-only` NOT `--http3`, deliberately:* `--http3` permits fallback and a TCP fallback returning
+200 would look exactly like success. **The control:** the same curl against an identically built
+HTTP/3-OFF server -- no UDP socket, `--http3-only` fails with code 000, plain curl succeeds over
+HTTP/2. So the 200-over-h3 could only have come from the QUIC path; the server's banner was never the
+evidence.
+*Limitation, stated and to be written into the paper:* curl's QUIC is ngtcp2 and its HTTP/3 is
+nghttp3, the same two libraries the server uses, so this is **not two independent stacks** -- and
+ngtcp2's own reference client would not have been either. An independent check needs quiche, msquic or
+a browser. That is future work, not a gap.
+*The laptop declined to build the reference client* (it needs a from-source OpenSSL 3.5 + nghttp3 +
+ngtcp2 into `~/opt/quic`) because a second implementation was already installed. Right call.
+
+**THE RECONCILIATION FOUND A REAL DEFECT AND IT IS THE ONE THIS PAPER IS ABOUT.** Pushed as
+`quic/cid-routing-reconciled` (`cb403edbb`). `Http3Endpoint` kept ONE map entry per connection, under
+the connection ID chosen at accept. `on_new_connection_id` stamped the worker index into each
+additional CID and derived its reset token but **never told the endpoint**, so no additional CID was
+ever a lookup key. RFC 9000 requires a migrating client to switch to a fresh destination CID; that ID
+routes to the right worker, which then misses in its own map, sees a short header it owns, falls
+through, and **sends a Stateless Reset that tears down a live connection.** Migration was broken in
+exactly the way this paper studies. The commit notes why the unit tests never caught it: **nothing in
+them migrates.** The QUIC sources had not moved in the 301 commits separating the old branch's base
+from mainline, so this is the same fix on the same code rather than a port. Also on the branch:
+`tests/integration/verify_http3_migration.sh`, ctest-registered, plus two fixes to it (a skipped run
+used to overwrite the measurement it was meant to record; the survival check now requires the stream
+to CLOSE CLEANLY). **The laptop has been dispatched to run it** -- with the instruction that a passing
+script is the claim, and what convinces is evidence the client's address changed, the CID changed with
+it, and the response came over the SAME connection.
+
+**THE TEST CENSUS IS ON `linux/test-census` (`e5eef1692`) and it is better than what I asked for.** I
+asked for a guard that REFUSES; the laptop built one that ACCOUNTS: every case the sources define is
+attributed either to the running binary or to a NAMED undefined macro, and the totals must agree, so a
+dormant test is documented rather than forbidden. Prints every run. On a feature-off build: "176
+registered, 176 expected from 187 defined; 11 dormant: COROUTE_HAS_HTTP3 is not defined". Told the
+same binary HTTP/3 is on, it fails.
+**The pattern is wider than HTTP/3: eight files across five macros.** HTTP/2, TLS and the template
+tests have been disappearing the same silent way.
+**Two things it caught while being built, both worth more than the feature.** (1) A build directory
+from 2 September registers one case fewer than the sources define with no macro to account for it --
+the stale-binary hazard arriving from a direction nobody was watching. (2) **It caught a bug in
+itself**: CMake passes a target property through `add_test` as one semicolon-joined argument, so the
+first wiring saw every macro as undefined, would have reported every guarded test dormant on every
+build, and **would have PASSED, because expected and registered would still have agreed.** A green
+check that had stopped checking. Found by READING the generated `CTestTestfile.cmake`, because running
+it would have looked fine.
+
+**A HAZARD ON THIS MAC, recorded before it bites.** This machine HAS ngtcp2 1.23.0 and nghttp3 1.16.0
+from homebrew, and its kqueue backend creates no datagram socket. So a build here configures, the
+`#ifdef`-guarded tests compile, the 11 unit tests pass (they need no socket), and a server would log
+"HTTP/3 listening" with a null datagram factory. **Any claim from this machine that HTTP/3 WORKS is a
+false positive by construction.** The reconciliation workflow runs here: trust its source work, and
+accept nothing it says about running until the laptop confirms it at kernel level.
+
+**Thesis at 168 pages, 0 undefined references or citations.** Also fixed: three places promised the
+excluded HTTP/3 work "is conducted in the Linux campaign". It was not, on any platform. Now
+"planned for, and not carried out", with the distinction spelled out -- excluded-by-environment
+depends on nobody, pending depends on us.
+
 ## 14:55, 3 September -- HTTP/3 runs, and every green test run was less green than it looked
 
 **h1-deep IS A THIRD SHAPE, and the number the thesis wanted is FOUR** (filed
