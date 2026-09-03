@@ -2350,8 +2350,15 @@ authorisation, and no brief may tell a session it must not ask its own user -- a
 another session's channel to the person whose machine it runs on. (The coordinator reintroduced the
 blanket "never call AskUserQuestion" form twice after withdrawing it, because a memory note's
 actionable paragraph still carried it while the withdrawal sat in that note's history; the note is now
-corrected at the top. If a brief you are about to send contains that phrase, the error is recurring.) Nothing is pushed outbound by any machine: he
-pushes in the morning. No system changes, no firewall, no passwords, no packages.**
+corrected at the top. If a brief you are about to send contains that phrase, the error is recurring.) **PUSHING RESULTS IS PRE-AUTHORISED AND IS NEVER TO BE ASKED ABOUT** (Alex, 3 September, in his own
+words: "stop asking me if you can request agents to push their stuff. This is an obvious yes on my
+side because how else would you communicate the results of the conducted experiments with those
+agents. And with no results, how would you write 4 papers"). A machine pushes its own measurement
+branches to the PRIVATE paper repositories and its framework branches to the public one, unasked.
+**The one absolute constraint survives: nothing carrying machine identity reaches the PUBLIC
+repository.** Verify a push with `ls-remote`, not an exit code. The same correction is made in the
+memory note `remote-sessions-no-blocking` and in the successor brief, which both carried the old
+wording. No system changes, no firewall, no passwords, no packages.**
 
 **FOR ALEX IN THE MORNING, in order:**
 1. Push the desktop's local measure branches: `-net` (9b3ba079a) and `-sweeps` (01ccffb06) to
@@ -2368,6 +2375,21 @@ proportion run, then conditionally `churn-proportion-fine` at 90 and 95; four co
 resumed on Opus after the Fable limit stopped their later agents (pacing-to-covariate, the two-host
 design, papers 1 and 3). **The two-host run does NOT start tonight**: it needs both machines and its
 design is still in red-team.
+
+## Where the four papers stand, 3 September
+
+**None is ready. Three are drafted except results; the data for all three is now pushed and the
+results are being written.**
+
+| paper | state | what remains |
+|---|---|---|
+| socket-demux | 8 pages, PDF and DOCX, results written from the Windows campaign | the syscall mechanism section from the laptop's counted runs; the re-evaluated refusal counts are already in on `draft/v1` |
+| dfa-routing | 7 pages, every section but results | results being written from `measure/desktop-2026-09-02-routing` (workflow `wy9pkrjtd`) |
+| io-portability | 9 pages, every section but results | results being written from `measure/laptop-2026-09-02` and `measure/macos-2026-09-02` (workflow `wtvrpfh2n`) |
+| quic-cid-routing | scaffold with noted sections | nothing: future work, no data, correct as it stands |
+
+All measurement branches are pushed and verified: five to `paper-socket-demux`, one to
+`paper-dfa-routing`, two to `paper-io-portability`. `origin` holds zero `measure/*` branches, checked.
 
 ## Alex's decisions, 2 September ~22:30 EEST
 
