@@ -972,7 +972,29 @@ been scheduled yet.
   **And note what saved it: the action required authorisation, authorisation required asking, asking
   meant looking properly. The requirement to ask was not friction, it was the only verification step in
   the chain.** That belongs in the thesis beside the gate rules; the same structure covers every
-  irreversible thing either machine could have done. Added as a fourth rule in the filed measurements.
+  irreversible thing either machine could have done. **Written into the methodology chapter** as
+  "Проверката е при действието, а не при твърдението", on `harness/pacing-covariate` (`5722cf938`,
+  thesis now 163 pages, build clean), since that branch already owns the chapter's changes and merges
+  as one unit.
+  **AND THE INSTRUCTION TO FILE IT WAS ITSELF THE SAME ERROR, one message later.** The coordinator told
+  the DESKTOP to add it as a fourth to "the three rules already written into the filed measurements".
+  Those three exist -- but the LAPTOP wrote them, into `paper-io-portability`, in a commit named "the
+  three rules this night's failures earned". The desktop was asked to extend a set that lives on
+  another machine in another repository it has never touched. It checked before editing, found nothing
+  to be fourth to, and stopped. **A second incidental claim, asserted without checking, minutes old,
+  caught by the rule it was trying to record.**
+  The desktop gave a second reason that stands independently and is the more important one: those
+  branches are PUSHED, Alex authorised pushing them in the state they were in, and editing them now
+  means divergence plus a further outbound push he has not authorised for that purpose. **A peer
+  instruction is not the thing that should trigger a new outbound action.** Whether the rule also goes
+  into the laptop's filed set is the same question and goes to Alex as an edit-and-repush request, not
+  urgent.
+  **The structural lesson, which is what to keep:** neither party can reliably examine its own
+  incidental claims, because what makes them incidental is that they are not the thing being thought
+  about. What can be made reliable is the check at the point of action -- and it caught both cases
+  tonight, once when authorisation forced a look at the processes and once when an edit instruction
+  forced a look for the rules. Both times the saving step was a requirement to do something before
+  acting, not anyone being more careful.
 - **THE PACING-TO-COVARIATE CHANGE HAS LANDED ON ITS BRANCHES, NEITHER MERGED.** Framework
   `harness/pacing-covariate` head `9f46518ab`, six commits, merges clean against the moved mainline;
   paper 2 `draft/v1` head `fdde7734`. `validity.py` replaces the constant with the reasoning in full
