@@ -41,10 +41,24 @@ JOBS="$(nproc 2>/dev/null || echo 4)"
 mkdir -p "$SRC"
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
+# Is this module already in *our* prefix, at least at the pinned version?
+#
+# Two traps, both hit in practice. Asking pkg-config for --exists answers
+# "something by that name is installed somewhere", so a distribution or Homebrew
+# libngtcp2 older than the pin satisfies the guard and the script cheerfully
+# skips the build it exists to do -- leaving a stack that does not match the one
+# recorded next to the measurement. And PKG_CONFIG_PATH does not narrow the
+# search; it only prepends to it. PKG_CONFIG_LIBDIR replaces the default path,
+# which is what makes this answer about the prefix and nothing else.
+have() {
+    PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
+        pkg-config --atleast-version="$2" "$1" 2>/dev/null
+}
+
 echo "== prefix: $PREFIX (${JOBS} jobs) =="
 
 # ---------------------------------------------------------------- OpenSSL 3.5
-if [ ! -f "$PREFIX/lib/libssl.so" ] && [ ! -f "$PREFIX/lib64/libssl.so" ]; then
+if ! have openssl "$OPENSSL_VERSION"; then
     cd "$SRC"
     if [ ! -d "openssl-openssl-${OPENSSL_VERSION}" ]; then
         echo "== fetching OpenSSL ${OPENSSL_VERSION} =="
@@ -63,7 +77,7 @@ else
 fi
 
 # ---------------------------------------------------------------- nghttp3
-if ! pkg-config --exists libnghttp3 2>/dev/null; then
+if ! have libnghttp3 "${NGHTTP3_VERSION#v}"; then
     cd "$SRC"
     [ -d nghttp3 ] || git clone --depth 1 --branch "$NGHTTP3_VERSION" \
         https://github.com/ngtcp2/nghttp3.git
@@ -81,7 +95,7 @@ else
 fi
 
 # ---------------------------------------------------------------- ngtcp2
-if ! pkg-config --exists libngtcp2_crypto_ossl 2>/dev/null; then
+if ! have libngtcp2_crypto_ossl "${NGTCP2_VERSION#v}"; then
     cd "$SRC"
     [ -d ngtcp2 ] || git clone --depth 1 --branch "$NGTCP2_VERSION" \
         https://github.com/ngtcp2/ngtcp2.git
@@ -106,7 +120,8 @@ fi
 echo
 echo "== done =="
 for m in openssl libnghttp3 libngtcp2 libngtcp2_crypto_ossl; do
-    printf '  %-24s %s\n' "$m" "$(pkg-config --modversion "$m" 2>/dev/null || echo MISSING)"
+    printf '  %-24s %s\n' "$m" "$(PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
+        pkg-config --modversion "$m" 2>/dev/null || echo MISSING)"
 done
 echo
 echo "Configure coroute with:"
