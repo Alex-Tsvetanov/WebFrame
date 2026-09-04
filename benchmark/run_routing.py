@@ -41,8 +41,15 @@ REPO = Path(__file__).resolve().parents[1]
 ARMS = ("dfa", "radix", "regex")
 
 
-def _cell(arm: str, routes: int, shape: str, params: int, depth: int) -> Cell:
-    return Cell.of(arm, routes=routes, shape=shape, params=params, depth=depth)
+def _cell(arm: str, routes: int, shape: str, params: int, depth: int,
+          path_set: int = 0) -> Cell:
+    # path_set is a factor rather than a campaign-wide argument, so the scheduler
+    # interleaves it the way it interleaves arm and route count. Run as three blocked
+    # campaigns instead, one per value, the machine's warming would be attributed to the
+    # path-set condition, which is the confound this control exists to remove; and it
+    # would land hardest on whichever value ran first. 0 is the whole table.
+    return Cell.of(arm, routes=routes, shape=shape, params=params, depth=depth,
+                   path_set=path_set)
 
 
 def design_main() -> list[Cell]:
@@ -149,6 +156,37 @@ def design_smoke() -> list[Cell]:
     return [_cell(arm, 100, "rest", params=1, depth=5) for arm in ARMS]
 
 
+
+# The pools the working-set control compares. 0 is the unbounded ring, which is what every
+# cell before this design used and what the confound looks like; 10 and 100 hold the
+# queried set still while the table grows.
+PATH_SETS = (0, 10, 100)
+
+
+def design_path_set() -> list[Cell]:
+    """Table size against working-set size, which no previous design separates.
+
+    The ring draws with replacement from the whole table, so the number of distinct paths
+    it holds rises with the route count and the two grow together in every scaling cell.
+    A dispatch cost that rises across the sweep cannot then be told from a cache and TLB
+    effect, which is the open question the routing paper carries.
+
+    Three pools per cell rather than three campaigns. Interleaved, so the machine warming
+    up is not charged to whichever pool ran first, which matters here more than usual
+    because the unbounded pool is the slow one and running it first would flatter the
+    control.
+
+    Both arms, because the question is about the automaton and the tree separately: if
+    bounding the pool moves them by the same proportion the effect is the memory
+    hierarchy, and if it moves one and not the other it is the structure.
+    """
+    return [
+        _cell(arm, routes, "rest", params=1, depth=5, path_set=ps)
+        for routes in (1000, 10000)
+        for ps in PATH_SETS
+        for arm in ("dfa", "radix")
+    ]
+
 DESIGNS = {
     "main": design_main,
     "scaling": design_scaling,
@@ -157,6 +195,7 @@ DESIGNS = {
     "large": design_large,
     "large-cheap": design_large_cheap,
     "large-dfa": design_large_dfa,
+    "path-set": design_path_set,
     "smoke": design_smoke,
 }
 
@@ -174,6 +213,14 @@ def main(argv: list[str] | None = None) -> int:
     # not express until route_bench took the flag. Set externally instead, a mask governs
     # every cell and appears in no record: the run is pinned and nothing says so, which is
     # the failure this harness exists to prevent. Empty means unpinned, recorded as such.
+    # An instrument rather than a treatment: every cell takes both readings and the value
+    # does not vary across cells, so it is a campaign argument and not a factor. It is
+    # still recorded per row, because a cell must say which instrument it quotes and the
+    # two do not measure the same quantity.
+    ap.add_argument("--batch", type=int, default=0,
+                    help="time K lookups between one pair of clock reads and divide; 0 "
+                         "off. Required on hosts with no cycle counter, where the "
+                         "per-lookup histogram does not exist")
     ap.add_argument("--affinity", default="",
                     help="hex CPU mask for route_bench; empty runs unpinned. Which core is\n"
                          "chosen moves both the median and the spread, so it belongs in the\n"
@@ -305,6 +352,12 @@ def main(argv: list[str] | None = None) -> int:
             ]
             if args.affinity:
                 argv_run += ["--affinity", args.affinity]
+            if args.batch:
+                argv_run += ["--batch", str(args.batch)]
+            # 0 is the unbounded pool and is the default in the binary, so it is passed
+            # only when set. The record carries it either way, from the factor below.
+            if factors.get("path_set"):
+                argv_run += ["--path-set", str(factors["path_set"])]
 
             power_before = validity.current_power_source()
 
@@ -330,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
                 # asked for, which is a different record from one that was asked for and
                 # refused.
                 "affinity_requested": args.affinity or None,
+                # Which instrument this row may be quoted from. The per-lookup histogram
+                # and the batch reading measure different quantities and must not be
+                # pooled, so a row that does not name its instrument is a row nobody can
+                # place. 0 means the per-lookup histogram alone.
+                "batch": args.batch,
             }
 
             try:
