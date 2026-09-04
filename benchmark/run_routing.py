@@ -436,11 +436,30 @@ def main(argv: list[str] | None = None) -> int:
             if record["accepted"]:
                 accepted += 1
                 r = record["result"]
-                print(f"[{n:3d}/{len(schedule)}] ok  {arm:<5s} routes={factors['routes']:>6d} "
-                      f"{factors['shape']:<4s} p={factors['params']} d={factors['depth']:<2d} "
-                      f"p50={r['ns']['p50']:>10.1f}ns p99={r['ns']['p99']:>11.1f}ns "
-                      f"p99.9={r['ns']['p999']:>11.1f}ns n={r['lookups']:>7d} "
-                      f"build={r['build_ms']:>9.1f}ms rss={r['rss_delta_bytes']/1048576:>8.1f}MB")
+                # Which instrument produced the line, because on a host with no cycle
+                # counter the per-lookup histogram is absent rather than zero and
+                # printing its empty percentiles reads as a run that measured nothing.
+                # The record was always right; the console was not.
+                head = (f"[{n:3d}/{len(schedule)}] ok  {arm:<5s} "
+                        f"routes={factors['routes']:>6d} {factors['shape']:<4s} "
+                        f"p={factors['params']} d={factors['depth']:<2d} "
+                        f"pool={factors.get('path_set', 0):>5d}")
+                if r.get("per_lookup_histogram", True):
+                    print(f"{head} p50={r['ns']['p50']:>10.1f}ns "
+                          f"p99={r['ns']['p99']:>11.1f}ns p99.9={r['ns']['p999']:>11.1f}ns "
+                          f"n={r['lookups']:>7d} build={r['build_ms']:>9.1f}ms "
+                          f"rss={r['rss_delta_bytes']/1048576:>8.1f}MB")
+                elif r.get("batch_picoseconds_per_lookup"):
+                    b = r["batch_picoseconds_per_lookup"]
+                    print(f"{head} batch p50={b['p50']/1000.0:>10.1f}ns "
+                          f"p90={b['p90']/1000.0:>11.1f}ns p99={b['p99']/1000.0:>11.1f}ns "
+                          f"n={r.get('batch_lookups', 0):>7d} build={r['build_ms']:>9.1f}ms "
+                          f"rss={r['rss_delta_bytes']/1048576:>8.1f}MB")
+                else:
+                    # Accepted by the runner and carrying no measurement from either
+                    # instrument. The record keeps it; the console must not imply a
+                    # number was taken.
+                    print(f"{head} NO MEASUREMENT: neither instrument produced a reading")
             else:
                 failed += 1
                 print(f"[{n:3d}/{len(schedule)}] FAIL {arm:<5s} routes={factors['routes']:>6d} "
