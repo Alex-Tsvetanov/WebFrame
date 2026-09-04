@@ -556,6 +556,19 @@ class CorouteServer:
         # the banner cross-check in the driver still confirms which one ran.
         if factors.get("io_backend") in ("io_uring", "epoll"):
             args += ["--io-backend", str(factors["io_backend"])]
+        # The wait-policy arm, for the same reason and on the same terms as the backend
+        # above: passed rather than built in, and only when the cell carries it, so a
+        # campaign that predates the factor produces the command line it always did.
+        #
+        # This factor is why the flag exists. The three wait arms used to be three builds
+        # of one commit differing in one constant, which is what the one-binary rule
+        # excludes, and the paper had to declare the departure. A cell carrying
+        # io_wait_us makes them one binary and a flag.
+        #
+        # 0 means block. It is a legitimate value and must survive the truthiness test
+        # that would swallow it, hence the explicit "is not None".
+        if factors.get("io_wait_us") is not None:
+            args += ["--io-wait-us", str(factors["io_wait_us"])]
         if not factors.get("protocol_detection", True):
             args.append("--no-detect")
         if factors.get("tls"):

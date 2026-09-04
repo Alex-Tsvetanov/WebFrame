@@ -638,6 +638,64 @@ def design_mechanism() -> list[Cell]:
     ]
 
 
+# The three wait bounds the decomposition compares, in microseconds. 0 is a blocking wait
+# and is a value rather than an absence, which is why the adapter tests it against None.
+#
+# 1 is what mainline carried before commit 3d704ff29, 1000 is what it carries now, and
+# blocking is the arm that isolates the timer term by removing it. The paper reports the
+# gap between them as 96 per cent wait policy and 4 per cent mechanism; that split is the
+# thing this design exists to re-take under gates.
+WAIT_POLICY_ARMS = (1, 1000, 0)
+
+# Low, because the finding is about a worker that spends most of its time waiting. At a
+# rate high enough to keep a worker busy the wait bound stops mattering, which is the
+# paper's own separate result and not this one.
+WAIT_POLICY_RATE = 100.0
+
+
+def design_wait_policy() -> list[Cell]:
+    """The wait-policy decomposition, three arms from one binary.
+
+    The paper's central claim, that at low load the wait policy rather than the mechanism
+    accounts for the difference between the two Linux backends, currently rests on records
+    that drove the generator directly: no fingerprint, no environment capture, no gates.
+    The fully witnessed records in that paper carry the results it de-emphasises. This
+    design exists to move the central claim into the witnessed set.
+
+    Three cells differing in one factor. Before --io-wait-us existed they were three builds
+    of one commit differing in one constant, which is exactly what the one-binary rule
+    excludes and what the paper had to declare as a departure; the flag makes them one
+    binary and an argument.
+
+    Cleartext, classification on, one rate. Every other factor is held because each one
+    moving underneath would be a second difference, and the arms already differ in the one
+    that matters.
+
+    Run it interleaved and with a fixed seed. Three arms taken in three blocks would let
+    drift over the session land on whichever arm ran last, and at 100 requests a second the
+    quantity being measured is tens of microseconds.
+    """
+    # The bound reaches the completion backend and nothing else. On epoll, kqueue or IOCP
+    # the flag parses, is accepted, and changes nothing, so the three arms would be three
+    # repetitions of one cell and the design would return a null that is a property of the
+    # backend rather than of the wait policy. Refused rather than run: a campaign that
+    # cannot answer its question should say so at the start, not produce a full set of
+    # plausible numbers for an experiment that never happened.
+    arm = _io_backend()
+    if arm != "io_uring":
+        raise SystemExit(
+            f"wait-policy needs --io-backend io_uring; this run resolves to {arm}, where "
+            "--io-wait-us reaches nothing and the three arms would be identical"
+        )
+    return [
+        Cell.of(system_name(), **_base(workers=4),
+                protocol_detection=True,
+                offered_rate=WAIT_POLICY_RATE,
+                io_wait_us=wait)
+        for wait in WAIT_POLICY_ARMS
+    ]
+
+
 def design_uring_worker_probe() -> list[Cell]:
     """One keep-alive cell with a single worker, to explain a bimodal kernel-entry count.
 
@@ -817,6 +875,7 @@ DESIGNS = {
     "churn-ladder": design_churn_ladder,
     "tls-smoke": design_tls_smoke,
     "mechanism": design_mechanism,
+    "wait-policy": design_wait_policy,
     "clock-ladder": design_clock_ladder,
     "churn-ladder-counted": design_churn_ladder_counted,
     # Paper 2's syscall count. Run once per arm; see the design's docstring for why its
