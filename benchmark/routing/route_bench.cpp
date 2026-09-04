@@ -264,13 +264,26 @@ namespace
 		// How many of the table's routes the ring may draw from. Zero means all of them,
 		// which is what this benchmark did before the option existed.
 		//
-		// Without a bound the number of DISTINCT paths the stream can hold is
-		// min(distinct, routes), so it moves with the route count: at ten routes the
-		// stream cycles ten paths, fully warm and fully predicted, and at ten thousand it
-		// cycles four thousand. Table size and working-set size are then confounded in
-		// every scaling cell, and a dispatch cost that grows across the sweep cannot be
-		// told apart from a cache and TLB effect. Fixing this pool holds the working set
+		// Without a bound the ring samples the whole table, so the number of DISTINCT
+		// paths it holds rises with the route count and table size is confounded with
+		// working-set size in every scaling cell. Fixing the pool holds the queried set
 		// still while the table grows.
+		//
+		// How fast it rises matters and is not linear. The ring is `distinct` draws with
+		// replacement, so the expected distinct count is pool*(1-(1-1/pool)^distinct),
+		// which at the default ring of 4096 runs:
+		//
+		//     routes      10    100   1000   2000   4096  10000
+		//   distinct      10    100    983   1742   2589   3361
+		//   % of table  100%   100%  98.3%  87.1%  63.2%  33.6%
+		//
+		// So the confound is present across the whole sweep, since the count is monotone,
+		// but its rate falls away: from ten routes to ten thousand the table grows a
+		// thousandfold and the queried set only 336-fold. A cell above a few thousand
+		// routes is therefore not "the working set grew with the table" in the way a cell
+		// below one thousand is, and a reading that treats the sweep as uniform in this
+		// respect is wrong at both ends. Raise `distinct` with the table to keep the
+		// proportion, or fix `path_set` to remove it; the two answer different questions.
 		size_t path_set = 0;
 		// Lookups timed between one pair of counter reads, the result divided by K.
 		// Zero keeps the per-lookup histogram alone, which is what every existing record
@@ -357,8 +370,17 @@ namespace
 			"                          samples were taken\n"
 			"  --out FILE              JSON summary\n"
 			"  --hist FILE             per-lookup histogram, cycles,count\n"
-			"  --distinct N            distinct paths in the query stream (default 4096);\n"
-			"                          a control on working-set size, not a tuning knob\n"
+			"  --distinct N            ring length, entries drawn with replacement (default\n"
+			"                          4096); with --path-set, a control on working-set size\n"
+			"  --path-set N            draw the ring from only the first N routes (default 0,\n"
+			"                          the whole table). Without it the queried-path count\n"
+			"                          rises with the route count and table size is\n"
+			"                          confounded with working-set size\n"
+			"  --batch K               time K lookups between one pair of clock reads and\n"
+			"                          divide (default 0, off). Amortises the timer overhead\n"
+			"                          and runs where there is no cycle counter; reports a\n"
+			"                          different quantity from the per-lookup histogram and\n"
+			"                          must not be pooled with it\n"
 			"  --seed N                query order seed\n"
 			"  --verify                check all three arms resolve the table identically\n"
 			"                          and exit; no timing\n"
