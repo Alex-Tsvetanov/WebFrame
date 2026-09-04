@@ -158,9 +158,34 @@ def design_smoke() -> list[Cell]:
 
 
 # The pools the working-set control compares. 0 is the unbounded ring, which is what every
-# cell before this design used and what the confound looks like; 10 and 100 hold the
-# queried set still while the table grows.
+# cell before this design used and is what the confound looks like.
+#
+# 10 is the one that can be held at every route count in the sweep, which is what makes the
+# flatness question answerable: same queried set, growing table. 100 only exists at counts
+# above it and is therefore an unbalanced extra condition rather than part of the main
+# comparison.
 PATH_SETS = (0, 10, 100)
+
+# Route counts. The paper's growth claim spans 10 to 10000, so the control has to span it
+# too; measuring only the top decade shows the growth vanishing across that decade and says
+# nothing about the span.
+PATH_SET_ROUTES = (10, 100, 1000, 10000)
+
+
+def _pool_is_distinct(path_set: int, routes: int) -> bool:
+    """Whether this pool is a different condition from the unbounded ring at this count.
+
+    route_bench clamps: pool = (path_set == 0 or path_set > routes) ? routes : path_set.
+    So a pool at or above the route count IS the unbounded ring, measured again under a
+    different label. Scheduled anyway, a sweep over (0, 10, 100) would run three identical
+    cells at 10 routes and two at 100, and the analysis would show the control having no
+    effect at low route counts: a real-looking null with a mechanical cause, in a paper
+    whose subject is that failure. The most quotable wrong sentence available, because it
+    appears to bound the finding.
+
+    Excluded here rather than corrected afterwards, so the collapse cannot be scheduled.
+    """
+    return path_set == 0 or path_set < routes
 
 
 def design_path_set() -> list[Cell]:
@@ -171,21 +196,29 @@ def design_path_set() -> list[Cell]:
     A dispatch cost that rises across the sweep cannot then be told from a cache and TLB
     effect, which is the open question the routing paper carries.
 
-    Three pools per cell rather than three campaigns. Interleaved, so the machine warming
-    up is not charged to whichever pool ran first, which matters here more than usual
-    because the unbounded pool is the slow one and running it first would flatter the
-    control.
+    The pools are per cell rather than per campaign, so the scheduler interleaves them and
+    the machine warming up is not charged to whichever pool ran first. That matters here
+    more than usual: the unbounded pool is the slow one, and running it first would flatter
+    the control rather than challenge it.
 
-    Both arms, because the question is about the automaton and the tree separately: if
-    bounding the pool moves them by the same proportion the effect is the memory
-    hierarchy, and if it moves one and not the other it is the structure.
+    Unbalanced by construction, and deliberately. A pool of 10 exists at every route count
+    and carries the flatness comparison; a pool of 100 exists only above 100 routes and is
+    an extra condition where it is available. Cells where the pool would equal the table are
+    not scheduled at all, because they are the unbounded ring under another name.
+
+    Both arms, because if bounding the pool moves them by the same proportion the effect is
+    the memory hierarchy, and if it moves one and not the other it is the structure. On the
+    campaign already run it did both: a large common component, and a difference of nearly
+    a factor of two on top.
     """
     return [
         _cell(arm, routes, "rest", params=1, depth=5, path_set=ps)
-        for routes in (1000, 10000)
+        for routes in PATH_SET_ROUTES
         for ps in PATH_SETS
+        if _pool_is_distinct(ps, routes)
         for arm in ("dfa", "radix")
     ]
+
 
 DESIGNS = {
     "main": design_main,

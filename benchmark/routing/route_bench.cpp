@@ -800,7 +800,15 @@ int main(int argc, char** argv)
 		             static_cast<unsigned long long>(opt.affinity_mask));
 		std::fprintf(f, "  \"affinity_applied\": %s,\n",
 		             (opt.affinity_mask == 0) ? "null" : (affinity_applied ? "true" : "false"));
-		std::fprintf(f, "  \"path_set\": %zu,\n", pool);
+		// Requested and effective, separately. route_bench clamps a pool at or above the
+		// route count to the whole table, so a cell asking for 100 at 10 routes IS the
+		// unbounded ring. One field called path_set, meaning the effective value, sitting
+		// beside a campaign factor called path_set meaning the requested one, is a join
+		// waiting to be made on the wrong column.
+		std::fprintf(f, "  \"path_set_requested\": %zu,\n", opt.path_set);
+		std::fprintf(f, "  \"path_set_effective\": %zu,\n", pool);
+		std::fprintf(f, "  \"path_set_collapsed\": %s,\n",
+		             (opt.path_set != 0 && pool != opt.path_set) ? "true" : "false");
 		// Which instruments this build actually has. Without a cycle counter the
 		// per-lookup histogram is absent rather than zero, and a reader must not average
 		// its bins with an x86 row's.
