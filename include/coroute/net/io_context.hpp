@@ -200,8 +200,23 @@ namespace coroute::net
 		// does not contain it, or the host refuses it. Refused rather than substituted:
 		// a run that silently measured epoll while its record said io_uring would
 		// produce a full set of plausible numbers for an experiment that never happened.
+		// wait_us is the completion backend's wait bound, in microseconds. It exists so
+		// that the wait-policy arms come from one binary: before it, comparing 1us
+		// against 1ms against a blocking wait meant three builds of one commit differing
+		// in one constant, and build-to-build layout variation alone is documented at
+		// several percent, which is larger than the mechanism term those arms measure.
+		//
+		//   < 0  the backend's own default, which is 1ms. Existing callers are unchanged.
+		//   > 0  wait that many microseconds.
+		//   = 0  block until a completion arrives.
+		//
+		// The blocking case is refused where IORING_FEAT_EXT_ARG is absent, because
+		// without it the wait holds the submission lock and an untimed wait would hold it
+		// forever. Refused rather than silently bounded, for the same reason a backend
+		// the host cannot provide raises instead of substituting.
 		static std::unique_ptr<IoContext> create(size_t thread_count = 1,
-		                                         IoBackend backend = IoBackend::Default);
+		                                         IoBackend backend = IoBackend::Default,
+		                                         int wait_us = -1);
 	};
 
 	// ============================================================================

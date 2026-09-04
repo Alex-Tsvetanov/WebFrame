@@ -357,7 +357,7 @@ namespace coroute
 		// request, which would be a race and would also charge that request for it.
 		router_.finalise();
 
-		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_, io_wait_us_);
 
 		// One listening descriptor, whatever mix of protocols is configured. TLS and
 		// cleartext used to be mutually exclusive branches here, so serving both meant
@@ -410,7 +410,7 @@ namespace coroute
 
 	Task<void> App::run_async(uint16_t port)
 	{
-		io_ctx_ = net::IoContext::create(thread_count_, io_backend_);
+		io_ctx_ = net::IoContext::create(thread_count_, io_backend_, io_wait_us_);
 		listener_ = net::Listener::create(*io_ctx_);
 
 		auto result = listener_->listen(port);

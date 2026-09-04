@@ -56,6 +56,8 @@ namespace
 				  << "  --io-backend B    io_uring or epoll; both are in this binary under\n"
 				  << "                    -DCOROUTE_IO_BACKEND=dual and the choice is made\n"
 				  << "                    here, at runtime (default: whatever the host allows)\n"
+				  << "  --io-wait-us N    completion-backend wait bound in microseconds;\n"
+				  << "                    0 blocks, negative or absent uses the 1ms default\n"
 				  << "\n"
 				  << "Routing experiment:\n"
 				  << "  --router ARM      dfa (default), radix or regex; all three are in\n"
@@ -107,6 +109,10 @@ int main(int argc, char** argv)
 
 	// Empty means "ask the host", which is IoBackend::Default.
 	std::string io_backend_arm;
+	// The completion backend's wait bound, in microseconds. Negative leaves the
+	// backend default of 1ms; 0 blocks. Exists so the wait-policy arms are one
+	// binary and a flag rather than three builds of one commit.
+	int io_wait_us = -1;
 
 	std::string router_arm = "dfa";
 	size_t route_count = 0;
@@ -219,6 +225,10 @@ int main(int argc, char** argv)
 		{
 			io_backend_arm = std::string(value_for("--io-backend"));
 		}
+		else if (arg == "--io-wait-us")
+		{
+			io_wait_us = std::atoi(std::string(value_for("--io-wait-us")).c_str());
+		}
 		else if (arg == "--router")
 		{
 			router_arm = std::string(value_for("--router"));
@@ -330,6 +340,7 @@ int main(int argc, char** argv)
 	// process, which on a hardened host means io_uring and EPERM, is a machine to change
 	// or a cell to drop.
 	net::IoBackend io_backend = net::IoBackend::Default;
+
 	if (!io_backend_arm.empty())
 	{
 		if (!net::parse_io_backend(io_backend_arm, io_backend))
@@ -370,6 +381,7 @@ int main(int argc, char** argv)
 	}
 
 	app.io_backend(io_backend);
+	app.io_wait_us(io_wait_us);
 	app.threads(workers);
 	app.backlog(static_cast<int>(backlog));
 	app.enable_protocol_detection(detect);

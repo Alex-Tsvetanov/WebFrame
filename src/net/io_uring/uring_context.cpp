@@ -343,7 +343,11 @@ namespace coroute::net
 		std::vector<std::thread> workers_;
 		std::atomic<bool> stopped_{false};
 		std::atomic<size_t> next_ring_{0};
+		// 1ms is what the constant in this loop was before the bound became a parameter,
+		// so an unset wait_us reproduces the tree's previous behaviour exactly.
+		static constexpr int kDefaultWaitUs = 1000;
 		size_t thread_count_;
+		int wait_us_;
 
 		// SO_REUSEPORT multi-accept
 		ConnectionHandler connection_handler_;
@@ -352,7 +356,9 @@ namespace coroute::net
 
 
 	public:
-		explicit UringContext(size_t thread_count) : thread_count_(thread_count > 0 ? thread_count : 1)
+		explicit UringContext(size_t thread_count, int wait_us = -1)
+		    : thread_count_(thread_count > 0 ? thread_count : 1),
+		      wait_us_(wait_us < 0 ? kDefaultWaitUs : wait_us)
 		{
 			// Create per-thread rings
 			rings_.reserve(thread_count_);
@@ -364,6 +370,26 @@ namespace coroute::net
 					throw std::runtime_error("Failed to initialize io_uring ring " + std::to_string(i));
 				}
 				rings_.push_back(std::move(ring));
+			}
+
+			// A blocking wait is only safe where IORING_FEAT_EXT_ARG is present. Without
+			// it the wait takes an SQE for its timeout, so it is a producer and holds the
+			// submission lock while it waits; untimed, it would hold that lock for as
+			// long as the worker stays idle and every off-worker submission would block
+			// behind it. Refuse rather than quietly substituting a bounded wait: a run
+			// whose record says "blocking" must not have measured 1ms.
+			if (wait_us_ == 0)
+			{
+				for (size_t i = 0; i < rings_.size(); ++i)
+				{
+					if (!rings_[i]->ext_arg)
+					{
+						throw std::runtime_error(
+						    "io-wait-us=0 (blocking) needs IORING_FEAT_EXT_ARG, which this "
+						    "kernel does not report; refusing rather than substituting a "
+						    "bounded wait");
+					}
+				}
 			}
 		}
 
@@ -614,9 +640,13 @@ namespace coroute::net
 			// enough to keep a core out of the deep states, so the power and thermal cost
 			// of the completion model survives this change almost intact. Only the
 			// syscall count went away.
+			// The bound is a runtime parameter rather than the constant it used to be, so
+			// that the wait-policy arms come out of one binary. wait_us_ == 0 means block:
+			// there is no timespec then and the call below is the untimed one.
 			__kernel_timespec ts;
-			ts.tv_sec = 0;
-			ts.tv_nsec = 1000000;  // 1ms
+			ts.tv_sec = wait_us_ / 1000000;
+			ts.tv_nsec = static_cast<long long>(wait_us_ % 1000000) * 1000;
+			const bool blocking = (wait_us_ == 0);
 
 			// The wait needs the submission lock because it takes an SQE for its timeout
 			// on kernels without IORING_FEAT_EXT_ARG, but it must not still hold it
@@ -672,10 +702,14 @@ namespace coroute::net
 			int ret = 0;
 			if (worker_ring->ext_arg)
 			{
-				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
+				ret = blocking ? io_uring_wait_cqe(&worker_ring->ring, &cqe)
+				               : io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
 			}
 			else
 			{
+				// Without the feature the wait submits, so it is a producer and must hold
+				// the lock. A blocking wait would then hold it for as long as the worker is
+				// idle, which is why the constructor refuses that combination outright.
 				std::lock_guard lock(worker_ring->sq_mutex);
 				ret = io_uring_wait_cqe_timeout(&worker_ring->ring, &cqe, &ts);
 			}
@@ -1583,9 +1617,9 @@ namespace coroute::net
 
 	namespace detail
 	{
-		std::unique_ptr<IoContext> make_uring_context(std::size_t thread_count)
+		std::unique_ptr<IoContext> make_uring_context(std::size_t thread_count, int wait_us)
 		{
-			return std::make_unique<UringContext>(thread_count);
+			return std::make_unique<UringContext>(thread_count, wait_us);
 		}
 
 		// Sets up the smallest possible ring and frees it again.

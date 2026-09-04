@@ -183,6 +183,10 @@ namespace coroute
 		// Which event loop run() will build. See io_backend().
 		net::IoBackend io_backend_ = net::IoBackend::Default;
 
+		// The completion backend's wait bound in microseconds; -1 leaves the backend's
+		// own default. See io_wait_us().
+		int io_wait_us_ = -1;
+
 		// See backlog() and enable_protocol_detection() for why these are here.
 		int backlog_ = 1024;
 		bool protocol_detection_ = true;
@@ -298,6 +302,17 @@ namespace coroute
 		App& io_backend(net::IoBackend backend)
 		{
 			io_backend_ = backend;
+			return *this;
+		}
+
+		// The wait bound of the completion backend, in microseconds. Negative leaves the
+		// backend's default of 1ms; 0 blocks until a completion arrives. It exists so the
+		// three wait-policy arms come from one binary rather than from three builds.
+		//
+		// Must be called before run(); the context is built there and not rebuilt.
+		App& io_wait_us(int wait_us)
+		{
+			io_wait_us_ = wait_us;
 			return *this;
 		}
 

@@ -25,7 +25,7 @@ namespace coroute::net::detail
 #endif
 
 #if defined(COROUTE_BACKEND_IO_URING)
-	std::unique_ptr<IoContext> make_uring_context(std::size_t thread_count);
+	std::unique_ptr<IoContext> make_uring_context(std::size_t thread_count, int wait_us = -1);
 
 	// 0 when this kernel will give this process a ring, otherwise the errno it refused
 	// with. See the definition in uring_context.cpp for why it has to ask rather than

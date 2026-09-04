@@ -214,7 +214,10 @@ namespace coroute::net
 
 	}  // namespace
 
-	std::unique_ptr<IoContext> IoContext::create(size_t thread_count, IoBackend backend)
+	// wait_us reaches only the io_uring backend, so on a build without it the parameter
+	// is genuinely unused rather than forgotten.
+	std::unique_ptr<IoContext> IoContext::create(size_t thread_count, IoBackend backend,
+	                                             [[maybe_unused]] int wait_us)
 	{
 		// Recorded before the resolve, because after it there is no way to tell an arm
 		// the caller asked for from one this function chose.
@@ -255,16 +258,16 @@ namespace coroute::net
 				{
 					try
 					{
-						return detail::make_uring_context(thread_count);
+						return detail::make_uring_context(thread_count, wait_us);
 					}
 					catch (const std::runtime_error&)
 					{
 						return detail::make_epoll_context(thread_count);
 					}
 				}
-				return detail::make_uring_context(thread_count);
+				return detail::make_uring_context(thread_count, wait_us);
 #elif defined(COROUTE_BACKEND_IO_URING)
-				return detail::make_uring_context(thread_count);
+				return detail::make_uring_context(thread_count, wait_us);
 #else
 				break;
 #endif
