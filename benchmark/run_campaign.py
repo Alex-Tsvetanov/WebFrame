@@ -236,6 +236,12 @@ def transport_mismatch(campaign: environment.Campaign, env: dict, section: str) 
 # of DESIGNS, and the alternative is eight signatures changed to carry one constant.
 _ARM: str | None = None
 
+# What the build carries, as opposed to which single arm this run selected. Designs whose
+# cells span two backends need to know the build has both, and _ARM cannot tell them: it
+# names one arm. Set in main from the CMake cache, by the same module-variable mechanism
+# and for the same reason as _ARM, the designs being nullary.
+_COMPILED: str | None = None
+
 # The impairment the path carries, read off the kernel in main and read back by the
 # designs, for the same reason and by the same mechanism as _ARM above.
 #
@@ -674,7 +680,7 @@ WAIT_POLICY_RATE = 100.0
 
 
 def design_wait_policy() -> list[Cell]:
-    """The wait-policy decomposition, three arms from one binary.
+    """The wait-policy decomposition, four arms from one binary.
 
     The paper's central claim, that at low load the wait policy rather than the mechanism
     accounts for the difference between the two Linux backends, currently rests on records
@@ -682,38 +688,47 @@ def design_wait_policy() -> list[Cell]:
     The fully witnessed records in that paper carry the results it de-emphasises. This
     design exists to move the central claim into the witnessed set.
 
-    Three cells differing in one factor. Before --io-wait-us existed they were three builds
-    of one commit differing in one constant, which is exactly what the one-binary rule
-    excludes and what the paper had to declare as a departure; the flag makes them one
-    binary and an argument.
+    Four arms, not three, and the fourth is the point. The decomposition subtracts along a
+    chain: epoll minus io_uring-blocking is the mechanism term, io_uring-blocking minus
+    io_uring-at-1us is the wait-policy term, and the two sum to the gap between epoll and
+    io_uring as mainline shipped it. Without an epoll arm the campaign measures the trade
+    between wait bounds and cannot produce the split at all. An earlier version of this
+    design omitted it and would have run to completion looking like the decomposition.
 
-    Cleartext, classification on, one rate. Every other factor is held because each one
-    moving underneath would be a second difference, and the arms already differ in the one
-    that matters.
+    The 1ms arm is not part of the subtraction. It is what mainline carries now, so it is
+    the cell that says what the current default costs, and it belongs beside the other
+    three rather than inside their arithmetic.
 
-    Run it interleaved and with a fixed seed. Three arms taken in three blocks would let
-    drift over the session land on whichever arm ran last, and at 100 requests a second the
-    quantity being measured is tens of microseconds.
+    Cleartext, classification on, one rate. Low rate deliberately: the finding is about a
+    worker that spends most of its time waiting, and at a rate that keeps a worker busy the
+    wait bound stops mattering, which is the paper's separate result.
+
+    Interleaved and fixed-seed. Four arms taken in four blocks would let drift over the
+    session land on whichever ran last, and the quantities here are tens of microseconds.
     """
-    # The bound reaches the completion backend and nothing else. On epoll, kqueue or IOCP
-    # the flag parses, is accepted, and changes nothing, so the three arms would be three
-    # repetitions of one cell and the design would return a null that is a property of the
-    # backend rather than of the wait policy. Refused rather than run: a campaign that
-    # cannot answer its question should say so at the start, not produce a full set of
-    # plausible numbers for an experiment that never happened.
-    arm = _io_backend()
-    if arm != "io_uring":
+    # The bound reaches the completion backend and nothing else, so on a build without
+    # io_uring three of the four arms collapse onto the fourth and the design measures
+    # nothing it claims to. Refused at the start rather than after the machine time.
+    if _COMPILED != "dual":
         raise SystemExit(
-            f"wait-policy needs --io-backend io_uring; this run resolves to {arm}, where "
-            "--io-wait-us reaches nothing and the three arms would be identical"
+            f"wait-policy needs a build configured with COROUTE_IO_BACKEND=dual; this one "
+            f"carries {_COMPILED or 'an unreadable value'}. Three of its four arms differ "
+            "only in the io_uring wait bound and the fourth is epoll, so on a single-backend "
+            "build the arms collapse and the campaign measures nothing it claims to"
         )
-    return [
-        Cell.of(system_name(), **_base(workers=4),
-                protocol_detection=True,
-                offered_rate=WAIT_POLICY_RATE,
-                io_wait_us=wait)
+
+    cells = [
+        Cell.of(system_name(), **_base(workers=4, io_backend="io_uring"),
+                protocol_detection=True, offered_rate=WAIT_POLICY_RATE, io_wait_us=wait)
         for wait in WAIT_POLICY_ARMS
     ]
+    # The mechanism arm. No wait bound applies, and the cell says so with None rather than
+    # a number that would read as a bound epoll does not have.
+    cells.append(
+        Cell.of(system_name(), **_base(workers=4, io_backend="epoll"),
+                protocol_detection=True, offered_rate=WAIT_POLICY_RATE)
+    )
+    return cells
 
 
 def design_uring_worker_probe() -> list[Cell]:
@@ -1168,7 +1183,8 @@ def main(argv: list[str] | None = None) -> int:
     # Both of these read the build's CMakeCache and both refuse rather than guess, so an
     # unconfigured --build or an arm the tree does not contain ends here in its own
     # words instead of in a traceback.
-    global _ARM
+    global _ARM, _COMPILED
+    _COMPILED = environment.io_backend_from_build(args.build)
     try:
         _ARM = environment.run_io_backend(args.build, args.io_backend)
         env = environment.capture(repo=REPO, build_type="Release",
