@@ -215,6 +215,10 @@ def run_one(
         protocol=str(factors.get("protocol", "")),
         tls=bool(factors.get("tls", False)),
         io_backend=str(factors.get("io_backend", "")),
+        # None when the cell does not carry it, so a campaign predating the factor
+        # records absence rather than a fabricated default. 0 is a value.
+        io_wait_us=(None if factors.get("io_wait_us") is None
+                    else int(factors["io_wait_us"])),
         protocol_detection=bool(factors.get("protocol_detection", True)),
         workers=int(factors.get("workers", 0)),
         connections=int(factors.get("connections", 0)),

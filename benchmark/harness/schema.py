@@ -141,6 +141,12 @@ class RunRecord:
     protocol: str = ""           # http1.1, http2, http3
     tls: bool = False
     io_backend: str = ""         # io_uring, epoll, iocp, kqueue
+    # The completion backend's wait bound in microseconds; 0 blocks, None means the
+    # cell did not carry the factor. A top-level field for the same reason
+    # io_backend is one: it defines an arm, and an arm recoverable only by parsing
+    # server_argv is an arm nobody will parse. Two cells differing in it would
+    # otherwise read as repetitions of one.
+    io_wait_us: int | None = None
     protocol_detection: bool = True   # the demultiplexer A/B arm
     workers: int = 0
     connections: int = 0
@@ -338,6 +344,7 @@ class RunRecord:
             "system": self.system,
             "protocol": self.protocol,
             "io_backend": self.io_backend,
+            "io_wait_us": self.io_wait_us,
             "workers": self.workers,
             "connections": self.connections,
             "duration_s": self.duration_s,
