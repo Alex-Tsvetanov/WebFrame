@@ -33,7 +33,20 @@
 #include <string_view>
 #include <vector>
 
+// The cycle counter is x86 only. The per-lookup histogram needs it, because a radix
+// lookup lands near 100 ns and steady_clock quantises at 100 ns on the platforms
+// measured here, so a chrono-timed per-call sample would blur the arm it exists to
+// resolve.
+//
+// The batch instrument has no such need. Timing a thousand lookups at once puts a batch
+// near 100 microseconds, where a 100 ns quantum is a thousandth of the sample, so it
+// runs anywhere and is how a non-x86 host contributes a dispatch number at all.
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#define COROUTE_ROUTE_BENCH_HAS_TSC 1
 #include <immintrin.h>
+#else
+#define COROUTE_ROUTE_BENCH_HAS_TSC 0
+#endif
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -48,6 +61,7 @@ namespace
 
 	// ---------------------------------------------------------------- machinery
 
+#if COROUTE_ROUTE_BENCH_HAS_TSC
 	inline std::uint64_t tsc_now()
 	{
 		// lfence before the read so earlier work has retired. rdtsc is not a
@@ -73,6 +87,11 @@ namespace
 		const double ns = std::chrono::duration<double, std::nano>(wall1 - wall0).count();
 		return ns / static_cast<double>(t1 - t0);
 	}
+#else
+	// Without a cycle counter there is no tick, so the conversion is the identity and
+	// every duration below is already nanoseconds.
+	double calibrate_ns_per_tick(double) { return 1.0; }
+#endif
 
 	// Two memory numbers, because at ten thousand routes they stop agreeing and only
 	// one of them still answers the question.
@@ -242,6 +261,27 @@ namespace
 		// because of the work it does per lookup does not. Holding everything else fixed
 		// and moving only this separates the two.
 		size_t distinct = 4096;
+		// How many of the table's routes the ring may draw from. Zero means all of them,
+		// which is what this benchmark did before the option existed.
+		//
+		// Without a bound the number of DISTINCT paths the stream can hold is
+		// min(distinct, routes), so it moves with the route count: at ten routes the
+		// stream cycles ten paths, fully warm and fully predicted, and at ten thousand it
+		// cycles four thousand. Table size and working-set size are then confounded in
+		// every scaling cell, and a dispatch cost that grows across the sweep cannot be
+		// told apart from a cache and TLB effect. Fixing this pool holds the working set
+		// still while the table grows.
+		size_t path_set = 0;
+		// Lookups timed between one pair of counter reads, the result divided by K.
+		// Zero keeps the per-lookup histogram alone, which is what every existing record
+		// carries.
+		//
+		// The per-lookup instrument resolves 39 ticks and pays its own ~79 ticks of read
+		// overhead on every sample, which on the fastest cells is a larger share than the
+		// difference being adjudicated. Timing K at once amortises that overhead by K and
+		// de-quantises the reading. It costs the per-lookup tail, so both run and both are
+		// reported.
+		size_t batch = 0;
 		std::uint64_t seed = 20260830;
 		double calibrate_s = 0.2;
 		bool verify = false;
@@ -385,6 +425,8 @@ int main(int argc, char** argv)
 		else if (a == "--out") opt.out_path = next("--out");
 		else if (a == "--hist") opt.hist_path = next("--hist");
 		else if (a == "--distinct") { if (!parse_size(next("--distinct"), opt.distinct) || opt.distinct == 0) return 2; }
+		else if (a == "--path-set") { if (!parse_size(next("--path-set"), opt.path_set)) return 2; }
+		else if (a == "--batch") { if (!parse_size(next("--batch"), opt.batch)) return 2; }
 		else if (a == "--seed") { size_t v = 0; if (!parse_size(next("--seed"), v)) return 2; opt.seed = v; }
 		else if (a == "--verify") opt.verify = true;
 		else
@@ -455,7 +497,11 @@ int main(int argc, char** argv)
 	std::mt19937_64 rng(opt.seed);
 	std::vector<std::string_view> queries;
 	queries.reserve(opt.distinct);
-	for (size_t k = 0; k < opt.distinct; ++k) queries.push_back(table[rng() % table.size()].path);
+	// The pool the ring samples from. See Options::path_set for why this is not just
+	// table.size().
+	const size_t pool =
+		(opt.path_set == 0 || opt.path_set > table.size()) ? table.size() : opt.path_set;
+	for (size_t k = 0; k < opt.distinct; ++k) queries.push_back(table[rng() % pool].path);
 
 	size_t sink = 0;
 	size_t misses = 0;
@@ -476,18 +522,32 @@ int main(int argc, char** argv)
 
 	// The cost of the measurement itself, taken the same way and reported rather than
 	// subtracted. A reader who disagrees with subtracting it can still use the numbers.
+#if !COROUTE_ROUTE_BENCH_HAS_TSC
+	if (opt.batch == 0)
+	{
+		std::fprintf(stderr,
+		             "this build has no cycle counter, so the per-lookup histogram is not "
+		             "available; pass --batch K (1000 is the usual value) to take the batch "
+		             "instrument instead\n");
+		return 2;
+	}
+#endif
+
 	Histogram overhead;
+#if COROUTE_ROUTE_BENCH_HAS_TSC
 	for (size_t k = 0; k < 4096; ++k)
 	{
 		const std::uint64_t t0 = tsc_now();
 		const std::uint64_t t1 = tsc_now();
 		overhead.add(t1 - t0);
 	}
+#endif
 
 	Histogram hist;
 	const auto measure_start = std::chrono::steady_clock::now();
 	const auto measure_deadline = measure_start + std::chrono::duration<double>(opt.max_seconds);
 	bool truncated = false;
+#if COROUTE_ROUTE_BENCH_HAS_TSC
 	for (size_t k = 0; k < opt.lookups; ++k)
 	{
 		const std::string_view q = queries[k % queries.size()];
@@ -506,8 +566,62 @@ int main(int argc, char** argv)
 			break;
 		}
 	}
+#endif
 	const double measured_s =
 		std::chrono::duration<double>(std::chrono::steady_clock::now() - measure_start).count();
+
+	// The batch instrument, run over the same ring in the same order.
+	//
+	// The per-lookup loop above pays a counter read on either side of every call, and
+	// reports that cost rather than subtracting it. On the fastest cells the read is a
+	// larger share of the sample than the difference the cell is used to adjudicate, and
+	// the counter's own step is coarse enough that the between-run spread can fall below
+	// it, which is what makes a bootstrap return an interval of zero width.
+	//
+	// Timing K lookups between one pair of reads divides that overhead by K and gives a
+	// distribution over batches rather than a histogram of a quantised per-call counter.
+	// What it cannot give is the per-lookup tail, so it does not replace the histogram
+	// above; both are recorded and the record says which is which.
+	//
+	// Samples are per-lookup cost in thousandths of a tick, so that integer bins keep
+	// the resolution the division buys.
+	Histogram batch_hist;
+	std::uint64_t batch_lookups = 0;
+	bool batch_truncated = false;
+	if (opt.batch > 0)
+	{
+		const auto b_deadline =
+			std::chrono::steady_clock::now() + std::chrono::duration<double>(opt.max_seconds);
+		for (size_t b = 0; b + opt.batch <= opt.lookups; b += opt.batch)
+		{
+#if COROUTE_ROUTE_BENCH_HAS_TSC
+			const std::uint64_t t0 = tsc_now();
+#else
+			const auto t0 = std::chrono::steady_clock::now();
+#endif
+			for (size_t j = 0; j < opt.batch; ++j)
+			{
+				auto m = router.match(coroute::HttpMethod::GET, queries[(b + j) % queries.size()]);
+				sink += m.params.size();
+			}
+#if COROUTE_ROUTE_BENCH_HAS_TSC
+			const double elapsed_ns = double(tsc_now() - t0) * ns_per_tick;
+#else
+			const double elapsed_ns =
+				std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count();
+#endif
+			// Picoseconds per lookup. One unit on every architecture, so a batch row from
+			// an Apple host and one from an x86 host name the same quantity; and integer
+			// bins at that scale keep the resolution the division buys.
+			batch_hist.add(static_cast<std::uint64_t>((elapsed_ns * 1000.0) / double(opt.batch)));
+			batch_lookups += opt.batch;
+			if (std::chrono::steady_clock::now() >= b_deadline)
+			{
+				batch_truncated = true;
+				break;
+			}
+		}
+	}
 
 	const MemorySample mem_end = memory_now();
 
@@ -517,13 +631,33 @@ int main(int argc, char** argv)
 	const double rss_mb = double(mem_after.resident - mem_before.resident) / 1048576.0;
 	const double commit_mb = double(mem_after.committed - mem_before.committed) / 1048576.0;
 
-	std::printf("arm=%-5s routes=%6zu shape=%-4s params=%d depth=%2zu  "
-	            "p50=%10.1fns p99=%11.1fns p99.9=%11.1fns  build=%9.2fms rss=%8.1fMB commit=%9.1fMB "
-	            "n=%7llu%s misses=%zu\n",
-	            opt.arm.c_str(), opt.routes, opt.shape.c_str(), opt.params ? 1 : 0, opt.depth,
-	            ns(hist.percentile(0.50)), ns(hist.percentile(0.99)), ns(hist.percentile(0.999)), build_ms,
-	            rss_mb, commit_mb, static_cast<unsigned long long>(hist.total),
-	            truncated ? "*" : " ", misses);
+	// Two summary lines, because the two instruments do not report the same quantity and
+	// a run that has only one of them must not print the other's empty bins as zeros. A
+	// benchmark whose console line reads p50=0.0ns n=0 after a successful run is the
+	// failure this project exists to avoid.
+	if (hist.total > 0)
+	{
+		std::printf("arm=%-5s routes=%6zu shape=%-4s params=%d depth=%2zu  "
+		            "p50=%10.1fns p99=%11.1fns p99.9=%11.1fns  build=%9.2fms rss=%8.1fMB commit=%9.1fMB "
+		            "n=%7llu%s misses=%zu\n",
+		            opt.arm.c_str(), opt.routes, opt.shape.c_str(), opt.params ? 1 : 0, opt.depth,
+		            ns(hist.percentile(0.50)), ns(hist.percentile(0.99)), ns(hist.percentile(0.999)), build_ms,
+		            rss_mb, commit_mb, static_cast<unsigned long long>(hist.total),
+		            truncated ? "*" : " ", misses);
+	}
+	if (batch_hist.total > 0)
+	{
+		// Picoseconds per lookup in the histogram, nanoseconds here.
+		auto bns = [&](std::uint32_t ps) { return double(ps) / 1000.0; };
+		std::printf("arm=%-5s routes=%6zu shape=%-4s params=%d depth=%2zu  batch=%zu  "
+		            "p50=%10.1fns p90=%11.1fns p99=%11.1fns  build=%9.2fms rss=%8.1fMB commit=%9.1fMB "
+		            "batches=%7llu%s lookups=%llu misses=%zu\n",
+		            opt.arm.c_str(), opt.routes, opt.shape.c_str(), opt.params ? 1 : 0, opt.depth,
+		            opt.batch, bns(batch_hist.percentile(0.50)), bns(batch_hist.percentile(0.90)),
+		            bns(batch_hist.percentile(0.99)), build_ms, rss_mb, commit_mb,
+		            static_cast<unsigned long long>(batch_hist.total), batch_truncated ? "*" : " ",
+		            static_cast<unsigned long long>(batch_lookups), misses);
+	}
 
 	if (!opt.hist_path.empty())
 	{
@@ -586,6 +720,27 @@ int main(int argc, char** argv)
 		             static_cast<unsigned long long>(mem_before.committed));
 		std::fprintf(f, "  \"timer_overhead_cycles\": {\"p50\": %u, \"p99\": %u},\n",
 		             overhead.percentile(0.50), overhead.percentile(0.99));
+		std::fprintf(f, "  \"path_set\": %zu,\n", pool);
+		// Which instruments this build actually has. Without a cycle counter the
+		// per-lookup histogram is absent rather than zero, and a reader must not average
+		// its bins with an x86 row's.
+		std::fprintf(f, "  \"per_lookup_histogram\": %s,\n",
+		             COROUTE_ROUTE_BENCH_HAS_TSC ? "true" : "false");
+		std::fprintf(f, "  \"batch\": %zu,\n", opt.batch);
+		if (opt.batch > 0)
+		{
+			// Picoseconds per lookup: divide by 1000 for nanoseconds. Named in the key
+			// so the unit cannot be mistaken for the per-lookup histogram's cycles, and
+			// chosen so an x86 row and a non-x86 row carry the same quantity.
+			std::fprintf(f, "  \"batch_lookups\": %llu,\n",
+			             static_cast<unsigned long long>(batch_lookups));
+			std::fprintf(f, "  \"batch_truncated_by_time\": %s,\n",
+			             batch_truncated ? "true" : "false");
+			std::fprintf(f, "  \"batch_picoseconds_per_lookup\": {\"p50\": %u, \"p90\": %u, "
+			                "\"p99\": %u, \"max\": %u},\n",
+			             batch_hist.percentile(0.50), batch_hist.percentile(0.90),
+			             batch_hist.percentile(0.99), batch_hist.percentile(1.0));
+		}
 		std::fprintf(f, "  \"cycles\": {\"p50\": %u, \"p90\": %u, \"p99\": %u, \"p999\": %u, \"max\": %u, "
 		                "\"mean\": %.2f},\n",
 		             hist.percentile(0.50), hist.percentile(0.90), hist.percentile(0.99), hist.percentile(0.999),

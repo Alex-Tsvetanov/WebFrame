@@ -561,24 +561,23 @@ option(COROUTE_BUILD_BENCHMARK_TOOLS "Build the load generator" ON)
 if(COROUTE_BUILD_BENCHMARK_TOOLS)
     add_subdirectory(benchmark/generator)
     if(COROUTE_ROUTER_ARMS)
-        # route_bench is x86 only, and deliberately so. It times with rdtsc because a
-        # radix lookup lands near 100 ns and the platform steady_clock quantises at
-        # 100 ns, so the clock would blur the very arm the experiment exists to
-        # resolve. There is no portable substitute: on Apple Silicon the userspace
-        # counter runs off the 24 MHz timebase at 41.67 ns per tick, so a port would
-        # compile and then report a coarser histogram than the one it is being
-        # compared against.
+        # route_bench carries two instruments and only one of them needs x86.
         #
-        # So the target is skipped rather than ported. Dispatch-only numbers come from
-        # x86 hosts, and a non-x86 host contributes the end-to-end level instead, where
-        # the quantity measured is milliseconds and the clock is not the limit.
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|i[3-6]86)$")
-            add_subdirectory(benchmark/routing)
-        else()
-            message(STATUS
-                "route_bench skipped: needs rdtsc, and CMAKE_SYSTEM_PROCESSOR is "
-                "'${CMAKE_SYSTEM_PROCESSOR}'. The end-to-end routing level still builds.")
-        endif()
+        # The per-lookup histogram does: a radix lookup lands near 100 ns and the
+        # platform steady_clock quantises at 100 ns, so a chrono-timed per-call sample
+        # would blur the very arm the experiment exists to resolve, and on Apple Silicon
+        # the userspace counter runs off a 24 MHz timebase at 41.67 ns per tick. That
+        # instrument is compiled only where rdtsc exists.
+        #
+        # The batch instrument does not. Timing a thousand lookups between one pair of
+        # clock reads puts a batch near 100 microseconds, where a 100 ns quantum is a
+        # thousandth of the sample, so it resolves a difference the per-call clock could
+        # not and it runs anywhere. It reports picoseconds per lookup on every
+        # architecture, so an Apple row and an x86 row name the same quantity.
+        #
+        # So the target now builds everywhere. On a host without a cycle counter it
+        # refuses to run without --batch, rather than reporting an empty histogram.
+        add_subdirectory(benchmark/routing)
     endif()
 endif()
 
