@@ -37,3 +37,7 @@ add_subdirectory(benchmark_server)
 
 # Raw benchmark example
 add_subdirectory(raw_benchmark)
+
+# The two-App arrangement, for the descriptor census. Not a deployable server: it exists
+# so the alternative the demultiplexer replaces can be counted rather than asserted.
+add_subdirectory(two_app_server)
