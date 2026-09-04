@@ -340,11 +340,21 @@ class RunRecord:
         is not a row with a gap, it is a row nobody can interpret, and discovering that
         weeks later means the machine time is gone.
         """
+        # Tested by truthiness, so every entry here must be a factor whose zero or
+        # empty value is genuinely uninterpretable. io_wait_us was briefly in this dict
+        # and is not: it is optional by construction, None on any design that does not
+        # carry it, and 0 is the blocking arm rather than an absence. Both read as unset
+        # here, so the blocking arm and every older design became unwritable, and
+        # append raises rather than rejecting, so two campaigns died at run 3 of 21
+        # instead of recording a refusal.
+        #
+        # The predicate is left alone rather than made None-aware. workers=0 and
+        # connections=0 are meaningless for a run and should keep reading as missing;
+        # widening the test to fix an optional field would quietly weaken them.
         required = {
             "system": self.system,
             "protocol": self.protocol,
             "io_backend": self.io_backend,
-            "io_wait_us": self.io_wait_us,
             "workers": self.workers,
             "connections": self.connections,
             "duration_s": self.duration_s,

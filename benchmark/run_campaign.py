@@ -78,8 +78,28 @@ GENERATOR_THREADS = 2
 # honest encoding of a platform that grants nothing: the record then says no isolation
 # was requested, rather than that isolation was requested and quietly denied.
 _HAS_AFFINITY = platform.system() in ("Windows", "Linux")
-SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY if _HAS_AFFINITY else None
-GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY if _HAS_AFFINITY else None
+
+# The masks were named for Windows and handed to Linux as well, so any Linux host
+# inherited a Ryzen 5 3600's twelve-CPU layout whatever it actually had. On the 5800H
+# laptop that meant four of sixteen logical CPUs sat idle in every campaign. It did not
+# split a physical core there, because that topology also pairs siblings adjacently, so
+# the recorded numbers are smaller than they should have been rather than contaminated.
+#
+# Per platform now. A mask is a fact about a host's topology and cannot be a constant
+# shared across two of them; the previous arrangement made that mistake invisible by
+# naming the constant for the platform it was right for.
+_LINUX_SERVER_AFFINITY = "fff"      # CPUs 0-11, cores 0-5 on an 8-core SMT host
+_LINUX_GENERATOR_AFFINITY = "f000"  # CPUs 12-15, cores 6-7; disjoint, no shared sibling
+
+if platform.system() == "Windows":
+    SERVER_AFFINITY = _WINDOWS_SERVER_AFFINITY
+    GENERATOR_AFFINITY = _WINDOWS_GENERATOR_AFFINITY
+elif platform.system() == "Linux":
+    SERVER_AFFINITY = _LINUX_SERVER_AFFINITY
+    GENERATOR_AFFINITY = _LINUX_GENERATOR_AFFINITY
+else:
+    SERVER_AFFINITY = None
+    GENERATOR_AFFINITY = None
 
 
 def mask_cores(mask: str, siblings: list) -> set[str]:
