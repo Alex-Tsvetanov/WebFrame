@@ -170,6 +170,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", type=int, default=20260830)
     ap.add_argument("--lookups", type=int, default=200000)
     ap.add_argument("--warmup", type=int, default=20000)
+    # A factor of the measurement rather than a convenience, and one this campaign could
+    # not express until route_bench took the flag. Set externally instead, a mask governs
+    # every cell and appears in no record: the run is pinned and nothing says so, which is
+    # the failure this harness exists to prevent. Empty means unpinned, recorded as such.
+    ap.add_argument("--affinity", default="",
+                    help="hex CPU mask for route_bench; empty runs unpinned. Which core is\n"
+                         "chosen moves both the median and the spread, so it belongs in the\n"
+                         "record beside the numbers it produced")
     ap.add_argument(
         "--max-seconds",
         type=float,
@@ -295,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
                 "--out", str(json_path),
                 "--hist", str(hist_path),
             ]
+            if args.affinity:
+                argv_run += ["--affinity", args.affinity]
 
             power_before = validity.current_power_source()
 
@@ -315,6 +325,11 @@ def main(argv: list[str] | None = None) -> int:
                 # so an rdtsc microbenchmark had no clock gate on any platform: the
                 # speed limit below is pmset-only and None everywhere else.
                 "cpu_mhz_start": validity.current_cpu_mhz(),
+                # Requested here; whether it took is in route_bench's own --out JSON,
+                # beside the measurement it qualifies. Empty string means no mask was
+                # asked for, which is a different record from one that was asked for and
+                # refused.
+                "affinity_requested": args.affinity or None,
             }
 
             try:

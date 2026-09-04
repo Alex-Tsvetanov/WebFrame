@@ -48,6 +48,10 @@
 #define COROUTE_ROUTE_BENCH_HAS_TSC 0
 #endif
 
+#if defined(__linux__)
+#include <sched.h>
+#endif
+
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -60,6 +64,32 @@ namespace
 {
 
 	// ---------------------------------------------------------------- machinery
+
+	bool apply_affinity(std::uint64_t mask)
+	{
+		if (mask == 0)
+		{
+			return true;
+		}
+#if defined(_WIN32)
+		return ::SetProcessAffinityMask(::GetCurrentProcess(), static_cast<DWORD_PTR>(mask)) != 0;
+#elif defined(__linux__)
+		cpu_set_t set;
+		CPU_ZERO(&set);
+		for (int i = 0; i < 64; ++i)
+		{
+			if ((mask >> i) & 1ULL)
+			{
+				CPU_SET(i, &set);
+			}
+		}
+		return ::sched_setaffinity(0, sizeof(set), &set) == 0;
+#else
+		// macOS has no portable process affinity API. Requested and applied are recorded
+		// separately so a reader can tell a mask that was asked for from one that took.
+		return false;
+#endif
+	}
 
 #if COROUTE_ROUTE_BENCH_HAS_TSC
 	inline std::uint64_t tsc_now()
@@ -295,6 +325,15 @@ namespace
 		// de-quantises the reading. It costs the per-lookup tail, so both run and both are
 		// reported.
 		size_t batch = 0;
+		// Hexadecimal CPU mask to confine this process to, 0 for none.
+		//
+		// A factor of the measurement rather than a convenience. On one host the same
+		// binary and cell read 1174.9 ns unpinned at 6.1 per cent spread and 1089.9 at
+		// 0.9 per cent pinned to one core, and which core mattered too: a different
+		// choice gave 1155.1 at 4.4 per cent. Set externally the mask governs the run and
+		// appears in no record, which is a factor that decides the number and cannot be
+		// read back off it.
+		std::uint64_t affinity_mask = 0;
 		std::uint64_t seed = 20260830;
 		double calibrate_s = 0.2;
 		bool verify = false;
@@ -376,6 +415,10 @@ namespace
 			"                          the whole table). Without it the queried-path count\n"
 			"                          rises with the route count and table size is\n"
 			"                          confounded with working-set size\n"
+			"  --affinity HEX          confine this process to this hexadecimal CPU mask.\n"
+			"                          Which core is chosen changes both the median and the\n"
+			"                          spread; the mask is recorded beside the measurement\n"
+			"                          because it is a factor of it. No effect on macOS\n"
 			"  --batch K               time K lookups between one pair of clock reads and\n"
 			"                          divide (default 0, off). Amortises the timer overhead\n"
 			"                          and runs where there is no cycle counter; reports a\n"
@@ -449,6 +492,10 @@ int main(int argc, char** argv)
 		else if (a == "--distinct") { if (!parse_size(next("--distinct"), opt.distinct) || opt.distinct == 0) return 2; }
 		else if (a == "--path-set") { if (!parse_size(next("--path-set"), opt.path_set)) return 2; }
 		else if (a == "--batch") { if (!parse_size(next("--batch"), opt.batch)) return 2; }
+		else if (a == "--affinity")
+		{
+			opt.affinity_mask = std::strtoull(std::string(next("--affinity")).c_str(), nullptr, 16);
+		}
 		else if (a == "--seed") { size_t v = 0; if (!parse_size(next("--seed"), v)) return 2; opt.seed = v; }
 		else if (a == "--verify") opt.verify = true;
 		else
@@ -510,6 +557,10 @@ int main(int argc, char** argv)
 	const auto build_t1 = std::chrono::steady_clock::now();
 	const MemorySample mem_after = memory_now();
 	const double build_ms = std::chrono::duration<double, std::milli>(build_t1 - build_t0).count();
+
+	// Applied before the table is built and before any timing, so no part of the run
+	// happens on a core the process is about to be moved off.
+	const bool affinity_applied = apply_affinity(opt.affinity_mask);
 
 	// ---------------------------------------------------------------- queries
 
@@ -742,6 +793,13 @@ int main(int argc, char** argv)
 		             static_cast<unsigned long long>(mem_before.committed));
 		std::fprintf(f, "  \"timer_overhead_cycles\": {\"p50\": %u, \"p99\": %u},\n",
 		             overhead.percentile(0.50), overhead.percentile(0.99));
+		// Requested and applied are separate fields, as they are for the generator: a
+		// mask that was asked for and not granted is a different record from one that
+		// took, and macOS grants none.
+		std::fprintf(f, "  \"affinity_requested\": \"%llx\",\n",
+		             static_cast<unsigned long long>(opt.affinity_mask));
+		std::fprintf(f, "  \"affinity_applied\": %s,\n",
+		             (opt.affinity_mask == 0) ? "null" : (affinity_applied ? "true" : "false"));
 		std::fprintf(f, "  \"path_set\": %zu,\n", pool);
 		// Which instruments this build actually has. Without a cycle counter the
 		// per-lookup histogram is absent rather than zero, and a reader must not average
