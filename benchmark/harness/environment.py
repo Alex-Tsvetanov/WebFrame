@@ -485,7 +485,28 @@ def _compiler_version() -> str | None:
 
 
 def _pkgconfig_version(name: str) -> str | None:
-    return _run(["pkg-config", "--modversion", name])
+    """The installed version of a pkg-config package, or why there is no answer.
+
+    Three outcomes, and the point of this function is that they are three rather than
+    two. A version string means the package is present at that version. "absent" means
+    pkg-config ran and said it does not know the package. "unknown: no pkg-config" means
+    the question could not be put at all.
+
+    That third case used to return None, the same value as the second, which made a
+    record on a host without pkg-config indistinguishable from a record on a host that
+    genuinely lacked the dependency. Every Windows record in this repository has
+    deps.openssl null for that reason, and reading those nulls as "TLS was off" happens
+    to be right and is not supported by the field. On a host with no pkg-config the whole
+    deps block was silently unpopulated rather than meaningfully empty.
+
+    The url_matcher field below carries the same lesson from the other direction: it was
+    captured nowhere until a tree was found pinned to a stale default with nothing in its
+    records to say so. A field that cannot fail is a field that is not being read.
+    """
+    if shutil.which("pkg-config") is None and shutil.which("pkgconf") is None:
+        return "unknown: no pkg-config"
+    version = _run(["pkg-config", "--modversion", name])
+    return version if version is not None else "absent"
 
 
 def _git_commit(repo: Path) -> str | None:
