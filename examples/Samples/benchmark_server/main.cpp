@@ -493,7 +493,13 @@ int main(int argc, char** argv)
 			  << ", max-requests " << max_requests
 			  << ", affinity " << (affinity_hex.empty() ? std::string("none") : affinity_hex)
 			  << ", tls " << (cert_file.empty() ? "off" : "on") << ", http3 " << (http3 ? "on" : "off")
-			  << ", io-backend " << (io_backend_arm.empty() ? std::string("default") : io_backend_arm)
+			  // Requested, not resolved: this line prints before run() builds the context,
+			  // so the backend that actually ran is only known to the listening line below.
+			  // Labelled so a record cannot be read as saying io_uring resolved when the
+			  // flag was absent and the host chose.
+			  << ", io-backend-requested "
+			  << (io_backend_arm.empty() ? std::string("default") : io_backend_arm)
+			  << ", io-wait-us " << io_wait_us
 			  << ", router " << router_backend_name(backend) << ", routes " << table.size() << " "
 			  << routebench::shape_name(spec.shape) << " depth " << spec.depth << " params "
 			  << (spec.params ? "on" : "off") << ", route build " << route_build_ms << "ms"
